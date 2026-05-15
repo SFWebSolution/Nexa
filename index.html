@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+  <link rel="manifest" href="manifest.json">
+
+<meta name="theme-color" content="#2563eb">
+
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+
+
+
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="Nexa - Futuristic real-time messaging platform." />
+
+  <title>Nexa - Futuristic Messaging</title>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23000' stroke='%2300f0ff' stroke-width='2'/><text x='50' y='65' font-size='60' font-weight='bold' text-anchor='middle' fill='%2300f0ff' font-family='monospace'>N</text></svg>">
+
+  <style>
+
+    *{
+      margin:0;
+      padding:0;
+      box-sizing:border-box;
+      min-width:0;
+    }
+
+    :root{
+      --primary:#00e5ff;
+      --primary2:#008cff;
+      --bg:#070b17;
+      --card:#121b2d;
+      --text:#ffffff;
+      --muted:#9fb0c7;
+      --border:rgba(255,255,255,0.08);
+    }
+
+    html,
+    body{
+      width:100%;
+      max-width:100%;
+      overflow-x:hidden;
+      scroll-behavior:smooth;
+      font-family:Inter,Segoe UI,Tahoma,sans-serif;
+      background:
+      radial-gradient(circle at top left, rgba(0,229,255,0.12), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(168,85,247,0.10), transparent 30%),
+      linear-gradient(135deg,#070b17,#0f1729,#070b17);
+      color:var(--text);
+    }
+
+    a{
+      text-decoration:none;
+      color:inherit;
+    }
+
+    img{
+      max-width:100%;
+    }
+
+    /* NAVBAR */
+
+    nav{
+      width:100%;
+      position:sticky;
+      top:0;
+      z-index:999;
+      backdrop-filter:blur(18px);
+      background:rgba(7,11,23,0.78);
+      border-bottom:1px solid var(--border);
+    }
+
+    .nav-container{
+      width:100%;
+      max-width:1200px;
+      margin:auto;
+      padding:0 20px;
+      min-height:76px;
+
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+    }
+
+    .logo{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      flex-shrink:0;
+    }
+
+    .logo-icon{
+      width:44px;
+      height:44px;
+      border-radius:14px;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      font-weight:900;
+      font-size:1.2rem;
+
+      color:#000;
+
+      background:
+      linear-gradient(
+      135deg,
+      var(--primary),
+      var(--primary2)
+      );
+
+      box-shadow:
+      0 0 24px rgba(0,229,255,0.35);
+    }
+
+    .logo span{
+      font-size:1.3rem;
+      font-weight:800;
+      letter-spacing:1px;
+
+      background:
+      linear-gradient(
+      135deg,
+      #fff,
+      var(--primary)
+      );
+
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+    }
+
+    .nav-links{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      list-style:none;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .nav-links a{
+      padding:10px 14px;
+      border-radius:12px;
+      color:#d5dff0;
+      font-size:0.92rem;
+      transition:0.25s ease;
+      white-space:nowrap;
+    }
+
+    .nav-links a:hover{
+      background:rgba(255,255,255,0.06);
+      color:white;
+    }
+
+    /* HERO */
+
+    .hero{
+      width:100%;
+      padding:70px 20px;
+    }
+
+    .hero-content{
+      width:100%;
+      max-width:1100px;
+      margin:auto;
+      text-align:center;
+      animation:fadeUp 0.7s ease;
+    }
+
+    @keyframes fadeUp{
+
+      from{
+        opacity:0;
+        transform:translateY(30px);
+      }
+
+      to{
+        opacity:1;
+        transform:translateY(0);
+      }
+
+    }
+
+    .hero-badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+
+      max-width:100%;
+
+      padding:12px 18px;
+      border-radius:999px;
+
+      margin-bottom:28px;
+
+      border:1px solid rgba(255,255,255,0.08);
+
+      background:
+      rgba(255,255,255,0.04);
+
+      backdrop-filter:blur(10px);
+
+      color:#dbeafe;
+      font-size:0.92rem;
+    }
+
+    .hero h1{
+
+      font-size:clamp(2.5rem,8vw,5.2rem);
+
+      line-height:1.05;
+      letter-spacing:-2px;
+
+      margin-bottom:24px;
+
+      font-weight:900;
+
+      word-break:break-word;
+
+      background:
+      linear-gradient(
+      135deg,
+      #ffffff 0%,
+      #00e5ff 35%,
+      #a855f7 65%,
+      #0095ff 100%
+      );
+
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+
+    }
+
+    .hero p{
+      width:100%;
+      max-width:760px;
+      margin:auto;
+
+      color:#b7c3d4;
+
+      line-height:1.9;
+      font-size:1.08rem;
+    }
+
+    /* BUTTONS */
+
+    .hero-cta{
+      margin-top:40px;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      gap:16px;
+      flex-wrap:wrap;
+
+      width:100%;
+    }
+
+    .btn{
+      min-width:190px;
+      max-width:100%;
+
+      padding:16px 26px;
+
+      border-radius:16px;
+
+      font-weight:700;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      transition:0.3s ease;
+
+      border:1px solid transparent;
+    }
+
+    .btn-primary{
+
+      background:
+      linear-gradient(
+      135deg,
+      var(--primary),
+      var(--primary2)
+      );
+
+      color:#000;
+
+      box-shadow:
+      0 10px 30px rgba(0,229,255,0.25);
+
+    }
+
+    .btn-primary:hover{
+      transform:translateY(-4px);
+
+      box-shadow:
+      0 15px 35px rgba(0,229,255,0.4);
+    }
+
+    .btn-secondary{
+      background:rgba(255,255,255,0.04);
+
+      border-color:
+      rgba(255,255,255,0.08);
+
+      color:white;
+
+      backdrop-filter:blur(12px);
+    }
+
+    .btn-secondary:hover{
+      transform:translateY(-4px);
+      background:rgba(255,255,255,0.08);
+    }
+
+    /* FEATURES */
+
+    .features{
+
+      margin-top:70px;
+
+      display:grid;
+
+      grid-template-columns:
+      repeat(auto-fit,minmax(260px,1fr));
+
+      gap:22px;
+
+      width:100%;
+    }
+
+    .feature-card{
+
+      position:relative;
+
+      overflow:hidden;
+
+      width:100%;
+
+      padding:28px;
+
+      border-radius:24px;
+
+      background:
+      rgba(18,27,45,0.78);
+
+      border:
+      1px solid rgba(255,255,255,0.06);
+
+      backdrop-filter:blur(14px);
+
+      transition:0.35s ease;
+    }
+
+    .feature-card:hover{
+
+      transform:translateY(-8px);
+
+      border-color:
+      rgba(0,229,255,0.2);
+
+      box-shadow:
+      0 16px 40px rgba(0,0,0,0.35);
+
+    }
+
+    .feature-icon{
+
+      width:68px;
+      height:68px;
+
+      border-radius:18px;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      font-size:2rem;
+
+      margin-bottom:20px;
+
+      background:
+      linear-gradient(
+      135deg,
+      rgba(0,229,255,0.14),
+      rgba(0,140,255,0.14)
+      );
+
+      border:
+      1px solid rgba(0,229,255,0.1);
+
+    }
+
+    .feature-card h3{
+      font-size:1.12rem;
+      margin-bottom:10px;
+      color:white;
+    }
+
+    .feature-card p{
+      color:var(--muted);
+      line-height:1.7;
+      font-size:0.95rem;
+    }
+
+    /* FOOTER */
+
+    footer{
+
+      width:100%;
+
+      margin-top:80px;
+
+      padding:30px 20px;
+
+      text-align:center;
+
+      border-top:
+      1px solid rgba(255,255,255,0.06);
+
+      background:
+      rgba(255,255,255,0.02);
+
+      color:#8ea0ba;
+    }
+
+    footer span{
+      color:var(--primary);
+      font-weight:700;
+    }
+
+    /* TABLET */
+
+    @media(max-width:900px){
+
+      .hero{
+        padding:60px 18px;
+      }
+
+      .features{
+        gap:18px;
+      }
+
+    }
+
+    /* MOBILE */
+
+    @media(max-width:768px){
+
+      .nav-container{
+        padding:0 14px;
+        min-height:70px;
+      }
+
+      .logo{
+        gap:10px;
+      }
+
+      .logo-icon{
+        width:40px;
+        height:40px;
+        border-radius:12px;
+      }
+
+      .logo span{
+        font-size:1.08rem;
+      }
+
+      .nav-links{
+        gap:6px;
+      }
+
+      .nav-links a{
+        padding:8px 10px;
+        font-size:0.82rem;
+      }
+
+      .hero{
+        padding:50px 16px 70px;
+      }
+
+      .hero h1{
+        font-size:2.2rem;
+        line-height:1.1;
+        letter-spacing:-1px;
+      }
+
+      .hero p{
+        font-size:0.98rem;
+        line-height:1.8;
+      }
+
+      .hero-badge{
+        width:100%;
+        font-size:0.82rem;
+      }
+
+      .hero-cta{
+        flex-direction:column;
+      }
+
+      .btn{
+        width:100%;
+        min-width:0;
+      }
+
+      .features{
+        grid-template-columns:1fr;
+      }
+
+      .feature-card{
+        padding:24px;
+        border-radius:20px;
+      }
+
+      .feature-icon{
+        width:60px;
+        height:60px;
+        font-size:1.8rem;
+      }
+
+    }
+
+    /* SMALL PHONES */
+
+    @media(max-width:480px){
+
+      .hero{
+        padding:42px 14px 60px;
+      }
+
+      .hero h1{
+        font-size:1.9rem;
+      }
+
+      .hero p{
+        font-size:0.92rem;
+      }
+
+      .nav-links a{
+        font-size:0.74rem;
+        padding:7px 8px;
+      }
+
+      .feature-card{
+        padding:20px;
+      }
+
+      footer{
+        font-size:0.9rem;
+      }
+
+    }
+
+
+    
+.install-popup {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.install-box {
+  background: #111;
+  color: #fff;
+  padding: 20px;
+  border-radius: 14px;
+  width: 85%;
+  max-width: 320px;
+  text-align: center;
+}
+
+.install-box button {
+  margin-top: 10px;
+  padding: 10px;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+}
+
+#installBtn {
+  background: #00ff88;
+  color: #000;
+  font-weight: bold;
+}
+
+#closeBtn {
+  background: #333;
+  color: #fff;
+}
+
+  </style>
+
+</head>
+
+<body>
+
+  <!-- NAVBAR -->
+
+  <nav>
+
+    <div class="nav-container">
+
+      <a href="/" class="logo">
+
+        <div class="logo-icon">
+          N
+        </div>
+
+        <span>NEXA</span>
+
+      </a>
+
+      <ul class="nav-links">
+
+        <li>
+          <a href="#features">
+            Features
+          </a>
+        </li>
+
+        <li>
+          <a href="login.html">
+            Login
+          </a>
+        </li>
+
+      </ul>
+
+    </div>
+
+  </nav>
+
+  <!-- HERO -->
+
+  <section class="hero">
+
+    <div class="hero-content">
+
+      <div class="hero-badge">
+        ⚡ Modern Messaging Platform
+      </div>
+
+      <h1>
+        The Future Of Communication
+      </h1>
+
+      <p>
+        Experience fast, smooth and futuristic messaging with
+        beautiful design, secure chats, real-time updates and
+        a premium interface built for every device.
+      </p>
+
+      <div class="hero-cta">
+
+        <a href="signup.html" class="btn btn-primary">
+          Create Account
+        </a>
+
+        <a href="login.html" class="btn btn-secondary">
+          Sign In
+        </a>
+
+      </div>
+
+      <!-- FEATURES -->
+
+      <div class="features" id="features">
+
+        <div class="feature-card">
+
+          <div class="feature-icon">
+            ⚡
+          </div>
+
+          <h3>
+            Real-time Messaging
+          </h3>
+
+          <p>
+            Instant delivery with smooth live updates and fast communication.
+          </p>
+
+        </div>
+
+        <div class="feature-card">
+
+          <div class="feature-icon">
+            🔐
+          </div>
+
+          <h3>
+            Secure Chats
+          </h3>
+
+          <p>
+            Built with privacy and security to keep conversations protected.
+          </p>
+
+        </div>
+
+        <div class="feature-card">
+
+          <div class="feature-icon">
+            📱
+          </div>
+
+          <h3>
+            Fully Responsive
+          </h3>
+
+          <p>
+            Optimized perfectly for desktop, tablets and mobile devices.
+          </p>
+
+        </div>
+
+        <div class="feature-card">
+
+          <div class="feature-icon">
+            ✨
+          </div>
+
+          <h3>
+            Modern Interface
+          </h3>
+
+          <p>
+            Amazing UI with smooth animations and styling.
+          </p>
+
+        </div>
+
+        <div class="feature-card">
+
+          <div class="feature-icon">
+            🚀
+          </div>
+
+          <h3>
+            Fast Performance
+          </h3>
+
+          <p>
+            Optimized for speed and smooth messaging performance.
+          </p>
+
+        </div>
+
+        <div class="feature-card">
+
+          <div class="feature-icon">
+            🧠
+          </div>
+
+          <h3>
+            Built By NeuroStack
+          </h3>
+
+          <p>
+            Crafted and developed by NeuroStack using modern technology.
+          </p>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- FOOTER -->
+
+  <footer>
+
+    <p>
+      © 2026 Nexa.
+      Built with passion by
+      <span>NeuroStack</span>.
+    </p>
+
+  </footer>
+
+  <!-- FIREBASE -->
+
+  <script>
+
+    const firebaseConfig = {
+
+      apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+  storageBucket: "mel-odix.firebasestorage.app",
+  messagingSenderId: "217595352090",
+  appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
+
+    };
+
+    firebase.initializeApp(firebaseConfig);
+
+    const auth = firebase.auth();
+
+    // KEEP USER LOGGED IN
+
+    auth.setPersistence(
+      firebase.auth.Auth.Persistence.LOCAL
+    )
+
+    .then(() => {
+
+      auth.onAuthStateChanged((user) => {
+
+        // USER LOGGED IN
+        if(user){
+
+          window.location.replace(
+            "dashboard.html"
+          );
+
+        }
+
+        // USER NOT LOGGED IN
+        // STAY ON INDEX PAGE
+
+      });
+
+    })
+
+    .catch((error) => {
+
+      console.log(error.message);
+
+    });
+
+    if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(() => console.log("Nexa PWA Active 🚀"))
+      .catch(err => console.log("SW failed", err));
+  });
+}
+
+
+
+let deferredPrompt;
+
+const popup = document.getElementById("installPopup");
+const installBtn = document.getElementById("installBtn");
+const closeBtn = document.getElementById("closeBtn");
+
+// If already handled before → never show again
+const alreadyHandled = localStorage.getItem("nexa_install_handled");
+
+// Listen for install prompt
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+
+  // only show if not handled before
+  if (!alreadyHandled) {
+    popup.style.display = "flex";
+  }
+});
+
+// Install button
+installBtn.addEventListener("click", async () => {
+  popup.style.display = "none";
+
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+  }
+
+  localStorage.setItem("nexa_install_handled", "true");
+});
+
+// Close button (Not now)
+closeBtn.addEventListener("click", () => {
+  popup.style.display = "none";
+  localStorage.setItem("nexa_install_handled", "true");
+});
+
+
+  </script>
+  <div id="installPopup" class="install-popup">
+  <div class="install-box">
+    <h3>Install Nexa 🚀</h3>
+    <p>Get faster access and a better experience.</p>
+
+    <button id="installBtn">Install App</button>
+    <button id="closeBtn">Not now</button>
+  </div>
+</div>
+
+</body>
+</html>

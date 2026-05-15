@@ -1,0 +1,136 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexa Login</title>
+
+  <style>
+    body{
+      margin:0;
+      font-family:Arial;
+      background:linear-gradient(135deg,#0a0e27,#13172a);
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      height:100vh;
+    }
+
+    .card{
+      width:100%;
+      max-width:420px;
+      background:rgba(20,24,42,0.7);
+      padding:2rem;
+      border-radius:16px;
+      border:1px solid rgba(0,240,255,0.15);
+    }
+
+    h2{
+      text-align:center;
+      color:#00f0ff;
+    }
+
+    input{
+      width:100%;
+      padding:12px;
+      margin-bottom:12px;
+      border-radius:8px;
+      border:1px solid rgba(0,240,255,0.2);
+      background:rgba(10,14,39,0.6);
+      color:#fff;
+    }
+
+    button{
+      width:100%;
+      padding:12px;
+      border:none;
+      border-radius:8px;
+      background:linear-gradient(135deg,#00f0ff,#0099ff);
+      font-weight:bold;
+      cursor:pointer;
+    }
+
+    .msg{
+      text-align:center;
+      margin-top:10px;
+      font-size:14px;
+    }
+
+    .error{ color:#ff6b6b; }
+    .success{ color:#2ecc71; }
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <h2>Welcome Back</h2>
+
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+
+  <button id="loginBtn">Login</button>
+
+  <div id="msg" class="msg"></div>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+const msg = document.getElementById("msg");
+const btn = document.getElementById("loginBtn");
+
+btn.addEventListener("click", login);
+
+async function login(){
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if(!email || !password){
+    showMsg("Fill all fields", "error");
+    return;
+  }
+
+  btn.innerText = "Logging in...";
+
+  try {
+
+    await signInWithEmailAndPassword(auth, email, password);
+
+    showMsg("Login successful!", "success");
+
+    setTimeout(()=>{
+      window.location.href = "dashboard.html";
+    },1000);
+
+  } catch (error) {
+    showMsg(error.message, "error");
+  }
+
+  btn.innerText = "Login";
+}
+
+function showMsg(text, type){
+  msg.textContent = text;
+  msg.className = "msg " + type;
+}
+
+</script>
+
+</body>
+</html>

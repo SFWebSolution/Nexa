@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Nexa Sign Up</title>
+
+  <style>
+
+    body{
+      margin:0;
+      font-family:Arial;
+      background:linear-gradient(135deg,#0a0e27,#13172a);
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      height:100vh;
+    }
+
+    .card{
+      width:100%;
+      max-width:420px;
+      background:rgba(20,24,42,0.7);
+      padding:30px;
+      border-radius:16px;
+      border:1px solid rgba(0,240,255,0.2);
+    }
+
+    h2{
+      color:#00f0ff;
+      text-align:center;
+    }
+
+    input{
+      width:100%;
+      padding:12px;
+      margin:8px 0;
+      border-radius:8px;
+      border:1px solid rgba(0,240,255,0.2);
+      background:#0a0e27;
+      color:white;
+    }
+
+    button{
+      width:100%;
+      padding:12px;
+      margin-top:10px;
+      border:none;
+      border-radius:8px;
+      background:#00f0ff;
+      font-weight:bold;
+      cursor:pointer;
+    }
+
+    .msg{
+      text-align:center;
+      margin-top:10px;
+      font-size:14px;
+    }
+
+    .error{ color:#ff6b6b; }
+    .success{ color:#2ecc71; }
+
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <h2>Create Account</h2>
+
+  <input id="username" placeholder="Username">
+  <input id="displayName" placeholder="Display Name">
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+
+  <button id="signupBtn">Sign Up</button>
+
+  <p id="msg" class="msg"></p>
+
+</div>
+
+<script type="module">
+
+// 🔥 Firebase Imports
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getAuth,
+  createUserWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {
+  getFirestore,
+  setDoc,
+  doc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+  storageBucket: "mel-odix.firebasestorage.app",
+  messagingSenderId: "217595352090",
+  appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
+};
+
+// INIT
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// UI
+const msg = document.getElementById("msg");
+const btn = document.getElementById("signupBtn");
+
+btn.addEventListener("click", signup);
+
+async function signup() {
+
+  const username = document.getElementById("username").value.trim();
+  const displayName = document.getElementById("displayName").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!username || !displayName || !email || !password) {
+    showMsg("Please fill all fields", "error");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Creating account...";
+
+  try {
+
+    // 🔐 CREATE USER
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+    const user = userCredential.user;
+
+    // 🗄️ SAVE PROFILE
+    await setDoc(doc(db, "profiles", user.uid), {
+      username,
+      displayName,
+      email,
+      createdAt: Date.now()
+    });
+
+    // ✅ SUCCESS POPUP
+    showPopup("Account created successfully 🚀");
+
+    showMsg("Success! Redirecting...", "success");
+
+    setTimeout(() => {
+      window.location.href = "login.html";
+    }, 1500);
+
+  } catch (error) {
+    showMsg(error.message, "error");
+  }
+
+  btn.disabled = false;
+  btn.innerText = "Sign Up";
+}
+
+// MESSAGE
+function showMsg(text, type) {
+  msg.textContent = text;
+  msg.className = "msg " + type;
+}
+
+// POPUP
+function showPopup(text) {
+  const popup = document.createElement("div");
+
+  popup.innerText = text;
+
+  popup.style.position = "fixed";
+  popup.style.top = "20px";
+  popup.style.left = "50%";
+  popup.style.transform = "translateX(-50%)";
+  popup.style.background = "#00f0ff";
+  popup.style.color = "#000";
+  popup.style.padding = "12px 20px";
+  popup.style.borderRadius = "10px";
+  popup.style.fontWeight = "bold";
+  popup.style.zIndex = "9999";
+
+  document.body.appendChild(popup);
+
+  setTimeout(() => popup.remove(), 1500);
+}
+
+</script>
+
+</body>
+</html>
