@@ -1060,6 +1060,68 @@ audio{
   will-change: transform, opacity;
 }
 
+
+
+/* ==================== UNREAD MESSAGES STYLING ==================== */
+
+/* Unread badge on user card */
+.unread-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #ef4444;
+  color: white;
+  border-radius: 50%;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+}
+
+/* Glow effect for unread chats */
+.user.unread-glow {
+  animation: unreadGlow 2s ease-in-out infinite;
+  background: rgba(239, 68, 68, 0.05) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+@keyframes unreadGlow {
+  0%, 100% {
+    background: rgba(239, 68, 68, 0.05);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    background: rgba(239, 68, 68, 0.08);
+    box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.2);
+  }
+}
+
+/* User card - keep it relative for badge positioning */
+.user {
+  position: relative;
+}
+
+/* ==================== MESSAGE TEXT FIX ==================== */
+
+/* IMPORTANT: Keep original .msg structure, just fix text wrapping */
+.msg-text {
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* ==================== META (READ STATUS) ==================== */
+
+.meta {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+
   </style>
 </head>
 <body>
@@ -1134,629 +1196,806 @@ audio{
   <input type="file" id="profileUpload" hidden accept="image/*">
 
   <script>
-    // ==================== CONFIG ====================
-    const CLOUD_NAME = "doasf3d1u";
-    const UPLOAD_PRESET = "NeuroStack";
+ // ==================== CONFIG ====================
+const CLOUD_NAME = "doasf3d1u";
+const UPLOAD_PRESET = "NeuroStack";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
-      authDomain: "mel-odix.firebaseapp.com",
-      projectId: "mel-odix",
-      storageBucket: "mel-odix.firebasestorage.app",
-      messagingSenderId: "217595352090",
-      appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+  storageBucket: "mel-odix.firebasestorage.app",
+  messagingSenderId: "217595352090",
+  appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
+};
 
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-    // ==================== GLOBAL STATE ====================
-    let currentUser = null;
-    let selectedUser = null;
-    let mediaRecorder = null;
-    let recordingStartTime = 0;
-    let recordingTimer = null;
-    let audioChunks = [];
-    let recordingBlob = null;
-    let isRecording = false;
-    let allUsersData = [];
+// ==================== GLOBAL STATE ====================
+let currentUser = null;
+let selectedUser = null;
+let mediaRecorder = null;
+let recordingStartTime = 0;
+let recordingTimer = null;
+let audioChunks = [];
+let recordingBlob = null;
+let isRecording = false;
+let allUsersData = [];
+let unreadMessages = {}; // Track unread count per user
 
-    // ==================== INITIALIZATION ====================
-    auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        window.location.href = "login.html";
-        return;
-      }
-      
-      currentUser = user;
-      console.log("✅ User logged in:", currentUser.uid);
-      
-      await updateOnlineStatus(true);
-      await loadCurrentUserProfile();
-      startLoadingUsers();
-      setupPresenceHeartbeat();
+// ==================== NOTIFICATIONS ====================
+function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function showNotification(title, options = {}) {
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, {
+      icon: "https://i.imgur.com/HeIi0wU.png",
+      badge: "https://i.imgur.com/HeIi0wU.png",
+      ...options
     });
+  }
+}
 
-    // ==================== AUTHENTICATION ====================
-    async function handleLogout() {
-      if (!confirm("Are you sure you want to logout?")) return;
-      
-      try {
-        await updateOnlineStatus(false);
-        await auth.signOut();
-        window.location.href = "login.html";
-      } catch (error) {
-        console.error("❌ Logout error:", error);
-      }
-    }
+// ==================== INITIALIZATION ====================
+auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    window.location.href = "login.html";
+    return;
+  }
 
-    // ==================== PROFILE MANAGEMENT ====================
-    async function loadCurrentUserProfile() {
-      try {
-        const doc = await db.collection("profiles").doc(currentUser.uid).get();
-        const profileData = doc.data() || {};
+  currentUser = user;
+  console.log("✅ User logged in:", currentUser.uid);
 
-        const displayName = profileData.displayName || currentUser.displayName || "User";
-        const photoUrl = profileData.photoUrl || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
+  // Request notification permission
+  requestNotificationPermission();
 
-        document.getElementById("myName").textContent = displayName;
-        document.getElementById("myPic").src = photoUrl;
+  await updateOnlineStatus(true);
+  await loadCurrentUserProfile();
+  startLoadingUsers();
+  setupPresenceHeartbeat();
+  loadUnreadCounts();
+  listenForIncomingMessages();
+});
 
-        // ✅ ALWAYS sync to users collection for persistence
-        await db.collection("users").doc(currentUser.uid).set({
-          uid: currentUser.uid,
-          name: displayName,
-          displayName: displayName,
-          email: profileData.email || currentUser.email,
-          photoUrl: photoUrl,
-          photo: photoUrl,
-          createdAt: profileData.createdAt || Date.now(),
-          updatedAt: Date.now()
-        }, { merge: true });
+// ==================== LOAD UNREAD COUNTS ====================
+function loadUnreadCounts() {
+  if (!currentUser) return;
 
-        console.log("✅ Profile loaded - Photo:", photoUrl);
-      } catch (error) {
-        console.error("❌ Load profile error:", error);
-      }
-    }
+  db.collection("chats")
+    .where("to", "==", currentUser.uid)
+    .where("read", "==", false)
+    .onSnapshot((snapshot) => {
+      unreadMessages = {};
 
-    document.getElementById("myPic").addEventListener("click", () => {
-      document.getElementById("profileUpload").click();
-    });
+      snapshot.forEach((doc) => {
+        const msg = doc.data();
+        const fromUser = msg.from;
 
-    document.getElementById("profileUpload").addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      try {
-        const url = await uploadFile(file, "image");
-        if (url) {
-          // ✅ SAVE PROFILE PIC TO BOTH COLLECTIONS
-          await db.collection("users").doc(currentUser.uid).update({ 
-            photoUrl: url,
-            photo: url,
-            updatedAt: Date.now()
-          });
-          
-          await db.collection("profiles").doc(currentUser.uid).update({
-            photoUrl: url,
-            updatedAt: Date.now()
-          });
-          
-          document.getElementById("myPic").src = url;
-          console.log("✅ Profile picture saved permanently");
+        if (!unreadMessages[fromUser]) {
+          unreadMessages[fromUser] = 0;
         }
-      } catch (error) {
-        console.error("❌ Upload profile pic error:", error);
-        alert("Failed to update profile picture");
-      }
+        unreadMessages[fromUser]++;
+      });
+
+      updateUserBadges();
     });
+}
 
-    // ==================== ONLINE STATUS ====================
-    async function updateOnlineStatus(isOnline) {
-      if (!currentUser) return;
-      
-      try {
-        await db.collection("presence").doc(currentUser.uid).set({
-          online: isOnline,
-          lastSeen: Date.now(),
-          uid: currentUser.uid
-        }, { merge: true });
-      } catch (error) {
-        console.error("Presence error:", error);
+function updateUserBadges() {
+  document.querySelectorAll(".user").forEach((userEl) => {
+    const uid = userEl.dataset.uid;
+    let badge = userEl.querySelector(".unread-badge");
+
+    if (unreadMessages[uid] && unreadMessages[uid] > 0) {
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "unread-badge";
+        userEl.appendChild(badge);
       }
+      badge.textContent = unreadMessages[uid] > 99 ? "99+" : unreadMessages[uid];
+      userEl.classList.add("unread-glow");
+    } else {
+      if (badge) badge.remove();
+      userEl.classList.remove("unread-glow");
     }
+  });
+}
 
-    function setupPresenceHeartbeat() {
-      setInterval(() => {
-        if (currentUser) updateOnlineStatus(true);
-      }, 5000);
+// ==================== LISTEN FOR INCOMING MESSAGES ====================
+function listenForIncomingMessages() {
+  if (!currentUser) return;
 
-      window.addEventListener("beforeunload", () => {
-        updateOnlineStatus(false);
-      });
-    }
+  db.collection("chats")
+    .where("to", "==", currentUser.uid)
+    .where("status", "==", "sent")
+    .onSnapshot((snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const msg = change.doc.data();
+          const senderUid = msg.from;
 
-    // ==================== USERS MANAGEMENT ====================
-    function startLoadingUsers() {
-      db.collection("users").onSnapshot((snapshot) => {
-        allUsersData = [];
-        
-        snapshot.forEach((doc) => {
-          if (doc.id !== currentUser.uid) {
-            const data = doc.data();
-            allUsersData.push({ 
-              uid: doc.id, 
-              ...data,
-              photo: data.photoUrl || data.photo || "https://i.imgur.com/HeIi0wU.png"
-            });
-          }
-        });
+          // Get sender info
+          db.collection("users")
+            .doc(senderUid)
+            .get()
+            .then((doc) => {
+              const sender = doc.data();
+              const senderName = sender?.displayName || sender?.name || "User";
 
-        renderUsersList(allUsersData);
-      }, (error) => {
-        console.error("Load users error:", error);
-      });
-    }
+              // Show notification only if chat with this user is not open
+              if (!selectedUser || selectedUser.uid !== senderUid) {
+                let notificationBody = msg.text || "";
 
-    function renderUsersList(users) {
-      const usersBox = document.getElementById("users");
-      usersBox.innerHTML = "";
-
-      if (users.length === 0) {
-        usersBox.innerHTML = '<div class="no-users">👋 No users available</div>';
-        return;
-      }
-
-      users.forEach((user) => {
-        const displayName = user.displayName || user.name || "User";
-        const userEl = document.createElement("div");
-        userEl.className = "user";
-        if (selectedUser && selectedUser.uid === user.uid) {
-          userEl.classList.add("active");
-        }
-
-        const photoUrl = user.photoUrl || user.photo || "https://i.imgur.com/HeIi0wU.png";
-
-        userEl.innerHTML = `
-          <img src="${photoUrl}" 
-               onerror="this.src='https://i.imgur.com/HeIi0wU.png'" 
-               alt="${displayName}">
-          <div class="user-info">
-            <div class="user-name">${displayName}</div>
-            <div class="last-msg">Tap to chat</div>
-          </div>
-        `;
-
-        userEl.addEventListener("click", () => selectChat(user));
-        usersBox.appendChild(userEl);
-      });
-    }
-
-    function searchUsers() {
-      const query = document.getElementById("search").value.trim().toLowerCase();
-      
-      if (!query) {
-        renderUsersList(allUsersData);
-        return;
-      }
-
-      const filtered = allUsersData.filter((user) => {
-        const displayName = (user.displayName || user.name || "").toLowerCase();
-        return displayName.includes(query);
-      });
-
-      renderUsersList(filtered);
-    }
-
-    function selectChat(user) {
-      selectedUser = user;
-      
-      document.getElementById("chatName").textContent = user.displayName || user.name || "User";
-      const photoUrl = user.photoUrl || user.photo || "https://i.imgur.com/HeIi0wU.png";
-      document.getElementById("chatPic").src = photoUrl;
-
-      document.querySelectorAll(".user").forEach((el) => el.classList.remove("active"));
-      event.currentTarget.classList.add("active");
-
-      loadMessages();
-      listenPresence();
-      listenTyping();
-
-      if (window.innerWidth <= 768) {
-        toggleSidebar();
-      }
-
-      document.getElementById("typing").textContent = "";
-    }
-
-    function toggleSidebar() {
-      document.getElementById("sidebar").classList.toggle("hide");
-    }
-
-    // ==================== PRESENCE & TYPING ====================
-    function listenPresence() {
-      if (!selectedUser) return;
-
-      db.collection("presence").doc(selectedUser.uid).onSnapshot((doc) => {
-        const statusEl = document.getElementById("status");
-        const data = doc.data();
-        const isOnline = data?.online;
-        
-        statusEl.textContent = isOnline ? "🟢 online" : "⚪ offline";
-        statusEl.style.color = isOnline ? "#10b981" : "#64748b";
-      });
-    }
-
-    let typingTimeout;
-    document.getElementById("text").addEventListener("input", () => {
-      if (!selectedUser) return;
-
-      db.collection("typing").doc(currentUser.uid).set({
-        typing: true,
-        to: selectedUser.uid,
-        timestamp: Date.now()
-      }, { merge: true });
-
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => {
-        db.collection("typing").doc(currentUser.uid).set({
-          typing: false
-        }, { merge: true });
-      }, 1000);
-    });
-
-    function listenTyping() {
-      if (!selectedUser) return;
-
-      db.collection("typing").doc(selectedUser.uid).onSnapshot((doc) => {
-        const typingEl = document.getElementById("typing");
-        const data = doc.data();
-        
-        if (data?.typing && data.to === currentUser.uid) {
-          typingEl.textContent = "typing...";
-        } else {
-          typingEl.textContent = "";
-        }
-      });
-    }
-
-    // ==================== MESSAGES ====================
-    function loadMessages() {
-      if (!selectedUser) return;
-
-      db.collection("chats")
-        .orderBy("createdAt")
-        .onSnapshot((snapshot) => {
-          const messagesBox = document.getElementById("messages");
-          messagesBox.innerHTML = "";
-
-          snapshot.forEach((doc) => {
-            const msg = doc.data();
-            const isFromMe = msg.from === currentUser.uid;
-            const isFromSelected = msg.from === selectedUser.uid && msg.to === currentUser.uid;
-
-            if (!((isFromMe && msg.to === selectedUser.uid) || isFromSelected)) {
-              return;
-            }
-
-            if (msg.to === currentUser.uid && msg.status !== "seen") {
-              db.collection("chats").doc(doc.id).update({ status: "seen" });
-            }
-
-            const msgEl = document.createElement("div");
-            msgEl.className = `msg ${isFromMe ? "me" : "them"}`;
-
-            const tick = isFromMe ? "✓" : "";
-            const edited = msg.edited ? "(edited)" : "";
-
-            let content = "";
-            if (msg.text) {
-              content += `<div class="msg-text">${linkify(msg.text)}</div>`;
-            }
-            if (msg.image) {
-              content += `<img src="${msg.image}" onerror="this.style.display='none'" alt="Image">`;
-            }
-            if (msg.audio) {
-              content += `<audio controls src="${msg.audio}"></audio>`;
-            }
-
-            msgEl.innerHTML = content + `<div class="meta">${tick} ${edited}</div>`;
-
-            if (isFromMe) {
-              msgEl.style.cursor = "pointer";
-              msgEl.addEventListener("dblclick", () => {
-                const action = prompt("Enter 'edit' or 'delete':");
-                if (action === "delete") {
-                  db.collection("chats").doc(doc.id).delete();
-                } else if (action === "edit" && msg.text) {
-                  const newText = prompt("Edit message:", msg.text);
-                  if (newText?.trim()) {
-                    db.collection("chats").doc(doc.id).update({
-                      text: newText.trim(),
-                      edited: true
-                    });
-                  }
+                if (msg.image && !msg.text) {
+                  notificationBody = "📷 Sent an image";
                 }
-              });
-            }
+                if (msg.audio && !msg.text) {
+                  notificationBody = "🎤 Sent a voice message";
+                }
 
-            messagesBox.appendChild(msgEl);
-          });
+                showNotification(`${senderName}`, {
+                  body: notificationBody || "New message",
+                  tag: `chat-${senderUid}`,
+                  requireInteraction: false
+                });
 
-          messagesBox.scrollTop = messagesBox.scrollHeight;
-        });
-    }
+                console.log("📬 Notification sent from:", senderName);
+              }
 
-    function linkify(text) {
-      const urlRegex = /(\b(https?:\/\/|www\.)[^\s]+)/gi;
-      return text.replace(urlRegex, (url) => {
-        const href = url.match(/^https?:\/\//) ? url : "http://" + url;
-        return `<a href="${href}" target="_blank" style="color:#60a5fa;text-decoration:underline;">${url}</a>`;
+              // Mark as delivered
+              db.collection("chats")
+                .doc(change.doc.id)
+                .update({ status: "delivered" });
+            });
+        }
       });
+    });
+}
+
+// ==================== AUTHENTICATION ====================
+async function handleLogout() {
+  if (!confirm("Are you sure you want to logout?")) return;
+
+  try {
+    await updateOnlineStatus(false);
+    await auth.signOut();
+    window.location.href = "login.html";
+  } catch (error) {
+    console.error("❌ Logout error:", error);
+  }
+}
+
+// ==================== PROFILE MANAGEMENT ====================
+async function loadCurrentUserProfile() {
+  try {
+    const doc = await db.collection("profiles").doc(currentUser.uid).get();
+    const profileData = doc.data() || {};
+
+    const displayName =
+      profileData.displayName || currentUser.displayName || "User";
+    const photoUrl =
+      profileData.photoUrl || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
+
+    document.getElementById("myName").textContent = displayName;
+    document.getElementById("myPic").src = photoUrl;
+
+    // ✅ ALWAYS sync to users collection for persistence
+    await db.collection("users").doc(currentUser.uid).set(
+      {
+        uid: currentUser.uid,
+        name: displayName,
+        displayName: displayName,
+        email: profileData.email || currentUser.email,
+        photoUrl: photoUrl,
+        photo: photoUrl,
+        createdAt: profileData.createdAt || Date.now(),
+        updatedAt: Date.now()
+      },
+      { merge: true }
+    );
+
+    console.log("✅ Profile loaded - Photo:", photoUrl);
+  } catch (error) {
+    console.error("❌ Load profile error:", error);
+  }
+}
+
+document.getElementById("myPic").addEventListener("click", () => {
+  document.getElementById("profileUpload").click();
+});
+
+document.getElementById("profileUpload").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    const url = await uploadFile(file, "image");
+    if (url) {
+      // ✅ SAVE PROFILE PIC TO BOTH COLLECTIONS
+      await db.collection("users").doc(currentUser.uid).update({
+        photoUrl: url,
+        photo: url,
+        updatedAt: Date.now()
+      });
+
+      await db.collection("profiles").doc(currentUser.uid).update({
+        photoUrl: url,
+        updatedAt: Date.now()
+      });
+
+      document.getElementById("myPic").src = url;
+      console.log("✅ Profile picture saved permanently");
     }
+  } catch (error) {
+    console.error("❌ Upload profile pic error:", error);
+    alert("Failed to update profile picture");
+  }
+});
 
-    // ==================== FILE UPLOAD ====================
-    async function uploadFile(file, type) {
-      try {
-        console.log("📤 Uploading:", file.name, "Size:", file.size);
+// ==================== ONLINE STATUS ====================
+async function updateOnlineStatus(isOnline) {
+  if (!currentUser) return;
 
-        const form = new FormData();
-        form.append("file", file);
-        form.append("upload_preset", UPLOAD_PRESET);
+  try {
+    await db.collection("presence").doc(currentUser.uid).set(
+      {
+        online: isOnline,
+        lastSeen: Date.now(),
+        uid: currentUser.uid
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.error("Presence error:", error);
+  }
+}
 
-        const response = await fetch(
-          `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${type}/upload`,
-          { method: "POST", body: form }
-        );
+function setupPresenceHeartbeat() {
+  setInterval(() => {
+    if (currentUser) updateOnlineStatus(true);
+  }, 5000);
 
-        const data = await response.json();
+  window.addEventListener("beforeunload", () => {
+    updateOnlineStatus(false);
+  });
+}
 
-        if (!response.ok) {
-          throw new Error(data.error?.message || `Upload failed: ${response.status}`);
+// ==================== USERS MANAGEMENT ====================
+function startLoadingUsers() {
+  db.collection("users").onSnapshot(
+    (snapshot) => {
+      allUsersData = [];
+
+      snapshot.forEach((doc) => {
+        if (doc.id !== currentUser.uid) {
+          const data = doc.data();
+          allUsersData.push({
+            uid: doc.id,
+            ...data,
+            photo: data.photoUrl || data.photo || "https://i.imgur.com/HeIi0wU.png"
+          });
         }
-        
-        if (!data.secure_url) {
-          throw new Error("No URL from Cloudinary");
+      });
+
+      renderUsersList(allUsersData);
+      updateUserBadges();
+    },
+    (error) => {
+      console.error("Load users error:", error);
+    }
+  );
+}
+
+function renderUsersList(users) {
+  const usersBox = document.getElementById("users");
+  usersBox.innerHTML = "";
+
+  if (users.length === 0) {
+    usersBox.innerHTML = '<div class="no-users">👋 No users available</div>';
+    return;
+  }
+
+  users.forEach((user) => {
+    const displayName = user.displayName || user.name || "User";
+    const userEl = document.createElement("div");
+    userEl.className = "user";
+    userEl.dataset.uid = user.uid;
+
+    if (selectedUser && selectedUser.uid === user.uid) {
+      userEl.classList.add("active");
+    }
+
+    const photoUrl = user.photoUrl || user.photo || "https://i.imgur.com/HeIi0wU.png";
+
+    userEl.innerHTML = `
+      <img src="${photoUrl}"
+           onerror="this.src='https://i.imgur.com/HeIi0wU.png'"
+           alt="${displayName}">
+      <div class="user-info">
+        <div class="user-name">${displayName}</div>
+        <div class="last-msg">Tap to chat</div>
+      </div>
+    `;
+
+    userEl.addEventListener("click", () => selectChat(user));
+    usersBox.appendChild(userEl);
+  });
+
+  updateUserBadges();
+}
+
+function searchUsers() {
+  const query = document.getElementById("search").value.trim().toLowerCase();
+
+  if (!query) {
+    renderUsersList(allUsersData);
+    return;
+  }
+
+  const filtered = allUsersData.filter((user) => {
+    const displayName = (user.displayName || user.name || "").toLowerCase();
+    return displayName.includes(query);
+  });
+
+  renderUsersList(filtered);
+}
+
+function selectChat(user) {
+  selectedUser = user;
+
+  document.getElementById("chatName").textContent =
+    user.displayName || user.name || "User";
+  const photoUrl = user.photoUrl || user.photo || "https://i.imgur.com/HeIi0wU.png";
+  document.getElementById("chatPic").src = photoUrl;
+
+  document.querySelectorAll(".user").forEach((el) => el.classList.remove("active"));
+  event.currentTarget.classList.add("active");
+
+  // ✅ Mark messages as read when opening chat
+  markMessagesAsRead(user.uid);
+
+  // Remove unread indicator
+  delete unreadMessages[user.uid];
+  updateUserBadges();
+
+  loadMessages();
+  listenPresence();
+  listenTyping();
+
+  if (window.innerWidth <= 768) {
+    toggleSidebar();
+  }
+
+  document.getElementById("typing").textContent = "";
+}
+
+// ==================== MARK MESSAGES AS READ ====================
+function markMessagesAsRead(fromUserId) {
+  if (!currentUser) return;
+
+  db.collection("chats")
+    .where("to", "==", currentUser.uid)
+    .where("from", "==", fromUserId)
+    .where("read", "==", false)
+    .get()
+    .then((snapshot) => {
+      snapshot.forEach((doc) => {
+        db.collection("chats").doc(doc.id).update({
+          read: true,
+          readAt: Date.now()
+        });
+      });
+    });
+}
+
+function toggleSidebar() {
+  document.getElementById("sidebar").classList.toggle("hide");
+}
+
+// ==================== PRESENCE & TYPING ====================
+function listenPresence() {
+  if (!selectedUser) return;
+
+  db.collection("presence").doc(selectedUser.uid).onSnapshot((doc) => {
+    const statusEl = document.getElementById("status");
+    const data = doc.data();
+    const isOnline = data?.online;
+
+    statusEl.textContent = isOnline ? "🟢 online" : "⚪ offline";
+    statusEl.style.color = isOnline ? "#10b981" : "#64748b";
+  });
+}
+
+let typingTimeout;
+document.getElementById("text").addEventListener("input", () => {
+  if (!selectedUser) return;
+
+  db.collection("typing").doc(currentUser.uid).set(
+    {
+      typing: true,
+      to: selectedUser.uid,
+      timestamp: Date.now()
+    },
+    { merge: true }
+  );
+
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    db.collection("typing").doc(currentUser.uid).set(
+      {
+        typing: false
+      },
+      { merge: true }
+    );
+  }, 1000);
+});
+
+function listenTyping() {
+  if (!selectedUser) return;
+
+  db.collection("typing").doc(selectedUser.uid).onSnapshot((doc) => {
+    const typingEl = document.getElementById("typing");
+    const data = doc.data();
+
+    if (data?.typing && data.to === currentUser.uid) {
+      typingEl.textContent = "typing...";
+    } else {
+      typingEl.textContent = "";
+    }
+  });
+}
+
+// ==================== MESSAGES ====================
+function loadMessages() {
+  if (!selectedUser) return;
+
+  db.collection("chats")
+    .orderBy("createdAt")
+    .onSnapshot((snapshot) => {
+      const messagesBox = document.getElementById("messages");
+      messagesBox.innerHTML = "";
+
+      snapshot.forEach((doc) => {
+        const msg = doc.data();
+        const isFromMe = msg.from === currentUser.uid;
+        const isFromSelected = msg.from === selectedUser.uid && msg.to === currentUser.uid;
+
+        if (!((isFromMe && msg.to === selectedUser.uid) || isFromSelected)) {
+          return;
         }
-        
-        console.log("✅ Upload successful");
-        return data.secure_url;
 
-      } catch (error) {
-        console.error("Upload error:", error.message);
-        alert("Upload failed: " + error.message);
-        return null;
-      }
+        // ✅ Mark as read when message is loaded and viewed
+        if (msg.to === currentUser.uid && !msg.read) {
+          db.collection("chats").doc(doc.id).update({
+            read: true,
+            readAt: Date.now()
+          });
+        }
+
+        const msgEl = document.createElement("div");
+        msgEl.className = `msg ${isFromMe ? "me" : "them"}`;
+
+        const tick = isFromMe ? "✓" : "";
+        const edited = msg.edited ? "(edited)" : "";
+        const readStatus = isFromMe && msg.read ? "✓✓" : "";
+
+        let content = "";
+        if (msg.text) {
+          content += `<div class="msg-text">${linkify(msg.text)}</div>`;
+        }
+        if (msg.image) {
+          content += `<img src="${msg.image}" onerror="this.style.display='none'" alt="Image">`;
+        }
+        if (msg.audio) {
+          content += `<audio controls src="${msg.audio}"></audio>`;
+        }
+
+        msgEl.innerHTML =
+          content +
+          `<div class="meta">${readStatus || tick} ${edited}</div>`;
+
+        if (isFromMe) {
+          msgEl.style.cursor = "pointer";
+          msgEl.addEventListener("dblclick", () => {
+            const action = prompt("Enter 'edit' or 'delete':");
+            if (action === "delete") {
+              db.collection("chats").doc(doc.id).delete();
+            } else if (action === "edit" && msg.text) {
+              const newText = prompt("Edit message:", msg.text);
+              if (newText?.trim()) {
+                db.collection("chats").doc(doc.id).update({
+                  text: newText.trim(),
+                  edited: true
+                });
+              }
+            }
+          });
+        }
+
+        messagesBox.appendChild(msgEl);
+      });
+
+      messagesBox.scrollTop = messagesBox.scrollHeight;
+    });
+}
+
+function linkify(text) {
+  const urlRegex = /(\b(https?:\/\/|www\.)[^\s]+)/gi;
+  return text.replace(urlRegex, (url) => {
+    const href = url.match(/^https?:\/\//) ? url : "http://" + url;
+    return `<a href="${href}" target="_blank" style="color:#60a5fa;text-decoration:underline;">${url}</a>`;
+  });
+}
+
+// ==================== FILE UPLOAD ====================
+async function uploadFile(file, type) {
+  try {
+    console.log("📤 Uploading:", file.name, "Size:", file.size);
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", UPLOAD_PRESET);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${type}/upload`,
+      { method: "POST", body: form }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || `Upload failed: ${response.status}`);
     }
 
-    function pickImage() {
-      document.getElementById("img").click();
+    if (!data.secure_url) {
+      throw new Error("No URL from Cloudinary");
     }
 
-    document.getElementById("img").addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file || !selectedUser) {
-        alert("Select a user first");
-        return;
-      }
+    console.log("✅ Upload successful");
+    return data.secure_url;
+  } catch (error) {
+    console.error("Upload error:", error.message);
+    alert("Upload failed: " + error.message);
+    return null;
+  }
+}
 
-      const btn = document.querySelector('button[onclick="pickImage()"]');
-      btn.disabled = true;
-      btn.textContent = "⏳";
+function pickImage() {
+  document.getElementById("img").click();
+}
 
-      const imageUrl = await uploadFile(file, "image");
-      if (imageUrl) {
-        await sendImageMessage(imageUrl);
-        document.getElementById("img").value = "";
-      }
+document.getElementById("img").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file || !selectedUser) {
+    alert("Select a user first");
+    return;
+  }
 
-      btn.disabled = false;
-      btn.textContent = "📷";
+  const btn = document.querySelector('button[onclick="pickImage()"]');
+  btn.disabled = true;
+  btn.textContent = "⏳";
+
+  const imageUrl = await uploadFile(file, "image");
+  if (imageUrl) {
+    await sendImageMessage(imageUrl);
+    document.getElementById("img").value = "";
+  }
+
+  btn.disabled = false;
+  btn.textContent = "📷";
+});
+
+async function sendImageMessage(imageUrl) {
+  try {
+    await db.collection("chats").add({
+      from: currentUser.uid,
+      to: selectedUser.uid,
+      text: "",
+      image: imageUrl,
+      audio: "",
+      status: "sent",
+      edited: false,
+      read: false,
+      createdAt: Date.now()
+    });
+  } catch (error) {
+    alert("Failed to send image");
+  }
+}
+
+// ==================== SEND MESSAGE ====================
+function handleKeyPress(event) {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendMessage();
+  }
+}
+
+async function sendMessage() {
+  if (!selectedUser) {
+    alert("Select a user first");
+    return;
+  }
+
+  const text = document.getElementById("text").value.trim();
+  const imageFile = document.getElementById("img").files[0];
+
+  if (!text && !imageFile) {
+    return;
+  }
+
+  let imageUrl = "";
+
+  try {
+    if (imageFile) {
+      imageUrl = await uploadFile(imageFile, "image");
+      if (!imageUrl) return;
+    }
+
+    await db.collection("chats").add({
+      from: currentUser.uid,
+      to: selectedUser.uid,
+      text,
+      image: imageUrl,
+      audio: "",
+      status: "sent",
+      edited: false,
+      read: false,
+      createdAt: Date.now()
     });
 
-    async function sendImageMessage(imageUrl) {
-      try {
-        await db.collection("chats").add({
-          from: currentUser.uid,
-          to: selectedUser.uid,
-          text: "",
-          image: imageUrl,
-          audio: "",
-          status: "sent",
-          edited: false,
-          createdAt: Date.now()
-        });
-      } catch (error) {
-        alert("Failed to send image");
+    document.getElementById("text").value = "";
+    document.getElementById("img").value = "";
+
+    setTimeout(() => {
+      document.getElementById("messages").scrollTop =
+        document.getElementById("messages").scrollHeight;
+    }, 100);
+  } catch (error) {
+    alert("Failed to send: " + error.message);
+  }
+}
+
+// ==================== MESSAGE DELIVERY ====================
+setInterval(() => {
+  if (!currentUser) return;
+
+  db.collection("chats")
+    .where("to", "==", currentUser.uid)
+    .where("status", "==", "sent")
+    .get()
+    .then((snapshot) => {
+      snapshot.forEach((doc) => {
+        db.collection("chats").doc(doc.id).update({ status: "delivered" });
+      });
+    });
+}, 3000);
+
+// ==================== VOICE RECORDING (WHATSAPP STYLE) ====================
+const recordBtn = document.getElementById("recordBtn");
+const voicePanel = document.getElementById("voicePanel");
+const voiceTimer = document.getElementById("voiceTimer");
+const voicePreview = document.getElementById("voicePreview");
+
+recordBtn.addEventListener("mousedown", startRecording);
+recordBtn.addEventListener("touchstart", startRecording);
+document.addEventListener("mouseup", stopRecording);
+document.addEventListener("touchend", stopRecording);
+
+async function startRecording(e) {
+  if (isRecording) return;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
       }
+    });
+
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      audioChunks.push(event.data);
+    });
+
+    mediaRecorder.addEventListener("stop", () => {
+      recordingBlob = new Blob(audioChunks, { type: "audio/webm" });
+      const audioUrl = URL.createObjectURL(recordingBlob);
+      voicePreview.src = audioUrl;
+      console.log("✅ Recording complete:", recordingBlob.size, "bytes");
+    });
+
+    mediaRecorder.start();
+    isRecording = true;
+    recordingStartTime = Date.now();
+
+    recordBtn.classList.add("recording");
+    voicePanel.classList.add("active");
+
+    recordingTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+      const minutes = Math.floor(elapsed / 60);
+      const seconds = elapsed % 60;
+      voiceTimer.textContent = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    }, 100);
+
+    console.log("🎤 Recording started");
+  } catch (error) {
+    console.error("Microphone error:", error);
+    alert("Microphone access denied");
+  }
+}
+
+function stopRecording(e) {
+  if (!isRecording) return;
+
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+  }
+
+  isRecording = false;
+  recordBtn.classList.remove("recording");
+  clearInterval(recordingTimer);
+}
+
+async function sendVoice() {
+  if (!selectedUser || !recordingBlob) {
+    alert("Select a user first");
+    return;
+  }
+
+  const btn = document.querySelector(".voice-send");
+  btn.disabled = true;
+  btn.textContent = "Uploading...";
+
+  try {
+    const voiceFile = new File([recordingBlob], "voice.webm", {
+      type: "audio/webm"
+    });
+    const audioUrl = await uploadFile(voiceFile, "auto");
+
+    if (audioUrl) {
+      await db.collection("chats").add({
+        from: currentUser.uid,
+        to: selectedUser.uid,
+        text: "",
+        image: "",
+        audio: audioUrl,
+        status: "sent",
+        edited: false,
+        read: false,
+        createdAt: Date.now()
+      });
+
+      cancelVoice();
+      console.log("✅ Voice message sent");
     }
+  } catch (error) {
+    alert("Failed to send voice: " + error.message);
+  }
 
-    // ==================== SEND MESSAGE ====================
-    function handleKeyPress(event) {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
-      }
-    }
+  btn.disabled = false;
+  btn.textContent = "Send";
+}
 
-    async function sendMessage() {
-      if (!selectedUser) {
-        alert("Select a user first");
-        return;
-      }
-
-      const text = document.getElementById("text").value.trim();
-      const imageFile = document.getElementById("img").files[0];
-
-      if (!text && !imageFile) {
-        return;
-      }
-
-      let imageUrl = "";
-
-      try {
-        if (imageFile) {
-          imageUrl = await uploadFile(imageFile, "image");
-          if (!imageUrl) return;
-        }
-
-        await db.collection("chats").add({
-          from: currentUser.uid,
-          to: selectedUser.uid,
-          text,
-          image: imageUrl,
-          audio: "",
-          status: "sent",
-          edited: false,
-          createdAt: Date.now()
-        });
-
-        document.getElementById("text").value = "";
-        document.getElementById("img").value = "";
-
-        setTimeout(() => {
-          document.getElementById("messages").scrollTop = 
-            document.getElementById("messages").scrollHeight;
-        }, 100);
-
-      } catch (error) {
-        alert("Failed to send: " + error.message);
-      }
-    }
-
-    // ==================== MESSAGE DELIVERY ====================
-    setInterval(() => {
-      if (!currentUser) return;
-
-      db.collection("chats")
-        .where("to", "==", currentUser.uid)
-        .where("status", "==", "sent")
-        .get()
-        .then((snapshot) => {
-          snapshot.forEach((doc) => {
-            db.collection("chats").doc(doc.id).update({ status: "delivered" });
-          });
-        });
-    }, 3000);
-
-    // ==================== VOICE RECORDING (WHATSAPP STYLE) ====================
-    const recordBtn = document.getElementById("recordBtn");
-    const voicePanel = document.getElementById("voicePanel");
-    const voiceTimer = document.getElementById("voiceTimer");
-    const voicePreview = document.getElementById("voicePreview");
-
-    recordBtn.addEventListener("mousedown", startRecording);
-    recordBtn.addEventListener("touchstart", startRecording);
-    document.addEventListener("mouseup", stopRecording);
-    document.addEventListener("touchend", stopRecording);
-
-    async function startRecording(e) {
-      if (isRecording) return;
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-
-        mediaRecorder.addEventListener("dataavailable", (event) => {
-          audioChunks.push(event.data);
-        });
-
-        mediaRecorder.addEventListener("stop", () => {
-          recordingBlob = new Blob(audioChunks, { type: "audio/webm" });
-          const audioUrl = URL.createObjectURL(recordingBlob);
-          voicePreview.src = audioUrl;
-          console.log("✅ Recording complete:", recordingBlob.size, "bytes");
-        });
-
-        mediaRecorder.start();
-        isRecording = true;
-        recordingStartTime = Date.now();
-
-        recordBtn.classList.add("recording");
-        voicePanel.classList.add("active");
-
-        recordingTimer = setInterval(() => {
-          const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-          const minutes = Math.floor(elapsed / 60);
-          const seconds = elapsed % 60;
-          voiceTimer.textContent = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-        }, 100);
-
-        console.log("🎤 Recording started");
-      } catch (error) {
-        console.error("Microphone error:", error);
-        alert("Microphone access denied");
-      }
-    }
-
-    function stopRecording(e) {
-      if (!isRecording) return;
-
-      if (mediaRecorder && mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
-      }
-
-      isRecording = false;
-      recordBtn.classList.remove("recording");
-      clearInterval(recordingTimer);
-    }
-
-    async function sendVoice() {
-      if (!selectedUser || !recordingBlob) {
-        alert("Select a user first");
-        return;
-      }
-
-      const btn = document.querySelector('.voice-send');
-      btn.disabled = true;
-      btn.textContent = "Uploading...";
-
-      try {
-        const voiceFile = new File([recordingBlob], "voice.webm", { type: "audio/webm" });
-        const audioUrl = await uploadFile(voiceFile, "auto");
-
-        if (audioUrl) {
-          await db.collection("chats").add({
-            from: currentUser.uid,
-            to: selectedUser.uid,
-            text: "",
-            image: "",
-            audio: audioUrl,
-            status: "sent",
-            edited: false,
-            createdAt: Date.now()
-          });
-
-          cancelVoice();
-          console.log("✅ Voice message sent");
-        }
-      } catch (error) {
-        alert("Failed to send voice: " + error.message);
-      }
-
-      btn.disabled = false;
-      btn.textContent = "Send";
-    }
-
-    function cancelVoice() {
-      recordingBlob = null;
-      audioChunks = [];
-      voicePanel.classList.remove("active");
-      voicePreview.src = "";
-      voiceTimer.textContent = "0:00";
-      console.log("🗑️ Voice recording deleted");
-    }
+function cancelVoice() {
+  recordingBlob = null;
+  audioChunks = [];
+  voicePanel.classList.remove("active");
+  voicePreview.src = "";
+  voiceTimer.textContent = "0:00";
+  console.log("🗑️ Voice recording deleted");
+}
   </script>
 </body>
 </html>
