@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nexa Admin</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<link rel="stylesheet" href="admin.css"/>
+</head>
+
+<body>
+
+<!-- 🔐 EMAIL GATE -->
+<div id="loginBox" class="login-box">
+  <h2>🔐 Admin Access</h2>
+  <input id="emailInput" type="email" placeholder="Enter admin email"/>
+  <button onclick="checkEmail()">Continue</button>
+</div>
+
+<!-- 📊 DASHBOARD -->
+<div id="dashboard" class="container hidden">
+
+<h1>📊 Nexa Admin Dashboard</h1>
+
+<div class="stats">
+  <div class="card">👥 Total Users <span id="totalUsers">0</span></div>
+  <div class="card">🟢 Active Today <span id="activeToday">0</span></div>
+  <div class="card">🚫 Banned <span id="bannedUsers">0</span></div>
+</div>
+
+<input id="search" placeholder="Search user..." />
+
+<div class="table-box">
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Email</th>
+<th>UID</th>
+<th>Status</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody id="usersTable"></tbody>
+</table>
+</div>
+
+<h2>📈 Growth Chart</h2>
+<canvas id="chart"></canvas>
+
+<h2>📜 Activity Log</h2>
+<div id="logBox" class="log"></div>
+
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>

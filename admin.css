@@ -1,0 +1,117 @@
+
+body {
+  margin: 0;
+  font-family: Arial;
+  background: #0f0f0f;
+  color: white;
+}
+
+.container {
+  max-width: 1100px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.card {
+  background: #1c1c1c;
+  padding: 15px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 15px 0;
+  border-radius: 8px;
+  border: none;
+}
+
+.table-box {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 10px;
+  border-bottom: 1px solid #333;
+}
+
+button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.delete { background: red; color: white; }
+.ban { background: orange; color: black; }
+
+canvas {
+  background: #1c1c1c;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.log {
+  background: #1c1c1c;
+  padding: 10px;
+  border-radius: 10px;
+  height: 150px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+/* mobile */
+@media (max-width: 768px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+.hidden {
+  display: none;
+}
+
+/* 🔐 LOGIN BOX */
+.login-box {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: #0f0f0f;
+  color: white;
+}
+
+.login-box input {
+  padding: 12px;
+  width: 250px;
+  margin: 10px;
+  border-radius: 8px;
+  border: none;
+}
+
+.login-box button {
+  padding: 10px 20px;
+  border: none;
+  background: lime;
+  cursor: pointer;
+  border-radius: 8px;
+}
