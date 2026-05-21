@@ -581,28 +581,9 @@ html, body {
 .msg.me  .msg-meta { justify-content: flex-end; }
 .msg.them .msg-meta { justify-content: flex-start; }
 
-/* Hover actions */
+/* Hover actions - HIDDEN (Context menu only) */
 .msg-actions {
-  opacity: 0; transition: opacity var(--tf);
-  display: flex; gap: 4px; align-items: center;
-  flex-shrink: 0;
-}
-.msg:hover .msg-actions { opacity: 1; }
-.act-btn {
-  width: 30px; height: 30px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--ocean-700);
-  color: var(--text-200);
-  cursor: pointer; font-size: 13px;
-  transition: all var(--tf);
-  display: flex; align-items: center; justify-content: center;
-}
-.act-btn:hover {
-  background: var(--neon);
-  border-color: var(--neon);
-  color: var(--abyss);
-  transform: scale(1.12);
+  display: none;
 }
 
 /* ---- TYPING ---- */
@@ -1135,10 +1116,6 @@ html, body {
       <span class="ia-icon">🗑️</span>
       <span class="ia-text">Clear Chat</span>
     </div>
-    <div class="info-action danger" onclick="blockUser()">
-      <span class="ia-icon">🚫</span>
-      <span class="ia-text">Block User</span>
-    </div>
   </div>
 </div>
 
@@ -1277,15 +1254,50 @@ function openBioModal() {
 }
 
 /* ==================== ONLINE ==================== */
+let inactivityTimer = null;
+let userStatus = "online"; // online, away, offline
+
 async function updateOnline(on) {
   if (!currentUser) return;
+  const status = on ? "online" : "offline";
   await db.collection("presence").doc(currentUser.uid).set(
-    { online: on, lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
+    { online: on, status: status, lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
   );
+  userStatus = status;
 }
+
 function setupHeartbeat() {
+  // Send heartbeat every 5 seconds
   setInterval(() => { if (currentUser) updateOnline(true); }, 5000);
+  
+  // Auto-away after 3 minutes of inactivity
+  function resetInactivityTimer() {
+    clearTimeout(inactivityTimer);
+    if (userStatus === "away") {
+      updateOnline(true); // Back to online
+    }
+    inactivityTimer = setTimeout(async () => {
+      // Set to away after 3 minutes
+      if (currentUser) {
+        userStatus = "away";
+        await db.collection("presence").doc(currentUser.uid).set(
+          { online: true, status: "away", lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
+        );
+      }
+    }, 180000); // 3 minutes
+  }
+  
+  // Reset timer on user activity
+  document.addEventListener("click", resetInactivityTimer);
+  document.addEventListener("keypress", resetInactivityTimer);
+  document.addEventListener("mousemove", resetInactivityTimer);
+  document.addEventListener("touchstart", resetInactivityTimer);
+  
+  // Set offline on page unload
   window.addEventListener("beforeunload", () => updateOnline(false));
+  
+  // Initialize timer
+  resetInactivityTimer();
 }
 
 /* ==================== USERS ==================== */
@@ -1406,13 +1418,45 @@ function toggleSidebar() {
 function listenPresence() {
   if (!selectedUser) return;
   db.collection("presence").doc(selectedUser.uid).onSnapshot(doc => {
-    const on  = doc.data()?.online;
-    const el  = document.getElementById("status");
+    const data = doc.data() || {};
+    const status = data.status || (data.online ? "online" : "offline");
+    const lastSeen = data.lastSeen || 0;
+    
+    const el = document.getElementById("status");
     const dot = document.getElementById("chatStatusDot");
-    el.textContent = on ? "🟢 online" : "⚪ offline";
-    el.className   = on ? "online-status" : "";
-    dot.classList.toggle("online", !!on);
+    
+    let statusText = "";
+    if (status === "online") {
+      statusText = "🟢 online";
+      dot.classList.add("online");
+    } else if (status === "away") {
+      statusText = "🟡 away";
+      dot.classList.remove("online");
+    } else {
+      statusText = `⚪ last seen ${formatLastSeen(lastSeen)}`;
+      dot.classList.remove("online");
+    }
+    
+    el.textContent = statusText;
+    el.className = status === "online" ? "online-status" : "";
   });
+}
+
+function formatLastSeen(timestamp) {
+  if (!timestamp) return "a while ago";
+  
+  const now = Date.now();
+  const diff = now - timestamp;
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return "yesterday";
+  return `${days}d ago`;
 }
 
 let typingTimeout;
@@ -1524,21 +1568,6 @@ function buildMessage(id, msg, fromMe) {
   const row = document.createElement("div");
   row.className = "msg-row";
 
-  // Action buttons (reply / edit / delete)
-  const acts = document.createElement("div");
-  acts.className = "msg-actions";
-  if (fromMe) {
-    acts.innerHTML = `
-      <button class="act-btn" onclick="replyMsg('${id}')" title="Reply">↩</button>
-      <button class="act-btn" onclick="startEdit('${id}')" title="Edit">✏️</button>
-      <button class="act-btn" onclick="deleteMsg('${id}')" title="Delete">🗑</button>
-    `;
-  } else {
-    acts.innerHTML = `
-      <button class="act-btn" onclick="replyMsg('${id}')" title="Reply">↩</button>
-    `;
-  }
-
   // Bubble content
   const bubble = document.createElement("div");
   bubble.className = "bubble";
@@ -1582,13 +1611,7 @@ function buildMessage(id, msg, fromMe) {
 
   bubble.innerHTML = inner;
 
-  if (fromMe) {
-    row.appendChild(acts);
-    row.appendChild(bubble);
-  } else {
-    row.appendChild(bubble);
-    row.appendChild(acts);
-  }
+  row.appendChild(bubble);
 
   el.appendChild(row);
 
@@ -1917,12 +1940,6 @@ function clearChat() {
   if (!selectedUser || !confirm("Clear all messages?")) return;
   allMessages.forEach(m => db.collection("chats").doc(m.id).delete());
 }
-function blockUser() {
-  if (!selectedUser || !confirm("Block this user?")) return;
-  blockedUsers[selectedUser.uid] = true;
-  savePrefs(); closeChatInfo(); renderUsers();
-}
-function openUserProfile() { /* placeholder */ }
 
 /* ==================== SEARCH MODAL ==================== */
 function openSearchModal() { document.getElementById("searchModal").classList.add("active"); document.getElementById("searchInput").focus(); }
@@ -1943,7 +1960,63 @@ function searchMessages() {
   });
 }
 
-/* ==================== INCOMING NOTIFICATIONS (FIX: UPDATE LATEST TIME + BRINGS USER TO TOP) ==================== */
+/* ==================== SWIPE TO REPLY (MOBILE) ==================== */
+let touchStartX = 0;
+let touchStartY = 0;
+let swipeActiveMsgId = null;
+
+document.addEventListener("touchstart", (e) => {
+  const msg = e.target.closest(".msg");
+  if (!msg) return;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  swipeActiveMsgId = msg.dataset.msgId;
+}, true);
+
+document.addEventListener("touchmove", (e) => {
+  const msg = e.target.closest(".msg");
+  if (!msg || !swipeActiveMsgId) return;
+  
+  const touchX = e.touches[0].clientX;
+  const touchY = e.touches[0].clientY;
+  const diffX = touchX - touchStartX;
+  const diffY = touchY - touchStartY;
+  
+  // Only consider horizontal swipes, ignore vertical
+  if (Math.abs(diffY) > 30) {
+    swipeActiveMsgId = null;
+    return;
+  }
+  
+  // Swiping right (reply) - threshold 50px
+  if (diffX > 50) {
+    msg.style.transform = `translateX(${Math.min(diffX, 80)}px)`;
+    msg.style.opacity = Math.max(0.7, 1 - (diffX / 200));
+  }
+}, true);
+
+document.addEventListener("touchend", (e) => {
+  const msg = document.querySelector(`[data-msg-id="${swipeActiveMsgId}"]`);
+  if (!msg || !swipeActiveMsgId) return;
+  
+  const touchX = e.changedTouches[0].clientX;
+  const diffX = touchX - touchStartX;
+  
+  // If swiped right more than 50px, trigger reply
+  if (diffX > 50) {
+    replyMsg(swipeActiveMsgId);
+    msg.style.transform = "";
+    msg.style.opacity = "";
+  } else {
+    // Snap back
+    msg.style.transform = "";
+    msg.style.opacity = "";
+  }
+  
+  swipeActiveMsgId = null;
+  touchStartX = 0;
+  touchStartY = 0;
+}, true);
 function listenIncoming() {
   db.collection("chats")
     .where("to", "==", currentUser.uid)
