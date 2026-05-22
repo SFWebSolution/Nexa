@@ -1,64 +1,1376 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Nexa Admin</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexa Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+/* =====================================================
+   NEXA ADMIN DASHBOARD — PREMIUM EDITION
+   FULLY RESPONSIVE FOR ALL SCREENS
+   ===================================================== */
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+*, *::before, *::after {
+  margin: 0; padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
 
-<link rel="stylesheet" href="admin.css"/>
+:root {
+  /* Premium Dark Blue + Black */
+  --bg-0:        #0a0e17;
+  --bg-1:        #0f1419;
+  --bg-2:        #151b27;
+  --bg-3:        #1a2332;
+  --bg-4:        #202a3a;
+  --bg-5:        #2a3547;
+
+  /* Primary Blue */
+  --primary:     #4f8fff;
+  --primary-dk:  #2b5fd6;
+  --primary-lt:  #7ca8ff;
+  --primary-glow: rgba(79,143,255,0.4);
+  --primary-soft: rgba(79,143,255,0.08);
+
+  /* Secondary Cyan */
+  --cyan:        #00d9ff;
+  --cyan-soft:   rgba(0,217,255,0.1);
+
+  /* Status Colors */
+  --online:      #10d981;
+  --online-soft: rgba(16,217,129,0.15);
+  --warning:     #f59e0b;
+  --danger:      #ff3860;
+  --danger-soft: rgba(255,56,96,0.1);
+
+  /* Text */
+  --text-0:      #ffffff;
+  --text-1:      #e5e9f0;
+  --text-2:      #a8b5cc;
+  --text-3:      #6b7a95;
+
+  /* Borders */
+  --border-dk:   rgba(79,143,255,0.08);
+  --border-md:   rgba(79,143,255,0.15);
+  --border-lt:   rgba(79,143,255,0.25);
+
+  /* Shadows */
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md:   0 8px 24px rgba(0,0,0,0.4);
+  --shadow-lg:   0 16px 48px rgba(0,0,0,0.5);
+  --glow-primary: 0 0 24px rgba(79,143,255,0.4);
+
+  /* Timing */
+  --ease: cubic-bezier(0.4,0,0.2,1);
+  --spring: cubic-bezier(0.34,1.56,0.64,1);
+  --t: 0.35s;
+  --tf: 0.2s;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.2px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { 
+  background: var(--primary); 
+  border-radius: 3px; 
+  opacity: 0.5;
+}
+::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
+
+/* =====================================================
+   LOGIN PAGE
+   ===================================================== */
+.login-container {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-0) 0%, var(--bg-3) 100%);
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.login-container::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(79,143,255,0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(0,217,255,0.05) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.login-box {
+  background: rgba(21,27,39,0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-md);
+  border-radius: 20px;
+  padding: 40px 32px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  position: relative;
+  z-index: 10;
+  animation: popIn 0.5s var(--spring);
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-title {
+  font-size: clamp(24px, 6vw, 32px);
+  font-weight: 800;
+  color: var(--text-0);
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+  font-size: clamp(12px, 2.5vw, 14px);
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-input {
+  padding: 14px 16px;
+  border: 1px solid var(--border-md);
+  outline: none;
+  border-radius: 12px;
+  background: rgba(26,35,50,0.6);
+  color: var(--text-1);
+  font-size: 16px;
+  font-family: inherit;
+  transition: all var(--t);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.form-input::placeholder { color: var(--text-3); }
+
+.form-input:focus {
+  border-color: var(--primary);
+  background: rgba(79,143,255,0.06);
+  box-shadow: 0 0 0 3px var(--primary-soft), 0 4px 12px rgba(79,143,255,0.15);
+}
+
+.login-btn {
+  padding: 14px 24px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-lt) 100%);
+  color: var(--bg-0);
+  cursor: pointer;
+  font-size: clamp(12px, 2.5vw, 14px);
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  transition: all var(--t) var(--spring);
+  box-shadow: 0 6px 20px rgba(79,143,255,0.3);
+  margin-top: 12px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 32px rgba(79,143,255,0.4);
+}
+
+.login-btn:active { transform: scale(0.98); }
+
+.login-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hidden { display: none !important; }
+
+/* =====================================================
+   DASHBOARD
+   ===================================================== */
+.dashboard {
+  min-height: 100vh;
+  width: 100%;
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.dashboard-header {
+  background: rgba(15,20,25,0.4);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-dk);
+  padding: clamp(14px, 4vw, 20px) clamp(16px, 5vw, 28px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-wrap: wrap;
+}
+
+.dashboard-title {
+  font-size: clamp(18px, 5vw, 28px);
+  font-weight: 800;
+  color: var(--text-0);
+  letter-spacing: -0.5px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.logout-btn {
+  padding: clamp(8px, 2vw, 10px) clamp(14px, 3vw, 18px);
+  border: 1px solid var(--danger-soft);
+  border-radius: 10px;
+  background: rgba(255,56,96,0.05);
+  color: var(--danger);
+  cursor: pointer;
+  font-size: clamp(10px, 2vw, 12px);
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  transition: all var(--tf);
+  white-space: nowrap;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.logout-btn:hover {
+  background: rgba(255,56,96,0.12);
+  border-color: var(--danger);
+  box-shadow: 0 0 12px rgba(255,56,96,0.2);
+}
+
+/* Main Content */
+.dashboard-content {
+  flex: 1;
+  padding: clamp(16px, 5vw, 28px);
+  overflow-y: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(clamp(150px, 100%, 280px), 1fr));
+  gap: clamp(12px, 3vw, 16px);
+  margin-bottom: clamp(20px, 5vw, 32px);
+  width: 100%;
+}
+
+.stat-card {
+  background: rgba(26,35,50,0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  padding: clamp(16px, 4vw, 24px);
+  transition: all var(--tf);
+  animation: slideUp 0.5s var(--spring);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stat-card:hover {
+  background: rgba(26,35,50,0.7);
+  border-color: var(--primary);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(79,143,255,0.15);
+}
+
+.stat-icon {
+  font-size: clamp(24px, 6vw, 32px);
+  margin-bottom: 12px;
+}
+
+.stat-label {
+  font-size: clamp(10px, 2vw, 12px);
+  color: var(--text-3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: clamp(24px, 6vw, 32px);
+  font-weight: 800;
+  color: var(--text-0);
+  letter-spacing: -1px;
+}
+
+.stat-change {
+  font-size: clamp(10px, 2vw, 12px);
+  color: var(--online);
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+/* Search */
+.search-box {
+  margin-bottom: clamp(16px, 4vw, 24px);
+}
+
+.search-input {
+  width: 100%;
+  max-width: 100%;
+  padding: clamp(10px, 3vw, 12px) clamp(12px, 4vw, 16px);
+  border: 1px solid var(--border-md);
+  outline: none;
+  border-radius: 12px;
+  background: rgba(26,35,50,0.6);
+  color: var(--text-1);
+  font-size: 16px;
+  font-family: inherit;
+  transition: all var(--t);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-input::placeholder { color: var(--text-3); }
+
+.search-input:focus {
+  border-color: var(--primary);
+  background: rgba(79,143,255,0.06);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+/* Section Headers */
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: clamp(20px, 5vw, 32px) 0 clamp(12px, 3vw, 16px);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-dk);
+  flex-wrap: wrap;
+}
+
+.section-title {
+  font-size: clamp(16px, 4vw, 18px);
+  font-weight: 700;
+  color: var(--text-0);
+  letter-spacing: -0.3px;
+}
+
+.section-subtitle {
+  font-size: clamp(10px, 2vw, 12px);
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+/* Table */
+.table-container {
+  background: rgba(21,27,39,0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  overflow: hidden;
+  animation: fadeIn 0.5s ease;
+  margin-bottom: clamp(20px, 5vw, 32px);
+  width: 100%;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+thead {
+  background: rgba(79,143,255,0.04);
+  border-bottom: 1px solid var(--border-md);
+}
+
+th {
+  padding: clamp(10px, 3vw, 16px);
+  text-align: left;
+  font-size: clamp(10px, 2vw, 12px);
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border-dk);
+  transition: all var(--tf);
+}
+
+tbody tr:hover {
+  background: rgba(79,143,255,0.04);
+}
+
+td {
+  padding: clamp(10px, 3vw, 16px);
+  font-size: clamp(11px, 2.5vw, 14px);
+  color: var(--text-1);
+  word-break: break-word;
+}
+
+.uid-text {
+  font-family: 'Syne', monospace;
+  font-size: clamp(9px, 2vw, 11px);
+  color: var(--text-3);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: clamp(4px, 1.5vw, 6px) clamp(8px, 2vw, 12px);
+  border-radius: 8px;
+  font-size: clamp(10px, 2vw, 12px);
+  font-weight: 600;
+  width: fit-content;
+  white-space: nowrap;
+}
+
+.status-active {
+  background: var(--online-soft);
+  color: var(--online);
+}
+
+.status-banned {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(6px, 2vw, 8px);
+}
+
+.action-btn {
+  padding: clamp(6px, 1.5vw, 8px) clamp(8px, 2vw, 12px);
+  border: 1px solid var(--border-md);
+  background: rgba(26,35,50,0.5);
+  color: var(--text-2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: clamp(9px, 1.8vw, 12px);
+  font-weight: 600;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: all var(--tf);
+  white-space: nowrap;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+.action-btn:hover {
+  background: rgba(79,143,255,0.1);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.action-btn.danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.action-btn.warning:hover {
+  background: rgba(245,158,11,0.1);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* Chart */
+.chart-container {
+  background: rgba(21,27,39,0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  padding: clamp(16px, 4vw, 24px);
+  margin-bottom: clamp(20px, 5vw, 32px);
+  animation: fadeIn 0.5s ease;
+  width: 100%;
+}
+
+.chart-canvas {
+  max-height: 300px;
+  width: 100%;
+}
+
+/* Activity Log */
+.log-container {
+  background: rgba(21,27,39,0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  padding: clamp(14px, 3vw, 20px);
+  max-height: 400px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.log-entry {
+  padding: clamp(8px, 2vw, 12px) 0;
+  border-bottom: 1px solid var(--border-dk);
+  font-size: clamp(11px, 2vw, 13px);
+  color: var(--text-2);
+  font-family: 'Syne', monospace;
+  animation: slideIn 0.3s ease;
+  word-break: break-word;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.log-entry:last-child { border-bottom: none; }
+
+.log-time {
+  color: var(--primary);
+  font-weight: 600;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
+.log-text {
+  color: var(--text-2);
+}
+
+.log-text.success { color: var(--online); }
+.log-text.warning { color: var(--warning); }
+.log-text.error { color: var(--danger); }
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: clamp(32px, 8vw, 48px) clamp(16px, 5vw, 20px);
+  color: var(--text-3);
+}
+
+.empty-icon {
+  font-size: clamp(32px, 10vw, 48px);
+  margin-bottom: 16px;
+}
+
+.empty-text {
+  font-size: clamp(12px, 2.5vw, 14px);
+  color: var(--text-3);
+}
+
+/* =====================================================
+   TABLET (768px - 1024px)
+   ===================================================== */
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  table {
+    font-size: 13px;
+  }
+}
+
+/* =====================================================
+   MOBILE (480px - 767px)
+   ===================================================== */
+@media (max-width: 767px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .dashboard-title {
+    width: 100%;
+  }
+
+  .logout-btn {
+    width: 100%;
+  }
+
+  .table-scroll {
+    border-radius: 0 0 16px 16px;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  th, td {
+    padding: 10px;
+  }
+
+  .uid-text {
+    max-width: 60px;
+  }
+
+  .actions {
+    gap: 4px;
+  }
+
+  .action-btn {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .log-entry {
+    padding: 10px 0;
+    font-size: 11px;
+  }
+}
+
+/* =====================================================
+   SMALL MOBILE (280px - 479px)
+   ===================================================== */
+@media (max-width: 479px) {
+  html, body {
+    font-size: 14px;
+  }
+
+  .login-box {
+    padding: 24px 16px;
+    margin: 16px;
+  }
+
+  .dashboard-header {
+    padding: 12px 14px;
+  }
+
+  .dashboard-title {
+    font-size: 16px;
+  }
+
+  .logout-btn {
+    font-size: 10px;
+    padding: 8px 10px;
+  }
+
+  .stats-grid {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-icon {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+  }
+
+  .search-input {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .section-header {
+    margin: 16px 0 12px;
+  }
+
+  .section-title {
+    font-size: 14px;
+  }
+
+  .table-container {
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+
+  table {
+    min-width: 280px;
+    font-size: 11px;
+  }
+
+  th {
+    padding: 8px 6px;
+    font-size: 9px;
+  }
+
+  td {
+    padding: 8px 6px;
+    font-size: 11px;
+  }
+
+  .uid-text {
+    max-width: 40px;
+    font-size: 8px;
+  }
+
+  .status-badge {
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+
+  .actions {
+    gap: 3px;
+  }
+
+  .action-btn {
+    padding: 5px 6px;
+    font-size: 8px;
+    flex: 1;
+    min-width: 40px;
+  }
+
+  .chart-container {
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+
+  .chart-canvas {
+    max-height: 200px;
+  }
+
+  .log-container {
+    padding: 12px;
+    max-height: 300px;
+    border-radius: 12px;
+  }
+
+  .log-entry {
+    padding: 8px 0;
+    font-size: 10px;
+  }
+
+  .log-time {
+    font-size: 9px;
+    margin-right: 4px;
+  }
+
+  .empty-state {
+    padding: 20px 12px;
+  }
+
+  .empty-icon {
+    font-size: 28px;
+    margin-bottom: 12px;
+  }
+}
+
+/* =====================================================
+   LANDSCAPE MODE
+   ===================================================== */
+@media (max-height: 600px) and (orientation: landscape) {
+  .dashboard-header {
+    padding: 10px 16px;
+  }
+
+  .dashboard-content {
+    padding: 12px 16px;
+  }
+
+  .stats-grid {
+    margin-bottom: 12px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .chart-container {
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+
+  .log-container {
+    max-height: 250px;
+  }
+}
+
+/* =====================================================
+   PRINT
+   ===================================================== */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .logout-btn,
+  .login-container {
+    display: none;
+  }
+
+  .dashboard-header {
+    position: relative;
+    box-shadow: none;
+  }
+}
+  </style>
 </head>
-
 <body>
 
-<!-- 🔐 EMAIL GATE -->
-<div id="loginBox" class="login-box">
-  <h2>🔐 Admin Access</h2>
-  <input id="emailInput" type="email" placeholder="Enter admin email"/>
-  <button onclick="checkEmail()">Continue</button>
+<!-- LOGIN -->
+<div id="loginContainer" class="login-container">
+  <div class="login-box">
+    <div class="login-header">
+      <div class="login-title">🔐 Nexa Admin</div>
+      <div class="login-subtitle">Access Control Panel</div>
+    </div>
+    <form class="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label">Admin Email</label>
+        <input 
+          id="emailInput" 
+          type="email" 
+          class="form-input" 
+          placeholder="neuro_stack@outlook.com" 
+          required
+        >
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">Login</button>
+    </form>
+  </div>
 </div>
 
-<!-- 📊 DASHBOARD -->
-<div id="dashboard" class="container hidden">
+<!-- DASHBOARD -->
+<div id="dashboard" class="dashboard hidden">
+  <div class="dashboard-header">
+    <div class="dashboard-title">📊 Nexa Admin Dashboard</div>
+    <button class="logout-btn" onclick="handleLogout()">Logout</button>
+  </div>
 
-<h1>📊 Nexa Admin Dashboard</h1>
+  <div class="dashboard-content">
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-label">Total Users</div>
+        <div class="stat-value" id="totalUsers">0</div>
+        <div class="stat-change" id="newUsersText">0 new today</div>
+      </div>
 
-<div class="stats">
-  <div class="card">👥 Total Users <span id="totalUsers">0</span></div>
-  <div class="card">🟢 Active Today <span id="activeToday">0</span></div>
-  <div class="card">🚫 Banned <span id="bannedUsers">0</span></div>
+      <div class="stat-card">
+        <div class="stat-icon">🟢</div>
+        <div class="stat-label">Active Today</div>
+        <div class="stat-value" id="activeToday">0</div>
+        <div class="stat-change" id="activeText">Last 24 hours</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">🚫</div>
+        <div class="stat-label">Banned Users</div>
+        <div class="stat-value" id="bannedUsers">0</div>
+        <div class="stat-change" id="bannedText">Under review</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">📱</div>
+        <div class="stat-label">Online Now</div>
+        <div class="stat-value" id="onlineNow">0</div>
+        <div class="stat-change" id="onlineText">Live status</div>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="search-box">
+      <input 
+        id="searchInput" 
+        type="text" 
+        class="search-input" 
+        placeholder="🔍 Search by name, email, or UID..."
+      >
+    </div>
+
+    <!-- Users Table -->
+    <div class="section-header">
+      <div>
+        <div class="section-title">👤 Users</div>
+        <div class="section-subtitle" id="userCount">0 users total</div>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>UID</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersTable">
+            <tr>
+              <td colspan="6" style="text-align: center; padding: 40px;">
+                <div class="empty-state">
+                  <div class="empty-icon">📂</div>
+                  <div class="empty-text">Loading users...</div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="section-header" style="margin-top: 40px;">
+      <div>
+        <div class="section-title">📈 Growth Chart</div>
+        <div class="section-subtitle">User registrations by day</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="chart" class="chart-canvas"></canvas>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="section-header" style="margin-top: 40px;">
+      <div>
+        <div class="section-title">📜 Activity Log</div>
+        <div class="section-subtitle">Latest admin actions</div>
+      </div>
+    </div>
+
+    <div class="log-container" id="logBox"></div>
+  </div>
 </div>
 
-<input id="search" placeholder="Search user..." />
+<script>
+/* =====================================================
+   FIREBASE INIT
+   ===================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+};
 
-<div class="table-box">
-<table>
-<thead>
-<tr>
-<th>Name</th>
-<th>Email</th>
-<th>UID</th>
-<th>Status</th>
-<th>Action</th>
-</tr>
-</thead>
-<tbody id="usersTable"></tbody>
-</table>
-</div>
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-<h2>📈 Growth Chart</h2>
-<canvas id="chart"></canvas>
+const ADMIN_EMAIL = "neuro_stack@outlook.com";
 
-<h2>📜 Activity Log</h2>
-<div id="logBox" class="log"></div>
+let users = [];
+let chart = null;
+let currentUser = null;
 
-</div>
+/* =====================================================
+   LOGIN
+   ===================================================== */
+function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById("emailInput").value.trim();
+  const btn = document.getElementById("loginBtn");
 
-<script src="admin.js"></script>
+  if (email !== ADMIN_EMAIL) {
+    alert("❌ Access Denied - Invalid admin email");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Signing in...";
+
+  auth.signInAnonymously().then(() => {
+    currentUser = auth.currentUser;
+    document.getElementById("loginContainer").classList.add("hidden");
+    document.getElementById("dashboard").classList.remove("hidden");
+    initDashboard();
+    log("Admin logged in", "success");
+  }).catch(err => {
+    console.error(err);
+    alert("❌ Authentication Error: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Login";
+  });
+}
+
+/* =====================================================
+   LOGOUT
+   ===================================================== */
+function handleLogout() {
+  if (!confirm("Logout from admin panel?")) return;
+  auth.signOut().then(() => {
+    document.getElementById("dashboard").classList.add("hidden");
+    document.getElementById("loginContainer").classList.remove("hidden");
+    document.getElementById("emailInput").value = "";
+    users = [];
+    log("Admin logged out", "warning");
+  }).catch(err => console.error(err));
+}
+
+/* =====================================================
+   INIT DASHBOARD
+   ===================================================== */
+function initDashboard() {
+  listenUsers();
+
+  document.getElementById("searchInput").addEventListener("input", e => {
+    const query = e.target.value.toLowerCase();
+    const filtered = users.filter(u =>
+      (u.displayName || "").toLowerCase().includes(query) ||
+      (u.email || "").toLowerCase().includes(query) ||
+      (u.uid || "").toLowerCase().includes(query)
+    );
+    renderTable(filtered);
+  });
+}
+
+/* =====================================================
+   REALTIME USERS LISTENER
+   ===================================================== */
+function listenUsers() {
+  db.collection("users").onSnapshot(
+    snapshot => {
+      users = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          uid: doc.id,
+          ...data,
+          createdAt: normalizeTimestamp(data.createdAt)
+        };
+      });
+
+      render();
+      log(`Loaded ${users.length} users`, "success");
+    },
+    err => {
+      console.error("Firestore Error:", err);
+      log("Firestore connection error: " + err.message, "error");
+      alert("❌ Database Error: " + err.message);
+    }
+  );
+}
+
+/* =====================================================
+   TIMESTAMP HELPER
+   ===================================================== */
+function normalizeTimestamp(value) {
+  if (!value) return Date.now();
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (typeof value === "number") return value;
+  const parsed = new Date(value).getTime();
+  return isNaN(parsed) ? Date.now() : parsed;
+}
+
+/* =====================================================
+   RENDER DASHBOARD
+   ===================================================== */
+function render() {
+  const now = Date.now();
+  const day = 86400000;
+  const week = day * 7;
+
+  // Calculate stats
+  const totalUsers = users.length;
+  const todayUsers = users.filter(u => u.createdAt >= now - day).length;
+  const bannedUsers = users.filter(u => u.banned).length;
+  const onlineUsers = users.filter(u => u.online).length;
+
+  // Update stats
+  document.getElementById("totalUsers").textContent = totalUsers;
+  document.getElementById("activeToday").textContent = todayUsers;
+  document.getElementById("bannedUsers").textContent = bannedUsers;
+  document.getElementById("onlineNow").textContent = onlineUsers;
+  document.getElementById("newUsersText").textContent = `${todayUsers} new today`;
+  document.getElementById("userCount").textContent = `${totalUsers} users total`;
+
+  renderTable(users);
+  renderChart();
+}
+
+/* =====================================================
+   RENDER TABLE
+   ===================================================== */
+function renderTable(data) {
+  const table = document.getElementById("usersTable");
+
+  if (!data || data.length === 0) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 40px;">
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-text">No users found</div>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  table.innerHTML = data.map(u => {
+    const status = u.banned ? "🚫 Banned" : "🟢 Active";
+    const statusClass = u.banned ? "status-banned" : "status-active";
+    const dateStr = new Date(u.createdAt).toLocaleDateString();
+    const nameDisplay = u.displayName || u.name || "—";
+    const emailDisplay = u.email || "—";
+
+    return `
+      <tr>
+        <td>${nameDisplay}</td>
+        <td>${emailDisplay}</td>
+        <td><span class="uid-text">${u.uid}</span></td>
+        <td><span class="status-badge ${statusClass}">${status}</span></td>
+        <td>${dateStr}</td>
+        <td>
+          <div class="actions">
+            <button class="action-btn warning" onclick="editUser('${u.uid}')">Edit</button>
+            <button class="action-btn warning" onclick="toggleBan('${u.uid}', ${u.banned})">
+              ${u.banned ? "Unban" : "Ban"}
+            </button>
+            <button class="action-btn danger" onclick="deleteUser('${u.uid}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+/* =====================================================
+   USER ACTIONS
+   ===================================================== */
+function editUser(uid) {
+  const user = users.find(u => u.uid === uid);
+  if (!user) return;
+
+  const newName = prompt("Enter new name:", user.displayName || user.name || "");
+  if (newName === null) return;
+
+  db.collection("users").doc(uid).update({
+    displayName: newName,
+    name: newName,
+    updatedAt: Date.now()
+  }).then(() => {
+    log(`Edited user ${uid}: name = ${newName}`, "success");
+  }).catch(err => {
+    console.error(err);
+    alert("❌ Error: " + err.message);
+    log(`Failed to edit user ${uid}`, "error");
+  });
+}
+
+function toggleBan(uid, currentState) {
+  const action = currentState ? "unban" : "ban";
+  if (!confirm(`${action.toUpperCase()} this user?`)) return;
+
+  db.collection("users").doc(uid).update({
+    banned: !currentState,
+    updatedAt: Date.now()
+  }).then(() => {
+    log(`${currentState ? "Unbanned" : "Banned"} user ${uid}`, "warning");
+  }).catch(err => {
+    console.error(err);
+    alert("❌ Error: " + err.message);
+    log(`Failed to toggle ban for ${uid}`, "error");
+  });
+}
+
+function deleteUser(uid) {
+  if (!confirm("❌ PERMANENTLY DELETE this user? This cannot be undone!")) return;
+
+  db.collection("users").doc(uid).delete().then(() => {
+    log(`Deleted user ${uid}`, "error");
+  }).catch(err => {
+    console.error(err);
+    alert("❌ Error: " + err.message);
+    log(`Failed to delete user ${uid}`, "error");
+  });
+}
+
+/* =====================================================
+   CHART
+   ===================================================== */
+function renderChart() {
+  const ctx = document.getElementById("chart");
+  if (!ctx) return;
+
+  // Last 7 days
+  const days = [];
+  const labels = [];
+  const now = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    days.push(0);
+    labels.push(date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }));
+  }
+
+  users.forEach(u => {
+    const userDate = new Date(u.createdAt);
+    const dayIndex = days.length - 1 - Math.floor((now - userDate) / 86400000);
+    if (dayIndex >= 0 && dayIndex < days.length) {
+      days[dayIndex]++;
+    }
+  });
+
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "New Users",
+        data: days,
+        borderColor: "#4f8fff",
+        backgroundColor: "rgba(79,143,255,0.1)",
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 5,
+        pointBackgroundColor: "#4f8fff",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointHoverRadius: 7,
+        pointHoverBackgroundColor: "#7ca8ff",
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: "#e5e9f0",
+            font: { family: "'Inter', sans-serif", size: 12, weight: "600" }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: { color: "rgba(79,143,255,0.1)" },
+          ticks: { color: "#a8b5cc" }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { color: "#a8b5cc" }
+        }
+      }
+    }
+  });
+}
+
+/* =====================================================
+   ACTIVITY LOG
+   ===================================================== */
+function log(text, type = "info") {
+  const box = document.getElementById("logBox");
+  const time = new Date().toLocaleTimeString("en-US", { hour12: true });
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `
+    <span class="log-time">[${time}]</span>
+    <span class="log-text ${type}">${text}</span>
+  `;
+  box.insertBefore(entry, box.firstChild);
+
+  // Keep only last 50 entries
+  while (box.children.length > 50) {
+    box.removeChild(box.lastChild);
+  }
+}
+</script>
+
 </body>
 </html>
