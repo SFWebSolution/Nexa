@@ -121,7 +121,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .no-users { padding:40px 20px; text-align:center; color:var(--text-3); font-size:13px; }
 
 /* =====================================================
-   STORIES CAROUSEL — NEW WHATSAPP-STYLE
+   STORIES CAROUSEL
    ===================================================== */
 .stories-bar {
   display:flex; align-items:center; gap:10px;
@@ -262,7 +262,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .btn-send:active { transform:scale(0.94); }
 
 /* =====================================================
-   STORY VIEWER — FULL WHATSAPP STYLE
+   STORY VIEWER — IMPROVED
    ===================================================== */
 .story-viewer-overlay {
   position:fixed; inset:0;
@@ -317,8 +317,11 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .story-user-meta { flex:1; min-width:0; }
 .story-user-name { font-size:13px; font-weight:700; color:white; }
 .story-user-time { font-size:11px; color:rgba(255,255,255,0.7); }
+.story-actions-top { display:flex; gap:8px; }
 .story-close-btn { width:36px; height:36px; background:rgba(0,0,0,0.4); border:none; border-radius:50%; color:white; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all var(--tf); }
 .story-close-btn:hover { background:rgba(0,0,0,0.7); }
+.story-delete-btn { width:36px; height:36px; background:rgba(255,56,96,0.3); border:none; border-radius:50%; color:#ff6b7a; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all var(--tf); }
+.story-delete-btn:hover { background:rgba(255,56,96,0.5); }
 
 .story-viewer-content {
   flex:1; display:flex; align-items:center; justify-content:center;
@@ -366,7 +369,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .story-action-btn:hover { background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.7); }
 
 /* =====================================================
-   STATUS / STORY UPLOAD MODAL — COMPACT
+   STATUS MODAL
    ===================================================== */
 .status-modal-overlay {
   position:fixed; inset:0;
@@ -402,7 +405,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .status-tab { flex:1; padding:7px 10px; border:none; background:transparent; cursor:pointer; font-size:12px; font-weight:600; color:var(--text-3); border-radius:8px; transition:all var(--tf); font-family:inherit; }
 .status-tab.active { background:rgba(79,143,255,0.2); color:var(--primary); }
 
-/* COMPACT PREVIEW — no more full-screen height */
 .status-preview {
   width:100%; height:200px;
   border-radius:14px; background:rgba(22,32,46,0.7);
@@ -424,39 +426,64 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .status-action-btn.primary:hover { box-shadow:0 4px 14px rgba(79,143,255,0.35); transform:translateY(-1px); }
 
 /* =====================================================
-   CALL POPUP — CHOOSE VOICE OR VIDEO
+   COMING SOON MODAL
    ===================================================== */
-.call-options-overlay {
+.coming-soon-overlay {
   position:fixed; inset:0;
-  background:rgba(8,12,20,0.7); backdrop-filter:blur(14px);
+  background:rgba(8,12,20,0.8);
+  backdrop-filter:blur(16px);
   display:none; align-items:center; justify-content:center;
-  z-index:7000; padding:16px;
+  z-index:8500;
+  padding:16px;
 }
-.call-options-overlay.active { display:flex; }
-.call-options-modal {
-  background:rgba(18,24,32,0.97); backdrop-filter:blur(24px);
-  border:1px solid var(--border-md); border-radius:20px;
-  box-shadow:0 24px 70px rgba(0,0,0,0.6);
-  padding:22px; display:flex; flex-direction:column; gap:14px;
-  animation:modalPop 0.3s var(--spring); min-width:280px; max-width:90vw;
-}
-.call-options-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
-.call-options-title { font-size:15px; font-weight:700; color:var(--text-0); }
-.call-options-close { width:30px; height:30px; border:1px solid var(--border-md); border-radius:8px; background:rgba(255,255,255,0.05); color:var(--text-2); cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; transition:all var(--tf); }
-.call-options-close:hover { background:rgba(255,56,96,0.15); color:var(--danger); }
+.coming-soon-overlay.active { display:flex; }
 
-.call-option-btn {
-  padding:14px 18px; border:1px solid var(--border-md); border-radius:13px;
-  background:rgba(22,32,46,0.5); backdrop-filter:blur(10px);
-  color:var(--text-1); cursor:pointer; font-size:14px; font-weight:600;
-  font-family:inherit; transition:all var(--tf);
-  display:flex; align-items:center; gap:12px;
+.coming-soon-modal {
+  background:rgba(18,24,32,0.97);
+  backdrop-filter:blur(24px);
+  border:1px solid var(--border-md);
+  border-radius:20px;
+  box-shadow:0 24px 70px rgba(0,0,0,0.6);
+  padding:28px 24px;
+  text-align:center;
+  animation:modalPop 0.3s var(--spring);
+  width:100%; max-width:320px;
 }
-.call-option-btn:hover { background:rgba(79,143,255,0.1); border-color:var(--primary); color:var(--primary); transform:translateX(3px); }
-.call-option-icon { font-size:20px; flex-shrink:0; }
+
+.coming-soon-icon {
+  font-size:56px; margin-bottom:18px;
+  animation:bounce 1.5s ease-in-out infinite;
+}
+@keyframes bounce { 0%, 100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+
+.coming-soon-title {
+  font-size:18px; font-weight:800;
+  color:var(--text-0); margin-bottom:10px;
+  background:linear-gradient(135deg, var(--primary), var(--cyan));
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+
+.coming-soon-text {
+  font-size:13px; color:var(--text-2);
+  margin-bottom:22px; line-height:1.6;
+}
+
+.coming-soon-btn {
+  padding:11px 24px; border:1px solid var(--border-md);
+  border-radius:11px; background:rgba(79,143,255,0.1);
+  color:var(--primary); cursor:pointer; font-size:13px;
+  font-weight:700; font-family:inherit; letter-spacing:0.4px;
+  transition:all var(--t) var(--spring); text-transform:uppercase;
+}
+.coming-soon-btn:hover {
+  background:rgba(79,143,255,0.2); border-color:var(--primary);
+  transform:translateY(-2px); box-shadow:var(--glow-primary);
+}
 
 /* =====================================================
-   CALL MODALS — INCOMING / ACTIVE
+   CALL MODALS (PLACEHOLDER)
    ===================================================== */
 .call-modal-overlay {
   position:fixed; inset:0;
@@ -478,33 +505,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .call-name { font-size:20px; font-weight:800; color:var(--text-0); margin-bottom:6px; }
 .call-status { font-size:13px; color:var(--text-3); margin-bottom:20px; }
 .call-timer { font-size:18px; color:var(--online); font-weight:700; margin-bottom:20px; font-family:'Syne',sans-serif; letter-spacing:2px; }
-.call-actions { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
-.call-btn { width:58px; height:58px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:22px; transition:all var(--t) var(--spring); }
-.call-btn.accept { background:var(--online); color:white; box-shadow:0 6px 18px rgba(16,217,129,0.35); animation:callRing 1.5s ease-in-out infinite; }
-@keyframes callRing { 0%,100%{box-shadow:0 6px 18px rgba(16,217,129,0.35)} 50%{box-shadow:0 6px 30px rgba(16,217,129,0.6)} }
-.call-btn.accept:hover { transform:scale(1.1); }
-.call-btn.decline { background:var(--danger); color:white; box-shadow:0 6px 18px rgba(255,56,96,0.35); }
-.call-btn.decline:hover { transform:scale(1.1); }
-.call-btn.end { background:var(--danger); color:white; box-shadow:0 6px 18px rgba(255,56,96,0.35); }
-.call-btn.end:hover { transform:scale(1.1); }
-.call-btn.mute { background:rgba(22,32,46,0.7); color:var(--text-1); border:1px solid var(--border-md); }
-.call-btn.mute.active { background:var(--danger); color:white; border-color:var(--danger); }
-.call-btn.video-tog { background:rgba(22,32,46,0.7); color:var(--text-1); border:1px solid var(--border-md); }
-.call-btn.video-tog.off { background:var(--danger); color:white; border-color:var(--danger); }
-
-.video-container { width:100%; border-radius:14px; overflow:hidden; background:#000; border:1px solid var(--border-md); margin:14px auto; position:relative; max-height:260px; }
-.video-remote { width:100%; height:220px; background:#000; display:flex; align-items:center; justify-content:center; color:var(--text-3); font-size:12px; position:relative; }
-.video-remote video { width:100%; height:100%; object-fit:cover; }
-.video-local-pip { position:absolute; bottom:8px; right:8px; width:100px; height:100px; border-radius:10px; background:#111; border:1.5px solid var(--primary); overflow:hidden; z-index:5; }
-.video-local-pip video { width:100%; height:100%; object-fit:cover; }
-.call-audio-wave { display:flex; align-items:center; justify-content:center; gap:4px; height:60px; }
-.audio-bar { width:5px; border-radius:3px; background:var(--primary); animation:audioWave 1.2s ease-in-out infinite; }
-.audio-bar:nth-child(1){animation-delay:0s;height:20px}
-.audio-bar:nth-child(2){animation-delay:0.1s;height:35px}
-.audio-bar:nth-child(3){animation-delay:0.2s;height:50px}
-.audio-bar:nth-child(4){animation-delay:0.3s;height:35px}
-.audio-bar:nth-child(5){animation-delay:0.4s;height:20px}
-@keyframes audioWave { 0%,100%{transform:scaleY(0.5);opacity:0.5} 50%{transform:scaleY(1.3);opacity:1} }
 
 /* =====================================================
    AI PANEL
@@ -528,44 +528,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .ai-spinner { width:56px; height:56px; border:3px solid var(--border-md); border-top:3px solid var(--cyan); border-radius:50%; animation:aiSpin 0.8s linear infinite; }
 @keyframes aiSpin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
 .ai-loading-text { font-size:13px; color:var(--text-2); font-weight:500; }
-.ai-error { position:absolute; inset:0; background:rgba(8,12,20,0.95); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; z-index:200; padding:28px; text-align:center; }
-.ai-error.hidden { display:none; }
-.ai-error-icon { font-size:48px; }
-.ai-error-title { font-size:17px; font-weight:700; color:var(--text-0); }
-.ai-error-message { font-size:12.5px; color:var(--text-2); max-width:360px; line-height:1.6; }
-.ai-retry-btn { padding:10px 22px; border:1px solid var(--border-md); border-radius:11px; background:linear-gradient(135deg,var(--cyan),var(--primary-lt)); color:var(--bg-0); cursor:pointer; font-size:12px; font-weight:700; font-family:inherit; letter-spacing:0.4px; text-transform:uppercase; transition:all var(--t) var(--spring); margin-top:6px; }
-
-/* =====================================================
-   EDIT MODAL
-   ===================================================== */
-.edit-modal-overlay { position:fixed; inset:0; background:rgba(8,12,20,0.8); backdrop-filter:blur(14px); display:none; align-items:center; justify-content:center; z-index:9500; padding:16px; }
-.edit-modal-overlay.active { display:flex; }
-.edit-modal { background:rgba(18,24,32,0.97); backdrop-filter:blur(24px); border:1px solid var(--border-md); border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,0.6); max-width:460px; width:100%; padding:24px; display:flex; flex-direction:column; gap:16px; animation:modalPop 0.3s var(--spring); }
-.edit-modal-title { font-size:16px; font-weight:700; color:var(--text-0); }
-.edit-modal textarea { width:100%; min-height:100px; border:1px solid var(--border-md); outline:none; padding:12px 14px; border-radius:13px; background:rgba(22,32,46,0.6); color:var(--text-1); font-size:13.5px; font-family:inherit; font-weight:500; resize:vertical; transition:all var(--t); }
-.edit-modal textarea:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
-.edit-modal-actions { display:flex; gap:10px; justify-content:flex-end; }
-.edit-btn { padding:9px 20px; border:none; border-radius:10px; cursor:pointer; font-size:12px; font-weight:700; font-family:inherit; letter-spacing:0.4px; transition:all var(--t) var(--spring); text-transform:uppercase; }
-.edit-btn-cancel { background:rgba(255,255,255,0.07); color:var(--text-2); border:1px solid var(--border-md); }
-.edit-btn-cancel:hover { background:rgba(79,143,255,0.1); border-color:var(--primary); color:var(--primary); }
-.edit-btn-save { background:linear-gradient(135deg,var(--primary),var(--primary-lt)); color:var(--bg-0); box-shadow:0 4px 14px rgba(79,143,255,0.3); font-weight:800; }
-.edit-btn-save:hover { transform:translateY(-1px); box-shadow:0 7px 24px rgba(79,143,255,0.4); }
-
-/* =====================================================
-   VOICE PANEL
-   ===================================================== */
-.voice-panel { position:fixed; inset:0; z-index:9999; background:rgba(8,12,20,0.92); backdrop-filter:blur(22px); display:none; flex-direction:column; align-items:center; justify-content:center; gap:28px; animation:fadeIn 0.3s ease; }
-.voice-panel.active { display:flex; }
-.voice-circle { width:130px; height:130px; border-radius:50%; background:radial-gradient(circle,rgba(255,56,96,0.22) 0%,transparent 70%); border:3px solid var(--danger); display:flex; align-items:center; justify-content:center; font-size:50px; animation:voicePulse 0.9s ease-in-out infinite; }
-@keyframes voicePulse { 0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(255,56,96,0.4)} 50%{transform:scale(1.08);box-shadow:0 0 60px rgba(255,56,96,0.6)} }
-.voice-timer-txt { font-size:44px; font-weight:800; font-family:'Syne',sans-serif; color:var(--text-0); letter-spacing:2px; }
-.voice-hint { font-size:13px; color:var(--text-3); font-weight:500; }
-.voice-actions { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
-.vbtn { padding:13px 28px; border:none; border-radius:12px; cursor:pointer; font-size:13px; font-weight:700; font-family:inherit; letter-spacing:0.4px; transition:all var(--t) var(--spring); text-transform:uppercase; }
-.vbtn-del { background:rgba(255,255,255,0.07); color:var(--text-2); border:1px solid var(--border-md); }
-.vbtn-del:hover { background:rgba(255,56,96,0.14); color:var(--danger); border-color:var(--danger); }
-.vbtn-send { background:linear-gradient(135deg,var(--online) 0%,#0cab70 100%); color:var(--bg-0); box-shadow:0 5px 18px rgba(16,217,129,0.35); font-weight:800; }
-.vbtn-send:hover { transform:translateY(-2px); box-shadow:0 8px 28px rgba(16,217,129,0.45); }
 
 /* =====================================================
    INFO PANEL
@@ -588,7 +550,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .ia-icon { font-size:16px; flex-shrink:0; }
 .ia-text { font-size:13px; font-weight:600; }
 
-/* SEARCH MODAL */
+/* SEARCH & CONTEXT MENU */
 .modal-overlay { position:fixed; inset:0; background:rgba(8,12,20,0.8); backdrop-filter:blur(14px); display:none; align-items:center; justify-content:center; z-index:9500; padding:16px; }
 .modal-overlay.active { display:flex; }
 .modal { background:rgba(18,24,32,0.97); backdrop-filter:blur(24px); border:1px solid var(--border-md); border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,0.6); max-width:480px; width:100%; max-height:65vh; display:flex; flex-direction:column; animation:modalPop 0.3s var(--spring); overflow:hidden; }
@@ -603,7 +565,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .res-author { font-size:10px; color:var(--text-3); font-weight:700; text-transform:uppercase; margin-bottom:3px; letter-spacing:0.4px; }
 .res-text { font-size:13px; font-weight:500; color:var(--text-1); }
 
-/* CONTEXT MENU */
 .ctx-menu { position:fixed; z-index:10000; background:rgba(18,24,32,0.97); backdrop-filter:blur(22px); border:1px solid var(--border-md); border-radius:13px; box-shadow:0 12px 40px rgba(0,0,0,0.6); min-width:170px; overflow:hidden; display:none; flex-direction:column; animation:ctxPop 0.2s var(--spring); }
 .ctx-menu.active { display:flex; }
 @keyframes ctxPop { from{opacity:0;transform:scale(0.9) translateY(-7px)} to{opacity:1;transform:scale(1) translateY(0)} }
@@ -611,6 +572,35 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .ctx-item:last-child { border-bottom:none; }
 .ctx-item:hover { background:rgba(79,143,255,0.1); color:var(--primary); padding-left:19px; }
 .ctx-item.danger:hover { background:rgba(255,56,96,0.13); color:var(--danger); }
+
+/* =====================================================
+   EDIT MODAL & VOICE PANEL
+   ===================================================== */
+.edit-modal-overlay { position:fixed; inset:0; background:rgba(8,12,20,0.8); backdrop-filter:blur(14px); display:none; align-items:center; justify-content:center; z-index:9500; padding:16px; }
+.edit-modal-overlay.active { display:flex; }
+.edit-modal { background:rgba(18,24,32,0.97); backdrop-filter:blur(24px); border:1px solid var(--border-md); border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,0.6); max-width:460px; width:100%; padding:24px; display:flex; flex-direction:column; gap:16px; animation:modalPop 0.3s var(--spring); }
+.edit-modal-title { font-size:16px; font-weight:700; color:var(--text-0); }
+.edit-modal textarea { width:100%; min-height:100px; border:1px solid var(--border-md); outline:none; padding:12px 14px; border-radius:13px; background:rgba(22,32,46,0.6); color:var(--text-1); font-size:13.5px; font-family:inherit; font-weight:500; resize:vertical; transition:all var(--t); }
+.edit-modal textarea:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+.edit-modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+.edit-btn { padding:9px 20px; border:none; border-radius:10px; cursor:pointer; font-size:12px; font-weight:700; font-family:inherit; letter-spacing:0.4px; transition:all var(--t) var(--spring); text-transform:uppercase; }
+.edit-btn-cancel { background:rgba(255,255,255,0.07); color:var(--text-2); border:1px solid var(--border-md); }
+.edit-btn-cancel:hover { background:rgba(79,143,255,0.1); border-color:var(--primary); color:var(--primary); }
+.edit-btn-save { background:linear-gradient(135deg,var(--primary),var(--primary-lt)); color:var(--bg-0); box-shadow:0 4px 14px rgba(79,143,255,0.3); font-weight:800; }
+.edit-btn-save:hover { transform:translateY(-1px); box-shadow:0 7px 24px rgba(79,143,255,0.4); }
+
+.voice-panel { position:fixed; inset:0; z-index:9999; background:rgba(8,12,20,0.92); backdrop-filter:blur(22px); display:none; flex-direction:column; align-items:center; justify-content:center; gap:28px; animation:fadeIn 0.3s ease; }
+.voice-panel.active { display:flex; }
+.voice-circle { width:130px; height:130px; border-radius:50%; background:radial-gradient(circle,rgba(255,56,96,0.22) 0%,transparent 70%); border:3px solid var(--danger); display:flex; align-items:center; justify-content:center; font-size:50px; animation:voicePulse 0.9s ease-in-out infinite; }
+@keyframes voicePulse { 0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(255,56,96,0.4)} 50%{transform:scale(1.08);box-shadow:0 0 60px rgba(255,56,96,0.6)} }
+.voice-timer-txt { font-size:44px; font-weight:800; font-family:'Syne',sans-serif; color:var(--text-0); letter-spacing:2px; }
+.voice-hint { font-size:13px; color:var(--text-3); font-weight:500; }
+.voice-actions { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+.vbtn { padding:13px 28px; border:none; border-radius:12px; cursor:pointer; font-size:13px; font-weight:700; font-family:inherit; letter-spacing:0.4px; transition:all var(--t) var(--spring); text-transform:uppercase; }
+.vbtn-del { background:rgba(255,255,255,0.07); color:var(--text-2); border:1px solid var(--border-md); }
+.vbtn-del:hover { background:rgba(255,56,96,0.14); color:var(--danger); border-color:var(--danger); }
+.vbtn-send { background:linear-gradient(135deg,var(--online) 0%,#0cab70 100%); color:var(--bg-0); box-shadow:0 5px 18px rgba(16,217,129,0.35); font-weight:800; }
+.vbtn-send:hover { transform:translateY(-2px); box-shadow:0 8px 28px rgba(16,217,129,0.45); }
 
 /* =====================================================
    RESPONSIVE
@@ -631,7 +621,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   .header-actions { gap:5px; }
   .info-panel { width:100%; right:-100%; }
   .status-modal { max-width:calc(100% - 24px); }
-  .call-modal { max-width:calc(100% - 24px); }
 }
 @media (max-width:480px) {
   :root { --tf:0.14s; --t:0.24s; }
@@ -653,28 +642,12 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   .stories-bar { padding:8px 10px; gap:8px; }
   .story-ring { width:46px; height:46px; }
   .story-name { font-size:8.5px; width:46px; }
-  .story-viewer-text { font-size:26px; padding:28px; }
   .status-modal { padding:16px; gap:10px; }
   .status-preview { height:160px; }
-  .call-modal { padding:22px 18px; }
-  .call-avatar { width:76px; height:76px; }
-  .call-name { font-size:17px; }
-  .call-btn { width:52px; height:52px; font-size:20px; }
   .info-panel { width:100%; }
   .ai-header { height:54px; padding:0 12px; }
   .ai-back-btn { width:36px; height:36px; }
   .ctx-item { padding:9px 13px; font-size:12px; }
-}
-@media (max-width:375px) {
-  .msg { max-width:min(88%,310px); }
-  .stories-bar { padding:6px 8px; }
-  .story-ring { width:44px; height:44px; }
-}
-@media (max-height:600px) {
-  .chat-header { height:46px; }
-  .messages { padding:7px 10px; }
-  .status-preview { height:120px; }
-  .story-viewer-content { padding:60px 0 100px; }
 }
   </style>
 </head>
@@ -706,9 +679,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   <!-- CHAT -->
   <div class="chat">
     <!-- STORIES BAR -->
-    <div class="stories-bar" id="storiesBar">
-      <!-- populated by JS -->
-    </div>
+    <div class="stories-bar" id="storiesBar"></div>
 
     <div class="chat-header">
       <button class="hdr-btn mobile-menu" id="mobileMenuBtn" onclick="toggleSidebar()" style="margin-right:2px">☰</button>
@@ -723,7 +694,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
         </div>
       </div>
       <div class="header-actions">
-        <button class="hdr-btn" onclick="openCallOptions()" title="Start Call">☎️</button>
+        <button class="hdr-btn" onclick="openCallModal('voice')" title="Voice Call">☎️</button>
+        <button class="hdr-btn" onclick="openCallModal('video')" title="Video Call">📹</button>
         <button class="hdr-btn" onclick="openChatInfo()" title="Chat Info">ℹ️</button>
         <button class="hdr-btn" onclick="openSearchModal()" title="Search">🔍</button>
       </div>
@@ -749,7 +721,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
       <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)">➤</button>
     </div>
 
-    <!-- AI PANEL (over chat) -->
+    <!-- AI PANEL -->
     <div class="ai-panel" id="aiPanel">
       <div class="ai-header">
         <button class="ai-back-btn" onclick="closeAI()">←</button>
@@ -766,12 +738,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
           <div class="ai-spinner"></div>
           <div class="ai-loading-text">Initializing Askify AI…</div>
         </div>
-        <div class="ai-error hidden" id="aiError">
-          <div class="ai-error-icon">⚠️</div>
-          <div class="ai-error-title">Failed to Load</div>
-          <div class="ai-error-message">Unable to connect. Check your connection and try again.</div>
-          <button class="ai-retry-btn" onclick="retryLoadAI()">Retry</button>
-        </div>
         <div class="ai-iframe-container">
           <iframe id="askifyIframe" src="https://askifyai.onrender.com/" title="Askify AI" allow="camera;microphone;clipboard-read;clipboard-write" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation"></iframe>
         </div>
@@ -780,57 +746,13 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   </div>
 </div>
 
-<!-- CALL OPTIONS POPUP -->
-<div class="call-options-overlay" id="callOptionsOverlay" onclick="handleCallOptionsOverlayClick(event)">
-  <div class="call-options-modal" id="callOptionsModal">
-    <div class="call-options-header">
-      <div class="call-options-title">Start a Call</div>
-      <button class="call-options-close" onclick="closeCallOptions()">✕</button>
-    </div>
-    <button class="call-option-btn" onclick="startVoiceCall()">
-      <span class="call-option-icon">☎️</span>
-      <span>Voice Call</span>
-    </button>
-    <button class="call-option-btn" onclick="startVideoCall()">
-      <span class="call-option-icon">📹</span>
-      <span>Video Call</span>
-    </button>
-  </div>
-</div>
-
-<!-- INCOMING CALL -->
-<div class="call-modal-overlay" id="incomingCallOverlay">
-  <div class="call-modal">
-    <img id="callAvatar" class="call-avatar" src="https://i.imgur.com/HeIi0wU.png">
-    <div class="call-name" id="callName">Incoming Call</div>
-    <div class="call-status" id="callStatusText">Calling…</div>
-    <div class="call-actions">
-      <button class="call-btn accept" onclick="acceptCall()" title="Accept">📞</button>
-      <button class="call-btn decline" onclick="declineCall()" title="Decline">📵</button>
-    </div>
-  </div>
-</div>
-
-<!-- ACTIVE CALL -->
-<div class="call-modal-overlay" id="activeCallOverlay">
-  <div class="call-modal">
-    <img id="activeCallAvatar" class="call-avatar" src="https://i.imgur.com/HeIi0wU.png">
-    <div class="call-name" id="activeCallName">In Call</div>
-    <div class="call-timer" id="callTimer">0:00</div>
-    <div id="voiceWaveContainer" class="call-audio-wave">
-      <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
-    </div>
-    <div class="video-container" id="videoContainer" style="display:none">
-      <div class="video-remote">
-        <video id="remoteVideo" autoplay playsinline></video>
-        <div class="video-local-pip"><video id="localVideo" autoplay muted playsinline></video></div>
-      </div>
-    </div>
-    <div class="call-actions" style="margin-top:8px">
-      <button class="call-btn mute" id="muteBtn" onclick="toggleMute()">🔊</button>
-      <button class="call-btn video-tog" id="videoBtn" onclick="toggleVideoTrack()" style="display:none">📷</button>
-      <button class="call-btn end" onclick="endCall()">📵</button>
-    </div>
+<!-- COMING SOON MODAL FOR CALLS -->
+<div class="coming-soon-overlay" id="comingSoonModal" onclick="closeComingSoonModal(event)">
+  <div class="coming-soon-modal">
+    <div class="coming-soon-icon" id="comingSoonIcon">📞</div>
+    <div class="coming-soon-title">Coming Soon</div>
+    <div class="coming-soon-text" id="comingSoonText">This feature is under development and will be available soon!</div>
+    <button class="coming-soon-btn" onclick="closeComingSoonModal()">Got It!</button>
   </div>
 </div>
 
@@ -845,7 +767,11 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
         <div class="story-user-name" id="storyUserName">User</div>
         <div class="story-user-time" id="storyUserTime"></div>
       </div>
-      <button class="story-close-btn" onclick="closeStoryViewer()">✕</button>
+      <div class="story-actions-top">
+        <button class="story-delete-btn" id="storyDeleteBtn" style="display:none" onclick="deleteStory()" title="Delete">🗑️</button>
+        <button class="story-action-btn" id="storyAddBtn" onclick="openStatusModalFromViewer()" title="Add Story" style="width:36px;height:36px;border-radius:50%;background:rgba(0,217,255,0.3);border-color:var(--cyan);font-size:16px;margin-right:8px;">➕</button>
+        <button class="story-close-btn" onclick="closeStoryViewer()">✕</button>
+      </div>
     </div>
     <div class="story-viewer-content" id="storyViewerContent"></div>
     <button class="story-nav-left" onclick="prevStorySlide()"></button>
@@ -859,7 +785,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   </div>
 </div>
 
-<!-- STATUS / STORY UPLOAD MODAL (COMPACT) -->
+<!-- STATUS / STORY UPLOAD MODAL -->
 <div class="status-modal-overlay" id="statusModalOverlay" onclick="handleStatusOverlayClick(event)">
   <div class="status-modal" id="statusModalBox">
     <div class="status-modal-header">
@@ -937,18 +863,14 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 <!-- CONTEXT MENU -->
 <div class="ctx-menu" id="ctxMenu"></div>
 
-<!-- HIDDEN FILE INPUTS -->
+<!-- HIDDEN INPUTS -->
 <input type="file" id="img" hidden accept="image/*">
 <input type="file" id="fileInput" hidden accept="*">
 <input type="file" id="profileUpload" hidden accept="image/*">
 
 <script>
-/* =====================================================
-   CONSTANTS & CONFIG
-   ===================================================== */
 const CLOUD_NAME = "doasf3d1u";
 const UPLOAD_PRESET = "NeuroStack";
-const STORY_DURATION = 6000; // ms per story slide
 
 firebase.initializeApp({
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
@@ -962,9 +884,7 @@ firebase.initializeApp({
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-/* =====================================================
-   APP STATE
-   ===================================================== */
+/* STATE */
 let currentUser = null;
 let selectedUser = null;
 let allUsersData = [];
@@ -997,63 +917,24 @@ let storyTimer = null;
 let storyProgressStart = null;
 let storyAnimFrame = null;
 let viewingStoryUid = null;
-
-// CALLS — PeerJS based
-let myPeer = null;
-let currentCall = null;
-let currentCallDoc = null;
-let localStream = null;
-let isCallActive = false;
-let callStartTime = 0;
-let callTimerInterval = null;
-let isMuted = false;
-let isVideoOff = false;
-let currentCallType = 'voice';
-let callUnsub = null;
+let storyCurrentDuration = 0;
+let isPlayingOwnStory = false;
 
 /* =====================================================
-   AI PANEL
+   COMING SOON MODAL
    ===================================================== */
-let aiLoadAttempts = 0;
-const MAX_AI_ATTEMPTS = 3;
+function openCallModal(type) {
+  if (!selectedUser) { alert("Select a user first"); return; }
+  const icon = type === 'voice' ? '☎️' : '📹';
+  const title = type === 'voice' ? 'Voice Call' : 'Video Call';
+  document.getElementById("comingSoonIcon").textContent = icon;
+  document.getElementById("comingSoonText").textContent = `${title} feature is coming soon! We're working hard to bring you crystal-clear calls.`;
+  document.getElementById("comingSoonModal").classList.add("active");
+}
 
-function openAI() {
-  document.getElementById('aiPanel').classList.add('active');
-  resetAIIframe();
-}
-function closeAI() {
-  document.getElementById('aiPanel').classList.remove('active');
-}
-function resetAIIframe() {
-  aiLoadAttempts = 0;
-  const iframe = document.getElementById('askifyIframe');
-  const loading = document.getElementById('aiLoading');
-  const error = document.getElementById('aiError');
-  loading.classList.remove('hidden');
-  error.classList.add('hidden');
-  iframe.src = 'https://askifyai.onrender.com/';
-  setTimeout(() => {
-    if (!loading.classList.contains('hidden')) handleAILoadError();
-  }, 8000);
-}
-function retryLoadAI() { resetAIIframe(); }
-const _aiIframe = document.getElementById('askifyIframe');
-_aiIframe.addEventListener('load', () => {
-  document.getElementById('aiLoading').classList.add('hidden');
-  document.getElementById('aiError').classList.add('hidden');
-  aiLoadAttempts = 0;
-});
-_aiIframe.addEventListener('error', handleAILoadError);
-function handleAILoadError() {
-  aiLoadAttempts++;
-  if (aiLoadAttempts >= MAX_AI_ATTEMPTS) {
-    document.getElementById('aiLoading').classList.add('hidden');
-    document.getElementById('aiError').classList.remove('hidden');
-  } else {
-    setTimeout(() => {
-      document.getElementById('askifyIframe').src = 'https://askifyai.onrender.com/';
-    }, 2000);
-  }
+function closeComingSoonModal(e) {
+  if (e && e.target !== document.getElementById("comingSoonModal")) return;
+  document.getElementById("comingSoonModal").classList.remove("active");
 }
 
 /* =====================================================
@@ -1065,13 +946,11 @@ auth.onAuthStateChanged(async (user) => {
   requestNotifPerm();
   await updateOnline(true);
   await loadProfile();
-  initPeer();
   startUsersListener();
   startStatusListener();
   setupHeartbeat();
   loadUnreadCounts();
   listenIncoming();
-  listenCallSignals();
   loadPrefs();
 });
 
@@ -1079,14 +958,15 @@ function requestNotifPerm() {
   if ("Notification" in window && Notification.permission === "default")
     Notification.requestPermission();
 }
+
 function showNotif(title, opts = {}) {
   if ("Notification" in window && Notification.permission === "granted")
     new Notification(title, { icon: "https://i.imgur.com/HeIi0wU.png", ...opts });
 }
+
 async function handleLogout() {
   if (!confirm("Logout?")) return;
   await updateOnline(false);
-  if (myPeer) myPeer.destroy();
   await auth.signOut();
   window.location.href = "login.html";
 }
@@ -1248,11 +1128,13 @@ function toggleSidebar() {
     document.removeEventListener("click", _sidebarOutsideClick);
   }
 }
+
 function closeSidebarFn() {
   const sidebar = document.getElementById("sidebar");
   sidebar.classList.remove("show");
   document.removeEventListener("click", _sidebarOutsideClick);
 }
+
 function _sidebarOutsideClick(e) {
   const sidebar = document.getElementById("sidebar");
   const btn = document.getElementById("mobileMenuBtn");
@@ -1277,6 +1159,7 @@ function listenPresence() {
     }
   });
 }
+
 function formatLastSeen(ts) {
   if (!ts) return "a while ago";
   const diff = Date.now() - ts, m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
@@ -1397,6 +1280,7 @@ function replyMsg(msgId) {
   document.getElementById("text").focus();
   closeCtxMenu();
 }
+
 function clearReply() { messageRepliedTo = null; document.getElementById("replyStripWrap").innerHTML = ""; }
 
 function startEdit(msgId) {
@@ -1408,7 +1292,9 @@ function startEdit(msgId) {
   document.getElementById("editText").focus();
   closeCtxMenu();
 }
+
 function closeEditModal() { editingMessageId = null; document.getElementById("editText").value = ""; document.getElementById("editModal").classList.remove("active"); }
+
 function saveEditMessage() {
   if (!editingMessageId) return;
   const newText = document.getElementById("editText").value.trim();
@@ -1432,6 +1318,7 @@ function showCtxMenu(e, id, msg) {
   menu.style.left = Math.min(e.clientX, window.innerWidth - 190) + "px";
   setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
 }
+
 function closeCtxMenu() { document.getElementById("ctxMenu").classList.remove("active"); }
 function copyMsg(t) { navigator.clipboard.writeText(t); closeCtxMenu(); }
 function deleteMsg(id) { if (confirm("Delete?")) db.collection("chats").doc(id).delete(); closeCtxMenu(); }
@@ -1472,6 +1359,7 @@ document.getElementById("img").addEventListener("change", async e => {
   catch(err) { alert("Image upload failed: " + err.message); }
   e.target.value = "";
 });
+
 document.getElementById("fileInput").addEventListener("change", async e => {
   const file = e.target.files[0]; if (!file || !selectedUser) return;
   try { const url = await uploadFile(file); if (url) { await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url })); clearReply(); } }
@@ -1480,12 +1368,14 @@ document.getElementById("fileInput").addEventListener("change", async e => {
 });
 
 function handleKeyPress(e) { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); sendMessage(); } }
+
 function toggleActionButtons() {
   const has = document.getElementById("text").value.trim().length > 0;
   document.getElementById("imgBtn").classList.toggle("hidden", has);
   document.getElementById("fileBtn").classList.toggle("hidden", has);
   document.getElementById("recordBtn").classList.toggle("hidden", has);
 }
+
 async function sendMessage() {
   if (!selectedUser) { alert("Select a user first"); return; }
   const text = document.getElementById("text").value.trim(); if (!text) return;
@@ -1498,6 +1388,7 @@ async function sendMessage() {
   clearReply();
   setTimeout(() => { const box = document.getElementById("messages"); box.scrollTop = box.scrollHeight; }, 80);
 }
+
 function baseMsg(extras = {}) {
   return { from: currentUser.uid, to: selectedUser.uid, text:"", image:"", audio:"", status:"sent", edited:false, read:false, createdAt:Date.now(), ...extras };
 }
@@ -1529,11 +1420,13 @@ async function startRec(e) {
     }, 200);
   } catch(e) { alert("Microphone access denied"); }
 }
+
 function stopRec() {
   if (!isRecording) return;
   if (mediaRecorder?.state === "recording") { mediaRecorder.stop(); mediaRecorder.stream.getTracks().forEach(t => t.stop()); }
   isRecording = false; recordBtn.classList.remove("active"); clearInterval(recTimer);
 }
+
 async function sendVoice() {
   if (!recordingBlob || !selectedUser) return;
   const btn = document.getElementById("vSendBtn"); btn.disabled = true; btn.textContent = "Uploading…";
@@ -1544,6 +1437,7 @@ async function sendVoice() {
   } catch(e) { alert("Failed: " + e.message); }
   btn.disabled = false; btn.textContent = "✓ Send";
 }
+
 function cancelVoice() { recordingBlob = null; audioChunks = []; voicePanel.classList.remove("active"); voiceTimerEl.textContent = "0:00"; }
 function viewImg(url) { window.open(url, "_blank"); }
 
@@ -1552,18 +1446,21 @@ function viewImg(url) { window.open(url, "_blank"); }
    ===================================================== */
 function openChatInfo() { if (!selectedUser) { alert("Select a user first"); return; } document.getElementById("infoPanel").classList.add("active"); loadMediaGrid(); }
 function closeChatInfo() { document.getElementById("infoPanel").classList.remove("active"); }
+
 function loadMediaGrid() {
   const grid = document.getElementById("mediaGrid"); grid.innerHTML = "";
   const media = allMessages.filter(m => m.image);
   if (!media.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:18px;font-size:13px">No media shared</div>'; return; }
   media.forEach(m => { const el = document.createElement("div"); el.className = "media-thumb"; el.innerHTML = `<img src="${m.image}" alt="media">`; el.addEventListener("click", () => viewImg(m.image)); grid.appendChild(el); });
 }
+
 function muteChat() { if (!selectedUser) return; mutedChats[selectedUser.uid] = !mutedChats[selectedUser.uid]; savePrefs(); }
 function favoriteChat() { if (!selectedUser) return; favoritedChats[selectedUser.uid] = !favoritedChats[selectedUser.uid]; document.getElementById("favIcon").textContent = favoritedChats[selectedUser.uid] ? "💛" : "⭐"; savePrefs(); renderUsers(); }
 function clearChat() { if (!selectedUser || !confirm("Clear all messages?")) return; allMessages.forEach(m => db.collection("chats").doc(m.id).delete()); }
 
 function openSearchModal() { document.getElementById("searchModal").classList.add("active"); document.getElementById("searchInput").focus(); }
 function closeSearchModal() { document.getElementById("searchModal").classList.remove("active"); document.getElementById("searchResults").innerHTML = ""; document.getElementById("searchInput").value = ""; }
+
 function searchMessages() {
   const q = document.getElementById("searchInput").value.trim().toLowerCase(); const box = document.getElementById("searchResults"); box.innerHTML = "";
   if (!q) return;
@@ -1599,7 +1496,7 @@ function listenIncoming() {
 }
 
 /* =====================================================
-   STORIES / STATUS SYSTEM
+   STORIES SYSTEM - IMPROVED & FIXED
    ===================================================== */
 function startStatusListener() {
   db.collection("status").onSnapshot(snap => {
@@ -1618,12 +1515,20 @@ function startStatusListener() {
 
 function renderStoriesBar() {
   const bar = document.getElementById("storiesBar"); bar.innerHTML = "";
-  // My story add button
   const addEl = document.createElement("div"); addEl.className = "story-item add-story";
-  addEl.onclick = openStatusModal;
   const myStatuses = userStatuses[currentUser?.uid] || [];
   const myRingClass = myStatuses.length ? "story-ring unseen" : "story-ring add-own";
   const myPicSrc = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
+  
+  // If user has stories, clicking opens viewer; otherwise opens upload modal
+  addEl.onclick = () => {
+    if (myStatuses.length > 0) {
+      openStoryViewer(currentUser.uid);
+    } else {
+      openStatusModal();
+    }
+  };
+  
   addEl.innerHTML = `
     <div class="${myRingClass}">
       <div class="story-ring-inner">${myStatuses.length ? `<img src="${myPicSrc}" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">` : "+"}</div>
@@ -1632,7 +1537,6 @@ function renderStoriesBar() {
   `;
   bar.appendChild(addEl);
 
-  // Other users' stories
   const seenMap = getSeenStories();
   allUsersData.forEach(user => {
     const statuses = userStatuses[user.uid];
@@ -1655,18 +1559,39 @@ function renderStoriesBar() {
 function getSeenStories() {
   try { return JSON.parse(localStorage.getItem("seenStories") || "{}"); } catch(e) { return {}; }
 }
+
 function markStorySeen(id) {
   const seen = getSeenStories(); seen[id] = true; localStorage.setItem("seenStories", JSON.stringify(seen));
 }
 
 function openStoryViewer(uid) {
-  const statuses = userStatuses[uid]; if (!statuses || !statuses.length) return;
+  const statuses = userStatuses[uid]; 
+  if (!statuses || !statuses.length) return;
+  
   viewingStoryUid = uid;
   storyViewerData = statuses.sort((a,b) => a.createdAt - b.createdAt);
   storyViewerIndex = 0;
+  
+  // Check if viewing own stories
+  const isOwnStory = (uid === currentUser.uid);
+  isPlayingOwnStory = isOwnStory;
+  
   const user = allUsersData.find(u => u.uid === uid);
   document.getElementById("storyUserAv").src = user?.photoUrl || user?.photo || "https://i.imgur.com/HeIi0wU.png";
   document.getElementById("storyUserName").textContent = user?.displayName || user?.name || "User";
+  
+  // Show/hide delete button based on whether it's own story
+  const deleteBtn = document.getElementById("storyDeleteBtn");
+  if (isOwnStory) {
+    deleteBtn.style.display = "block";
+    deleteBtn.style.pointerEvents = "auto";
+    deleteBtn.style.opacity = "1";
+  } else {
+    deleteBtn.style.display = "none";
+    deleteBtn.style.pointerEvents = "none";
+    deleteBtn.style.opacity = "0";
+  }
+  
   document.getElementById("storyViewerOverlay").classList.add("active");
   renderStorySlide(0);
 }
@@ -1686,10 +1611,9 @@ function renderStorySlide(idx) {
     bar.appendChild(fill); progressRow.appendChild(bar);
   });
 
-  // Time
   document.getElementById("storyUserTime").textContent = formatLastSeen(story.createdAt);
 
-  // Background blur
+  // Background
   const bg = document.getElementById("storyViewerBg"); bg.innerHTML = "";
   if (story.url) {
     const bgEl = story.type === "video" ? document.createElement("video") : document.createElement("img");
@@ -1701,31 +1625,74 @@ function renderStorySlide(idx) {
 
   // Content
   const content = document.getElementById("storyViewerContent"); content.innerHTML = "";
-  if (story.type === "image" && story.url) {
-    const img = document.createElement("img"); img.src = story.url; img.alt = "story"; content.appendChild(img);
-    if (story.text) {
-      const txt = document.createElement("div"); txt.style.cssText = "position:absolute;bottom:130px;left:0;right:0;text-align:center;font-size:18px;font-weight:700;color:white;text-shadow:0 2px 8px rgba(0,0,0,0.8);padding:0 20px;word-break:break-word;line-height:1.4;"; txt.textContent = story.text; content.appendChild(txt);
+
+  // Helper function to start animation with proper duration
+  function startStoryAnimation(duration) {
+    storyCurrentDuration = duration;
+    
+    // Animate progress bar
+    clearTimeout(storyTimer); cancelAnimationFrame(storyAnimFrame);
+    const fillEl = document.getElementById(`spf-${idx}`); if (!fillEl) return;
+    storyProgressStart = Date.now();
+
+    function animFill() {
+      const elapsed = Date.now() - storyProgressStart;
+      const pct = Math.min((elapsed / storyCurrentDuration) * 100, 100);
+      fillEl.style.width = pct + "%";
+      if (pct < 100) storyAnimFrame = requestAnimationFrame(animFill);
+      else { storyViewerIndex++; renderStorySlide(storyViewerIndex); }
     }
-  } else if (story.type === "video" && story.url) {
-    const vid = document.createElement("video"); vid.src = story.url; vid.autoplay = true; vid.playsInline = true; vid.controls = true; content.appendChild(vid);
-  } else if (story.type === "text" || story.text) {
-    const div = document.createElement("div"); div.className = "story-text-slide"; div.textContent = story.text || ""; content.appendChild(div);
+
+    storyAnimFrame = requestAnimationFrame(animFill);
   }
 
-  // Animate progress bar
-  clearTimeout(storyTimer); cancelAnimationFrame(storyAnimFrame);
-  const fillEl = document.getElementById(`spf-${idx}`); if (!fillEl) return;
-  storyProgressStart = Date.now();
-  function animFill() {
-    const elapsed = Date.now() - storyProgressStart;
-    const pct = Math.min((elapsed / STORY_DURATION) * 100, 100);
-    fillEl.style.width = pct + "%";
-    if (pct < 100) storyAnimFrame = requestAnimationFrame(animFill);
-    else { storyViewerIndex++; renderStorySlide(storyViewerIndex); }
+  // Handle different story types
+  if (story.type === "image" && story.url) {
+    const img = document.createElement("img"); 
+    img.src = story.url; 
+    img.alt = "story"; 
+    content.appendChild(img);
+    if (story.text) {
+      const txt = document.createElement("div"); 
+      txt.style.cssText = "position:absolute;bottom:130px;left:0;right:0;text-align:center;font-size:18px;font-weight:700;color:white;text-shadow:0 2px 8px rgba(0,0,0,0.8);padding:0 20px;word-break:break-word;line-height:1.4;"; 
+      txt.textContent = story.text; 
+      content.appendChild(txt);
+    }
+    startStoryAnimation(5000); // Images: 5 seconds
+  } 
+  else if (story.type === "video" && story.url) {
+    const vid = document.createElement("video"); 
+    vid.src = story.url; 
+    vid.autoplay = true; 
+    vid.playsInline = true;
+    content.appendChild(vid);
+    
+    // Wait for video metadata to load BEFORE starting animation
+    let metadataLoaded = false;
+    
+    vid.addEventListener("loadedmetadata", () => {
+      metadataLoaded = true;
+      const actualDuration = Math.ceil(vid.duration * 1000);
+      console.log("Video duration detected:", actualDuration, "ms");
+      startStoryAnimation(actualDuration > 0 ? actualDuration : 5000);
+    });
+    
+    // Fallback: if metadata doesn't load in 3 seconds, use default
+    setTimeout(() => {
+      if (!metadataLoaded) {
+        console.log("Video metadata timeout, using default 5 seconds");
+        startStoryAnimation(5000);
+      }
+    }, 3000);
+  } 
+  else if (story.type === "text" || story.text) {
+    const div = document.createElement("div"); 
+    div.className = "story-text-slide"; 
+    div.textContent = story.text || ""; 
+    content.appendChild(div);
+    startStoryAnimation(6000); // Text: 6 seconds
   }
-  storyAnimFrame = requestAnimationFrame(animFill);
 
-  // Add db view record
   db.collection("status").doc(story.id).update({ viewers: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) }).catch(()=>{});
 }
 
@@ -1734,15 +1701,73 @@ function nextStorySlide() {
   const fill = document.getElementById(`spf-${storyViewerIndex}`); if (fill) fill.style.width = "100%";
   storyViewerIndex++; renderStorySlide(storyViewerIndex);
 }
+
 function prevStorySlide() {
   cancelAnimationFrame(storyAnimFrame);
   storyViewerIndex = Math.max(0, storyViewerIndex - 1); renderStorySlide(storyViewerIndex);
 }
+
 function closeStoryViewer() {
-  cancelAnimationFrame(storyAnimFrame); clearTimeout(storyTimer);
+  // Stop video playback
+  const videos = document.querySelectorAll("#storyViewerContent video");
+  videos.forEach(vid => {
+    vid.pause();
+    vid.currentTime = 0;
+  });
+  
+  // Clear background
+  const bg = document.getElementById("storyViewerBg");
+  bg.innerHTML = "";
+  bg.style.background = "";
+  
+  // Cancel animations
+  cancelAnimationFrame(storyAnimFrame);
+  clearTimeout(storyTimer);
+  
+  // Close overlay
   document.getElementById("storyViewerOverlay").classList.remove("active");
-  storyViewerData = null; storyViewerIndex = 0; viewingStoryUid = null;
+  storyViewerData = null;
+  storyViewerIndex = 0;
+  viewingStoryUid = null;
+  isPlayingOwnStory = false;
   renderStoriesBar();
+}
+
+async function deleteStory() {
+  if (!isPlayingOwnStory || !storyViewerData) {
+    console.log("Cannot delete: isPlayingOwnStory =", isPlayingOwnStory, "storyViewerData =", !!storyViewerData);
+    return;
+  }
+  
+  if (!confirm("Delete this story permanently?")) return;
+  
+  try {
+    const story = storyViewerData[storyViewerIndex];
+    console.log("Deleting story:", story.id);
+    
+    // Delete the story from Firestore
+    await db.collection("status").doc(story.id).delete();
+    
+    console.log("Story deleted successfully");
+    showToast("✓ Story deleted");
+    
+    // Remove from local array
+    storyViewerData.splice(storyViewerIndex, 1);
+    
+    // If there are more stories, show next one
+    if (storyViewerData.length > 0) {
+      if (storyViewerIndex >= storyViewerData.length) {
+        storyViewerIndex = storyViewerData.length - 1;
+      }
+      renderStorySlide(storyViewerIndex);
+    } else {
+      // No more stories, close viewer
+      closeStoryViewer();
+    }
+  } catch(error) {
+    console.error("Error deleting story:", error);
+    showToast("Failed to delete story");
+  }
 }
 
 async function sendStoryReply() {
@@ -1750,7 +1775,6 @@ async function sendStoryReply() {
   const inp = document.getElementById("storyReplyInput"); const text = inp.value.trim(); if (!text) return;
   const story = storyViewerData[storyViewerIndex];
   const storyOwnerUid = story.uid;
-  // Store the reply as a special chat message
   if (storyOwnerUid !== currentUser.uid) {
     await db.collection("chats").add({
       from: currentUser.uid, to: storyOwnerUid,
@@ -1758,7 +1782,6 @@ async function sendStoryReply() {
       status:"sent", edited:false, read:false, createdAt:Date.now(), storyReply: story.id
     });
   }
-  // Also store in story replies subcollection
   await db.collection("status").doc(story.id).collection("replies").add({
     from: currentUser.uid, fromName: document.getElementById("myName").textContent,
     fromPhoto: document.getElementById("myPic").src,
@@ -1808,7 +1831,19 @@ function openStatusModal() {
   document.getElementById("statusTextInput").value = "";
   document.getElementById("statusModalOverlay").classList.add("active");
 }
+
 function closeStatusModal() { document.getElementById("statusModalOverlay").classList.remove("active"); statusFile = null; }
+
+function openStatusModalFromViewer() {
+  // Open modal on top of viewer (seamless posting experience)
+  statusTab = 'image'; 
+  statusFile = null;
+  document.querySelectorAll(".status-tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("tabImage").classList.add("active");
+  document.getElementById("statusPreview").innerHTML = '<span>Preview</span>';
+  document.getElementById("statusTextInput").value = "";
+  document.getElementById("statusModalOverlay").classList.add("active");
+}
 function handleStatusOverlayClick(e) { if (e.target === document.getElementById("statusModalOverlay")) closeStatusModal(); }
 
 function switchStatusTab(tab) {
@@ -1819,14 +1854,17 @@ function switchStatusTab(tab) {
   if (tab === 'image') document.getElementById("statusImageInput").click();
   else if (tab === 'video') document.getElementById("statusVideoInput").click();
 }
+
 function previewStatusImage(e) {
   const file = e.target.files[0]; if (!file) return; statusFile = file;
   const reader = new FileReader(); reader.onload = ev => { document.getElementById("statusPreview").innerHTML = `<img src="${ev.target.result}">`; }; reader.readAsDataURL(file);
 }
+
 function previewStatusVideo(e) {
   const file = e.target.files[0]; if (!file) return; statusFile = file;
   const reader = new FileReader(); reader.onload = ev => { document.getElementById("statusPreview").innerHTML = `<video src="${ev.target.result}" autoplay muted loop></video>`; }; reader.readAsDataURL(file);
 }
+
 async function publishStatus() {
   const text = document.getElementById("statusTextInput").value.trim();
   if (!statusFile && !text && statusTab !== 'text') { alert("Add content first"); return; }
@@ -1847,217 +1885,31 @@ async function publishStatus() {
 }
 
 /* =====================================================
-   CALLS — PEER.JS BASED (FUNCTIONAL)
+   AI PANEL
    ===================================================== */
-function initPeer() {
-  if (!currentUser) return;
-  const peerId = "nexa_" + currentUser.uid.replace(/[^a-zA-Z0-9]/g, "_");
-  try {
-    myPeer = new Peer(peerId, { debug: 1 });
-    myPeer.on("open", id => { console.log("PeerJS ready:", id); updatePeerId(id); });
-    myPeer.on("call", handleIncomingPeerCall);
-    myPeer.on("error", err => { console.warn("PeerJS error:", err.type, err.message); });
-    myPeer.on("disconnected", () => { setTimeout(() => { try { myPeer.reconnect(); } catch(e){} }, 2000); });
-  } catch(e) { console.warn("PeerJS init failed:", e); }
-}
-async function updatePeerId(peerId) {
-  if (!currentUser) return;
-  await db.collection("users").doc(currentUser.uid).update({ peerId }).catch(() => {});
+function openAI() {
+  document.getElementById('aiPanel').classList.add('active');
+  resetAIIframe();
 }
 
-/* CALL OPTIONS POPUP */
-function openCallOptions() {
-  if (!selectedUser) { alert("Select a user first"); return; }
-  document.getElementById("callOptionsOverlay").classList.add("active");
-}
-function closeCallOptions() { document.getElementById("callOptionsOverlay").classList.remove("active"); }
-function handleCallOptionsOverlayClick(e) { if (e.target === document.getElementById("callOptionsOverlay")) closeCallOptions(); }
-
-function startVoiceCall() { closeCallOptions(); initiateCall('voice'); }
-function startVideoCall() { closeCallOptions(); initiateCall('video'); }
-
-async function initiateCall(type) {
-  if (!selectedUser) return;
-  currentCallType = type;
-  // Write a call signal to Firestore so the other user gets notified
-  const callRef = await db.collection("calls").add({
-    caller: currentUser.uid,
-    callerName: document.getElementById("myName").textContent,
-    callerPhoto: document.getElementById("myPic").src,
-    receiver: selectedUser.uid,
-    type,
-    status: 'ringing',
-    createdAt: Date.now()
-  });
-  currentCallDoc = callRef;
-  // Show "calling…" UI reusing active call overlay
-  document.getElementById("activeCallAvatar").src = selectedUser.photoUrl || selectedUser.photo || "https://i.imgur.com/HeIi0wU.png";
-  document.getElementById("activeCallName").textContent = selectedUser.displayName || selectedUser.name || "User";
-  document.getElementById("callTimer").textContent = "Calling…";
-  document.getElementById("voiceWaveContainer").style.display = "none";
-  document.getElementById("videoContainer").style.display = "none";
-  document.getElementById("videoBtn").style.display = "none";
-  document.getElementById("activeCallOverlay").classList.add("active");
-  // Listen for call status changes
-  if (callUnsub) callUnsub();
-  callUnsub = db.collection("calls").doc(callRef.id).onSnapshot(doc => {
-    const data = doc.data(); if (!data) return;
-    if (data.status === "accepted") { startCallStream(type, true, doc.id); }
-    else if (data.status === "declined") {
-      document.getElementById("activeCallOverlay").classList.remove("active");
-      showToast("Call declined");
-      currentCallDoc = null; if (callUnsub) { callUnsub(); callUnsub = null; }
-    } else if (data.status === "ended") {
-      cleanupCall();
-    }
-  });
+function closeAI() {
+  document.getElementById('aiPanel').classList.remove('active');
 }
 
-function listenCallSignals() {
-  db.collection("calls").where("receiver","==",currentUser.uid).where("status","==","ringing").onSnapshot(snap => {
-    snap.docChanges().forEach(change => {
-      if (change.type !== "added") return;
-      const data = change.doc.data();
-      // Only show if fresh (< 30s old)
-      if (Date.now() - data.createdAt > 30000) return;
-      currentCallDoc = db.collection("calls").doc(change.doc.id);
-      currentCallType = data.type || 'voice';
-      document.getElementById("callAvatar").src = data.callerPhoto || "https://i.imgur.com/HeIi0wU.png";
-      document.getElementById("callName").textContent = data.callerName || "Incoming Call";
-      document.getElementById("callStatusText").textContent = data.type === "video" ? "📹 Incoming Video Call" : "☎️ Incoming Voice Call";
-      document.getElementById("incomingCallOverlay").classList.add("active");
-      // Notify
-      showNotif(data.callerName || "Incoming Call", { body: `${data.type === 'video' ? 'Video' : 'Voice'} call` });
-    });
-  });
+function resetAIIframe() {
+  const iframe = document.getElementById('askifyIframe');
+  const loading = document.getElementById('aiLoading');
+  loading.classList.remove('hidden');
+  iframe.src = 'https://askifyai.onrender.com/';
+  setTimeout(() => {
+    if (!loading.classList.contains('hidden')) loading.classList.add('hidden');
+  }, 8000);
 }
 
-async function acceptCall() {
-  document.getElementById("incomingCallOverlay").classList.remove("active");
-  if (!currentCallDoc) return;
-  await currentCallDoc.update({ status: "accepted" });
-  const snap = await currentCallDoc.get(); const data = snap.data();
-  // Set up UI for receiver
-  const callerUid = data.caller;
-  const callerUser = allUsersData.find(u => u.uid === callerUid) || { displayName: data.callerName, photoUrl: data.callerPhoto };
-  document.getElementById("activeCallAvatar").src = callerUser.photoUrl || "https://i.imgur.com/HeIi0wU.png";
-  document.getElementById("activeCallName").textContent = callerUser.displayName || "Caller";
-  document.getElementById("callTimer").textContent = "Connecting…";
-  document.getElementById("voiceWaveContainer").style.display = "none";
-  document.getElementById("videoContainer").style.display = "none";
-  document.getElementById("activeCallOverlay").classList.add("active");
-  await startCallStream(data.type || 'voice', false, snap.id);
-}
-
-function declineCall() {
-  document.getElementById("incomingCallOverlay").classList.remove("active");
-  if (currentCallDoc) currentCallDoc.update({ status: "declined" });
-  currentCallDoc = null;
-}
-
-async function startCallStream(type, isCaller, callDocId) {
-  currentCallType = type; isCallActive = true;
-  try {
-    const constraints = type === 'video' ? { audio:true, video:{ facingMode:"user", width:320, height:240 } } : { audio:true };
-    localStream = await navigator.mediaDevices.getUserMedia(constraints).catch(async () => navigator.mediaDevices.getUserMedia({ audio:true }));
-  } catch(e) { alert("Could not access media: " + e.message); cleanupCall(); return; }
-
-  if (type === 'video') {
-    document.getElementById("videoContainer").style.display = "block";
-    document.getElementById("videoBtn").style.display = "flex";
-    document.getElementById("localVideo").srcObject = localStream;
-  } else {
-    document.getElementById("voiceWaveContainer").style.display = "flex";
-  }
-
-  startCallTimer();
-
-  // PeerJS call
-  if (!myPeer) { console.warn("PeerJS not ready"); return; }
-
-  if (isCaller) {
-    // Caller: get receiver's peerId
-    const snap = await currentCallDoc.get(); const data = snap.data();
-    const receiverDoc = await db.collection("users").doc(data.receiver).get();
-    const receiverPeerId = receiverDoc.data()?.peerId;
-    if (!receiverPeerId) { console.warn("Receiver peerId not found"); return; }
-    const call = myPeer.call(receiverPeerId, localStream, { metadata: { type, callDocId } });
-    currentCall = call;
-    call.on("stream", remoteStream => { connectRemoteStream(remoteStream, type); });
-    call.on("close", () => cleanupCall());
-    call.on("error", e => console.warn("Call error:", e));
-  } else {
-    // Receiver: wait for incoming PeerJS call
-    const handler = (call) => {
-      currentCall = call;
-      call.answer(localStream);
-      call.on("stream", remoteStream => { connectRemoteStream(remoteStream, type); });
-      call.on("close", () => cleanupCall());
-      call.on("error", e => console.warn("Call error:", e));
-      myPeer.off("call", handler);
-    };
-    myPeer.on("call", handler);
-    // If PeerJS call arrives before listener, handle it
-    if (myPeer._lastIncomingCall) { handler(myPeer._lastIncomingCall); myPeer._lastIncomingCall = null; }
-  }
-}
-
-function handleIncomingPeerCall(call) {
-  // Store in case acceptCall hasn't set up the listener yet
-  myPeer._lastIncomingCall = call;
-}
-
-function connectRemoteStream(remoteStream, type) {
-  document.getElementById("callTimer").textContent = "0:00";
-  if (type === "video") {
-    document.getElementById("remoteVideo").srcObject = remoteStream;
-    document.getElementById("videoContainer").style.display = "block";
-    document.getElementById("voiceWaveContainer").style.display = "none";
-  } else {
-    const audio = new Audio(); audio.srcObject = remoteStream; audio.play().catch(() => {});
-    document.getElementById("voiceWaveContainer").style.display = "flex";
-  }
-}
-
-function startCallTimer() {
-  callStartTime = Date.now();
-  clearInterval(callTimerInterval);
-  callTimerInterval = setInterval(() => {
-    const dur = Math.floor((Date.now() - callStartTime) / 1000);
-    document.getElementById("callTimer").textContent = `${Math.floor(dur/60)}:${(dur%60).toString().padStart(2,"0")}`;
-  }, 1000);
-}
-
-function toggleMute() {
-  isMuted = !isMuted;
-  if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-  const btn = document.getElementById("muteBtn"); btn.classList.toggle("active", isMuted); btn.textContent = isMuted ? "🔇" : "🔊";
-}
-function toggleVideoTrack() {
-  isVideoOff = !isVideoOff;
-  if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = !isVideoOff);
-  const btn = document.getElementById("videoBtn"); btn.classList.toggle("off", isVideoOff); btn.textContent = isVideoOff ? "📵" : "📷";
-}
-
-function endCall() {
-  if (currentCallDoc) currentCallDoc.update({ status: "ended" }).catch(() => {});
-  cleanupCall();
-}
-function cleanupCall() {
-  clearInterval(callTimerInterval); isCallActive = false; isMuted = false; isVideoOff = false;
-  if (currentCall) { try { currentCall.close(); } catch(e){} currentCall = null; }
-  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-  if (callUnsub) { callUnsub(); callUnsub = null; }
-  document.getElementById("activeCallOverlay").classList.remove("active");
-  document.getElementById("incomingCallOverlay").classList.remove("active");
-  document.getElementById("videoContainer").style.display = "none";
-  document.getElementById("videoBtn").style.display = "none";
-  document.getElementById("voiceWaveContainer").style.display = "none";
-  document.getElementById("muteBtn").classList.remove("active");
-  document.getElementById("muteBtn").textContent = "🔊";
-  document.getElementById("callTimer").textContent = "0:00";
-  currentCallDoc = null;
-}
+const _aiIframe = document.getElementById('askifyIframe');
+_aiIframe.addEventListener('load', () => {
+  document.getElementById('aiLoading').classList.add('hidden');
+});
 
 /* =====================================================
    PREFS
@@ -2068,6 +1920,7 @@ function loadPrefs() {
     mutedChats = p.muted || {}; favoritedChats = p.fav || {}; blockedUsers = p.blocked || {}; latestMsgTime = p.lastTime || {};
   } catch(e) {}
 }
+
 function savePrefs() {
   localStorage.setItem("nexaPrefs", JSON.stringify({ muted:mutedChats, fav:favoritedChats, blocked:blockedUsers, lastTime:latestMsgTime }));
 }
@@ -2076,18 +1929,21 @@ function savePrefs() {
    UTILS
    ===================================================== */
 function formatTime(ts) { return new Date(ts).toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit" }); }
+
 function fmtDateSep(ts) {
   const d = new Date(ts), t = new Date(), y = new Date(t); y.setDate(t.getDate()-1);
   if (d.toDateString() === t.toDateString()) return "Today";
   if (d.toDateString() === y.toDateString()) return "Yesterday";
   return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
 }
+
 function linkify(t) {
   return t.replace(/(\b(https?:\/\/|www\.)[^\s]+)/gi, url => {
     const h = url.match(/^https?:\/\//) ? url : "http://" + url;
     return `<a href="${h}" target="_blank">${url}</a>`;
   });
 }
+
 function openUserProfile() { if (!selectedUser) alert("Select a user first"); }
 </script>
 </body>
