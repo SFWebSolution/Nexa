@@ -13,7 +13,7 @@
   <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js"></script>
   <style>
 /* =====================================================
-   NEXA MESSENGER — FULLY IMPROVED EDITION
+   NEXA MESSENGER — WITH THEMES & STORY REPLIES
    ===================================================== */
 *, *::before, *::after {
   margin: 0; padding: 0;
@@ -59,7 +59,220 @@
   --radius-lg: 20px;
 }
 
-html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); color:var(--text-1); font-family:'Inter',sans-serif; letter-spacing:0.2px; -webkit-font-smoothing:antialiased; }
+/* THEME VARIANTS */
+:root[data-theme="midnight"] {
+  --primary: #1e40af; --primary-dk: #1e3a8a; --primary-lt: #3b82f6;
+  --bg-0: #0f172a; --bg-1: #1e293b; --bg-2: #334155; --bg-3: #475569;
+  --cyan: #0284c7; --online: #0ea5e9;
+}
+
+:root[data-theme="ocean"] {
+  --primary: #0891b2; --primary-dk: #0e7490; --primary-lt: #06b6d4;
+  --bg-0: #082f49; --bg-1: #0c2a47; --bg-2: #154e83; --bg-3: #1e5a96;
+  --cyan: #00d9ff; --online: #14b8a6;
+}
+
+:root[data-theme="forest"] {
+  --primary: #15803d; --primary-dk: #166534; --primary-lt: #22c55e;
+  --bg-0: #1a3a1a; --bg-1: #2d5a2d; --bg-2: #3f7a3f; --bg-3: #4a9d4a;
+  --cyan: #10b981; --online: #34d399;
+}
+
+:root[data-theme="sunset"] {
+  --primary: #f97316; --primary-dk: #ea580c; --primary-lt: #fb923c;
+  --bg-0: #3f1a0f; --bg-1: #5f2e1a; --bg-2: #7f4226; --bg-3: #9d5833;
+  --cyan: #f59e0b; --online: #fbbf24;
+}
+
+:root[data-theme="lavender"] {
+  --primary: #a855f7; --primary-dk: #9333ea; --primary-lt: #c084fc;
+  --bg-0: #2d1b4e; --bg-1: #3d2463; --bg-2: #4d2d7a; --bg-3: #5d3691;
+  --cyan: #d8b4fe; --online: #e9d5ff;
+}
+
+:root[data-theme="rose"] {
+  --primary: #e11d48; --primary-dk: #be185d; --primary-lt: #f43f5e;
+  --bg-0: #500724; --bg-1: #6b1b35; --bg-2: #862946; --bg-3: #a13957;
+  --cyan: #f472b6; --online: #fb7185;
+}
+
+:root[data-theme="neon"] {
+  --primary: #0ff; --primary-dk: #00ccff; --primary-lt: #33ffff;
+  --bg-0: #0a0e27; --bg-1: #0f1440; --bg-2: #1a2659; --bg-3: #253872;
+  --cyan: #0ff; --online: #00ff88;
+}
+
+:root[data-theme="obsidian"] {
+  --primary: #646464; --primary-dk: #3a3a3a; --primary-lt: #8b8b8b;
+  --bg-0: #0a0a0a; --bg-1: #1a1a1a; --bg-2: #2a2a2a; --bg-3: #3a3a3a;
+  --cyan: #888888; --online: #cccccc;
+}
+
+:root[data-theme="gold"] {
+  --primary: #d4af37; --primary-dk: #b8941e; --primary-lt: #f4d03f;
+  --bg-0: #1a1410; --bg-1: #2a1e0f; --bg-2: #3a2e1f; --bg-3: #4a3e2f;
+  --cyan: #ffd700; --online: #ffed4e;
+}
+
+:root[data-theme="crimson"] {
+  --primary: #dc2626; --primary-dk: #b91c1c; --primary-lt: #ef4444;
+  --bg-0: #4c0519; --bg-1: #6d0e2a; --bg-2: #8e153b; --bg-3: #af1c4c;
+  --cyan: #f87171; --online: #fca5a5;
+}
+
+:root[data-theme="arctic"] {
+  --primary: #06b6d4; --primary-dk: #0891b2; --primary-lt: #22d3ee;
+  --bg-0: #f0f9ff; --bg-1: #e0f2fe; --bg-2: #cffafe; --bg-3: #a5f3fc;
+  --text-0: #0c2340; --text-1: #164e63; --text-2: #164e63; --text-3: #0e5a6f;
+  --cyan: #06b6d4; --online: #00d9d9;
+}
+
+:root[data-theme="galaxy"] {
+  --primary: #7c3aed; --primary-dk: #6d28d9; --primary-lt: #a78bfa;
+  --bg-0: #1e1b4b; --bg-1: #312e81; --bg-2: #4c1d95; --bg-3: #6b21a8;
+  --cyan: #6366f1; --online: #8b5cf6;
+}
+
+:root[data-theme="mint"] {
+  --primary: #14b8a6; --primary-dk: #0d9488; --primary-lt: #2dd4bf;
+  --bg-0: #0f2f2f; --bg-1: #134e4a; --bg-2: #0f766e; --bg-3: #115e59;
+  --cyan: #14b8a6; --online: #2dd4bf;
+}
+
+:root[data-theme="inferno"] {
+  --primary: #ff4500; --primary-dk: #cc3700; --primary-lt: #ff6b35;
+  --bg-0: #2d1b00; --bg-1: #4d2b00; --bg-2: #6d3b00; --bg-3: #8d4b00;
+  --cyan: #ff9800; --online: #ffb74d;
+}
+
+/* PREMIUM THEMES WITH EFFECTS */
+:root[data-theme="cosmic"] {
+  --primary: #0ff; --primary-dk: #00aaff; --primary-lt: #33ffff;
+  --bg-0: #0a0e27; --bg-1: #0f1440; --bg-2: #1a2659; --bg-3: #253872;
+  --cyan: #00d9ff; --online: #00ff88;
+}
+
+:root[data-theme="cyberpunk"] {
+  --primary: #ff006e; --primary-dk: #cc0055; --primary-lt: #ff3385;
+  --bg-0: #0a0015; --bg-1: #1a002a; --bg-2: #2a0055; --bg-3: #3a0080;
+  --cyan: #00f5ff; --online: #ff006e;
+}
+
+:root[data-theme="aurora"] {
+  --primary: #00ff88; --primary-dk: #00cc6a; --primary-lt: #33ffaa;
+  --bg-0: #0a1f2e; --bg-1: #0d3a52; --bg-2: #1a5a7a; --bg-3: #2a7a9a;
+  --cyan: #00ffcc; --online: #00ff88;
+}
+
+:root[data-theme="saturn"] {
+  --primary: #d4af37; --primary-dk: #b8941e; --primary-lt: #f4d03f;
+  --bg-0: #1a1410; --bg-1: #2a1e0f; --bg-2: #3a2e1f; --bg-3: #4a3e2f;
+  --cyan: #ffd700; --online: #ffed4e;
+}
+
+:root[data-theme="lava"] {
+  --primary: #ff4500; --primary-dk: #cc3700; --primary-lt: #ff6b35;
+  --bg-0: #2d1b00; --bg-1: #4d2b00; --bg-2: #6d3b00; --bg-3: #8d4b00;
+  --cyan: #ff9800; --online: #ffb74d;
+}
+
+:root[data-theme="frozen"] {
+  --primary: #00d9ff; --primary-dk: #00aacc; --primary-lt: #33ffff;
+  --bg-0: #0a1f2e; --bg-1: #0d3a52; --bg-2: #1a5a7a; --bg-3: #2a7a9a;
+  --cyan: #00ffff; --online: #66ffff;
+}
+
+:root[data-theme="eclipse"] {
+  --primary: #ffd700; --primary-dk: #ffcc00; --primary-lt: #ffed4e;
+  --bg-0: #0a0a0a; --bg-1: #1a1a1a; --bg-2: #2a2a2a; --bg-3: #3a3a3a;
+  --cyan: #ffaa00; --online: #ffdd00;
+}
+
+:root[data-theme="abyss"] {
+  --primary: #00d9ff; --primary-dk: #00aacc; --primary-lt: #33ffff;
+  --bg-0: #0a1f2e; --bg-1: #0d3a52; --bg-2: #1a5a7a; --bg-3: #2a7a9a;
+  --cyan: #00ffff; --online: #66ffff;
+}
+
+:root[data-theme="quantum"] {
+  --primary: #a855f7; --primary-dk: #9333ea; --primary-lt: #c084fc;
+  --bg-0: #1a0f2e; --bg-1: #2a1a4a; --bg-2: #3a2a6a; --bg-3: #4a3a8a;
+  --cyan: #e879f9; --online: #d8b4fe;
+}
+
+:root[data-theme="prism"] {
+  --primary: #ff006e; --primary-dk: #cc0055; --primary-lt: #ff3385;
+  --bg-0: #0a0015; --bg-1: #1a002a; --bg-2: #2a0055; --bg-3: #3a0080;
+  --cyan: #00f5ff; --online: #ff006e;
+}
+
+:root[data-theme="meteor"] {
+  --primary: #ffd700; --primary-dk: #ffcc00; --primary-lt: #ffed4e;
+  --bg-0: #1a1a2e; --bg-1: #16213e; --bg-2: #0f3460; --bg-3: #533483;
+  --cyan: #e94560; --online: #ffd700;
+}
+
+:root[data-theme="dragon"] {
+  --primary: #ff4500; --primary-dk: #cc3700; --primary-lt: #ff6b35;
+  --bg-0: #2d1b00; --bg-1: #4d2b00; --bg-2: #6d3b00; --bg-3: #8d4b00;
+  --cyan: #ff9800; --online: #ffb74d;
+}
+
+:root[data-theme="matrix"] {
+  --primary: #00ff00; --primary-dk: #00cc00; --primary-lt: #33ff33;
+  --bg-0: #000000; --bg-1: #0a0a0a; --bg-2: #1a1a1a; --bg-3: #2a2a2a;
+  --cyan: #00ff00; --online: #00ff00;
+}
+
+:root[data-theme="blackhole"] {
+  --primary: #a78bfa; --primary-dk: #8b5cf6; --primary-lt: #c4b5fd;
+  --bg-0: #0a0a0a; --bg-1: #1a1a1a; --bg-2: #2a2a2a; --bg-3: #3a3a3a;
+  --cyan: #8b5cf6; --online: #c4b5fd;
+}
+
+:root[data-theme="tokyo"] {
+  --primary: #ff006e; --primary-dk: #cc0055; --primary-lt: #ff3385;
+  --bg-0: #0a0015; --bg-1: #1a002a; --bg-2: #2a0055; --bg-3: #3a0080;
+  --cyan: #00f5ff; --online: #ff006e;
+}
+
+:root[data-theme="celestial"] {
+  --primary: #ffd700; --primary-dk: #ffcc00; --primary-lt: #ffed4e;
+  --bg-0: #0a0a1a; --bg-1: #1a1a2a; --bg-2: #2a2a4a; --bg-3: #3a3a6a;
+  --cyan: #ffd700; --online: #ffed4e;
+}
+
+:root[data-theme="biotech"] {
+  --primary: #00ff00; --primary-dk: #00cc00; --primary-lt: #33ff33;
+  --bg-0: #0a1a0a; --bg-1: #0a2a0a; --bg-2: #1a3a1a; --bg-3: #2a4a2a;
+  --cyan: #00ff88; --online: #00ff00;
+}
+
+:root[data-theme="phoenix"] {
+  --primary: #ff4500; --primary-dk: #cc3700; --primary-lt: #ff6b35;
+  --bg-0: #2d1b00; --bg-1: #4d2b00; --bg-2: #6d3b00; --bg-3: #8d4b00;
+  --cyan: #ff9800; --online: #ffb74d;
+}
+
+:root[data-theme="shadow"] {
+  --primary: #a855f7; --primary-dk: #9333ea; --primary-lt: #c084fc;
+  --bg-0: #1a0f2e; --bg-1: #2a1a4a; --bg-2: #3a2a6a; --bg-3: #4a3a8a;
+  --cyan: #e879f9; --online: #d8b4fe;
+}
+
+:root[data-theme="multiverse"] {
+  --primary: #ff006e; --primary-dk: #cc0055; --primary-lt: #ff3385;
+  --bg-0: #0a0015; --bg-1: #1a002a; --bg-2: #2a0055; --bg-3: #3a0080;
+  --cyan: #00f5ff; --online: #ff006e;
+}
+
+:root[data-theme="infinity"] {
+  --primary: #00ffff; --primary-dk: #00cccc; --primary-lt: #33ffff;
+  --bg-0: #0a0015; --bg-1: #1a002a; --bg-2: #2a0055; --bg-3: #3a0080;
+  --cyan: #00ffff; --online: #00ff88;
+}
+
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); color:var(--text-1); font-family:'Inter',sans-serif; letter-spacing:0.2px; -webkit-font-smoothing:antialiased; transition:background 0.4s ease, color 0.4s ease; }
 ::-webkit-scrollbar { width:4px; height:4px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:rgba(79,143,255,0.3); border-radius:2px; }
@@ -223,6 +436,11 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .reply-quote { padding:7px 10px; border-radius:10px; margin-bottom:8px; border-left:3px solid var(--cyan); background:rgba(0,0,0,0.2); }
 .reply-quote-author { font-size:10px; font-weight:700; color:var(--cyan); margin-bottom:2px; }
 .reply-quote-text { font-size:12px; color:var(--text-2); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.story-reply-preview { width:100%; border-radius:12px; overflow:hidden; margin-bottom:8px; cursor:pointer; transition:all var(--tf); }
+.story-reply-preview:hover { transform:scale(1.02); box-shadow:0 0 12px rgba(79,143,255,0.3); }
+.story-reply-preview-img { width:100%; max-height:180px; object-fit:cover; }
+.story-reply-preview-video { width:100%; max-height:180px; object-fit:cover; }
+.story-reply-preview-text { width:100%; max-height:180px; padding:20px; background:linear-gradient(135deg,var(--primary),var(--primary-dk)); display:flex; align-items:center; justify-content:center; color:white; font-size:16px; font-weight:700; text-align:center; word-break:break-word; }
 .msg-reactions { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
 .reaction { padding:3px 8px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); border-radius:12px; font-size:12px; cursor:pointer; transition:all var(--tf); display:flex; align-items:center; gap:3px; }
 .reaction:hover { background:rgba(255,255,255,0.14); transform:scale(1.12) translateY(-1px); }
@@ -544,6 +762,10 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .media-thumb { aspect-ratio:1; border-radius:11px; overflow:hidden; cursor:pointer; transition:all var(--tf); border:1px solid var(--border-md); background:var(--bg-4); }
 .media-thumb:hover { transform:scale(1.06); border-color:var(--primary); }
 .media-thumb img { width:100%; height:100%; object-fit:cover; }
+.theme-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.theme-btn { padding:12px; border:2px solid var(--border-md); border-radius:11px; background:rgba(22,32,46,0.5); cursor:pointer; font-size:11px; font-weight:600; text-align:center; color:var(--text-2); transition:all var(--tf); }
+.theme-btn:hover { border-color:var(--primary); background:rgba(79,143,255,0.1); transform:translateY(-2px); }
+.theme-btn.active { border-color:var(--primary); background:rgba(79,143,255,0.2); color:var(--primary); }
 .info-action { display:flex; align-items:center; gap:11px; padding:12px 12px; margin-bottom:8px; background:rgba(22,32,46,0.5); border:1px solid var(--border-md); border-radius:11px; cursor:pointer; transition:all var(--tf); }
 .info-action:hover { background:rgba(79,143,255,0.09); border-color:var(--primary); transform:translateX(2px); }
 .info-action.danger:hover { background:rgba(255,56,96,0.12); border-color:var(--danger); color:var(--danger); }
@@ -621,6 +843,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   .header-actions { gap:5px; }
   .info-panel { width:100%; right:-100%; }
   .status-modal { max-width:calc(100% - 24px); }
+  .theme-grid { grid-template-columns:repeat(2,1fr); }
 }
 @media (max-width:480px) {
   :root { --tf:0.14s; --t:0.24s; }
@@ -648,6 +871,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   .ai-header { height:54px; padding:0 12px; }
   .ai-back-btn { width:36px; height:36px; }
   .ctx-item { padding:9px 13px; font-size:12px; }
+  .theme-grid { grid-template-columns:repeat(2,1fr); gap:6px; }
 }
   </style>
 </head>
@@ -842,6 +1066,10 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
     <div class="media-grid" id="mediaGrid"><div style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:18px;font-size:13px">No media yet</div></div>
   </div>
   <div class="info-section">
+    <div class="info-sec-title">Chat Theme</div>
+    <div class="theme-grid" id="themeGrid"></div>
+  </div>
+  <div class="info-section">
     <div class="info-sec-title">Actions</div>
     <div class="info-action" onclick="muteChat()"><span class="ia-icon">🔕</span><span class="ia-text" id="muteText">Mute Notifications</span></div>
     <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon">⭐</span><span class="ia-text">Favourite Chat</span></div>
@@ -872,6 +1100,48 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 const CLOUD_NAME = "doasf3d1u";
 const UPLOAD_PRESET = "NeuroStack";
 
+const THEMES = {
+  // Classic themes
+  nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
+  midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
+  ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
+  forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
+  sunset: { label: '🌅 Sunset Glow', attr: 'sunset', tier: 'classic' },
+  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' },
+  rose: { label: '🌹 Rose Pink', attr: 'rose', tier: 'classic' },
+  neon: { label: '⚡ Neon Pulse', attr: 'neon', tier: 'classic' },
+  obsidian: { label: '🖤 Obsidian', attr: 'obsidian', tier: 'classic' },
+  gold: { label: '✨ Gold Elite', attr: 'gold', tier: 'classic' },
+  crimson: { label: '🔴 Crimson', attr: 'crimson', tier: 'classic' },
+  arctic: { label: '🩵 Arctic Ice', attr: 'arctic', tier: 'classic' },
+  galaxy: { label: '🌌 Galaxy', attr: 'galaxy', tier: 'classic' },
+  mint: { label: '🍃 Mint Fresh', attr: 'mint', tier: 'classic' },
+  inferno: { label: '🔥 Inferno', attr: 'inferno', tier: 'classic' },
+  
+  // Premium themes
+  cosmic: { label: '🌌 Cosmic Nexus', attr: 'cosmic', tier: 'premium' },
+  cyberpunk: { label: '⚡ Cyberpunk 2099', attr: 'cyberpunk', tier: 'premium' },
+  aurora: { label: '🌠 Aurora Borealis', attr: 'aurora', tier: 'premium' },
+  saturn: { label: '🪐 Saturn Rings', attr: 'saturn', tier: 'premium' },
+  lava: { label: '🌋 Lava Core', attr: 'lava', tier: 'premium' },
+  frozen: { label: '❄️ Frozen Kingdom', attr: 'frozen', tier: 'premium' },
+  eclipse: { label: '🌑 Eclipse', attr: 'eclipse', tier: 'premium' },
+  abyss: { label: '🌊 Deep Ocean Abyss', attr: 'abyss', tier: 'premium' },
+  quantum: { label: '🔮 Quantum Realm', attr: 'quantum', tier: 'premium' },
+  prism: { label: '🌈 Prism Dimension', attr: 'prism', tier: 'premium' },
+  meteor: { label: '☄️ Meteor Storm', attr: 'meteor', tier: 'premium' },
+  dragon: { label: '🐉 Dragon Flame', attr: 'dragon', tier: 'premium' },
+  matrix: { label: '🤖 AI Matrix', attr: 'matrix', tier: 'premium' },
+  blackhole: { label: '🕳️ Black Hole', attr: 'blackhole', tier: 'premium' },
+  tokyo: { label: '🌃 Neon Tokyo', attr: 'tokyo', tier: 'premium' },
+  celestial: { label: '👑 Celestial Gold', attr: 'celestial', tier: 'premium' },
+  biotech: { label: '🧬 BioTech Future', attr: 'biotech', tier: 'premium' },
+  phoenix: { label: '🌋 Phoenix Rising', attr: 'phoenix', tier: 'premium' },
+  shadow: { label: '⚔️ Shadow Realm', attr: 'shadow', tier: 'premium' },
+  multiverse: { label: '🌍 Multiverse', attr: 'multiverse', tier: 'premium' },
+  infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
+};
+
 firebase.initializeApp({
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
   authDomain: "mel-odix.firebaseapp.com",
@@ -895,6 +1165,7 @@ let blockedUsers = {};
 let messageRepliedTo = null;
 let allMessages = [];
 let latestMsgTime = {};
+let currentTheme = 'nexa';
 
 // RECORDING
 let mediaRecorder = null;
@@ -919,6 +1190,33 @@ let storyAnimFrame = null;
 let viewingStoryUid = null;
 let storyCurrentDuration = 0;
 let isPlayingOwnStory = false;
+
+/* =====================================================
+   THEME SYSTEM
+   ===================================================== */
+function setTheme(themeName) {
+  const theme = THEMES[themeName];
+  if (!theme) return;
+  currentTheme = themeName;
+  if (themeName === 'nexa') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme.attr);
+  }
+  savePrefs();
+}
+
+function renderThemeGrid() {
+  const grid = document.getElementById('themeGrid');
+  grid.innerHTML = '';
+  Object.entries(THEMES).forEach(([key, theme]) => {
+    const btn = document.createElement('button');
+    btn.className = `theme-btn ${currentTheme === key ? 'active' : ''}`;
+    btn.textContent = theme.label;
+    btn.onclick = () => { setTheme(key); renderThemeGrid(); };
+    grid.appendChild(btn);
+  });
+}
 
 /* =====================================================
    COMING SOON MODAL
@@ -952,6 +1250,7 @@ auth.onAuthStateChanged(async (user) => {
   loadUnreadCounts();
   listenIncoming();
   loadPrefs();
+  renderThemeGrid();
 });
 
 function requestNotifPerm() {
@@ -1239,6 +1538,20 @@ function buildMessage(id, msg, fromMe) {
   const row = document.createElement("div"); row.className = "msg-row";
   const bubble = document.createElement("div"); bubble.className = "bubble";
   let inner = "";
+  
+  // Story reply preview
+  if (msg.storyReplyId) {
+    const story = userStatuses[msg.storyReplyUid]?.find(s => s.id === msg.storyReplyId);
+    if (story) {
+      const previewHtml = story.type === "image" && story.url ? 
+        `<img src="${story.url}" class="story-reply-preview-img" alt="story">` :
+        story.type === "video" && story.url ?
+        `<video src="${story.url}" class="story-reply-preview-video" controls></video>` :
+        `<div class="story-reply-preview-text">${story.text || ""}</div>`;
+      inner += `<div class="story-reply-preview" onclick="openStoryViewerFromChat('${msg.storyReplyUid}', '${msg.storyReplyId}')">${previewHtml}</div>`;
+    }
+  }
+  
   if (msg.replyTo) {
     const replied = allMessages.find(m => m.id === msg.replyTo);
     if (replied) {
@@ -1246,6 +1559,7 @@ function buildMessage(id, msg, fromMe) {
       inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${replied.text || "(attachment)"}</div></div>`;
     }
   }
+  
   if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
   if (msg.image) inner += `<img src="${msg.image}" onclick="viewImg('${msg.image}')" onerror="this.style.display='none'" style="max-width:220px;margin-top:8px;border-radius:11px;cursor:pointer;display:block;">`;
   if (msg.audio) inner += `<audio controls src="${msg.audio}" style="max-width:200px;margin-top:6px;"></audio>`;
@@ -1444,7 +1758,7 @@ function viewImg(url) { window.open(url, "_blank"); }
 /* =====================================================
    CHAT INFO
    ===================================================== */
-function openChatInfo() { if (!selectedUser) { alert("Select a user first"); return; } document.getElementById("infoPanel").classList.add("active"); loadMediaGrid(); }
+function openChatInfo() { if (!selectedUser) { alert("Select a user first"); return; } document.getElementById("infoPanel").classList.add("active"); loadMediaGrid(); renderThemeGrid(); }
 function closeChatInfo() { document.getElementById("infoPanel").classList.remove("active"); }
 
 function loadMediaGrid() {
@@ -1520,7 +1834,6 @@ function renderStoriesBar() {
   const myRingClass = myStatuses.length ? "story-ring unseen" : "story-ring add-own";
   const myPicSrc = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
   
-  // If user has stories, clicking opens viewer; otherwise opens upload modal
   addEl.onclick = () => {
     if (myStatuses.length > 0) {
       openStoryViewer(currentUser.uid);
@@ -1572,7 +1885,6 @@ function openStoryViewer(uid) {
   storyViewerData = statuses.sort((a,b) => a.createdAt - b.createdAt);
   storyViewerIndex = 0;
   
-  // Check if viewing own stories
   const isOwnStory = (uid === currentUser.uid);
   isPlayingOwnStory = isOwnStory;
   
@@ -1580,7 +1892,6 @@ function openStoryViewer(uid) {
   document.getElementById("storyUserAv").src = user?.photoUrl || user?.photo || "https://i.imgur.com/HeIi0wU.png";
   document.getElementById("storyUserName").textContent = user?.displayName || user?.name || "User";
   
-  // Show/hide delete button based on whether it's own story
   const deleteBtn = document.getElementById("storyDeleteBtn");
   if (isOwnStory) {
     deleteBtn.style.display = "block";
@@ -1596,12 +1907,22 @@ function openStoryViewer(uid) {
   renderStorySlide(0);
 }
 
+function openStoryViewerFromChat(uid, storyId) {
+  openStoryViewer(uid);
+  if (storyViewerData) {
+    const idx = storyViewerData.findIndex(s => s.id === storyId);
+    if (idx !== -1) {
+      storyViewerIndex = idx;
+      renderStorySlide(idx);
+    }
+  }
+}
+
 function renderStorySlide(idx) {
   if (!storyViewerData || idx >= storyViewerData.length) { closeStoryViewer(); return; }
   const story = storyViewerData[idx];
   markStorySeen(story.id);
 
-  // Progress bars
   const progressRow = document.getElementById("storyProgressRow"); progressRow.innerHTML = "";
   storyViewerData.forEach((s, i) => {
     const bar = document.createElement("div"); bar.className = "story-prog-bar";
@@ -1613,7 +1934,6 @@ function renderStorySlide(idx) {
 
   document.getElementById("storyUserTime").textContent = formatLastSeen(story.createdAt);
 
-  // Background
   const bg = document.getElementById("storyViewerBg"); bg.innerHTML = "";
   if (story.url) {
     const bgEl = story.type === "video" ? document.createElement("video") : document.createElement("img");
@@ -1623,14 +1943,11 @@ function renderStorySlide(idx) {
     bg.style.background = "linear-gradient(135deg,var(--primary),var(--primary-dk))";
   }
 
-  // Content
   const content = document.getElementById("storyViewerContent"); content.innerHTML = "";
 
-  // Helper function to start animation with proper duration
   function startStoryAnimation(duration) {
     storyCurrentDuration = duration;
     
-    // Animate progress bar
     clearTimeout(storyTimer); cancelAnimationFrame(storyAnimFrame);
     const fillEl = document.getElementById(`spf-${idx}`); if (!fillEl) return;
     storyProgressStart = Date.now();
@@ -1646,7 +1963,6 @@ function renderStorySlide(idx) {
     storyAnimFrame = requestAnimationFrame(animFill);
   }
 
-  // Handle different story types
   if (story.type === "image" && story.url) {
     const img = document.createElement("img"); 
     img.src = story.url; 
@@ -1658,7 +1974,7 @@ function renderStorySlide(idx) {
       txt.textContent = story.text; 
       content.appendChild(txt);
     }
-    startStoryAnimation(5000); // Images: 5 seconds
+    startStoryAnimation(5000);
   } 
   else if (story.type === "video" && story.url) {
     const vid = document.createElement("video"); 
@@ -1667,20 +1983,16 @@ function renderStorySlide(idx) {
     vid.playsInline = true;
     content.appendChild(vid);
     
-    // Wait for video metadata to load BEFORE starting animation
     let metadataLoaded = false;
     
     vid.addEventListener("loadedmetadata", () => {
       metadataLoaded = true;
       const actualDuration = Math.ceil(vid.duration * 1000);
-      console.log("Video duration detected:", actualDuration, "ms");
       startStoryAnimation(actualDuration > 0 ? actualDuration : 5000);
     });
     
-    // Fallback: if metadata doesn't load in 3 seconds, use default
     setTimeout(() => {
       if (!metadataLoaded) {
-        console.log("Video metadata timeout, using default 5 seconds");
         startStoryAnimation(5000);
       }
     }, 3000);
@@ -1690,7 +2002,7 @@ function renderStorySlide(idx) {
     div.className = "story-text-slide"; 
     div.textContent = story.text || ""; 
     content.appendChild(div);
-    startStoryAnimation(6000); // Text: 6 seconds
+    startStoryAnimation(6000);
   }
 
   db.collection("status").doc(story.id).update({ viewers: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) }).catch(()=>{});
@@ -1708,23 +2020,19 @@ function prevStorySlide() {
 }
 
 function closeStoryViewer() {
-  // Stop video playback
   const videos = document.querySelectorAll("#storyViewerContent video");
   videos.forEach(vid => {
     vid.pause();
     vid.currentTime = 0;
   });
   
-  // Clear background
   const bg = document.getElementById("storyViewerBg");
   bg.innerHTML = "";
   bg.style.background = "";
   
-  // Cancel animations
   cancelAnimationFrame(storyAnimFrame);
   clearTimeout(storyTimer);
   
-  // Close overlay
   document.getElementById("storyViewerOverlay").classList.remove("active");
   storyViewerData = null;
   storyViewerIndex = 0;
@@ -1735,7 +2043,6 @@ function closeStoryViewer() {
 
 async function deleteStory() {
   if (!isPlayingOwnStory || !storyViewerData) {
-    console.log("Cannot delete: isPlayingOwnStory =", isPlayingOwnStory, "storyViewerData =", !!storyViewerData);
     return;
   }
   
@@ -1743,25 +2050,17 @@ async function deleteStory() {
   
   try {
     const story = storyViewerData[storyViewerIndex];
-    console.log("Deleting story:", story.id);
-    
-    // Delete the story from Firestore
     await db.collection("status").doc(story.id).delete();
-    
-    console.log("Story deleted successfully");
     showToast("✓ Story deleted");
     
-    // Remove from local array
     storyViewerData.splice(storyViewerIndex, 1);
     
-    // If there are more stories, show next one
     if (storyViewerData.length > 0) {
       if (storyViewerIndex >= storyViewerData.length) {
         storyViewerIndex = storyViewerData.length - 1;
       }
       renderStorySlide(storyViewerIndex);
     } else {
-      // No more stories, close viewer
       closeStoryViewer();
     }
   } catch(error) {
@@ -1772,14 +2071,18 @@ async function deleteStory() {
 
 async function sendStoryReply() {
   if (!storyViewerData || !currentUser) return;
-  const inp = document.getElementById("storyReplyInput"); const text = inp.value.trim(); if (!text) return;
+  const inp = document.getElementById("storyReplyInput"); 
+  const text = inp.value.trim(); 
+  if (!text) return;
   const story = storyViewerData[storyViewerIndex];
   const storyOwnerUid = story.uid;
+  
   if (storyOwnerUid !== currentUser.uid) {
     await db.collection("chats").add({
       from: currentUser.uid, to: storyOwnerUid,
       text: `💬 Story reply: ${text}`, image:"", audio:"",
-      status:"sent", edited:false, read:false, createdAt:Date.now(), storyReply: story.id
+      status:"sent", edited:false, read:false, createdAt:Date.now(),
+      storyReplyId: story.id, storyReplyUid: story.uid
     });
   }
   await db.collection("status").doc(story.id).collection("replies").add({
@@ -1835,7 +2138,6 @@ function openStatusModal() {
 function closeStatusModal() { document.getElementById("statusModalOverlay").classList.remove("active"); statusFile = null; }
 
 function openStatusModalFromViewer() {
-  // Open modal on top of viewer (seamless posting experience)
   statusTab = 'image'; 
   statusFile = null;
   document.querySelectorAll(".status-tab").forEach(t => t.classList.remove("active"));
@@ -1844,6 +2146,7 @@ function openStatusModalFromViewer() {
   document.getElementById("statusTextInput").value = "";
   document.getElementById("statusModalOverlay").classList.add("active");
 }
+
 function handleStatusOverlayClick(e) { if (e.target === document.getElementById("statusModalOverlay")) closeStatusModal(); }
 
 function switchStatusTab(tab) {
@@ -1918,11 +2221,13 @@ function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");
     mutedChats = p.muted || {}; favoritedChats = p.fav || {}; blockedUsers = p.blocked || {}; latestMsgTime = p.lastTime || {};
+    currentTheme = p.theme || 'nexa';
+    setTheme(currentTheme);
   } catch(e) {}
 }
 
 function savePrefs() {
-  localStorage.setItem("nexaPrefs", JSON.stringify({ muted:mutedChats, fav:favoritedChats, blocked:blockedUsers, lastTime:latestMsgTime }));
+  localStorage.setItem("nexaPrefs", JSON.stringify({ muted:mutedChats, fav:favoritedChats, blocked:blockedUsers, lastTime:latestMsgTime, theme:currentTheme }));
 }
 
 /* =====================================================
