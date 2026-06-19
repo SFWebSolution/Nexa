@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,6 +38,7 @@
       border:1px solid rgba(0,240,255,0.2);
       background:rgba(10,14,39,0.6);
       color:#fff;
+      box-sizing:border-box;
     }
 
     button{
@@ -49,6 +49,17 @@
       background:linear-gradient(135deg,#00f0ff,#0099ff);
       font-weight:bold;
       cursor:pointer;
+    }
+
+    .forgot{
+      text-align:right;
+      margin-bottom:12px;
+    }
+
+    .forgot a{
+      color:#00f0ff;
+      text-decoration:none;
+      font-size:14px;
     }
 
     .msg{
@@ -71,6 +82,10 @@
   <input type="email" id="email" placeholder="Email">
   <input type="password" id="password" placeholder="Password">
 
+  <div class="forgot">
+    <a href="#" id="forgotPassword">Forgot Password?</a>
+  </div>
+
   <button id="loginBtn">Login</button>
 
   <div id="msg" class="msg"></div>
@@ -80,10 +95,15 @@
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
-   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
   authDomain: "mel-odix.firebaseapp.com",
   projectId: "mel-odix",
 };
@@ -95,6 +115,10 @@ const msg = document.getElementById("msg");
 const btn = document.getElementById("loginBtn");
 
 btn.addEventListener("click", login);
+
+document
+  .getElementById("forgotPassword")
+  .addEventListener("click", resetPassword);
 
 async function login(){
 
@@ -123,6 +147,31 @@ async function login(){
   }
 
   btn.innerText = "Login";
+}
+
+async function resetPassword(e){
+
+  e.preventDefault();
+
+  const email = document.getElementById("email").value.trim();
+
+  if(!email){
+    showMsg("Enter your email first", "error");
+    return;
+  }
+
+  try {
+
+    await sendPasswordResetEmail(auth, email);
+
+    showMsg(
+      "Password reset link sent to your email",
+      "success"
+    );
+
+  } catch (error) {
+    showMsg(error.message, "error");
+  }
 }
 
 function showMsg(text, type){
