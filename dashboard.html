@@ -15,6 +15,7 @@
   <link rel="icon" type="image/png" href="icon-512.png" sizes="512x512">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="sw.js">
   
   <title>Nexa Messenger - Premium Edition</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -849,6 +850,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 <script>
 const CLOUD_NAME = "doasf3d1u";
 const UPLOAD_PRESET = "NeuroStack";
+const BACKEND_URL = "https://nexa-backend-e6pq.onrender.com";
 
 // PWA & NOTIFICATIONS STATE
 let deferredPrompt = null;
@@ -860,46 +862,7 @@ let notificationSettings = {
 };
 let serviceWorkerReady = false;
 
-// THEMES (Same as before - keeping all 34 themes)
-const THEMES = {
-  nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
-  midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
-  ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
-  forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
-  sunset: { label: '🌅 Sunset Glow', attr: 'sunset', tier: 'classic' },
-  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' },
-  rose: { label: '🌹 Rose Pink', attr: 'rose', tier: 'classic' },
-  neon: { label: '⚡ Neon Pulse', attr: 'neon', tier: 'classic' },
-  obsidian: { label: '🖤 Obsidian', attr: 'obsidian', tier: 'classic' },
-  gold: { label: '✨ Gold Elite', attr: 'gold', tier: 'classic' },
-  crimson: { label: '🔴 Crimson', attr: 'crimson', tier: 'classic' },
-  arctic: { label: '🩵 Arctic Ice', attr: 'arctic', tier: 'classic' },
-  galaxy: { label: '🌌 Galaxy', attr: 'galaxy', tier: 'classic' },
-  mint: { label: '🍃 Mint Fresh', attr: 'mint', tier: 'classic' },
-  inferno: { label: '🔥 Inferno', attr: 'inferno', tier: 'classic' },
-  cosmic: { label: '🌌 Cosmic Nexus', attr: 'cosmic', tier: 'premium' },
-  cyberpunk: { label: '⚡ Cyberpunk 2099', attr: 'cyberpunk', tier: 'premium' },
-  aurora: { label: '🌠 Aurora Borealis', attr: 'aurora', tier: 'premium' },
-  saturn: { label: '🪐 Saturn Rings', attr: 'saturn', tier: 'premium' },
-  lava: { label: '🌋 Lava Core', attr: 'lava', tier: 'premium' },
-  frozen: { label: '❄️ Frozen Kingdom', attr: 'frozen', tier: 'premium' },
-  eclipse: { label: '🌑 Eclipse', attr: 'eclipse', tier: 'premium' },
-  abyss: { label: '🌊 Deep Ocean Abyss', attr: 'abyss', tier: 'premium' },
-  quantum: { label: '🔮 Quantum Realm', attr: 'quantum', tier: 'premium' },
-  prism: { label: '🌈 Prism Dimension', attr: 'prism', tier: 'premium' },
-  meteor: { label: '☄️ Meteor Storm', attr: 'meteor', tier: 'premium' },
-  dragon: { label: '🐉 Dragon Flame', attr: 'dragon', tier: 'premium' },
-  matrix: { label: '🤖 AI Matrix', attr: 'matrix', tier: 'premium' },
-  blackhole: { label: '🕳️ Black Hole', attr: 'blackhole', tier: 'premium' },
-  tokyo: { label: '🌃 Neon Tokyo', attr: 'tokyo', tier: 'premium' },
-  celestial: { label: '👑 Celestial Gold', attr: 'celestial', tier: 'premium' },
-  biotech: { label: '🧬 BioTech Future', attr: 'biotech', tier: 'premium' },
-  phoenix: { label: '🌋 Phoenix Rising', attr: 'phoenix', tier: 'premium' },
-  shadow: { label: '⚔️ Shadow Realm', attr: 'shadow', tier: 'premium' },
-  multiverse: { label: '🌍 Multiverse', attr: 'multiverse', tier: 'premium' },
-  infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
-};
-
+// Rest of the script will be identical to the previous version but with corrected notification handling
 firebase.initializeApp({
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
   authDomain: "mel-odix.firebaseapp.com",
@@ -969,10 +932,16 @@ function initPWA() {
         console.log('✅ Service Worker registered successfully');
         serviceWorkerReady = true;
         requestNotificationPermission();
+        setupPushNotifications();
       })
       .catch(e => {
         console.error('❌ SW registration failed:', e.message);
+        requestNotificationPermission();
+        setupPushNotifications();
       });
+  } else {
+    requestNotificationPermission();
+    setupPushNotifications();
   }
 
   // Listen for app installed
@@ -1009,45 +978,71 @@ async function installPWA() {
 }
 
 /* =====================================================
-   NOTIFICATIONS
+   NOTIFICATIONS - FIXED VERSION
    ===================================================== */
 function requestNotificationPermission() {
-  if ('Notification' in window && Notification.permission === 'default') {
+  if (!('Notification' in window)) {
+    console.log('ℹ️ Browser does not support notifications');
+    return;
+  }
+
+  if (Notification.permission === 'default') {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        setupPushNotifications();
-        showNotifToast('🔔 Notifications enabled', 'success');
+        showNotifToast('✅ Notifications enabled!', 'success');
+      } else {
+        console.log('Notifications denied by user');
       }
     });
-  } else if (Notification.permission === 'granted') {
-    setupPushNotifications();
   }
 }
 
 async function setupPushNotifications() {
+  if (!currentUser) return;
+
   try {
-    if (!navigator.serviceWorker.controller) {
-      await new Promise(resolve => {
-        navigator.serviceWorker.addEventListener('controllerchange', resolve);
-      });
-    }
+    // Get FCM token
     const token = await messaging.getToken({
-      vapidKey: "BJeF6sKZD3hOiI-HXfXNvIzVwT5_MKpXOy1234567890ABCDEFGHIJKLMNO",
-      serviceWorkerRegistration: await navigator.serviceWorker.ready
-    }).catch(() => null);
-    if (token && currentUser) {
-      await db.collection('users').doc(currentUser.uid).update({ fcmToken: token });
-      console.log('✅ FCM token updated');
+      vapidKey: "BN7rMQQgc6f7nD2kF8pK9lL3mN5oP7qR8sT9uV0wX1yZ2aB3cD4eF5gH6iJ7kL8m"
+    }).catch(err => {
+      console.log('FCM token error:', err.message);
+      return null;
+    });
+
+    if (token) {
+      console.log('✅ FCM Token:', token);
+      // Save token to database
+      await db.collection("users").doc(currentUser.uid).update({
+        fcmToken: token,
+        tokenUpdatedAt: Date.now()
+      }).catch(err => console.error('Token save error:', err));
     }
-  } catch(e) {
-    console.log('ℹ️ Push notifications unavailable:', e.message);
+  } catch(err) {
+    console.log('ℹ️ Push setup unavailable:', err.message);
   }
+
+  // Listen for incoming messages when app is in foreground
+  messaging.onMessage(payload => {
+    console.log('📨 Foreground message:', payload);
+    if (payload.notification) {
+      const { title, body } = payload.notification;
+      showNotifToast(body || title, 'success');
+      showNativeNotification(title, body);
+    }
+  });
 }
 
-messaging.onMessage(payload => {
-  const { title, body } = payload.notification || {};
-  if (title) showNotifToast(body || title, 'success');
-});
+function showNativeNotification(title, body) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, {
+      body: body,
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      tag: 'nexa-notification',
+      requireInteraction: false
+    });
+  }
+}
 
 function showNotifToast(message, type = 'info') {
   const toast = document.createElement('div');
@@ -1101,19 +1096,89 @@ function sendNotification(title, options = {}) {
   if (!notificationSettings.reactions && options.type === 'reaction') return;
 
   showNotifToast(options.body || title, 'success');
-  
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, {
-      icon: 'icon-192.png',
-      badge: 'icon-192.png',
-      ...options
+  showNativeNotification(title, options.body || title);
+}
+
+/* =====================================================
+   SEND NOTIFICATION TO BACKEND
+   ===================================================== */
+async function sendPushNotificationViaBackend(receiverUid, title, body) {
+  if (!notificationSettings.messages) return;
+
+  try {
+    const receiverDoc = await db.collection("users").doc(receiverUid).get();
+    const fcmToken = receiverDoc.data()?.fcmToken;
+
+    if (!fcmToken) {
+      console.log('No FCM token for user');
+      return;
+    }
+
+    const response = await fetch(`${BACKEND_URL}/send-notification`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: fcmToken,
+        title: title,
+        body: body,
+        icon: 'icon-192.png'
+      })
     });
+
+    if (response.ok) {
+      console.log('✅ Notification sent successfully');
+    } else {
+      console.error('Notification send failed:', await response.text());
+    }
+  } catch (err) {
+    console.error('Backend notification error:', err);
   }
 }
 
 /* =====================================================
    THEME SYSTEM
    ===================================================== */
+const THEMES = {
+  nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
+  midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
+  ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
+  forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
+  sunset: { label: '🌅 Sunset Glow', attr: 'sunset', tier: 'classic' },
+  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' },
+  rose: { label: '🌹 Rose Pink', attr: 'rose', tier: 'classic' },
+  neon: { label: '⚡ Neon Pulse', attr: 'neon', tier: 'classic' },
+  obsidian: { label: '🖤 Obsidian', attr: 'obsidian', tier: 'classic' },
+  gold: { label: '✨ Gold Elite', attr: 'gold', tier: 'classic' },
+  crimson: { label: '🔴 Crimson', attr: 'crimson', tier: 'classic' },
+  arctic: { label: '🩵 Arctic Ice', attr: 'arctic', tier: 'classic' },
+  galaxy: { label: '🌌 Galaxy', attr: 'galaxy', tier: 'classic' },
+  mint: { label: '🍃 Mint Fresh', attr: 'mint', tier: 'classic' },
+  inferno: { label: '🔥 Inferno', attr: 'inferno', tier: 'classic' },
+  cosmic: { label: '🌌 Cosmic Nexus', attr: 'cosmic', tier: 'premium' },
+  cyberpunk: { label: '⚡ Cyberpunk 2099', attr: 'cyberpunk', tier: 'premium' },
+  aurora: { label: '🌠 Aurora Borealis', attr: 'aurora', tier: 'premium' },
+  saturn: { label: '🪐 Saturn Rings', attr: 'saturn', tier: 'premium' },
+  lava: { label: '🌋 Lava Core', attr: 'lava', tier: 'premium' },
+  frozen: { label: '❄️ Frozen Kingdom', attr: 'frozen', tier: 'premium' },
+  eclipse: { label: '🌑 Eclipse', attr: 'eclipse', tier: 'premium' },
+  abyss: { label: '🌊 Deep Ocean Abyss', attr: 'abyss', tier: 'premium' },
+  quantum: { label: '🔮 Quantum Realm', attr: 'quantum', tier: 'premium' },
+  prism: { label: '🌈 Prism Dimension', attr: 'prism', tier: 'premium' },
+  meteor: { label: '☄️ Meteor Storm', attr: 'meteor', tier: 'premium' },
+  dragon: { label: '🐉 Dragon Flame', attr: 'dragon', tier: 'premium' },
+  matrix: { label: '🤖 AI Matrix', attr: 'matrix', tier: 'premium' },
+  blackhole: { label: '🕳️ Black Hole', attr: 'blackhole', tier: 'premium' },
+  tokyo: { label: '🌃 Neon Tokyo', attr: 'tokyo', tier: 'premium' },
+  celestial: { label: '👑 Celestial Gold', attr: 'celestial', tier: 'premium' },
+  biotech: { label: '🧬 BioTech Future', attr: 'biotech', tier: 'premium' },
+  phoenix: { label: '🌋 Phoenix Rising', attr: 'phoenix', tier: 'premium' },
+  shadow: { label: '⚔️ Shadow Realm', attr: 'shadow', tier: 'premium' },
+  multiverse: { label: '🌍 Multiverse', attr: 'multiverse', tier: 'premium' },
+  infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
+};
+
 function setTheme(themeName) {
   const theme = THEMES[themeName];
   if (!theme) return;
@@ -1568,14 +1633,14 @@ function pickFile() { if (!selectedUser) { alert("Select a user first"); return;
 
 document.getElementById("img").addEventListener("change", async e => {
   const file = e.target.files[0]; if (!file || !selectedUser) return;
-  try { const url = await uploadFile(file); if (url) { await db.collection("chats").add(baseMsg({ image: url })); clearReply(); sendNotification(`${selectedUser.displayName} sent a photo`, { type: 'message' }); } }
+  try { const url = await uploadFile(file); if (url) { await db.collection("chats").add(baseMsg({ image: url })); clearReply(); sendNotification(`📷 Photo from ${document.getElementById('myName').textContent}`, { type: 'message', body: 'New photo' }); sendPushNotificationViaBackend(selectedUser.uid, '📷 Photo', `${document.getElementById('myName').textContent} sent you a photo`); } }
   catch(err) { alert("Image upload failed: " + err.message); }
   e.target.value = "";
 });
 
 document.getElementById("fileInput").addEventListener("change", async e => {
   const file = e.target.files[0]; if (!file || !selectedUser) return;
-  try { const url = await uploadFile(file); if (url) { await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url })); clearReply(); sendNotification(`${selectedUser.displayName} sent a file`, { type: 'message' }); } }
+  try { const url = await uploadFile(file); if (url) { await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url })); clearReply(); sendNotification(`📎 File from ${document.getElementById('myName').textContent}`, { type: 'message', body: file.name }); sendPushNotificationViaBackend(selectedUser.uid, '📎 File', `${document.getElementById('myName').textContent} sent you a file`); } }
   catch(err) { alert("File upload failed: " + err.message); }
   e.target.value = "";
 });
@@ -1590,66 +1655,47 @@ function toggleActionButtons() {
 }
 
 async function sendMessage() {
-if (!selectedUser) {
-alert("Select a user first");
-return;
-}
+  if (!selectedUser) {
+    alert("Select a user first");
+    return;
+  }
 
-const text = document.getElementById("text").value.trim();
-if (!text) return;
+  const text = document.getElementById("text").value.trim();
+  if (!text) return;
 
-document.getElementById("text").value = "";
+  document.getElementById("text").value = "";
 
-const ta = document.getElementById("text");
-ta.style.height = "auto";
+  const ta = document.getElementById("text");
+  ta.style.height = "auto";
 
-toggleActionButtons();
+  toggleActionButtons();
 
-const extras = { text };
+  const extras = { text };
 
-if (messageRepliedTo) {
-extras.replyTo = messageRepliedTo.id;
-}
+  if (messageRepliedTo) {
+    extras.replyTo = messageRepliedTo.id;
+  }
 
-await db.collection("chats").add(baseMsg(extras));
+  await db.collection("chats").add(baseMsg(extras));
 
-// 🔔 Send push notification to receiver
-try {
-const userDoc = await db.collection("users")
-.doc(selectedUser.uid)
-.get();
+  // Send push notification
+  sendPushNotificationViaBackend(
+    selectedUser.uid,
+    document.getElementById("myName").textContent || "User",
+    text.substring(0, 60) + (text.length > 60 ? "..." : "")
+  );
 
-const receiverFcmToken = userDoc.data()?.fcmToken;
+  clearReply();
 
-if (receiverFcmToken) {
-  await fetch("https://nexa-backend-e6pq.onrender.com/send-notification", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      token: receiverFcmToken,
-      title: "New Message",
-      body: text
-    })
-  });
-}
+  sendNotification(
+    `Message to ${selectedUser.displayName || selectedUser.name || 'User'}`,
+    { type: "message", body: text.substring(0, 30) }
+  );
 
-} catch (err) {
-console.error("Notification error:", err);
-}
-
-clearReply();
-
-sendNotification(
-"You sent: ${text.substring(0, 30)}...",
-{ type: "message" }
-);
-
-setTimeout(() => {
-const box = document.getElementById("messages");
-box.scrollTop = box.scrollHeight;
-}, 80);
+  setTimeout(() => {
+    const box = document.getElementById("messages");
+    box.scrollTop = box.scrollHeight;
+  }, 80);
 }
 
 function baseMsg(extras = {}) {
@@ -1696,7 +1742,7 @@ async function sendVoice() {
   try {
     const f = new File([recordingBlob], "voice.webm", { type:"audio/webm" });
     const url = await uploadFile(f);
-    if (url) { await db.collection("chats").add(baseMsg({ audio:url, duration:Date.now()-recStart })); cancelVoice(); sendNotification('🎤 Voice message sent', { type: 'message' }); }
+    if (url) { await db.collection("chats").add(baseMsg({ audio:url, duration:Date.now()-recStart })); cancelVoice(); sendNotification('🎤 Voice message sent', { type: 'message' }); sendPushNotificationViaBackend(selectedUser.uid, '🎤 Voice Message', `${document.getElementById('myName').textContent} sent you a voice message`); }
   } catch(e) { alert("Failed: " + e.message); }
   btn.disabled = false; btn.textContent = "✓ Send";
 }
@@ -1748,8 +1794,10 @@ function listenIncoming() {
         if (!mutedChats[uid]) {
           db.collection("users").doc(uid).get().then(d => {
             const name = d.data()?.displayName || "User";
+            const preview = msg.text || (msg.image?"📷 Photo":msg.audio?"🎤 Voice":"New message");
             if (notificationSettings.messages) {
-              sendNotification(name, { body: msg.text || (msg.image?"📷 Photo":msg.audio?"🎤 Voice":"New message"), tag:`chat-${uid}`, type: 'message' });
+              sendNotification(name, { body: preview, tag:`chat-${uid}`, type: 'message' });
+              sendPushNotificationViaBackend(currentUser.uid, name, preview);
             }
           });
         }
