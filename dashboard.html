@@ -1590,17 +1590,66 @@ function toggleActionButtons() {
 }
 
 async function sendMessage() {
-  if (!selectedUser) { alert("Select a user first"); return; }
-  const text = document.getElementById("text").value.trim(); if (!text) return;
-  document.getElementById("text").value = "";
-  const ta = document.getElementById("text"); ta.style.height = "auto";
-  toggleActionButtons();
-  const extras = { text };
-  if (messageRepliedTo) extras.replyTo = messageRepliedTo.id;
-  await db.collection("chats").add(baseMsg(extras));
-  clearReply();
-  sendNotification(`You sent: ${text.substring(0, 30)}...`, { type: 'message' });
-  setTimeout(() => { const box = document.getElementById("messages"); box.scrollTop = box.scrollHeight; }, 80);
+if (!selectedUser) {
+alert("Select a user first");
+return;
+}
+
+const text = document.getElementById("text").value.trim();
+if (!text) return;
+
+document.getElementById("text").value = "";
+
+const ta = document.getElementById("text");
+ta.style.height = "auto";
+
+toggleActionButtons();
+
+const extras = { text };
+
+if (messageRepliedTo) {
+extras.replyTo = messageRepliedTo.id;
+}
+
+await db.collection("chats").add(baseMsg(extras));
+
+// 🔔 Send push notification to receiver
+try {
+const userDoc = await db.collection("users")
+.doc(selectedUser.uid)
+.get();
+
+const receiverFcmToken = userDoc.data()?.fcmToken;
+
+if (receiverFcmToken) {
+  await fetch("https://nexa-backend-e6pq.onrender.com/send-notification", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      token: receiverFcmToken,
+      title: "New Message",
+      body: text
+    })
+  });
+}
+
+} catch (err) {
+console.error("Notification error:", err);
+}
+
+clearReply();
+
+sendNotification(
+"You sent: ${text.substring(0, 30)}...",
+{ type: "message" }
+);
+
+setTimeout(() => {
+const box = document.getElementById("messages");
+box.scrollTop = box.scrollHeight;
+}, 80);
 }
 
 function baseMsg(extras = {}) {
