@@ -130,6 +130,14 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 .pwa-btn.primary { background:rgba(255,255,255,0.3); border-color:white; }
 .pwa-btn.primary:hover { background:rgba(255,255,255,0.4); }
 
+/* FCM STATUS INDICATOR */
+#fcmStatus { position:fixed; top:20px; left:20px; padding:8px 12px; background:rgba(16,217,129,0.15); border:1px solid var(--online); border-radius:8px; font-size:11px; color:var(--online); font-weight:700; z-index:9999; display:none; animation:fcmFadeIn 0.3s ease; }
+#fcmStatus.ready { display:block; }
+#fcmStatus.loading { color:var(--cyan); border-color:var(--cyan); background:rgba(0,217,255,0.15); }
+#fcmStatus.error { color:var(--danger); border-color:var(--danger); background:rgba(255,56,96,0.15); }
+@keyframes fcmFadeIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fcmFadeOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(-10px); } }
+
 /* NOTIFICATION TOAST */
 .notif-toast { position:fixed; top:20px; right:20px; background:rgba(18,24,32,0.97); border:1px solid var(--border-md); border-radius:14px; padding:14px 18px; color:var(--text-1); font-size:13px; font-weight:600; z-index:9999; backdrop-filter:blur(16px); box-shadow:0 8px 32px rgba(0,0,0,0.5); animation:notifSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1); max-width:380px; }
 @keyframes notifSlideIn { from { transform:translateX(420px); opacity:0; } to { transform:translateX(0); opacity:1; } }
@@ -565,6 +573,9 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
   <button class="pwa-btn" onclick="dismissPWABanner()">Not now</button>
 </div>
 
+<!-- FCM STATUS INDICATOR -->
+<div id="fcmStatus">✓ Notifications Ready</div>
+
 <div class="app">
   <!-- SIDEBAR -->
   <div class="sidebar" id="sidebar">
@@ -848,21 +859,23 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 <input type="file" id="profileUpload" hidden accept="image/*">
 
 <script>
+// =====================================================
+// CRITICAL: GLOBAL VARIABLES DECLARATION
+// =====================================================
+let currentUser = null;
+let selectedUser = null;
+let messageRepliedTo = null;
+let editingMessageId = null;
+let deferredPrompt = null;
+let fcmStatusTimeout = null;
+
 const CLOUD_NAME = "doasf3d1u";
 const UPLOAD_PRESET = "NeuroStack";
 const BACKEND_URL = "https://nexa-backend-e6pq.onrender.com";
 
-// PWA & NOTIFICATIONS STATE
-let deferredPrompt = null;
-let notificationSettings = {
-  messages: true,
-  stories: true,
-  calls: true,
-  reactions: true
-};
-let serviceWorkerReady = false;
+console.log('🚀 Nexa Messenger Starting...');
 
-// Rest of the script will be identical to the previous version but with corrected notification handling
+// Firebase Init
 firebase.initializeApp({
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
   authDomain: "mel-odix.firebaseapp.com",
@@ -876,184 +889,264 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 const messaging = firebase.messaging();
 
-/* STATE */
-let currentUser = null;
-let selectedUser = null;
-let allUsersData = [];
-let unreadMessages = {};
-let mutedChats = {};
-let favoritedChats = {};
-let blockedUsers = {};
-let messageRepliedTo = null;
-let allMessages = [];
-let latestMsgTime = {};
-let currentTheme = 'nexa';
-let mediaRecorder = null;
-let audioChunks = [];
-let recordingBlob = null;
-let isRecording = false;
-let recStart = 0;
-let recTimer = null;
-let editingMessageId = null;
-let statusTab = 'image';
-let statusFile = null;
-let userStatuses = {};
-let storyViewerData = null;
-let storyViewerIndex = 0;
-let storyTimer = null;
-let storyProgressStart = null;
-let storyAnimFrame = null;
-let viewingStoryUid = null;
-let storyCurrentDuration = 0;
-let isPlayingOwnStory = false;
-let peerConnection = null;
-let localStream = null;
-let incomingCall = null;
-let callActive = false;
-let callStartTime = null;
-let callTimerInterval = null;
-let typingTimeout;
+// =====================================================
+// FCM SYSTEM
+// =====================================================
+let fcmRetries = 0;
+const FCM_MAX_RETRIES = 3;
+const FCM_RETRY_DELAY = 2000;
+let fcmToken = null;
+let fcmReady = false;
 
-/* =====================================================
-   PWA & SERVICE WORKER
-   ===================================================== */
-function initPWA() {
-  // Listen for install prompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    showPWABanner();
-  });
-
-  // Register Service Worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
-      .then(reg => {
-        console.log('✅ Service Worker registered successfully');
-        serviceWorkerReady = true;
-        requestNotificationPermission();
-        setupPushNotifications();
-      })
-      .catch(e => {
-        console.error('❌ SW registration failed:', e.message);
-        requestNotificationPermission();
-        setupPushNotifications();
-      });
-  } else {
-    requestNotificationPermission();
-    setupPushNotifications();
-  }
-
-  // Listen for app installed
-  window.addEventListener('appinstalled', () => {
-    dismissPWABanner();
-    showNotifToast('✅ Nexa Messenger installed!', 'success');
-    deferredPrompt = null;
-  });
-
-  loadNotificationSettings();
-}
-
-function showPWABanner() {
-  const banner = document.getElementById('pwaInstallBanner');
-  banner.classList.add('show');
-}
-
-function dismissPWABanner() {
-  const banner = document.getElementById('pwaInstallBanner');
-  banner.classList.remove('show');
-}
-
-async function installPWA() {
-  if (!deferredPrompt) {
-    alert('Installation not available. Use the browser menu to install.');
-    return;
-  }
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  if (outcome === 'accepted') {
-    showNotifToast('✅ Installing Nexa Messenger...', 'success');
-  }
-  deferredPrompt = null;
-}
-
-/* =====================================================
-   NOTIFICATIONS - FIXED VERSION
-   ===================================================== */
-function requestNotificationPermission() {
-  if (!('Notification' in window)) {
-    console.log('ℹ️ Browser does not support notifications');
-    return;
-  }
-
-  if (Notification.permission === 'default') {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        showNotifToast('✅ Notifications enabled!', 'success');
-      } else {
-        console.log('Notifications denied by user');
-      }
+async function waitForSWController() {
+  if (navigator.serviceWorker.controller) return;
+  console.log("⏳ Waiting for Service Worker to become active...");
+  return new Promise(resolve => {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      console.log("✅ Service Worker now controlling page");
+      resolve();
     });
-  }
+  });
 }
 
-async function setupPushNotifications() {
-  if (!currentUser) return;
+async function initializeFCM() {
+  console.log('🔄 Starting FCM initialization...');
+
+  if (!currentUser) {
+    console.warn('⚠️ No user authenticated');
+    return false;
+  }
+
+  if (!('serviceWorker' in navigator)) {
+    console.warn('⚠️ Service Workers not supported');
+    return false;
+  }
 
   try {
-    // Get FCM token
+    const permission = await Notification.requestPermission();
+    console.log('📢 Notification permission:', permission);
+
+    if (permission !== 'granted') {
+      showFCMStatus('error', '⚠️ Notifications blocked');
+      return false;
+    }
+
+    return await requestFCMToken();
+
+  } catch (err) {
+    console.error('❌ FCM init error:', err);
+    return false;
+  }
+}
+
+async function requestFCMToken() {
+  console.log(`🔐 Requesting FCM token... attempt ${fcmRetries + 1}`);
+
+  try {
+    await waitForSWController();
+
+    const registration = await navigator.serviceWorker.ready;
+
+    console.log("✅ Service Worker ready:", registration.active?.state);
+
     const token = await messaging.getToken({
-      vapidKey: "BN7rMQQgc6f7nD2kF8pK9lL3mN5oP7qR8sT9uV0wX1yZ2aB3cD4eF5gH6iJ7kL8m"
-    }).catch(err => {
-      console.log('FCM token error:', err.message);
-      return null;
+      vapidKey: "BKppd1ggDuW5VCCOlqJ_k2R4eDQeer69w51CRXV6YrMxHQglgX0uzZsejx_INAofzdNvZ_P5kcsHRpHdBDtVjz8".trim(),
+      serviceWorkerRegistration: registration
     });
 
-    if (token) {
-      console.log('✅ FCM Token:', token);
-      // Save token to database
-      await db.collection("users").doc(currentUser.uid).update({
-        fcmToken: token,
-        tokenUpdatedAt: Date.now()
-      }).catch(err => console.error('Token save error:', err));
+    if (!token) throw new Error("No token returned");
+
+    console.log("🔥 FCM TOKEN GENERATED:", token);
+    fcmToken = token;
+
+    await saveFCMTokenToFirestore(token);
+    setupMessageListeners();
+
+    fcmReady = true;
+    showFCMStatus('ready', '✓ Notifications Ready');
+
+    return true;
+
+  } catch (error) {
+    console.error('❌ FCM token error:', error.message || error);
+
+    if (fcmRetries < FCM_MAX_RETRIES) {
+      fcmRetries++;
+      const delay = FCM_RETRY_DELAY * fcmRetries;
+      console.log(`⏳ Retry in ${delay}ms`);
+
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve(requestFCMToken());
+        }, delay);
+      });
     }
-  } catch(err) {
-    console.log('ℹ️ Push setup unavailable:', err.message);
+
+    showFCMStatus('error', '⚠️ Notifications Failed');
+    return false;
+  }
+}
+
+async function saveFCMTokenToFirestore(token) {
+  if (!currentUser || !token) {
+    console.warn('⚠️ Missing user or token');
+    return false;
   }
 
-  // Listen for incoming messages when app is in foreground
-  messaging.onMessage(payload => {
-    console.log('📨 Foreground message:', payload);
-    if (payload.notification) {
-      const { title, body } = payload.notification;
-      showNotifToast(body || title, 'success');
-      showNativeNotification(title, body);
+  try {
+    console.log('💾 Saving token...');
+
+    await db.collection("users").doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      fcmToken: token,
+      fcmTokenUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      fcmTokenValid: true
+    }, { merge: true });
+
+    console.log('✅ Token saved to Firestore');
+    return true;
+
+  } catch (err) {
+    console.error('❌ Firestore save error:', err);
+    return false;
+  }
+}
+
+function setupMessageListeners() {
+  console.log('👂 Setting up listeners...');
+
+  messaging.onMessage((payload) => {
+    console.log('📬 Message received:', payload);
+
+    const title = payload?.notification?.title || 'Nexa';
+    const body = payload?.notification?.body || '';
+
+    showNotifToast(title || body, 'success');
+
+    if (Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: 'icon-192.png'
+      });
     }
   });
 }
 
-function showNativeNotification(title, body) {
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, {
-      body: body,
-      icon: 'icon-192.png',
-      badge: 'icon-192.png',
-      tag: 'nexa-notification',
-      requireInteraction: false
-    });
+function showFCMStatus(status, message) {
+  const el = document.getElementById('fcmStatus');
+  if (!el) return;
+
+  el.textContent = message;
+  el.className = status;
+
+  console.log(`📊 FCM: ${status} - ${message}`);
+
+  // Auto-hide FCM status after 3 seconds
+  clearTimeout(fcmStatusTimeout);
+  if (status === 'ready') {
+    fcmStatusTimeout = setTimeout(() => {
+      el.style.animation = 'fcmFadeOut 0.4s ease forwards';
+      setTimeout(() => {
+        el.classList.remove('ready');
+        el.style.animation = '';
+      }, 400);
+    }, 3000);
   }
 }
 
+// =====================================================
+// AUTHENTICATION & APP INITIALIZATION
+// =====================================================
+auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  currentUser = user;
+  console.log('👤 User authenticated:', user.email);
+  
+  showFCMStatus('loading', '⏳ Initializing...');
+  
+  await loadProfile();
+  
+  const fcmSuccess = await initializeFCM();
+  
+  if (!fcmSuccess) {
+    console.warn('⚠️ FCM init failed, but app will continue');
+    showFCMStatus('error', '⚠️ Notifications unavailable');
+  }
+
+  startUsersListener();
+  startStatusListener();
+  setupHeartbeat();
+  loadUnreadCounts();
+  listenIncoming();
+  loadPrefs();
+  renderThemeGrid();
+
+  initPWA();
+  await updateOnline(true);
+
+  console.log('✅ App fully initialized');
+});
+
+async function loadProfile() {
+  try {
+    const doc = await db.collection("profiles").doc(currentUser.uid).get();
+    const data = doc.data() || {};
+    const name = data.displayName || currentUser.displayName || "User";
+    const photo = data.photoUrl || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
+    
+    document.getElementById("myName").textContent = name;
+    document.getElementById("myPic").src = photo;
+
+    await db.collection("users").doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      name, displayName: name,
+      email: data.email || currentUser.email,
+      photoUrl: photo, photo,
+      createdAt: data.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      online: true
+    }, { merge: true });
+  } catch(e) {
+    console.error('Profile load error:', e);
+  }
+}
+
+async function handleLogout() {
+  if (!confirm("Logout?")) return;
+  endVoiceCall();
+  await updateOnline(false);
+  await auth.signOut();
+  window.location.href = "login.html";
+}
+
+// =====================================================
+// NOTIFICATION TOAST
+// =====================================================
 function showNotifToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `notif-toast ${type}`;
   toast.textContent = message;
   document.body.appendChild(toast);
+  
   setTimeout(() => {
     toast.style.animation = 'notifSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1) reverse';
     setTimeout(() => toast.remove(), 400);
   }, 3500);
 }
+
+// =====================================================
+// NOTIFICATION SETTINGS
+// =====================================================
+let notificationSettings = {
+  messages: true,
+  stories: true,
+  calls: true,
+  reactions: true
+};
 
 function openNotifSettings() {
   document.getElementById('notifSettingsModal').classList.add('active');
@@ -1086,7 +1179,7 @@ function loadNotificationSettings() {
       const el = document.getElementById(`notif${key.charAt(0).toUpperCase() + key.slice(1)}`);
       if (el) el.classList.toggle('active', val);
     });
-  } catch(e) {}
+  } catch(e) { console.warn('Error loading notif settings:', e); }
 }
 
 function sendNotification(title, options = {}) {
@@ -1096,21 +1189,30 @@ function sendNotification(title, options = {}) {
   if (!notificationSettings.reactions && options.type === 'reaction') return;
 
   showNotifToast(options.body || title, 'success');
-  showNativeNotification(title, options.body || title);
 }
 
-/* =====================================================
-   SEND NOTIFICATION TO BACKEND
-   ===================================================== */
+// =====================================================
+// SEND PUSH NOTIFICATIONS VIA BACKEND
+// =====================================================
 async function sendPushNotificationViaBackend(receiverUid, title, body) {
-  if (!notificationSettings.messages) return;
+  if (!fcmReady) {
+    console.warn('⚠️ FCM not ready, skipping notification');
+    return;
+  }
+
+  if (!notificationSettings.messages) {
+    console.log('🔕 Notifications disabled by user');
+    return;
+  }
 
   try {
+    console.log(`📤 Sending push to ${receiverUid.substring(0, 8)}...`);
+    
     const receiverDoc = await db.collection("users").doc(receiverUid).get();
-    const fcmToken = receiverDoc.data()?.fcmToken;
+    const receiverToken = receiverDoc.data()?.fcmToken;
 
-    if (!fcmToken) {
-      console.log('No FCM token for user');
+    if (!receiverToken) {
+      console.warn(`⚠️ No FCM token for user ${receiverUid.substring(0, 8)}`);
       return;
     }
 
@@ -1120,9 +1222,9 @@ async function sendPushNotificationViaBackend(receiverUid, title, body) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        token: fcmToken,
-        title: title,
-        body: body,
+        token: receiverToken,
+        title: title || "New Message",
+        body: body || "You have a new message",
         icon: 'icon-192.png'
       })
     });
@@ -1130,169 +1232,77 @@ async function sendPushNotificationViaBackend(receiverUid, title, body) {
     if (response.ok) {
       console.log('✅ Notification sent successfully');
     } else {
-      console.error('Notification send failed:', await response.text());
+      const error = await response.text();
+      console.warn(`⚠️ Backend error: ${response.status} - ${error}`);
     }
   } catch (err) {
-    console.error('Backend notification error:', err);
+    console.error('❌ Push notification error:', err.message);
   }
 }
 
-/* =====================================================
-   THEME SYSTEM
-   ===================================================== */
-const THEMES = {
-  nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
-  midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
-  ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
-  forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
-  sunset: { label: '🌅 Sunset Glow', attr: 'sunset', tier: 'classic' },
-  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' },
-  rose: { label: '🌹 Rose Pink', attr: 'rose', tier: 'classic' },
-  neon: { label: '⚡ Neon Pulse', attr: 'neon', tier: 'classic' },
-  obsidian: { label: '🖤 Obsidian', attr: 'obsidian', tier: 'classic' },
-  gold: { label: '✨ Gold Elite', attr: 'gold', tier: 'classic' },
-  crimson: { label: '🔴 Crimson', attr: 'crimson', tier: 'classic' },
-  arctic: { label: '🩵 Arctic Ice', attr: 'arctic', tier: 'classic' },
-  galaxy: { label: '🌌 Galaxy', attr: 'galaxy', tier: 'classic' },
-  mint: { label: '🍃 Mint Fresh', attr: 'mint', tier: 'classic' },
-  inferno: { label: '🔥 Inferno', attr: 'inferno', tier: 'classic' },
-  cosmic: { label: '🌌 Cosmic Nexus', attr: 'cosmic', tier: 'premium' },
-  cyberpunk: { label: '⚡ Cyberpunk 2099', attr: 'cyberpunk', tier: 'premium' },
-  aurora: { label: '🌠 Aurora Borealis', attr: 'aurora', tier: 'premium' },
-  saturn: { label: '🪐 Saturn Rings', attr: 'saturn', tier: 'premium' },
-  lava: { label: '🌋 Lava Core', attr: 'lava', tier: 'premium' },
-  frozen: { label: '❄️ Frozen Kingdom', attr: 'frozen', tier: 'premium' },
-  eclipse: { label: '🌑 Eclipse', attr: 'eclipse', tier: 'premium' },
-  abyss: { label: '🌊 Deep Ocean Abyss', attr: 'abyss', tier: 'premium' },
-  quantum: { label: '🔮 Quantum Realm', attr: 'quantum', tier: 'premium' },
-  prism: { label: '🌈 Prism Dimension', attr: 'prism', tier: 'premium' },
-  meteor: { label: '☄️ Meteor Storm', attr: 'meteor', tier: 'premium' },
-  dragon: { label: '🐉 Dragon Flame', attr: 'dragon', tier: 'premium' },
-  matrix: { label: '🤖 AI Matrix', attr: 'matrix', tier: 'premium' },
-  blackhole: { label: '🕳️ Black Hole', attr: 'blackhole', tier: 'premium' },
-  tokyo: { label: '🌃 Neon Tokyo', attr: 'tokyo', tier: 'premium' },
-  celestial: { label: '👑 Celestial Gold', attr: 'celestial', tier: 'premium' },
-  biotech: { label: '🧬 BioTech Future', attr: 'biotech', tier: 'premium' },
-  phoenix: { label: '🌋 Phoenix Rising', attr: 'phoenix', tier: 'premium' },
-  shadow: { label: '⚔️ Shadow Realm', attr: 'shadow', tier: 'premium' },
-  multiverse: { label: '🌍 Multiverse', attr: 'multiverse', tier: 'premium' },
-  infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
-};
-
-function setTheme(themeName) {
-  const theme = THEMES[themeName];
-  if (!theme) return;
-  currentTheme = themeName;
-  if (themeName === 'nexa') {
-    document.documentElement.removeAttribute('data-theme');
-  } else {
-    document.documentElement.setAttribute('data-theme', theme.attr);
-  }
-  savePrefs();
-}
-
-function renderThemeGrid() {
-  const grid = document.getElementById('themeGrid');
-  grid.innerHTML = '';
-  Object.entries(THEMES).forEach(([key, theme]) => {
-    const btn = document.createElement('button');
-    btn.className = `theme-btn ${currentTheme === key ? 'active' : ''}`;
-    btn.textContent = theme.label;
-    btn.onclick = () => { setTheme(key); renderThemeGrid(); };
-    grid.appendChild(btn);
+// =====================================================
+// PWA INIT
+// =====================================================
+function initPWA() {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showPWABanner();
   });
-}
 
-/* =====================================================
-   AUTH & INIT
-   ===================================================== */
-auth.onAuthStateChanged(async (user) => {
-  if (!user) { window.location.href = "login.html"; return; }
-  currentUser = user;
-  initPWA();
-  await updateOnline(true);
-  await loadProfile();
-  startUsersListener();
-  startStatusListener();
-  setupHeartbeat();
-  loadUnreadCounts();
-  listenIncoming();
-  loadPrefs();
-  renderThemeGrid();
-});
-
-async function handleLogout() {
-  if (!confirm("Logout?")) return;
-  endVoiceCall();
-  await updateOnline(false);
-  await auth.signOut();
-  window.location.href = "login.html";
-}
-
-async function loadProfile() {
-  try {
-    const doc = await db.collection("profiles").doc(currentUser.uid).get();
-    const data = doc.data() || {};
-    const name = data.displayName || currentUser.displayName || "User";
-    const photo = data.photoUrl || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
-    document.getElementById("myName").textContent = name;
-    document.getElementById("myPic").src = photo;
-    await db.collection("users").doc(currentUser.uid).set({
-      uid: currentUser.uid, name, displayName: name,
-      email: data.email || currentUser.email,
-      photoUrl: photo, photo,
-      createdAt: data.createdAt || Date.now(),
-      updatedAt: Date.now(), online: true
-    }, { merge: true });
-  } catch(e){ console.error(e); }
-}
-
-document.getElementById("myPic").addEventListener("click", () => document.getElementById("profileUpload").click());
-document.getElementById("profileUpload").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; if (!file) return;
-  const url = await uploadFile(file);
-  if (url) {
-    await db.collection("users").doc(currentUser.uid).update({ photoUrl: url, photo: url, updatedAt: Date.now() });
-    await db.collection("profiles").doc(currentUser.uid).update({ photoUrl: url, updatedAt: Date.now() });
-    document.getElementById("myPic").src = url;
-    showNotifToast('✅ Profile photo updated', 'success');
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => {
+        console.log('✅ Service Worker registered');
+      })
+      .catch(e => {
+        console.warn('⚠️ SW registration failed:', e.message);
+      });
   }
-});
 
-let inactivityTimer = null;
+  window.addEventListener('appinstalled', () => {
+    dismissPWABanner();
+    showNotifToast('✅ Nexa Messenger installed!', 'success');
+    deferredPrompt = null;
+  });
+
+  loadNotificationSettings();
+}
+
+function showPWABanner() {
+  const banner = document.getElementById('pwaInstallBanner');
+  banner.classList.add('show');
+}
+
+function dismissPWABanner() {
+  const banner = document.getElementById('pwaInstallBanner');
+  banner.classList.remove('show');
+}
+
+async function installPWA() {
+  if (!deferredPrompt) {
+    alert('Installation not available. Use the browser menu to install.');
+    return;
+  }
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  if (outcome === 'accepted') {
+    showNotifToast('✅ Installing Nexa Messenger...', 'success');
+  }
+  deferredPrompt = null;
+}
+
+// =====================================================
+// USERS & PRESENCE
+// =====================================================
+let allUsersData = [];
+let unreadMessages = {};
+let mutedChats = {};
+let favoritedChats = {};
+let blockedUsers = {};
+let latestMsgTime = {};
 let userStatus = "online";
 
-async function updateOnline(on) {
-  if (!currentUser) return;
-  await db.collection("presence").doc(currentUser.uid).set(
-    { online: on, status: on ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
-  );
-  userStatus = on ? "online" : "offline";
-}
-
-function setupHeartbeat() {
-  setInterval(() => { if (currentUser) updateOnline(true); }, 5000);
-  function resetInactivity() {
-    clearTimeout(inactivityTimer);
-    if (userStatus === "away") updateOnline(true);
-    inactivityTimer = setTimeout(async () => {
-      if (!currentUser) return;
-      userStatus = "away";
-      await db.collection("presence").doc(currentUser.uid).set(
-        { online: true, status: "away", lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
-      );
-    }, 180000);
-  }
-  document.addEventListener("click", resetInactivity);
-  document.addEventListener("keypress", resetInactivity);
-  document.addEventListener("mousemove", resetInactivity);
-  window.addEventListener("beforeunload", () => updateOnline(false));
-  resetInactivity();
-}
-
-/* =====================================================
-   USERS LIST
-   ===================================================== */
 function startUsersListener() {
   db.collection("users").onSnapshot(snap => {
     allUsersData = [];
@@ -1308,8 +1318,10 @@ function startUsersListener() {
 
 function renderUsers() {
   const box = document.getElementById("users");
+  if (!box) return;
+  
   box.innerHTML = "";
-  const q = document.getElementById("userSearch").value.trim().toLowerCase();
+  const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
   let list = allUsersData.filter(u => !blockedUsers[u.uid]);
   if (q) list = list.filter(u => (u.displayName || u.name || "").toLowerCase().includes(q));
   list.sort((a, b) => {
@@ -1317,21 +1329,23 @@ function renderUsers() {
     if (!favoritedChats[a.uid] && favoritedChats[b.uid]) return 1;
     return (latestMsgTime[b.uid] || 0) - (latestMsgTime[a.uid] || 0);
   });
+  
   if (!list.length) { box.innerHTML = '<div class="no-users">👋 No users found</div>'; return; }
+  
   list.forEach(user => {
     const name = user.displayName || user.name || "User";
     const photo = user.photoUrl || user.photo || "https://i.imgur.com/HeIi0wU.png";
     const el = document.createElement("div");
-    el.className = "user-item" + (selectedUser?.uid === user.uid ? " active" : "");
+    el.className = "user-item" + (selectedUser && selectedUser.uid === user.uid ? " active" : "");
     el.dataset.uid = user.uid;
     const unread = unreadMessages[user.uid] || 0;
     const t = latestMsgTime[user.uid];
     const timeStr = t ? formatTime(t) : "";
-    const hasStatus = userStatuses[user.uid]?.length > 0;
+    
     el.innerHTML = `
       <div class="user-avatar-wrap">
         <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-        <div class="status-dot${hasStatus ? ' has-status' : ''}" id="dot-${user.uid}"></div>
+        <div class="status-dot" id="dot-${user.uid}"></div>
       </div>
       <div class="user-info">
         <div class="user-name">${favoritedChats[user.uid] ? '⭐ ' : ''}${name}</div>
@@ -1342,10 +1356,12 @@ function renderUsers() {
         ${unread > 0 ? `<div class="unread-badge">${unread > 99 ? '99+' : unread}</div>` : ''}
       </div>
     `;
+    
     db.collection("presence").doc(user.uid).onSnapshot(doc => {
       const dot = document.getElementById(`dot-${user.uid}`);
-      if (dot && !dot.classList.contains('has-status')) dot.classList.toggle("online", !!doc.data()?.online);
+      if (dot) dot.classList.toggle("online", !!doc.data()?.online);
     });
+    
     el.addEventListener("click", () => selectChat(user, el));
     box.appendChild(el);
   });
@@ -1426,6 +1442,8 @@ function formatLastSeen(ts) {
   if (d === 1) return "yesterday"; return `${d}d ago`;
 }
 
+let typingTimeout;
+
 document.addEventListener("input", function(e) {
   if (e.target.id !== "text" || !selectedUser) return;
   const ta = document.getElementById("text"); ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
@@ -1452,9 +1470,41 @@ function loadUnreadCounts() {
   });
 }
 
-/* =====================================================
-   MESSAGES
-   ===================================================== */
+async function updateOnline(on) {
+  if (!currentUser) return;
+  await db.collection("presence").doc(currentUser.uid).set(
+    { online: on, status: on ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
+  );
+  userStatus = on ? "online" : "offline";
+}
+
+function setupHeartbeat() {
+  setInterval(() => { if (currentUser) updateOnline(true); }, 5000);
+  function resetInactivity() {
+    clearTimeout(inactivityTimer);
+    if (userStatus === "away") updateOnline(true);
+    inactivityTimer = setTimeout(async () => {
+      if (!currentUser) return;
+      userStatus = "away";
+      await db.collection("presence").doc(currentUser.uid).set(
+        { online: true, status: "away", lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }
+      );
+    }, 180000);
+  }
+  document.addEventListener("click", resetInactivity);
+  document.addEventListener("keypress", resetInactivity);
+  document.addEventListener("mousemove", resetInactivity);
+  window.addEventListener("beforeunload", () => updateOnline(false));
+  resetInactivity();
+}
+
+let inactivityTimer = null;
+
+// =====================================================
+// MESSAGES
+// =====================================================
+let allMessages = [];
+
 function loadMessages() {
   if (!selectedUser) return;
   db.collection("chats").orderBy("createdAt", "asc").onSnapshot(snap => {
@@ -1617,9 +1667,9 @@ function scrollToMsg(msgId) {
   setTimeout(() => { el.style.outline = ""; el.style.borderRadius = ""; }, 1500);
 }
 
-/* =====================================================
-   FILE UPLOAD
-   ===================================================== */
+// =====================================================
+// FILE UPLOAD
+// =====================================================
 async function uploadFile(file) {
   const form = new FormData(); form.append("file", file); form.append("upload_preset", UPLOAD_PRESET);
   const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, { method:"POST", body:form });
@@ -1678,7 +1728,6 @@ async function sendMessage() {
 
   await db.collection("chats").add(baseMsg(extras));
 
-  // Send push notification
   sendPushNotificationViaBackend(
     selectedUser.uid,
     document.getElementById("myName").textContent || "User",
@@ -1702,9 +1751,16 @@ function baseMsg(extras = {}) {
   return { from: currentUser.uid, to: selectedUser.uid, text:"", image:"", audio:"", status:"sent", edited:false, read:false, createdAt:Date.now(), ...extras };
 }
 
-/* =====================================================
-   VOICE RECORDING
-   ===================================================== */
+// =====================================================
+// VOICE RECORDING
+// =====================================================
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingBlob = null;
+let isRecording = false;
+let recStart = 0;
+let recTimer = null;
+
 const recordBtn = document.getElementById("recordBtn");
 const voicePanel = document.getElementById("voicePanel");
 const voiceTimerEl = document.getElementById("voiceTimer");
@@ -1750,9 +1806,9 @@ async function sendVoice() {
 function cancelVoice() { recordingBlob = null; audioChunks = []; voicePanel.classList.remove("active"); voiceTimerEl.textContent = "0:00"; }
 function viewImg(url) { window.open(url, "_blank"); }
 
-/* =====================================================
-   CHAT INFO
-   ===================================================== */
+// =====================================================
+// CHAT INFO
+// =====================================================
 function openChatInfo() { if (!selectedUser) { alert("Select a user first"); return; } document.getElementById("infoPanel").classList.add("active"); loadMediaGrid(); renderThemeGrid(); }
 function closeChatInfo() { document.getElementById("infoPanel").classList.remove("active"); }
 
@@ -1761,6 +1817,75 @@ function loadMediaGrid() {
   const media = allMessages.filter(m => m.image);
   if (!media.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:18px;font-size:13px">No media shared</div>'; return; }
   media.forEach(m => { const el = document.createElement("div"); el.className = "media-thumb"; el.innerHTML = `<img src="${m.image}" alt="media">`; el.addEventListener("click", () => viewImg(m.image)); grid.appendChild(el); });
+}
+
+// =====================================================
+// THEMES
+// =====================================================
+const THEMES = {
+  nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
+  midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
+  ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
+  forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
+  sunset: { label: '🌅 Sunset Glow', attr: 'sunset', tier: 'classic' },
+  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' },
+  rose: { label: '🌹 Rose Pink', attr: 'rose', tier: 'classic' },
+  neon: { label: '⚡ Neon Pulse', attr: 'neon', tier: 'classic' },
+  obsidian: { label: '🖤 Obsidian', attr: 'obsidian', tier: 'classic' },
+  gold: { label: '✨ Gold Elite', attr: 'gold', tier: 'classic' },
+  crimson: { label: '🔴 Crimson', attr: 'crimson', tier: 'classic' },
+  arctic: { label: '🩵 Arctic Ice', attr: 'arctic', tier: 'classic' },
+  galaxy: { label: '🌌 Galaxy', attr: 'galaxy', tier: 'classic' },
+  mint: { label: '🍃 Mint Fresh', attr: 'mint', tier: 'classic' },
+  inferno: { label: '🔥 Inferno', attr: 'inferno', tier: 'classic' },
+  cosmic: { label: '🌌 Cosmic Nexus', attr: 'cosmic', tier: 'premium' },
+  cyberpunk: { label: '⚡ Cyberpunk 2099', attr: 'cyberpunk', tier: 'premium' },
+  aurora: { label: '🌠 Aurora Borealis', attr: 'aurora', tier: 'premium' },
+  saturn: { label: '🪐 Saturn Rings', attr: 'saturn', tier: 'premium' },
+  lava: { label: '🌋 Lava Core', attr: 'lava', tier: 'premium' },
+  frozen: { label: '❄️ Frozen Kingdom', attr: 'frozen', tier: 'premium' },
+  eclipse: { label: '🌑 Eclipse', attr: 'eclipse', tier: 'premium' },
+  abyss: { label: '🌊 Deep Ocean Abyss', attr: 'abyss', tier: 'premium' },
+  quantum: { label: '🔮 Quantum Realm', attr: 'quantum', tier: 'premium' },
+  prism: { label: '🌈 Prism Dimension', attr: 'prism', tier: 'premium' },
+  meteor: { label: '☄️ Meteor Storm', attr: 'meteor', tier: 'premium' },
+  dragon: { label: '🐉 Dragon Flame', attr: 'dragon', tier: 'premium' },
+  matrix: { label: '🤖 AI Matrix', attr: 'matrix', tier: 'premium' },
+  blackhole: { label: '🕳️ Black Hole', attr: 'blackhole', tier: 'premium' },
+  tokyo: { label: '🌃 Neon Tokyo', attr: 'tokyo', tier: 'premium' },
+  celestial: { label: '👑 Celestial Gold', attr: 'celestial', tier: 'premium' },
+  biotech: { label: '🧬 BioTech Future', attr: 'biotech', tier: 'premium' },
+  phoenix: { label: '🌋 Phoenix Rising', attr: 'phoenix', tier: 'premium' },
+  shadow: { label: '⚔️ Shadow Realm', attr: 'shadow', tier: 'premium' },
+  multiverse: { label: '🌍 Multiverse', attr: 'multiverse', tier: 'premium' },
+  infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
+};
+
+let currentTheme = 'nexa';
+
+function setTheme(themeName) {
+  const theme = THEMES[themeName];
+  if (!theme) return;
+  currentTheme = themeName;
+  if (themeName === 'nexa') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme.attr);
+  }
+  savePrefs();
+}
+
+function renderThemeGrid() {
+  const grid = document.getElementById('themeGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  Object.entries(THEMES).forEach(([key, theme]) => {
+    const btn = document.createElement('button');
+    btn.className = `theme-btn ${currentTheme === key ? 'active' : ''}`;
+    btn.textContent = theme.label;
+    btn.onclick = () => { setTheme(key); renderThemeGrid(); };
+    grid.appendChild(btn);
+  });
 }
 
 function muteChat() { if (!selectedUser) return; mutedChats[selectedUser.uid] = !mutedChats[selectedUser.uid]; document.getElementById("muteText").textContent = mutedChats[selectedUser.uid] ? "Unmute Notifications" : "Mute Notifications"; savePrefs(); }
@@ -1808,9 +1933,16 @@ function listenIncoming() {
   });
 }
 
-/* =====================================================
-   VOICE CALL SYSTEM
-   ===================================================== */
+// =====================================================
+// VOICE CALLS
+// =====================================================
+let peerConnection = null;
+let localStream = null;
+let incomingCall = null;
+let callActive = false;
+let callStartTime = null;
+let callTimerInterval = null;
+
 async function openVoiceCall() {
   if (!selectedUser) { alert("Select a user first"); return; }
   callActive = true;
@@ -1948,9 +2080,21 @@ function endVoiceCall() {
   callStartTime = null;
 }
 
-/* =====================================================
-   STORIES SYSTEM
-   ===================================================== */
+// =====================================================
+// STORIES
+// =====================================================
+let userStatuses = {};
+let storyViewerData = null;
+let storyViewerIndex = 0;
+let storyTimer = null;
+let storyProgressStart = null;
+let storyAnimFrame = null;
+let viewingStoryUid = null;
+let storyCurrentDuration = 0;
+let isPlayingOwnStory = false;
+let statusTab = 'image';
+let statusFile = null;
+
 function startStatusListener() {
   db.collection("status").onSnapshot(snap => {
     userStatuses = {};
@@ -1967,7 +2111,8 @@ function startStatusListener() {
 }
 
 function renderStoriesBar() {
-  const bar = document.getElementById("storiesBar"); bar.innerHTML = "";
+  const bar = document.getElementById("storiesBar"); if (!bar) return;
+  bar.innerHTML = "";
   const addEl = document.createElement("div"); addEl.className = "story-item add-story";
   const myStatuses = userStatuses[currentUser?.uid] || [];
   const myRingClass = myStatuses.length ? "story-ring unseen" : "story-ring add-own";
@@ -2264,7 +2409,6 @@ async function reactToStory() {
   showNotifToast(emoji, 'success');
 }
 
-/* STATUS MODAL */
 function openStatusModal() {
   statusTab = 'image'; statusFile = null;
   document.querySelectorAll(".status-tab").forEach(t => t.classList.remove("active"));
@@ -2327,9 +2471,9 @@ async function publishStatus() {
   btn.disabled = false; btn.textContent = "Share";
 }
 
-/* =====================================================
-   AI PANEL
-   ===================================================== */
+// =====================================================
+// AI PANEL
+// =====================================================
 function openAI() {
   document.getElementById('aiPanel').classList.add('active');
   resetAIIframe();
@@ -2354,9 +2498,9 @@ _aiIframe.addEventListener('load', () => {
   document.getElementById('aiLoading').classList.add('hidden');
 });
 
-/* =====================================================
-   COMING SOON MODAL
-   ===================================================== */
+// =====================================================
+// COMING SOON MODAL
+// =====================================================
 function openCallModal(type) {
   if (!selectedUser) { alert("Select a user first"); return; }
   const icon = type === 'voice' ? '☎️' : '📹';
@@ -2371,9 +2515,9 @@ function closeComingSoonModal(e) {
   document.getElementById("comingSoonModal").classList.remove("active");
 }
 
-/* =====================================================
-   PREFS
-   ===================================================== */
+// =====================================================
+// PREFS
+// =====================================================
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");

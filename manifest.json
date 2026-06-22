@@ -1,25 +1,123 @@
 {
-  "name": "Nexa Messenger",
-  "short_name": "Nexa",
-  "description": "Nexa Messenger Progressive Web App",
-  "start_url": "./",
-  "scope": "./",
+  "name": "Nexa Messenger - Premium Chat & Stories Platform",
+  "short_name": "Nexa Messenger",
+  "description": "Nexa Messenger: Premium Chat, Stories, Voice & Video Calls. Connect with friends with 30+ stunning themes, offline support, and real-time messaging.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "icons": [
+  "orientation": "portrait-primary",
+  "theme_color": "#080c14",
+  "background_color": "#080c14",
+  "categories": ["social", "messaging"],
+  "screenshots": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "narrow",
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide",
+      "purpose": "any"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "media",
+          "accept": ["image/*", "video/*"]
+        }
+      ]
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "New Chat",
+      "short_name": "Chat",
+      "description": "Start a new conversation",
+      "url": "/?shortcut=chat",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "My Stories",
+      "short_name": "Stories",
+      "description": "View your stories",
+      "url": "/?shortcut=stories",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Call Friends",
+      "short_name": "Call",
+      "description": "Make a call",
+      "url": "/?shortcut=call",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false,
+  "scope_extensions": [
+    {
+      "origin": "https://askifyai.onrender.com"
+    },
+    {
+      "origin": "https://api.cloudinary.com"
+    },
+    {
+      "origin": "https://www.googleapis.com"
     }
   ]
 }
