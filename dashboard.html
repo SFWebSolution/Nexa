@@ -26,6 +26,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js"></script>
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "a0974c00-b4f3-4b48-a6e4-2aa784ce0532",
+    });
+  });
+</script>
 
   <style>
 /* =====================================================
@@ -859,6 +868,14 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg-0); c
 <input type="file" id="profileUpload" hidden accept="image/*">
 
 <script>
+  window.showNotifToast = function(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => toast.remove(), 3000);
+};
 // =====================================================
 // CRITICAL: GLOBAL VARIABLES DECLARATION
 // =====================================================
@@ -890,172 +907,165 @@ const db = firebase.firestore();
 const messaging = firebase.messaging();
 
 // =====================================================
-// FCM SYSTEM
+// ONE SIGNAL SYSTEM (REPLACEMENT FOR FCM)
 // =====================================================
-let fcmRetries = 0;
-const FCM_MAX_RETRIES = 3;
-const FCM_RETRY_DELAY = 2000;
-let fcmToken = null;
-let fcmReady = false;
 
-async function waitForSWController() {
-  if (navigator.serviceWorker.controller) return;
-  console.log("⏳ Waiting for Service Worker to become active...");
-  return new Promise(resolve => {
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      console.log("✅ Service Worker now controlling page");
-      resolve();
-    });
-  });
-}
+let oneSignalUserId = null;
+let oneSignalReady = false;
 
-async function initializeFCM() {
-  console.log('🔄 Starting FCM initialization...');
+// =====================================================
+// INIT ONE SIGNAL
+// =====================================================
+async function initializeOneSignal() {
+  console.log("🔄 Starting OneSignal...");
 
   if (!currentUser) {
-    console.warn('⚠️ No user authenticated');
-    return false;
-  }
-
-  if (!('serviceWorker' in navigator)) {
-    console.warn('⚠️ Service Workers not supported');
+    console.warn("⚠️ No user logged in");
     return false;
   }
 
   try {
     const permission = await Notification.requestPermission();
-    console.log('📢 Notification permission:', permission);
+    console.log("📢 Permission:", permission);
 
-    if (permission !== 'granted') {
-      showFCMStatus('error', '⚠️ Notifications blocked');
+    if (permission !== "granted") {
+      showNotifToast("Notifications blocked", "error");
       return false;
     }
 
-    return await requestFCMToken();
+    await waitForOneSignal();
+
+    return await requestOneSignalId();
 
   } catch (err) {
-    console.error('❌ FCM init error:', err);
+    console.error("❌ OneSignal init error:", err);
     return false;
-  }
-}
-
-async function requestFCMToken() {
-  console.log(`🔐 Requesting FCM token... attempt ${fcmRetries + 1}`);
-
-  try {
-    await waitForSWController();
-
-    const registration = await navigator.serviceWorker.ready;
-
-    console.log("✅ Service Worker ready:", registration.active?.state);
-
-    const token = await messaging.getToken({
-      vapidKey: "BKppd1ggDuW5VCCOlqJ_k2R4eDQeer69w51CRXV6YrMxHQglgX0uzZsejx_INAofzdNvZ_P5kcsHRpHdBDtVjz8".trim(),
-      serviceWorkerRegistration: registration
-    });
-
-    if (!token) throw new Error("No token returned");
-
-    console.log("🔥 FCM TOKEN GENERATED:", token);
-    fcmToken = token;
-
-    await saveFCMTokenToFirestore(token);
-    setupMessageListeners();
-
-    fcmReady = true;
-    showFCMStatus('ready', '✓ Notifications Ready');
-
-    return true;
-
-  } catch (error) {
-    console.error('❌ FCM token error:', error.message || error);
-
-    if (fcmRetries < FCM_MAX_RETRIES) {
-      fcmRetries++;
-      const delay = FCM_RETRY_DELAY * fcmRetries;
-      console.log(`⏳ Retry in ${delay}ms`);
-
-      return new Promise(resolve => {
-        setTimeout(() => {
-          resolve(requestFCMToken());
-        }, delay);
-      });
-    }
-
-    showFCMStatus('error', '⚠️ Notifications Failed');
-    return false;
-  }
-}
-
-async function saveFCMTokenToFirestore(token) {
-  if (!currentUser || !token) {
-    console.warn('⚠️ Missing user or token');
-    return false;
-  }
-
-  try {
-    console.log('💾 Saving token...');
-
-    await db.collection("users").doc(currentUser.uid).set({
-      uid: currentUser.uid,
-      fcmToken: token,
-      fcmTokenUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      fcmTokenValid: true
-    }, { merge: true });
-
-    console.log('✅ Token saved to Firestore');
-    return true;
-
-  } catch (err) {
-    console.error('❌ Firestore save error:', err);
-    return false;
-  }
-}
-
-function setupMessageListeners() {
-  console.log('👂 Setting up listeners...');
-
-  messaging.onMessage((payload) => {
-    console.log('📬 Message received:', payload);
-
-    const title = payload?.notification?.title || 'Nexa';
-    const body = payload?.notification?.body || '';
-
-    showNotifToast(title || body, 'success');
-
-    if (Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: 'icon-192.png'
-      });
-    }
-  });
-}
-
-function showFCMStatus(status, message) {
-  const el = document.getElementById('fcmStatus');
-  if (!el) return;
-
-  el.textContent = message;
-  el.className = status;
-
-  console.log(`📊 FCM: ${status} - ${message}`);
-
-  // Auto-hide FCM status after 3 seconds
-  clearTimeout(fcmStatusTimeout);
-  if (status === 'ready') {
-    fcmStatusTimeout = setTimeout(() => {
-      el.style.animation = 'fcmFadeOut 0.4s ease forwards';
-      setTimeout(() => {
-        el.classList.remove('ready');
-        el.style.animation = '';
-      }, 400);
-    }, 3000);
   }
 }
 
 // =====================================================
-// AUTHENTICATION & APP INITIALIZATION
+// WAIT FOR ONE SIGNAL SDK
+// =====================================================
+async function waitForOneSignal() {
+  return new Promise(resolve => {
+    if (window.OneSignalDeferred) {
+      resolve();
+      return;
+    }
+
+    const check = setInterval(() => {
+      if (window.OneSignalDeferred) {
+        clearInterval(check);
+        resolve();
+      }
+    }, 500);
+  });
+}
+
+// =====================================================
+// GET ONE SIGNAL USER ID
+// =====================================================
+async function requestOneSignalId() {
+  console.log("🔐 Getting OneSignal User ID...");
+
+  try {
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "YOUR_ONESIGNAL_APP_ID"
+      });
+
+      const id = await OneSignal.User.getId();
+
+      if (!id) throw new Error("No OneSignal ID returned");
+
+      console.log("🔥 ONE SIGNAL USER ID:", id);
+
+      oneSignalUserId = id;
+
+      await saveOneSignalIdToFirestore(id);
+
+      oneSignalReady = true;
+      showNotifToast("Notifications Ready", "success");
+    });
+
+    return true;
+
+  } catch (err) {
+    console.error("❌ OneSignal error:", err);
+    return false;
+  }
+}
+
+// =====================================================
+// SAVE ID TO FIRESTORE
+// =====================================================
+async function saveOneSignalIdToFirestore(id) {
+  if (!currentUser || !id) return;
+
+  try {
+    await db.collection("users").doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      oneSignalId: id,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    console.log("💾 OneSignal ID saved");
+
+  } catch (err) {
+    console.error("❌ Firestore save error:", err);
+  }
+}
+
+// =====================================================
+// SEND PUSH NOTIFICATION (BACKEND → ONESIGNAL)
+// =====================================================
+async function sendPushNotificationViaBackend(receiverUid, title, body) {
+  if (!oneSignalReady) {
+    console.warn("⚠️ OneSignal not ready");
+    return;
+  }
+
+  if (!notificationSettings.messages) {
+    console.log("🔕 Notifications disabled");
+    return;
+  }
+
+  try {
+    console.log(`📤 Sending push to ${receiverUid.substring(0, 8)}...`);
+
+    const receiverDoc = await db.collection("users").doc(receiverUid).get();
+    const playerId = receiverDoc.data()?.oneSignalId;
+
+    if (!playerId) {
+      console.warn("⚠️ No OneSignal ID found");
+      return;
+    }
+
+    const response = await fetch(`${BACKEND_URL}/send-onesignal`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        playerId,
+        title: title || "Nexa",
+        body: body || "New message"
+      })
+    });
+
+    if (response.ok) {
+      console.log("✅ OneSignal push sent");
+    } else {
+      console.warn("⚠️ Backend error:", await response.text());
+    }
+
+  } catch (err) {
+    console.error("❌ Push error:", err.message);
+  }
+}
+
+// =====================================================
+// AUTH INIT
 // =====================================================
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
@@ -1064,182 +1074,29 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   currentUser = user;
-  console.log('👤 User authenticated:', user.email);
-  
-  showFCMStatus('loading', '⏳ Initializing...');
-  
+  console.log("👤 User:", user.email);
+
+  showNotifToast("Initializing...", "info");
+
   await loadProfile();
-  
-  const fcmSuccess = await initializeFCM();
-  
-  if (!fcmSuccess) {
-    console.warn('⚠️ FCM init failed, but app will continue');
-    showFCMStatus('error', '⚠️ Notifications unavailable');
+
+  const ok = await initializeOneSignal();
+
+  if (!ok) {
+    console.warn("⚠️ OneSignal failed");
+    showNotifToast("Notifications unavailable", "error");
   }
 
   startUsersListener();
-  startStatusListener();
   setupHeartbeat();
   loadUnreadCounts();
   listenIncoming();
-  loadPrefs();
-  renderThemeGrid();
 
   initPWA();
   await updateOnline(true);
 
-  console.log('✅ App fully initialized');
+  console.log("✅ App fully ready");
 });
-
-async function loadProfile() {
-  try {
-    const doc = await db.collection("profiles").doc(currentUser.uid).get();
-    const data = doc.data() || {};
-    const name = data.displayName || currentUser.displayName || "User";
-    const photo = data.photoUrl || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
-    
-    document.getElementById("myName").textContent = name;
-    document.getElementById("myPic").src = photo;
-
-    await db.collection("users").doc(currentUser.uid).set({
-      uid: currentUser.uid,
-      name, displayName: name,
-      email: data.email || currentUser.email,
-      photoUrl: photo, photo,
-      createdAt: data.createdAt || Date.now(),
-      updatedAt: Date.now(),
-      online: true
-    }, { merge: true });
-  } catch(e) {
-    console.error('Profile load error:', e);
-  }
-}
-
-async function handleLogout() {
-  if (!confirm("Logout?")) return;
-  endVoiceCall();
-  await updateOnline(false);
-  await auth.signOut();
-  window.location.href = "login.html";
-}
-
-// =====================================================
-// NOTIFICATION TOAST
-// =====================================================
-function showNotifToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `notif-toast ${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.style.animation = 'notifSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1) reverse';
-    setTimeout(() => toast.remove(), 400);
-  }, 3500);
-}
-
-// =====================================================
-// NOTIFICATION SETTINGS
-// =====================================================
-let notificationSettings = {
-  messages: true,
-  stories: true,
-  calls: true,
-  reactions: true
-};
-
-function openNotifSettings() {
-  document.getElementById('notifSettingsModal').classList.add('active');
-}
-
-function closeNotifSettings() {
-  document.getElementById('notifSettingsModal').classList.remove('active');
-}
-
-function handleNotifSettingsOverlayClick(e) {
-  if (e.target === document.getElementById('notifSettingsModal')) closeNotifSettings();
-}
-
-function toggleNotif(type) {
-  notificationSettings[type] = !notificationSettings[type];
-  const toggle = document.getElementById(`notif${type.charAt(0).toUpperCase() + type.slice(1)}`);
-  toggle.classList.toggle('active');
-  saveNotificationSettings();
-}
-
-function saveNotificationSettings() {
-  localStorage.setItem('nexaNotifSettings', JSON.stringify(notificationSettings));
-}
-
-function loadNotificationSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('nexaNotifSettings') || '{}');
-    notificationSettings = { ...notificationSettings, ...saved };
-    Object.entries(notificationSettings).forEach(([key, val]) => {
-      const el = document.getElementById(`notif${key.charAt(0).toUpperCase() + key.slice(1)}`);
-      if (el) el.classList.toggle('active', val);
-    });
-  } catch(e) { console.warn('Error loading notif settings:', e); }
-}
-
-function sendNotification(title, options = {}) {
-  if (!notificationSettings.messages && options.type === 'message') return;
-  if (!notificationSettings.stories && options.type === 'story') return;
-  if (!notificationSettings.calls && options.type === 'call') return;
-  if (!notificationSettings.reactions && options.type === 'reaction') return;
-
-  showNotifToast(options.body || title, 'success');
-}
-
-// =====================================================
-// SEND PUSH NOTIFICATIONS VIA BACKEND
-// =====================================================
-async function sendPushNotificationViaBackend(receiverUid, title, body) {
-  if (!fcmReady) {
-    console.warn('⚠️ FCM not ready, skipping notification');
-    return;
-  }
-
-  if (!notificationSettings.messages) {
-    console.log('🔕 Notifications disabled by user');
-    return;
-  }
-
-  try {
-    console.log(`📤 Sending push to ${receiverUid.substring(0, 8)}...`);
-    
-    const receiverDoc = await db.collection("users").doc(receiverUid).get();
-    const receiverToken = receiverDoc.data()?.fcmToken;
-
-    if (!receiverToken) {
-      console.warn(`⚠️ No FCM token for user ${receiverUid.substring(0, 8)}`);
-      return;
-    }
-
-    const response = await fetch(`${BACKEND_URL}/send-notification`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        token: receiverToken,
-        title: title || "New Message",
-        body: body || "You have a new message",
-        icon: 'icon-192.png'
-      })
-    });
-
-    if (response.ok) {
-      console.log('✅ Notification sent successfully');
-    } else {
-      const error = await response.text();
-      console.warn(`⚠️ Backend error: ${response.status} - ${error}`);
-    }
-  } catch (err) {
-    console.error('❌ Push notification error:', err.message);
-  }
-}
-
 // =====================================================
 // PWA INIT
 // =====================================================
