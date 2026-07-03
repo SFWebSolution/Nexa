@@ -871,22 +871,53 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 window.OneSignal = window.OneSignal || [];
-OneSignal.push(function() {
-  OneSignal.init({
+OneSignal.push(async function() {
+  await OneSignal.init({
     appId: "a0974c00-b4f3-4b48-a6e4-2aa784ce0532",
     allowLocalhostAsSecureOrigin: true,
+    serviceWorkerPath: "sw.js"
   });
+  
   OneSignal.Slidedown.promptPush();
-  OneSignal.getNotificationPermission(function(permission) {
-    console.log("🔔 OneSignal Permission:", permission);
-    updateOneSignalStatus(permission === 'granted' ? 'ready' : 'loading');
-  });
-  OneSignal.getUserId(function(userId) {
-    oneSignalPlayerId = userId;
-    console.log("✅ OneSignal Player ID:", userId ? userId.substring(0, 20) + '...' : 'N/A');
-    if (userId) updateOneSignalStatus('ready');
-  });
+  
+  if (Notification.permission === 'granted') {
+    updateOneSignalStatus('ready');
+  } else {
+    updateOneSignalStatus('loading');
+  }
+  
+  const pushSub = OneSignal.User?.pushSubscription;
+  if (pushSub) {
+    if (pushSub.id) {
+      oneSignalPlayerId = pushSub.id;
+      console.log("✅ OneSignal Subscription ID:", oneSignalPlayerId.substring(0, 20) + "...");
+      updateOneSignalStatus('ready');
+      saveOneSignalIdToFirestore(oneSignalPlayerId);
+    }
+    pushSub.addEventListener("change", (event) => {
+      console.log("🔔 OneSignal Subscription Change:", event.current);
+      oneSignalPlayerId = event.current.id;
+      if (oneSignalPlayerId) {
+        updateOneSignalStatus('ready');
+        saveOneSignalIdToFirestore(oneSignalPlayerId);
+      } else {
+        updateOneSignalStatus('loading');
+      }
+    });
+  }
 });
+
+async function saveOneSignalIdToFirestore(subId) {
+  if (!currentUser || !subId) return;
+  try {
+    await db.collection("users").doc(currentUser.uid).set({
+      oneSignalPlayerId: subId
+    }, { merge: true });
+    console.log("Uploaded OneSignal ID to Firestore:", subId);
+  } catch (err) {
+    console.warn("Failed to upload OneSignal ID to Firestore:", err);
+  }
+}
 
 function updateOneSignalStatus(status) {
   const el = document.getElementById("oneSignalStatus");
@@ -1079,6 +1110,9 @@ auth.onAuthStateChanged(async (user) => {
     listenIncoming();
     initPWA();
     await updateOnline(true);
+    if (oneSignalPlayerId) {
+      saveOneSignalIdToFirestore(oneSignalPlayerId);
+    }
     console.log("✅ App fully ready");
   }
 });
@@ -1091,20 +1125,21 @@ window.showNotifToast = function(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 };
 
-async function sendPushNotification(title, body) {
-  if (!oneSignalPlayerId || !notificationSettings.messages) return;
+async function sendPushNotification(title, body, targetPlayerId) {
+  const recipientId = targetPlayerId || (selectedUser ? selectedUser.oneSignalPlayerId : null);
+  if (!recipientId || !notificationSettings.messages) return;
   try {
     const res = await fetch(BACKEND_URL + '/send-onesignal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        playerId: oneSignalPlayerId,
+        playerId: recipientId,
         title: title,
         body: body
       })
     });
     if (res.ok) {
-      console.log('✅ Push notification sent');
+      console.log('✅ Push notification sent to:', recipientId.substring(0, 20) + "...");
     }
   } catch(err) {
     console.error('Push notification error:', err);
@@ -1617,8 +1652,15 @@ async function toggleReact(msgId, emoji) {
     r[emoji].push(currentUser.uid);
   }
   await db.collection("chats").doc(msgId).update({ reactions: r });
-  if (notificationSettings.reactions && i < 0) {
-    sendPushNotification('🎉 New reaction!', 'You received a reaction');
+  if (notificationSettings.reactions && i < 0 && msg.from !== currentUser.uid) {
+    const targetUser = allUsersData.find(u => u.uid === msg.from);
+    if (targetUser && targetUser.oneSignalPlayerId) {
+      sendPushNotification(
+        '🎉 New reaction!',
+        `${document.getElementById('myName').textContent || 'Someone'} reacted to your message`,
+        targetUser.oneSignalPlayerId
+      );
+    }
   }
 }
 
@@ -1678,7 +1720,7 @@ document.getElementById("img").addEventListener("change", async e => {
       await db.collection("chats").add(baseMsg({ image: url }));
       clearReply();
       showNotifToast("✓ Image sent!", "success");
-      sendPushNotification(`📷 Photo from ${document.getElementById('myName').textContent}`, 'New photo message');
+      sendPushNotification(`📷 Photo from ${document.getElementById('myName').textContent || 'Nexa User'}`, 'New photo message', selectedUser.oneSignalPlayerId);
     }
   } catch(err) {
     showNotifToast("Image upload failed: " + err.message, "error");
@@ -1701,7 +1743,7 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         await db.collection("chats").add(baseMsg({ video: url }));
         clearReply();
         showNotifToast("✓ Video sent!", "success");
-        sendPushNotification(`🎥 Video from ${document.getElementById('myName').textContent}`, 'New video message');
+        sendPushNotification(`🎥 Video from ${document.getElementById('myName').textContent || 'Nexa User'}`, 'New video message', selectedUser.oneSignalPlayerId);
       }
     } else {
       showNotifToast("📎 Uploading file...", "info");
@@ -1710,7 +1752,7 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
         clearReply();
         showNotifToast("✓ File sent!", "success");
-        sendPushNotification(`📎 File from ${document.getElementById('myName').textContent}`, file.name);
+        sendPushNotification(`📎 File from ${document.getElementById('myName').textContent || 'Nexa User'}`, file.name, selectedUser.oneSignalPlayerId);
       }
     }
   } catch(err) {
@@ -1747,8 +1789,9 @@ async function sendMessage() {
   await db.collection("chats").add(baseMsg(extras));
   clearReply();
   sendPushNotification(
-    `Message to ${selectedUser.displayName || 'User'}`,
-    text.substring(0, 50)
+    `Message from ${document.getElementById('myName').textContent || 'Nexa User'}`,
+    text.substring(0, 50),
+    selectedUser.oneSignalPlayerId
   );
   setTimeout(() => {
     const box = document.getElementById("messages");
@@ -1841,7 +1884,7 @@ async function sendVoice() {
     if (url) {
       await db.collection("chats").add(baseMsg({ audio: url, duration: Date.now() - recStart }));
       cancelVoice();
-      sendPushNotification('🎤 Voice message', 'You received a voice message');
+      sendPushNotification(`🎤 Voice message from ${document.getElementById('myName').textContent || 'Nexa User'}`, 'New voice message', selectedUser.oneSignalPlayerId);
     }
   } catch(e) {
     alert("Failed: " + e.message);
@@ -2005,7 +2048,7 @@ function listenIncoming() {
             const name = d.data()?.displayName || "User";
             const preview = msg.text || (msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
             if (notificationSettings.messages) {
-              sendPushNotification(name, preview);
+              sendPushNotification(name, preview, oneSignalPlayerId);
             }
           });
         }
@@ -2406,9 +2449,13 @@ async function sendStoryReply() {
       status: "sent"
     });
     
-    document.getElementById("storyReplyInput").value = "";
     showNotifToast("✓ Reply sent", "success");
-    sendPushNotification(`Story reply from ${document.getElementById('myName').textContent}`, text);
+    const storyOwner = allUsersData.find(u => u.uid === viewingStoryUid);
+    sendPushNotification(
+      `Story reply from ${document.getElementById('myName').textContent || 'Nexa User'}`,
+      text,
+      storyOwner ? storyOwner.oneSignalPlayerId : null
+    );
   } catch(err) {
     showNotifToast("Failed to send reply", "error");
   }

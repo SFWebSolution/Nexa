@@ -141,7 +141,7 @@ async function signup() {
     const user = userCredential.user;
 
     // 🗄️ SAVE PROFILE
-    await setDoc(doc(db, "profiles", user.uid), {
+    await setDoc(doc(db, "users", user.uid), {
       username,
       displayName,
       email,
