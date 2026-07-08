@@ -717,7 +717,7 @@ input[type="range"] { flex: 1; cursor: pointer; height: 4px; }
       <div id="musicSelectedBox"></div>
     </div>
     
-    <!-- TEXT INPUT -->
+    <!-- TEXT INPUT - VISIBLE FOR IMAGE, VIDEO, AND MUSIC TABS -->
     <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;"></textarea>
     
     <div class="status-actions">
@@ -1498,6 +1498,13 @@ function buildMessage(id, msg, fromMe) {
   
   let inner = "";
   
+  // Handle story reply
+  if (msg.storyReplyId && msg.storyReplyUid) {
+    const storyLabel = msg.storyReplyUid === currentUser.uid ? "Your story" : selectedUser?.displayName + "'s story";
+    inner += `<div class="reply-quote"><div class="reply-quote-author">↩️ Replied to ${storyLabel}</div></div>`;
+  }
+  
+  // Handle regular reply
   if (msg.replyTo) {
     const replied = allMessages.find(m => m.id === msg.replyTo);
     if (replied) {
@@ -2456,6 +2463,7 @@ async function sendStoryReply() {
       text,
       storyOwner ? storyOwner.oneSignalPlayerId : null
     );
+    document.getElementById("storyReplyInput").value = "";
   } catch(err) {
     showNotifToast("Failed to send reply", "error");
   }
@@ -2505,15 +2513,23 @@ function switchStatusTab(tab) {
   document.querySelectorAll(".status-tab").forEach(el => el.classList.remove("active"));
   document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.add("active");
   
-  document.getElementById("statusTextInput").style.display = tab === "text" ? "block" : "none";
+  const textInput = document.getElementById("statusTextInput");
   
   if (tab === "image") {
+    textInput.style.display = "block";
+    textInput.placeholder = "Add caption (optional)…";
     document.getElementById("statusImageInput").click();
   } else if (tab === "video") {
+    textInput.style.display = "block";
+    textInput.placeholder = "Add caption (optional)…";
     document.getElementById("statusVideoInput").click();
   } else if (tab === "text") {
-    document.getElementById("statusTextInput").focus();
+    textInput.style.display = "block";
+    textInput.placeholder = "Add text (required)…";
+    textInput.focus();
   } else if (tab === "music") {
+    textInput.style.display = "block";
+    textInput.placeholder = "Add caption (optional)…";
     document.getElementById("musicSearchInput").focus();
   }
 }
@@ -2796,8 +2812,9 @@ function formatTime(ts) {
   yesterday.setDate(yesterday.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
   
-  const days = Math.floor((now - d) / (24 * 60 * 60 * 1000));
-  if (days <= 6) return `${days}d ago`;
+  const days = Math.floor((now - d) / (24* 60 * 60 * 1000));
+  
+  if (days < 7) return `${days}d ago`;
   
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[d.getMonth()]} ${d.getDate()}`;
@@ -2808,8 +2825,7 @@ function savePrefs() {
     theme: currentTheme,
     muted: mutedChats,
     favorited: favoritedChats,
-    blocked: blockedUsers,
-    notifications: notificationSettings
+    blocked: blockedUsers
   };
   localStorage.setItem("nexaPrefs", JSON.stringify(prefs));
 }
@@ -2817,28 +2833,15 @@ function savePrefs() {
 function loadPrefs() {
   try {
     const prefs = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");
-    currentTheme = prefs.theme || "nexa";
+    currentTheme = prefs.theme || 'nexa';
     mutedChats = prefs.muted || {};
     favoritedChats = prefs.favorited || {};
     blockedUsers = prefs.blocked || {};
-    notificationSettings = prefs.notifications || {
-      messages: true,
-      stories: true,
-      calls: true,
-      reactions: true
-    };
     setTheme(currentTheme);
-    loadNotificationSettings();
-  } catch(e) {
-    console.warn("Error loading preferences:", e);
-  }
+  } catch(e) {}
 }
 
-window.addEventListener("beforeunload", () => updateOnline(false));
-loadNotificationSettings();
-
-console.log("✅ Nexa Messenger fully loaded and ready!");
+console.log("✨ All initialization complete! Nexa Messenger is ready.");
 </script>
-
 </body>
 </html>
