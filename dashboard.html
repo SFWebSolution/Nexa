@@ -848,7 +848,9 @@ let profileSetupRequired = false;
 
 const CLOUD_NAME = "doasf3d1u";
 const UPLOAD_PRESET = "NeuroStack";
-const BACKEND_URL = "https://nexa-backend-e6pq.onrender.com";
+const BACKEND_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:3000"
+  : "https://nexa-backend-e6pq.onrender.com";
 
 let selectedMusicData = null;
 let musicDuration = 30;
@@ -886,7 +888,7 @@ OneSignal.push(async function() {
     updateOneSignalStatus('loading');
   }
   
-  const pushSub = OneSignal.User?.pushSubscription;
+  const pushSub = OneSignal.User?.PushSubscription;
   if (pushSub) {
     if (pushSub.id) {
       oneSignalPlayerId = pushSub.id;
@@ -1501,7 +1503,7 @@ function buildMessage(id, msg, fromMe) {
   // Handle story reply
   if (msg.storyReplyId && msg.storyReplyUid) {
     const storyLabel = msg.storyReplyUid === currentUser.uid ? "Your story" : selectedUser?.displayName + "'s story";
-    inner += `<div class="reply-quote"><div class="reply-quote-author">↩️ Replied to ${storyLabel}</div></div>`;
+    inner += `<div class="reply-quote" onclick="openStoryViewer('${msg.storyReplyUid}', '${msg.storyReplyId}')" style="cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.3)'" onmouseout="this.style.background='rgba(0,0,0,0.2)'"><div class="reply-quote-author">↩️ Replied to ${storyLabel}</div></div>`;
   }
   
   // Handle regular reply
@@ -2165,17 +2167,36 @@ function markStorySeen(id) {
   localStorage.setItem("seenStories", JSON.stringify(seen));
 }
 
-function openStoryViewer(uid) {
+function openStoryViewer(uid, storyId = null) {
   const statuses = userStatuses[uid];
-  if (!statuses || !statuses.length) return;
+  if (!statuses || !statuses.length) {
+    showNotifToast("This story is no longer available", "error");
+    return;
+  }
   
   viewingStoryUid = uid;
   storyViewerData = statuses.sort((a, b) => a.createdAt - b.createdAt);
+  
   storyViewerIndex = 0;
+  if (storyId) {
+    const idx = storyViewerData.findIndex(s => s.id === storyId);
+    if (idx !== -1) {
+      storyViewerIndex = idx;
+    } else {
+      showNotifToast("That specific story is no longer available, showing latest instead", "info");
+    }
+  }
   
   const isOwnStory = (uid === currentUser.uid);
   
-  const user = allUsersData.find(u => u.uid === uid);
+  let user = allUsersData.find(u => u.uid === uid);
+  if (uid === currentUser.uid) {
+    user = {
+      displayName: document.getElementById("myName").textContent || "My Story",
+      photo: document.getElementById("myPic").src || "https://i.imgur.com/HeIi0wU.png"
+    };
+  }
+  
   document.getElementById("storyUserAv").src = user?.photo || "https://i.imgur.com/HeIi0wU.png";
   document.getElementById("storyUserName").textContent = user?.displayName || "User";
   
@@ -2187,7 +2208,7 @@ function openStoryViewer(uid) {
   }
   
   document.getElementById("storyViewerOverlay").classList.add("active");
-  renderStorySlide(0);
+  renderStorySlide(storyViewerIndex);
 }
 
 function renderStorySlide(idx) {
