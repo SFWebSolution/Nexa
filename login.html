@@ -4,72 +4,160 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nexa Login</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
 
   <style>
-    body{
-      margin:0;
-      font-family:Arial;
-      background:linear-gradient(135deg,#0a0e27,#13172a);
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      height:100vh;
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background: radial-gradient(circle at top left, rgba(0, 240, 255, 0.15), transparent 40%),
+                  radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.12), transparent 40%),
+                  #070b19;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
     }
 
-    .card{
-      width:100%;
-      max-width:420px;
-      background:rgba(20,24,42,0.7);
-      padding:2rem;
-      border-radius:16px;
-      border:1px solid rgba(0,240,255,0.15);
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
     }
 
-    h2{
-      text-align:center;
-      color:#00f0ff;
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: rgba(13, 18, 41, 0.75);
+      padding: 3rem 2.5rem;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 240, 255, 0.1);
+      animation: slideInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 
-    input{
-      width:100%;
-      padding:12px;
-      margin-bottom:12px;
-      border-radius:8px;
-      border:1px solid rgba(0,240,255,0.2);
-      background:rgba(10,14,39,0.6);
-      color:#fff;
-      box-sizing:border-box;
+    h2 {
+      font-family: var(--font-display);
+      text-align: center;
+      color: #ffffff;
+      margin-bottom: 2rem;
+      font-size: var(--text-3xl);
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #ffffff, #00f0ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
     }
 
-    button{
-      width:100%;
-      padding:12px;
-      border:none;
-      border-radius:8px;
-      background:linear-gradient(135deg,#00f0ff,#0099ff);
-      font-weight:bold;
-      cursor:pointer;
+    .input-group {
+      position: relative;
+      margin-bottom: 1.5rem;
     }
 
-    .forgot{
-      text-align:right;
-      margin-bottom:12px;
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      border: 1.5px solid rgba(79, 143, 255, 0.15);
+      background: rgba(10, 14, 39, 0.6);
+      color: #fff;
+      font-size: var(--text-base);
+      font-weight: 500;
+      transition: all var(--transition-base);
+      box-sizing: border-box;
+      outline: none;
     }
 
-    .forgot a{
-      color:#00f0ff;
-      text-decoration:none;
-      font-size:14px;
+    input:focus {
+      border-color: var(--color-primary);
+      background: rgba(10, 14, 39, 0.8);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.25), inset 0 0 8px rgba(0, 240, 255, 0.1);
+      transform: translateY(-1px);
     }
 
-    .msg{
-      text-align:center;
-      margin-top:10px;
-      font-size:14px;
+    input::placeholder {
+      color: var(--text-tertiary);
     }
 
-    .error{ color:#ff6b6b; }
-    .success{ color:#2ecc71; }
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--color-primary), var(--color-tertiary));
+      color: #070b19;
+      font-weight: 700;
+      font-size: var(--text-base);
+      font-family: var(--font-display);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all var(--transition-base);
+      box-shadow: 0 6px 20px rgba(0, 240, 255, 0.3);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.5);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .forgot {
+      text-align: right;
+      margin-bottom: 1.5rem;
+      margin-top: -0.5rem;
+    }
+
+    .forgot a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: var(--text-sm);
+      transition: color var(--transition-fast);
+    }
+
+    .forgot a:hover {
+      color: var(--color-primary);
+      text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    }
+
+    .signup-link {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    .signup-link a {
+      color: var(--color-primary);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .signup-link a:hover {
+      text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    }
+
+    .msg {
+      text-align: center;
+      margin-top: 15px;
+      font-size: var(--text-sm);
+      font-weight: 600;
+      min-height: 20px;
+    }
+
+    .error { color: #ff5252; text-shadow: 0 0 8px rgba(255, 82, 82, 0.2); }
+    .success { color: #00e676; text-shadow: 0 0 8px rgba(0, 230, 118, 0.2); }
   </style>
 </head>
 
@@ -79,14 +167,23 @@
 
   <h2>Welcome Back</h2>
 
-  <input type="email" id="email" placeholder="Email">
-  <input type="password" id="password" placeholder="Password">
+  <div class="input-group">
+    <input type="email" id="email" placeholder="Email Address">
+  </div>
+  
+  <div class="input-group">
+    <input type="password" id="password" placeholder="Password">
+  </div>
 
   <div class="forgot">
     <a href="#" id="forgotPassword">Forgot Password?</a>
   </div>
 
   <button id="loginBtn">Login</button>
+
+  <div class="signup-link">
+    Don't have an account? <a href="signup.html">Sign Up</a>
+  </div>
 
   <div id="msg" class="msg"></div>
 

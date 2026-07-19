@@ -711,3 +711,199 @@ label {
 .toast-warning {
   border-left-color: var(--color-warning);
 }
+
+/* ==================== */
+/* FUTURISTIC WEBRTC CALLING OVERLAY */
+/* ==================== */
+
+.call-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 24, 0.92);
+  backdrop-filter: blur(24px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn var(--transition-base);
+}
+
+.call-card {
+  width: 100%;
+  max-width: 460px;
+  background: rgba(18, 24, 45, 0.75);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 240, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+}
+
+/* Pulse ringing effect */
+.call-avatar-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin-bottom: 8px;
+}
+
+.call-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  border: 3px solid var(--color-primary);
+  box-shadow: var(--glow-sm);
+  z-index: 2;
+  position: relative;
+}
+
+.call-pulse {
+  position: absolute;
+  inset: -10px;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--color-primary);
+  opacity: 0;
+  animation: callPulseRing 2s infinite;
+  z-index: 1;
+}
+
+.call-pulse-2 {
+  animation-delay: 1s;
+}
+
+@keyframes callPulseRing {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+.call-user-info h3 {
+  font-size: var(--text-2xl);
+  font-family: var(--font-display);
+  color: #fff;
+  margin-bottom: 8px;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+.call-status-txt {
+  font-size: var(--text-base);
+  color: var(--color-primary);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  animation: pulse 1.5s infinite;
+}
+
+.call-video-grid {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  border-radius: var(--radius-lg);
+  background: #060913;
+  overflow: hidden;
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+#remoteVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #05070e;
+}
+
+#localVideo {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 110px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-primary);
+  box-shadow: var(--shadow-sm), var(--glow-sm);
+  background: #000;
+  z-index: 10;
+  transform: scaleX(-1); /* mirror effect */
+}
+
+.call-timer {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.call-controls {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.call-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  font-size: 20px;
+}
+
+.call-btn:hover {
+  transform: translateY(-3px) scale(1.05);
+}
+
+.call-btn.accept {
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+.call-btn.decline, .call-btn.hangup {
+  background: #ef4444;
+  color: #fff;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+.call-btn.mute {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border-strong);
+}
+
+.call-btn.mute.active {
+  background: #f59e0b;
+  color: #fff;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+.call-btn.camera {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border-strong);
+}
+
+.call-btn.camera.active {
+  background: var(--color-primary);
+  color: #070b19;
+  box-shadow: var(--glow-sm);
+}
