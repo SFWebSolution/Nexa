@@ -312,8 +312,54 @@ button:focus-visible {
   display: flex;
   background: var(--bg-0);
   position: relative;
-  overflow: hidden;
+  overflow: hidden; padding-bottom: 56px;
 }
+
+/* Bottom navigation bar */
+.bottom-nav {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  height: 56px;
+  background: var(--bg-1);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  border-top: 1px solid var(--border-dk);
+  z-index: 9000;
+}
+.bottom-nav .nav-item {
+  flex: 1;
+  text-align: center;
+  padding: 6px 0;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--t), background var(--t);
+}
+.bottom-nav .nav-item.active {
+  color: var(--primary);
+}
+.bottom-nav .nav-item:hover {
+  background: var(--bg-2);
+}
+
+/* Mobile layout tweaks */
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+  }
+  .sidebar {
+    height: calc(100% - 56px);
+    width: 100%;
+    min-width: 100%;
+  }
+  .chat {
+    flex: 1;
+  }
+}
+
 
 .app::before {
   content: '';
