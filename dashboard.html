@@ -23,6 +23,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js" async defer></script>
@@ -50,42 +51,167 @@
   </div>
 </div>
 
-<div class="app">
+<div class="app" id="app">
+  <!-- SIDEBAR (Left Column on Desktop, Tab Views Container on Mobile) -->
   <div class="sidebar" id="sidebar">
     <div class="top">
-      <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Change photo">
-      <div class="top-info">
-        <div class="top-name" id="myName">Loading…</div>
-        <div class="top-actions">
-          <button class="top-btn" onclick="openStatusModal()" title="Add Story">📸</button>
-          <button class="top-btn ai-btn" onclick="openAI()" title="Open AI">🤖</button>
-          <button class="top-btn" onclick="openNotifSettings()" title="Notifications">🔔</button>
-          <button class="top-btn" onclick="handleLogout()" title="Logout">⎙</button>
+      <div class="top-user-area">
+        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Profile picture" onclick="switchTab('profile')">
+        <div class="top-info">
+          <div class="top-name" id="myName">Loading…</div>
+          <div class="top-subtext">Online</div>
         </div>
+      </div>
+      <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
+      <div class="sidebar-tab-switcher">
+        <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats">💬</button>
+        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories">⭕</button>
+        <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings">⚙️</button>
+        <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile">👤</button>
       </div>
     </div>
 
-    <div class="search-wrap">
-      <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
-    </div>
+    <!-- TAB PANES CONTAINER -->
+    <div class="tab-panes-container">
+      <!-- 1. CHATS TAB -->
+      <div class="tab-pane active" id="tabPaneChats">
+        <div class="search-wrap">
+          <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
+        </div>
+        <div class="users" id="users">
+          <div class="no-users">Loading users…</div>
+        </div>
+      </div>
 
-    <div class="users" id="users">
-      <div class="no-users">Loading users…</div>
+      <!-- 2. STORIES TAB -->
+      <div class="tab-pane" id="tabPaneStories">
+        <div class="tab-pane-header">
+          <h2>Stories</h2>
+          <button class="create-story-btn-sm" onclick="openStatusModal()">+ New Story</button>
+        </div>
+        <div class="my-story-card" onclick="openMyStoryOrAdd()">
+          <div class="story-avatar-wrap">
+            <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar">
+            <div class="story-plus-badge">+</div>
+          </div>
+          <div class="story-card-info">
+            <div class="story-card-title">My Story</div>
+            <div class="story-card-sub" id="storyTabMySub">Tap to add or view story</div>
+          </div>
+        </div>
+        <div class="section-divider-title">Recent Updates</div>
+        <div class="stories-feed-list" id="storiesFeedList">
+          <div class="no-stories-msg">No recent stories</div>
+        </div>
+      </div>
+
+      <!-- 3. SETTINGS TAB -->
+      <div class="tab-pane" id="tabPaneSettings">
+        <div class="tab-pane-header">
+          <h2>Settings</h2>
+        </div>
+        <div class="settings-scroll-area">
+          <div class="settings-group">
+            <div class="settings-group-title">🔔 Notifications</div>
+            <div class="notif-item">
+              <div class="notif-item-info">
+                <label class="notif-item-label">Messages</label>
+                <div class="notif-item-desc">Notifications for new messages</div>
+              </div>
+              <div class="notif-toggle" id="tabNotifMessages" onclick="toggleNotif('messages')"></div>
+            </div>
+            <div class="notif-item">
+              <div class="notif-item-info">
+                <label class="notif-item-label">Stories</label>
+                <div class="notif-item-desc">Notifications when contacts post stories</div>
+              </div>
+              <div class="notif-toggle" id="tabNotifStories" onclick="toggleNotif('stories')"></div>
+            </div>
+            <div class="notif-item">
+              <div class="notif-item-info">
+                <label class="notif-item-label">Calls</label>
+                <div class="notif-item-desc">Incoming call notifications</div>
+              </div>
+              <div class="notif-toggle" id="tabNotifCalls" onclick="toggleNotif('calls')"></div>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-title">🎨 Appearance & Theme</div>
+            <div class="theme-picker-grid" id="settingsThemeGrid">
+              <!-- Themes rendered by JS -->
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-title">🤖 AI Assistant</div>
+            <button class="settings-action-btn" onclick="openAI()">
+              <span>🤖 Launch Askify AI</span>
+              <span>→</span>
+            </button>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group-title">💾 Storage & Cache</div>
+            <button class="settings-action-btn danger" onclick="clearAppCache()">
+              <span>🗑️ Clear Local Cache</span>
+              <span>Clean</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. PROFILE TAB -->
+      <div class="tab-pane" id="tabPaneProfile">
+        <div class="tab-pane-header">
+          <h2>Profile</h2>
+        </div>
+        <div class="profile-tab-content">
+          <div class="profile-avatar-editor">
+            <div class="profile-avatar-preview-wrap" onclick="triggerProfilePhotoUpload()">
+              <img src="https://i.imgur.com/HeIi0wU.png" id="profileTabPic" class="profile-large-avatar">
+              <div class="avatar-edit-overlay">📷</div>
+            </div>
+            <div class="profile-avatar-hint">Tap photo to change profile picture</div>
+          </div>
+
+          <div class="profile-field-group">
+            <label class="profile-field-label">Username</label>
+            <div class="profile-info-box" id="profileTabNameDisplay" style="user-select: text; font-weight: 600;">Loading...</div>
+            <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">🔒 Username is locked and cannot be changed</div>
+          </div>
+
+          <div class="profile-field-group">
+            <label class="profile-field-label">Email Address</label>
+            <div class="profile-info-box" id="profileTabEmail">loading...</div>
+          </div>
+
+          <div class="profile-field-group">
+            <label class="profile-field-label">Account Status</label>
+            <div class="profile-info-box status-active">● Active & Connected</div>
+          </div>
+
+          <button class="profile-logout-btn" onclick="handleLogout()">
+            <span>🚪 Sign Out</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="chat">
-    <div class="stories-bar" id="storiesBar"></div>
+  <!-- CHAT AREA (Right Column on Desktop, Active Fullscreen View on Mobile) -->
+  <div class="chat" id="chatArea">
+    <div class="stories-bar" id="storiesBar" style="display: none;"></div>
 
     <div class="chat-header">
-      <button class="hdr-btn mobile-menu" id="mobileMenuBtn" onclick="toggleSidebar()" style="margin-right: 2px;">☰</button>
+      <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
         <div class="chat-avatar-wrap">
           <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
         <div class="chat-peer-info">
-          <div class="chat-peer-name" id="chatName">Select a user</div>
+          <div class="chat-peer-name" id="chatName">Select a user to chat</div>
           <div id="status">offline</div>
         </div>
       </div>
@@ -100,7 +226,8 @@
     <div class="messages" id="messages">
       <div class="empty-chat">
         <div class="empty-chat-icon">💬</div>
-        <div>Select a user to start chatting</div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger for Web</div>
+        <div style="font-size: 13px; color: var(--text-3);">Select a conversation from the sidebar to start chatting</div>
       </div>
     </div>
 
@@ -141,6 +268,26 @@
   </div>
 </div>
 
+<!-- MOBILE BOTTOM NAVIGATION BAR -->
+<div class="mobile-bottom-nav" id="mobileBottomNav">
+  <button class="nav-item active" id="navBtnChats" onclick="switchTab('chats')">
+    <span class="nav-icon">💬</span>
+    <span class="nav-label">Chats</span>
+  </button>
+  <button class="nav-item" id="navBtnStories" onclick="switchTab('stories')">
+    <span class="nav-icon">⭕</span>
+    <span class="nav-label">Stories</span>
+  </button>
+  <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
+    <span class="nav-icon">⚙️</span>
+    <span class="nav-label">Settings</span>
+  </button>
+  <button class="nav-item" id="navBtnProfile" onclick="switchTab('profile')">
+    <span class="nav-icon">👤</span>
+    <span class="nav-label">Profile</span>
+  </button>
+</div>
+
 <!-- STORY VIEWER OVERLAY -->
 <div class="story-viewer-overlay" id="storyViewerOverlay">
   <div class="story-viewer-bg" id="storyViewerBg"></div>
@@ -149,7 +296,10 @@
     <div class="story-viewer-header" id="storyViewerHeader">
       <img class="story-user-av" id="storyUserAv" src="https://i.imgur.com/HeIi0wU.png">
       <div class="story-user-meta">
-        <div class="story-user-name" id="storyUserName">User</div>
+        <div class="story-user-name-wrap">
+          <div class="story-user-name" id="storyUserName">User</div>
+          <div class="reshared-banner" id="resharedBadge" style="display: none;">🔁 Reshared from <span id="resharedName"></span></div>
+        </div>
         <div class="story-user-time" id="storyUserTime"></div>
       </div>
       <div class="story-actions-top">
@@ -161,11 +311,41 @@
     <div class="music-badge" id="musicBadge" style="display: none;"></div>
     <button class="story-nav-left" onclick="prevStorySlide()"></button>
     <button class="story-nav-right" onclick="nextStorySlide()"></button>
-    <div class="story-viewer-actions">
+    
+    <!-- STATS BAR FOR OWN STORY (VIEWS, LIKES, RESHARES) -->
+    <div class="story-stats-bar" id="storyStatsBar" style="display: none;" onclick="openStoryAnalyticsModal()">
+      <div class="stats-item" id="storyViewsText">👁️ 0 views</div>
+      <div class="stats-item" id="storyLikesText">❤️ 0 likes</div>
+      <div class="stats-item" id="storyResharesText">🔁 0 reshares</div>
+      <div class="stats-badge-action">▲ Details</div>
+    </div>
+
+    <!-- ACTIONS BAR FOR OTHER USERS STORIES -->
+    <div class="story-viewer-actions" id="storyViewerActions">
       <input type="text" class="story-reply-inp" id="storyReplyInput" placeholder="Reply to story…">
       <button class="story-action-btn" onclick="sendStoryReply()" title="Send reply">➤</button>
-      <button class="story-action-btn" onclick="reshareStory()" title="Reshare story">🔁</button>
-      <button class="story-action-btn" onclick="reactToStory()" title="React">❤️</button>
+      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare story">🔁</button>
+      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like story">❤️</button>
+    </div>
+  </div>
+</div>
+
+<!-- STORY ANALYTICS & VIEWERS MODAL -->
+<div class="notif-settings-overlay" id="storyAnalyticsModal" onclick="handleAnalyticsOverlayClick(event)">
+  <div class="notif-settings-modal story-analytics-modal">
+    <div class="notif-hdr">
+      <div class="notif-title">Story Views & Activity</div>
+      <button class="notif-close" onclick="closeStoryAnalyticsModal()">✕</button>
+    </div>
+    
+    <div class="analytics-tab-bar">
+      <button class="analytics-tab active" id="aTabViews" onclick="switchAnalyticsTab('views')">👁️ Viewers (<span id="cntViews">0</span>)</button>
+      <button class="analytics-tab" id="aTabLikes" onclick="switchAnalyticsTab('likes')">❤️ Likes (<span id="cntLikes">0</span>)</button>
+      <button class="analytics-tab" id="aTabReshares" onclick="switchAnalyticsTab('reshares')">🔁 Reshares (<span id="cntReshares">0</span>)</button>
+    </div>
+
+    <div class="analytics-list" id="analyticsList">
+      <div class="no-analytics">No viewers yet</div>
     </div>
   </div>
 </div>
@@ -247,6 +427,21 @@
   <div class="info-section">
     <div class="info-sec-title">Chat Theme</div>
     <div class="theme-grid" id="themeGrid"></div>
+  </div>
+  <div class="info-section">
+    <div class="info-sec-title">⏱️ Disappearing Messages</div>
+    <div style="padding: 6px 0;">
+      <div style="font-size: 12px; color: var(--text-3); margin-bottom: 8px; line-height: 1.4;">
+        For privacy, new messages will disappear from this chat after the selected duration.
+      </div>
+      <select id="disappearingSelect" onchange="changeDisappearingSetting(this.value)" style="width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--bg-1); color: var(--text-1); border: 1px solid var(--border-md); font-size: 13px; font-weight: 500; cursor: pointer; outline: none;">
+        <option value="off">Off</option>
+        <option value="5m">5 Minutes (Test)</option>
+        <option value="24h">24 Hours</option>
+        <option value="7d">7 Days</option>
+        <option value="90d">90 Days</option>
+      </select>
+    </div>
   </div>
   <div class="info-section">
     <div class="info-sec-title">Actions</div>
@@ -540,6 +735,7 @@ async function loadProfile() {
 
     document.getElementById("myName").textContent = displayName;
     document.getElementById("myPic").src = photoUrl;
+    renderProfileTab();
 
     console.log("✓ Profile loaded:", displayName);
   } catch (err) {
@@ -748,8 +944,25 @@ let mutedChats = {};
 let favoritedChats = {};
 let blockedUsers = {};
 let latestMsgTime = {};
+let latestMsgText = {};
+let userPresenceCache = {};
 let userStatus = "online";
 let presenceUnsubs = {}; // uid -> unsubscribe function, one per user, ever
+
+const PRESENCE_TIMEOUT_MS = 35000; // 35 seconds cutoff for active status
+
+function isUserOnline(pdata) {
+  if (!pdata) return false;
+  if (pdata.online === false || pdata.status === "offline") return false;
+  const lastSeen = pdata.lastSeen || 0;
+  return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
+}
+
+function updateUserOnlineDot(uid, pdata) {
+  const dot = document.getElementById(`dot-${uid}`);
+  const online = isUserOnline(pdata);
+  if (dot) dot.classList.toggle("online", online);
+}
 
 function startUsersListener() {
   db.collection("users").onSnapshot(snap => {
@@ -781,8 +994,9 @@ function startUsersListener() {
         // Subscribe to this user's presence exactly once, ever.
         if (!presenceUnsubs[uid]) {
           presenceUnsubs[uid] = db.collection("presence").doc(uid).onSnapshot(pdoc => {
-            const dot = document.getElementById(`dot-${uid}`);
-            if (dot) dot.classList.toggle("online", !!pdoc.data()?.online);
+            const pdata = pdoc.data() || {};
+            userPresenceCache[uid] = pdata;
+            updateUserOnlineDot(uid, pdata);
           });
         }
       }
@@ -808,10 +1022,26 @@ function renderUsers() {
   const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
   let list = allUsersData.filter(u => !blockedUsers[u.uid]);
   if (q) list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
+
   list.sort((a, b) => {
+    // 1. Currently selected active chat stays at the very top
+    if (selectedUser) {
+      if (a.uid === selectedUser.uid) return -1;
+      if (b.uid === selectedUser.uid) return 1;
+    }
+    // 2. Favorited chats
     if (favoritedChats[a.uid] && !favoritedChats[b.uid]) return -1;
     if (!favoritedChats[a.uid] && favoritedChats[b.uid]) return 1;
-    return (latestMsgTime[b.uid] || 0) - (latestMsgTime[a.uid] || 0);
+    // 3. Most recent message time
+    const timeA = latestMsgTime[a.uid] || 0;
+    const timeB = latestMsgTime[b.uid] || 0;
+    if (timeA !== timeB) return timeB - timeA;
+    // 4. Online users first
+    const onlineA = isUserOnline(userPresenceCache[a.uid]) ? 1 : 0;
+    const onlineB = isUserOnline(userPresenceCache[b.uid]) ? 1 : 0;
+    if (onlineA !== onlineB) return onlineB - onlineA;
+    // 5. Alphabetical fallback
+    return (a.displayName || "").localeCompare(b.displayName || "");
   });
 
   if (!list.length) { box.innerHTML = '<div class="no-users">👋 No users found</div>'; return; }
@@ -825,15 +1055,18 @@ function renderUsers() {
     const unread = unreadMessages[user.uid] || 0;
     const t = latestMsgTime[user.uid];
     const timeStr = t ? formatTime(t) : "";
+    const pdata = userPresenceCache[user.uid];
+    const online = isUserOnline(pdata);
+    const prevText = latestMsgText[user.uid] || "Tap to chat";
 
     el.innerHTML = `
       <div class="user-avatar-wrap">
         <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-        <div class="status-dot" id="dot-${user.uid}"></div>
+        <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
       </div>
       <div class="user-info">
         <div class="user-name">${favoritedChats[user.uid] ? '⭐ ' : ''}${name}</div>
-        <div class="user-preview" id="prev-${user.uid}">Tap to chat</div>
+        <div class="user-preview" id="prev-${user.uid}">${escapeHtml(prevText)}</div>
       </div>
       <div class="user-meta">
         ${timeStr ? `<div class="user-time">${timeStr}</div>` : ''}
@@ -849,13 +1082,308 @@ function renderUsers() {
 function searchUsers() { renderUsers(); }
 
 /* =========================================================================
-   CHAT SELECTION (fix #2: unsubscribe previous listeners before creating
-   new ones for messages / presence / typing)
+   TAB & NAVIGATION CONTROL (Chats, Stories, Settings, Profile)
+   ========================================================================= */
+let currentTab = 'chats';
+
+function switchTab(tabName) {
+  currentTab = tabName;
+
+  // 1. Update sidebar top tab icons
+  document.querySelectorAll('.s-tab-btn').forEach(btn => btn.classList.remove('active'));
+  const sBtn = document.getElementById(`sTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+  if (sBtn) sBtn.classList.add('active');
+
+  // 2. Update mobile bottom nav items
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+  const nBtn = document.getElementById(`navBtn${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+  if (nBtn) nBtn.classList.add('active');
+
+  // 3. Update tab panes display
+  document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+  const pane = document.getElementById(`tabPane${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+  if (pane) pane.classList.add('active');
+
+  // 4. On mobile, if a chat is currently open full screen, close it when user clicks bottom tabs
+  if (window.innerWidth <= 768) {
+    closeMobileChat();
+  }
+
+  // 5. Trigger tab-specific renders
+  if (tabName === 'stories') {
+    renderStoriesTab();
+  } else if (tabName === 'settings') {
+    renderSettingsTab();
+  } else if (tabName === 'profile') {
+    renderProfileTab();
+  }
+}
+
+function closeMobileChat() {
+  const app = document.getElementById("app");
+  if (app) app.classList.remove("chat-open-mobile");
+  document.body.classList.remove("chat-open-mobile");
+  const bNav = document.getElementById("mobileBottomNav");
+  if (bNav) bNav.classList.remove("hidden");
+}
+
+function openMyStoryOrAdd() {
+  const myStatuses = userStatuses[currentUser?.uid] || [];
+  if (myStatuses.length > 0) {
+    openStoryViewer(currentUser.uid);
+  } else {
+    openStatusModal();
+  }
+}
+
+function renderStoriesTab() {
+  const feedList = document.getElementById("storiesFeedList");
+  const myPic = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
+  const myStatuses = userStatuses[currentUser?.uid] || [];
+  
+  // Sync My Story Card
+  const tabMyPic = document.getElementById("storyTabMyPic");
+  if (tabMyPic) tabMyPic.src = myPic;
+  const tabMySub = document.getElementById("storyTabMySub");
+  if (tabMySub) {
+    tabMySub.textContent = myStatuses.length 
+      ? `${myStatuses.length} active story${myStatuses.length > 1 ? 's' : ''} (Tap to view)` 
+      : "Tap to add a new story";
+  }
+
+  if (!feedList) return;
+  feedList.innerHTML = "";
+
+  const seenMap = getSeenStories();
+  let count = 0;
+
+  allUsersData.forEach(user => {
+    const statuses = userStatuses[user.uid];
+    if (!statuses || !statuses.length) return;
+    count++;
+
+    const allSeen = statuses.every(s => seenMap[s.id]);
+    const photo = user.photo || "https://i.imgur.com/HeIi0wU.png";
+    const name = escapeHtml(user.displayName || "User");
+    const latest = statuses[statuses.length - 1];
+    const timeStr = latest ? formatTime(latest.createdAt) : "";
+
+    const card = document.createElement("div");
+    card.className = "story-feed-card";
+    card.onclick = () => openStoryViewer(user.uid);
+
+    card.innerHTML = `
+      <div class="story-feed-ring ${allSeen ? 'seen' : 'unseen'}">
+        <img src="${photo}" class="story-feed-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+      </div>
+      <div class="story-feed-info">
+        <div class="story-feed-name">${name}</div>
+        <div class="story-feed-time">${timeStr} • ${statuses.length} update${statuses.length > 1 ? 's' : ''}</div>
+      </div>
+      <div class="story-feed-arrow">›</div>
+    `;
+
+    feedList.appendChild(card);
+  });
+
+  if (count === 0) {
+    feedList.innerHTML = `
+      <div class="no-stories-card">
+        <div style="font-size: 28px; margin-bottom: 8px;">⭕</div>
+        <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">No Recent Stories</div>
+        <div style="font-size: 12px; color: var(--text-3);">Be the first to share a story with your contacts!</div>
+      </div>
+    `;
+  }
+}
+
+function renderSettingsTab() {
+  loadNotificationSettings();
+  const msgToggle = document.getElementById("tabNotifMessages");
+  if (msgToggle) msgToggle.classList.toggle("active", notificationSettings.messages);
+  const stToggle = document.getElementById("tabNotifStories");
+  if (stToggle) stToggle.classList.toggle("active", notificationSettings.stories);
+  const clToggle = document.getElementById("tabNotifCalls");
+  if (clToggle) clToggle.classList.toggle("active", notificationSettings.calls);
+
+  const grid = document.getElementById("settingsThemeGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const themes = [
+    { id: 'nexa', name: 'Nexa Deep', color: '#4f8fff' },
+    { id: 'midnight', name: 'Midnight', color: '#3b82f6' },
+    { id: 'ocean', name: 'Ocean Cyan', color: '#00d9ff' },
+    { id: 'forest', name: 'Forest Emerald', color: '#22c55e' },
+    { id: 'sunset', name: 'Sunset Orange', color: '#f97316' },
+    { id: 'lavender', name: 'Lavender Violet', color: '#a855f7' },
+    { id: 'rose', name: 'Rose Pink', color: '#e11d48' },
+    { id: 'neon', name: 'Neon Cyber', color: '#0ff' },
+    { id: 'obsidian', name: 'Obsidian Dark', color: '#8b8b8b' },
+    { id: 'gold', name: 'Luxury Gold', color: '#d4af37' },
+    { id: 'crimson', name: 'Crimson Red', color: '#dc2626' },
+    { id: 'arctic', name: 'Arctic Light', color: '#06b6d4' },
+    { id: 'galaxy', name: 'Galaxy Purple', color: '#7c3aed' },
+    { id: 'mint', name: 'Mint Teal', color: '#14b8a6' },
+    { id: 'infinity', name: 'Infinity Glow', color: '#00ffff' }
+  ];
+
+  themes.forEach(t => {
+    const card = document.createElement("div");
+    card.className = "theme-card-option" + (currentTheme === t.id ? " active" : "");
+    card.onclick = () => {
+      setTheme(t.id);
+      renderSettingsTab();
+      showNotifToast(`Theme set to ${t.name}`, 'success');
+    };
+
+    card.innerHTML = `
+      <div class="theme-swatch" style="background: ${t.color}"></div>
+      <div class="theme-option-name">${t.name}</div>
+      ${currentTheme === t.id ? '<div class="theme-check">✓</div>' : ''}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function renderProfileTab() {
+  if (!currentUser) return;
+  const myPic = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
+  const myName = document.getElementById("myName")?.textContent || currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : "User");
+
+  const pPic = document.getElementById("profileTabPic");
+  if (pPic) pPic.src = myPic;
+
+  const pNameDisplay = document.getElementById("profileTabNameDisplay");
+  if (pNameDisplay) pNameDisplay.textContent = myName === "Loading…" ? (currentUser.displayName || currentUser.email?.split('@')[0] || "User") : myName;
+
+  const pEmail = document.getElementById("profileTabEmail");
+  if (pEmail) pEmail.textContent = currentUser.email || "No email";
+}
+
+function triggerProfilePhotoUpload() {
+  const input = document.getElementById("profileUpload");
+  if (input) input.click();
+}
+
+async function saveProfileTabName() {
+  const input = document.getElementById("profileTabNameInput");
+  const newName = input?.value.trim();
+  if (!newName || newName.length < 2) {
+    showNotifToast("Please enter a valid display name", "error");
+    return;
+  }
+
+  if (!currentUser) return;
+
+  try {
+    await currentUser.updateProfile({ displayName: newName });
+    await db.collection("users").doc(currentUser.uid).set({
+      displayName: newName,
+      name: newName
+    }, { merge: true });
+
+    document.getElementById("myName").textContent = newName;
+    showNotifToast("✓ Profile name updated!", "success");
+    renderUsers();
+  } catch (err) {
+    showNotifToast("Error saving name: " + err.message, "error");
+  }
+}
+
+function clearAppCache() {
+  if (confirm("Clear local cache and saved preferences?")) {
+    localStorage.clear();
+    showNotifToast("✓ Cache cleared", "success");
+    setTimeout(() => window.location.reload(), 1000);
+  }
+}
+
+/* =========================================================================
+   CHAT SELECTION
    ========================================================================= */
 let unsubMessagesA = null;
 let unsubMessagesB = null;
 let unsubChatPresence = null;
 let unsubTyping = null;
+let unsubDisappearing = null;
+let disappearingSettings = {};
+
+function getChatKey(u1, u2) {
+  if (!u1 || !u2) return "";
+  return [u1, u2].sort().join("_");
+}
+
+function parseDisappearingMs(val) {
+  if (val === '5m') return 5 * 60 * 1000;
+  if (val === '24h') return 24 * 60 * 60 * 1000;
+  if (val === '7d') return 7 * 24 * 60 * 60 * 1000;
+  if (val === '90d') return 90 * 24 * 60 * 60 * 1000;
+  return 0;
+}
+
+function formatDisappearingLabel(val) {
+  if (val === '5m') return '5 Minutes';
+  if (val === '24h') return '24 Hours';
+  if (val === '7d') return '7 Days';
+  if (val === '90d') return '90 Days';
+  return 'Off';
+}
+
+function listenDisappearingSettings() {
+  if (unsubDisappearing) { unsubDisappearing(); unsubDisappearing = null; }
+  if (!selectedUser || !currentUser) return;
+  const key = getChatKey(currentUser.uid, selectedUser.uid);
+  unsubDisappearing = db.collection("disappearingSettings").doc(key).onSnapshot(doc => {
+    const data = doc.data();
+    const duration = data?.duration || 'off';
+    disappearingSettings[key] = duration;
+
+    const select = document.getElementById("disappearingSelect");
+    if (select) select.value = duration;
+
+    updateDisappearingBadge(duration);
+    renderMessageList();
+  });
+}
+
+function updateDisappearingBadge(duration) {
+  let badge = document.getElementById("disappearingBadge");
+  const headerPeer = document.querySelector(".chat-peer-info");
+  if (!headerPeer) return;
+
+  if (duration && duration !== 'off') {
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.id = "disappearingBadge";
+      badge.className = "disappearing-badge";
+      headerPeer.appendChild(badge);
+    }
+    badge.textContent = `⏱️ Disappearing (${formatDisappearingLabel(duration)})`;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+async function changeDisappearingSetting(value) {
+  if (!selectedUser || !currentUser) return;
+  const key = getChatKey(currentUser.uid, selectedUser.uid);
+  disappearingSettings[key] = value;
+  updateDisappearingBadge(value);
+
+  try {
+    await db.collection("disappearingSettings").doc(key).set({
+      duration: value,
+      updatedAt: Date.now(),
+      updatedBy: currentUser.uid
+    }, { merge: true });
+
+    showNotifToast("Disappearing messages set to " + formatDisappearingLabel(value), "success");
+    renderMessageList();
+  } catch (err) {
+    showNotifToast("Error setting disappearing messages: " + err.message, "error");
+  }
+}
 
 function selectChat(user, el) {
   selectedUser = user;
@@ -867,13 +1395,21 @@ function selectChat(user, el) {
   if (el) el.classList.add("active");
   markRead(user.uid);
   delete unreadMessages[user.uid];
-  renderUsers();
+  renderUsers(); // Move selected user to the top immediately
   loadMessages();
   listenPresence();
   listenTyping();
+  listenDisappearingSettings();
   document.getElementById("typingBar").innerHTML = "";
   closeChatInfo();
-  if (window.innerWidth <= 768) closeSidebarFn();
+
+  if (window.innerWidth <= 768) {
+    const app = document.getElementById("app");
+    if (app) app.classList.add("chat-open-mobile");
+    document.body.classList.add("chat-open-mobile");
+    const bNav = document.getElementById("mobileBottomNav");
+    if (bNav) bNav.classList.add("hidden");
+  }
 }
 
 function markRead(fromUid) {
@@ -904,23 +1440,33 @@ function _sidebarOutsideClick(e) {
   if (!sidebar.contains(e.target) && !btn.contains(e.target)) closeSidebarFn();
 }
 
+function updateChatHeaderPresence(data) {
+  if (!selectedUser) return;
+  data = data || userPresenceCache[selectedUser.uid] || {};
+  const online = isUserOnline(data);
+  const status = data.status || (online ? "online" : "offline");
+  const lastSeen = data.lastSeen || 0;
+  const el = document.getElementById("status");
+  const dot = document.getElementById("chatStatusDot");
+  if (online && status === "online") {
+    if (el) { el.textContent = "🟢 online"; el.className = "online-status"; }
+    if (dot) dot.classList.add("online");
+  } else if (online && status === "away") {
+    if (el) { el.textContent = "🟡 away"; el.className = ""; }
+    if (dot) dot.classList.remove("online");
+  } else {
+    if (el) { el.textContent = `⚪ last seen ${formatLastSeen(lastSeen)}`; el.className = ""; }
+    if (dot) dot.classList.remove("online");
+  }
+}
+
 function listenPresence() {
   if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
   if (!selectedUser) return;
   unsubChatPresence = db.collection("presence").doc(selectedUser.uid).onSnapshot(doc => {
     const data = doc.data() || {};
-    const isOnline = data.online === true;
-    const status = data.status || (isOnline ? "online" : "offline");
-    const lastSeen = data.lastSeen || 0;
-    const el = document.getElementById("status");
-    const dot = document.getElementById("chatStatusDot");
-    if (isOnline && status === "online") {
-      el.textContent = "🟢 online"; el.className = "online-status"; dot.classList.add("online");
-    } else if (isOnline && status === "away") {
-      el.textContent = "🟡 away"; el.className = ""; dot.classList.remove("online");
-    } else {
-      el.textContent = `⚪ last seen ${formatLastSeen(lastSeen)}`; el.className = ""; dot.classList.remove("online");
-    }
+    userPresenceCache[selectedUser.uid] = data;
+    updateChatHeaderPresence(data);
   });
 }
 
@@ -973,20 +1519,54 @@ function loadUnreadCounts() {
 
 async function updateOnline(on) {
   if (!currentUser) return;
-  await db.collection("presence").doc(currentUser.uid).set(
-    { online: on, status: on ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
-    { merge: true }
-  );
-  userStatus = on ? "online" : "offline";
+  const isOnlineState = on && document.visibilityState === "visible";
+  userStatus = isOnlineState ? "online" : "offline";
+  try {
+    await db.collection("presence").doc(currentUser.uid).set(
+      { online: isOnlineState, status: isOnlineState ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("Error updating presence:", err);
+  }
 }
 
 function setupHeartbeat() {
-  setInterval(() => { if (currentUser) updateOnline(true); }, 5000);
+  // Update heartbeat every 10 seconds while active & tab visible
+  setInterval(() => {
+    if (currentUser && document.visibilityState === "visible") {
+      updateOnline(true);
+    }
+  }, 10000);
+
+  // Periodic ticker every 10 seconds to re-evaluate active presence timeouts
+  setInterval(() => {
+    if (allUsersData && allUsersData.length) {
+      allUsersData.forEach(user => {
+        updateUserOnlineDot(user.uid, userPresenceCache[user.uid]);
+      });
+    }
+    if (selectedUser) {
+      updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+    }
+  }, 10000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      updateOnline(false);
+    } else {
+      updateOnline(true);
+    }
+  });
+
+  window.addEventListener("beforeunload", () => updateOnline(false));
+  window.addEventListener("pagehide", () => updateOnline(false));
+
   let inactivityTimer = null;
 
   function resetInactivity() {
     clearTimeout(inactivityTimer);
-    if (userStatus === "away") updateOnline(true);
+    if (userStatus === "away" && document.visibilityState === "visible") updateOnline(true);
     inactivityTimer = setTimeout(async () => {
       if (!currentUser) return;
       userStatus = "away";
@@ -1000,7 +1580,6 @@ function setupHeartbeat() {
   document.addEventListener("click", resetInactivity);
   document.addEventListener("keypress", resetInactivity);
   document.addEventListener("mousemove", resetInactivity);
-  window.addEventListener("beforeunload", () => updateOnline(false));
   resetInactivity();
 }
 
@@ -1056,6 +1635,33 @@ function renderMessageList() {
 
   allMessages = [..._msgsA, ..._msgsB].sort((a, b) => a.createdAt - b.createdAt);
 
+  // Check and apply disappearing messages filter
+  const key = getChatKey(currentUser.uid, selectedUser.uid);
+  const setting = disappearingSettings[key] || 'off';
+  const msLimit = parseDisappearingMs(setting);
+
+  if (msLimit > 0) {
+    const now = Date.now();
+    const validMsgs = [];
+    const expiredDocIds = [];
+
+    allMessages.forEach(msg => {
+      if (msg.createdAt && (now - msg.createdAt) > msLimit) {
+        expiredDocIds.push(msg.id);
+      } else {
+        validMsgs.push(msg);
+      }
+    });
+
+    allMessages = validMsgs;
+
+    if (expiredDocIds.length > 0) {
+      expiredDocIds.forEach(docId => {
+        db.collection("chats").doc(docId).delete().catch(err => console.warn("Purging expired msg error:", err));
+      });
+    }
+  }
+
   // Preserve scroll position unless the user was already near the bottom.
   const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
 
@@ -1080,8 +1686,12 @@ function renderMessageList() {
     box.appendChild(buildMessage(msg.id, msg, fromMe));
   });
 
-  if (maxTime > (latestMsgTime[selectedUser.uid] || 0)) {
-    latestMsgTime[selectedUser.uid] = maxTime;
+  if (allMessages.length > 0) {
+    const lastM = allMessages[allMessages.length - 1];
+    if (lastM.createdAt) {
+      latestMsgTime[selectedUser.uid] = lastM.createdAt;
+      latestMsgText[selectedUser.uid] = lastM.text || (lastM.image ? "📷 Photo" : lastM.video ? "🎥 Video" : lastM.audio ? "🎤 Voice" : "Message");
+    }
   }
 
   if (wasNearBottom) {
@@ -1170,6 +1780,45 @@ function buildMessage(id, msg, fromMe) {
 
   bubble.innerHTML = inner;
   row.appendChild(bubble);
+
+  // Touch swipe right to reply (WhatsApp style)
+  let startX = 0, startY = 0, currentX = 0, isSwiping = false;
+
+  row.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    currentX = 0;
+    isSwiping = false;
+    row.style.transition = 'none';
+  }, { passive: true });
+
+  row.addEventListener("touchmove", (e) => {
+    if (!startX) return;
+    const touchX = e.touches[0].clientX;
+    const touchY = e.touches[0].clientY;
+    const diffX = touchX - startX;
+    const diffY = Math.abs(touchY - startY);
+
+    if (diffX > 8 && diffY < diffX) {
+      isSwiping = true;
+      currentX = Math.min(diffX * 0.55, 75);
+      row.style.transform = `translateX(${currentX}px)`;
+    }
+  }, { passive: true });
+
+  row.addEventListener("touchend", () => {
+    if (isSwiping && currentX > 40) {
+      if (navigator.vibrate) navigator.vibrate(25);
+      replyMsg(id);
+    }
+    row.style.transition = 'transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    row.style.transform = 'translateX(0)';
+    startX = 0;
+    currentX = 0;
+    isSwiping = false;
+  });
+
   el.appendChild(row);
   el.addEventListener("contextmenu", e => { e.preventDefault(); showCtxMenu(e, id, msg); });
 
@@ -1417,6 +2066,9 @@ async function sendMessage() {
   toggleActionButtons();
   const extras = { text };
   if (messageRepliedTo) { extras.replyTo = messageRepliedTo.id; }
+  latestMsgTime[selectedUser.uid] = Date.now();
+  latestMsgText[selectedUser.uid] = text;
+  renderUsers();
   await db.collection("chats").add(baseMsg(extras));
   clearReply();
   sendPushNotification(
@@ -1687,14 +2339,15 @@ function listenIncoming() {
       const msg = change.doc.data();
       const uid = msg.from;
       if (blockedUsers[uid]) return;
+      const preview = msg.text || (msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
       if (!latestMsgTime[uid] || msg.createdAt > latestMsgTime[uid]) {
         latestMsgTime[uid] = msg.createdAt;
+        latestMsgText[uid] = preview;
       }
       if (!selectedUser || selectedUser.uid !== uid) {
         if (!mutedChats[uid]) {
           db.collection("users").doc(uid).get().then(d => {
             const name = d.data()?.displayName || "User";
-            const preview = msg.text || (msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
             if (notificationSettings.messages) {
               sendPushNotification(name, preview, oneSignalPlayerId);
             }
@@ -1750,6 +2403,7 @@ function startStatusListener() {
 }
 
 function renderStoriesBar() {
+  renderStoriesTab();
   const bar = document.getElementById("storiesBar");
   if (!bar) return;
   bar.innerHTML = "";
@@ -1862,6 +2516,55 @@ function renderStorySlide(idx) {
   const story = storyViewerData[idx];
   markStorySeen(story.id);
 
+  // Record view in Firestore if viewing someone else's story
+  if (currentUser && story.uid !== currentUser.uid) {
+    const views = story.views || [];
+    if (!views.includes(currentUser.uid)) {
+      db.collection("status").doc(story.id).update({
+        views: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+      }).catch(e => console.log("View update error:", e));
+      if (!story.views) story.views = [];
+      story.views.push(currentUser.uid);
+    }
+  }
+
+  // Check reshared status
+  const resharedBadge = document.getElementById("resharedBadge");
+  if (story.resharedFrom && story.resharedFrom.name) {
+    document.getElementById("resharedName").textContent = story.resharedFrom.name;
+    resharedBadge.style.display = "inline-flex";
+  } else {
+    resharedBadge.style.display = "none";
+  }
+
+  // Own story vs Other story UI
+  const isOwnStory = (story.uid === currentUser.uid);
+  const statsBar = document.getElementById("storyStatsBar");
+  const actionsBar = document.getElementById("storyViewerActions");
+
+  const viewsList = story.views || [];
+  const likesList = story.likes || [];
+  const resharesList = story.reshares || [];
+
+  if (isOwnStory) {
+    if (statsBar) {
+      statsBar.style.display = "flex";
+      document.getElementById("storyViewsText").textContent = `👁️ ${viewsList.length} view${viewsList.length === 1 ? '' : 's'}`;
+      document.getElementById("storyLikesText").textContent = `❤️ ${likesList.length} like${likesList.length === 1 ? '' : 's'}`;
+      document.getElementById("storyResharesText").textContent = `🔁 ${resharesList.length} reshare${resharesList.length === 1 ? '' : 's'}`;
+    }
+    if (actionsBar) actionsBar.style.display = "none";
+  } else {
+    if (statsBar) statsBar.style.display = "none";
+    if (actionsBar) actionsBar.style.display = "flex";
+
+    const likeBtn = document.getElementById("storyLikeBtn");
+    const hasLiked = likesList.includes(currentUser.uid);
+    if (likeBtn) {
+      likeBtn.classList.toggle("active-like", hasLiked);
+    }
+  }
+
   const progressRow = document.getElementById("storyProgressRow");
   progressRow.innerHTML = "";
   storyViewerData.forEach((s, i) => {
@@ -1875,7 +2578,7 @@ function renderStorySlide(idx) {
     progressRow.appendChild(bar);
   });
 
-  document.getElementById("storyUserTime").textContent = formatLastSeen(story.createdAt);
+  document.getElementById("storyUserTime").textContent = formatTime(story.createdAt);
 
   const bg = document.getElementById("storyViewerBg");
   bg.innerHTML = "";
@@ -2132,14 +2835,156 @@ async function sendStoryReply() {
   }
 }
 
-function reshareStory() {
+async function reshareStory() {
   if (!storyViewerData || storyViewerIndex >= storyViewerData.length) return;
-  showNotifToast("✓ Story reshared", "success");
+  const story = storyViewerData[storyViewerIndex];
+  if (!currentUser) return;
+
+  if (story.uid === currentUser.uid) {
+    showNotifToast("You cannot reshare your own story", "info");
+    return;
+  }
+
+  const storyOwner = allUsersData.find(u => u.uid === story.uid);
+  const ownerName = storyOwner ? (storyOwner.displayName || "User") : (document.getElementById("storyUserName")?.textContent || "User");
+
+  try {
+    const resharedData = {
+      uid: currentUser.uid,
+      type: story.type || "image",
+      url: story.url || null,
+      text: story.text || null,
+      musicData: story.musicData || null,
+      resharedFrom: {
+        uid: story.uid,
+        name: ownerName
+      },
+      createdAt: Date.now(),
+      views: [],
+      likes: [],
+      reshares: []
+    };
+
+    await db.collection("status").add(resharedData);
+    await db.collection("status").doc(story.id).update({
+      reshares: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+    });
+
+    if (!story.reshares) story.reshares = [];
+    story.reshares.push(currentUser.uid);
+
+    showNotifToast("🔁 Reshared story to your updates!", "success");
+    renderStorySlide(storyViewerIndex);
+  } catch (err) {
+    showNotifToast("Failed to reshare story: " + err.message, "error");
+  }
 }
 
-function reactToStory() {
+async function reactToStory() {
   if (!storyViewerData || storyViewerIndex >= storyViewerData.length) return;
-  showNotifToast("❤️ Loved this story", "success");
+  const story = storyViewerData[storyViewerIndex];
+  if (!currentUser) return;
+
+  const likes = story.likes || [];
+  const hasLiked = likes.includes(currentUser.uid);
+
+  try {
+    if (hasLiked) {
+      await db.collection("status").doc(story.id).update({
+        likes: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+      });
+      story.likes = likes.filter(id => id !== currentUser.uid);
+      showNotifToast("Unliked story", "info");
+    } else {
+      await db.collection("status").doc(story.id).update({
+        likes: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+      });
+      if (!story.likes) story.likes = [];
+      story.likes.push(currentUser.uid);
+      showNotifToast("❤️ Liked story!", "success");
+    }
+    renderStorySlide(storyViewerIndex);
+  } catch (err) {
+    showNotifToast("Error reacting to story: " + err.message, "error");
+  }
+}
+
+/* =========================================================================
+   STORY ANALYTICS MODAL (Viewers, Likes, Reshares)
+   ========================================================================= */
+let currentAnalyticsTab = 'views';
+
+function openStoryAnalyticsModal() {
+  if (!storyViewerData || storyViewerIndex >= storyViewerData.length) return;
+  const story = storyViewerData[storyViewerIndex];
+  if (!currentUser || story.uid !== currentUser.uid) return;
+
+  cancelAnimationFrame(storyAnimFrame);
+  clearTimeout(storyTimer);
+
+  const views = story.views || [];
+  const likes = story.likes || [];
+  const reshares = story.reshares || [];
+
+  document.getElementById("cntViews").textContent = views.length;
+  document.getElementById("cntLikes").textContent = likes.length;
+  document.getElementById("cntReshares").textContent = reshares.length;
+
+  document.getElementById("storyAnalyticsModal").classList.add("active");
+  switchAnalyticsTab('views');
+}
+
+function closeStoryAnalyticsModal() {
+  document.getElementById("storyAnalyticsModal").classList.remove("active");
+  if (storyViewerData) {
+    renderStorySlide(storyViewerIndex);
+  }
+}
+
+function handleAnalyticsOverlayClick(e) {
+  if (e.target === document.getElementById("storyAnalyticsModal")) {
+    closeStoryAnalyticsModal();
+  }
+}
+
+function switchAnalyticsTab(tab) {
+  currentAnalyticsTab = tab;
+  document.querySelectorAll(".analytics-tab").forEach(b => b.classList.remove("active"));
+  const btn = document.getElementById(`aTab${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
+  if (btn) btn.classList.add("active");
+
+  const list = document.getElementById("analyticsList");
+  if (!list || !storyViewerData) return;
+  list.innerHTML = "";
+
+  const story = storyViewerData[storyViewerIndex];
+  const uids = story[tab] || [];
+
+  if (!uids.length) {
+    list.innerHTML = `<div class="no-analytics">No ${tab} yet</div>`;
+    return;
+  }
+
+  uids.forEach(uid => {
+    let u = allUsersData.find(usr => usr.uid === uid);
+    if (uid === currentUser.uid) {
+      u = {
+        displayName: (document.getElementById("myName")?.textContent || "You") + " (You)",
+        photo: document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png"
+      };
+    }
+
+    const name = escapeHtml(u ? (u.displayName || "User") : "User");
+    const photo = u?.photo || "https://i.imgur.com/HeIi0wU.png";
+
+    const item = document.createElement("div");
+    item.className = "analytics-user-item";
+    item.innerHTML = `
+      <img src="${photo}" class="analytics-user-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+      <div class="analytics-user-name">${name}</div>
+    `;
+    list.appendChild(item);
+  });
 }
 
 function openStatusModal() {
@@ -2350,7 +3195,10 @@ async function shareStatus() {
     let statusData = {
       uid: currentUser.uid,
       type: statusTab,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      views: [],
+      likes: [],
+      reshares: []
     };
 
     if (statusTab === "image" && statusFile) {
@@ -2431,11 +3279,7 @@ async function shareStatus() {
 }
 
 function openAI() {
-  document.getElementById("aiPanel").classList.add("active");
-}
-
-function closeAI() {
-  document.getElementById("aiPanel").classList.remove("active");
+  window.open("https://askifyai.onrender.com/", "_blank");
 }
 
 function openCallModal(type) {
