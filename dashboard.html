@@ -175,13 +175,7 @@
             <div class="profile-avatar-hint">Tap photo to change profile picture</div>
           </div>
 
-          <div class="profile-field-group">
-            <label class="profile-field-label">Display Name</label>
-            <div style="display: flex; gap: 8px;">
-              <input type="text" id="profileTabNameInput" placeholder="Enter display name" style="flex: 1; padding: 12px 14px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--border-md); color: var(--text-1); font-size: 14px; outline: none;">
-              <button onclick="saveProfileTabName()" style="padding: 12px 16px; border-radius: 10px; background: var(--primary); border: none; color: #fff; font-weight: 600; cursor: pointer;">Save</button>
-            </div>
-          </div>
+
 
           <div class="profile-field-group">
             <label class="profile-field-label">Username</label>
@@ -319,6 +313,7 @@
     <div class="music-badge" id="musicBadge" style="display: none;"></div>
     <button class="story-nav-left" onclick="prevStorySlide()"></button>
     <button class="story-nav-right" onclick="nextStorySlide()"></button>
+    <div class="story-pause-indicator" id="storyPauseIndicator" style="display:none;">⏸ Paused</div>
     
     <!-- STATS BAR FOR OWN STORY (VIEWS, LIKES, RESHARES) -->
     <div class="story-stats-bar" id="storyStatsBar" style="display: none;" onclick="openStoryAnalyticsModal()">
@@ -550,18 +545,56 @@ let statusFile = null;
 let storyAudioElement = null;
 
 /// Story pause/resume handling
-let typingResumeTimer = null;
+let storyPaused = false;
+let storyElapsedBeforePause = 0;
+
 function pauseStory() {
-  if (window.storySlideTimer) clearInterval(window.storySlideTimer);
-  if (storyAudioElement && !storyAudioElement.paused) storyAudioElement.pause();
-}
-function resumeStory() {
-  if (window.storySlideTimer) {
-    clearInterval(window.storySlideTimer);
-    window.storySlideTimer = setInterval(nextStorySlide, 5000);
+  if (storyPaused) return;
+  storyPaused = true;
+  // Track how much time has elapsed so we can resume from same point
+  if (storyProgressStart) {
+    storyElapsedBeforePause += Date.now() - storyProgressStart;
   }
-  if (storyAudioElement && storyAudioElement.paused) storyAudioElement.play().catch(() => {});
+  cancelAnimationFrame(storyAnimFrame);
+  clearTimeout(storyTimer);
+  if (storyAudioElement && !storyAudioElement.paused) storyAudioElement.pause();
+  // Show pause indicator
+  const indicator = document.getElementById('storyPauseIndicator');
+  if (indicator) indicator.style.display = 'flex';
 }
+
+function resumeStory() {
+  if (!storyPaused) return;
+  storyPaused = false;
+  // Hide pause indicator
+  const indicator = document.getElementById('storyPauseIndicator');
+  if (indicator) indicator.style.display = 'none';
+  if (storyAudioElement && storyAudioElement.paused) storyAudioElement.play().catch(() => {});
+  // Resume progress animation from where we left off
+  const remaining = storyCurrentDuration - storyElapsedBeforePause;
+  if (remaining <= 0) {
+    storyViewerIndex++;
+    renderStorySlide(storyViewerIndex);
+    return;
+  }
+  const fillEl = document.getElementById(`spf-${storyViewerIndex}`);
+  if (!fillEl) return;
+  storyProgressStart = Date.now();
+
+  function animResume() {
+    const elapsed = storyElapsedBeforePause + (Date.now() - storyProgressStart);
+    const pct = Math.min((elapsed / storyCurrentDuration) * 100, 100);
+    fillEl.style.width = pct + '%';
+    if (pct < 100) {
+      storyAnimFrame = requestAnimationFrame(animResume);
+    } else {
+      storyViewerIndex++;
+      renderStorySlide(storyViewerIndex);
+    }
+  }
+  storyAnimFrame = requestAnimationFrame(animResume);
+}
+
 function handleStoryPauseOnTyping() {
   pauseStory();
 }
@@ -783,6 +816,7 @@ auth.onAuthStateChanged(async (user) => {
   await loadProfile();
 
   if (!profileSetupRequired) {
+    await bootstrapLatestMessages();
     startUsersListener();
     setupHeartbeat();
     loadUnreadCounts();
@@ -1222,9 +1256,6 @@ function renderProfileTab() {
   const pNameDisplay = document.getElementById("profileTabNameDisplay");
   if (pNameDisplay) pNameDisplay.textContent = myName === "Loading…" ? (currentUser.displayName || currentUser.email?.split('@')[0] || "User") : myName;
 
-  const pNameInput = document.getElementById("profileTabNameInput");
-  if (pNameInput && !pNameInput.value) pNameInput.value = (myName !== "Loading…" ? myName : currentUser.displayName) || "";
-
   const pEmail = document.getElementById("profileTabEmail");
   if (pEmail) pEmail.textContent = currentUser.email || "No email";
 }
@@ -1234,32 +1265,7 @@ function triggerProfilePhotoUpload() {
   if (input) input.click();
 }
 
-async function saveProfileTabName() {
-  const input = document.getElementById("profileTabNameInput");
-  const newName = input?.value.trim();
-  if (!newName || newName.length < 2) {
-    showNotifToast("Please enter a valid display name", "error");
-    return;
-  }
 
-  if (!currentUser) return;
-
-  try {
-    await currentUser.updateProfile({ displayName: newName });
-    await db.collection("users").doc(currentUser.uid).set({
-      displayName: newName,
-      name: newName
-    }, { merge: true });
-
-    document.getElementById("myName").textContent = newName;
-    const pNameDisplay = document.getElementById("profileTabNameDisplay");
-    if (pNameDisplay) pNameDisplay.textContent = newName;
-    showNotifToast("✓ Profile name updated!", "success");
-    renderUsers();
-  } catch (err) {
-    showNotifToast("Error saving name: " + err.message, "error");
-  }
-}
 
 function clearAppCache() {
   if (confirm("Clear local cache and saved preferences?")) {
@@ -2358,6 +2364,7 @@ let storyProgressStart = null;
 let storyAnimFrame = null;
 let viewingStoryUid = null;
 let storyCurrentDuration = 0;
+let storyHoldTimer = null;
 
 function startStatusListener() {
   db.collection("status").onSnapshot(snap => {
@@ -2581,14 +2588,19 @@ function renderStorySlide(idx) {
 
   function startStoryAnimation(duration) {
     storyCurrentDuration = duration;
+    storyElapsedBeforePause = 0;
+    storyPaused = false;
     clearTimeout(storyTimer);
     cancelAnimationFrame(storyAnimFrame);
+    const indicator = document.getElementById('storyPauseIndicator');
+    if (indicator) indicator.style.display = 'none';
     const fillEl = document.getElementById(`spf-${idx}`);
     if (!fillEl) return;
     storyProgressStart = Date.now();
 
     function animFill() {
-      const elapsed = Date.now() - storyProgressStart;
+      if (storyPaused) return;
+      const elapsed = storyElapsedBeforePause + (Date.now() - storyProgressStart);
       const pct = Math.min((elapsed / storyCurrentDuration) * 100, 100);
       fillEl.style.width = pct + "%";
       if (pct < 100) {
@@ -2751,6 +2763,8 @@ function nextStorySlide() {
 function closeStoryViewer() {
   clearTimeout(storyTimer);
   cancelAnimationFrame(storyAnimFrame);
+  storyPaused = false;
+  storyElapsedBeforePause = 0;
   if (storyAudioElement) {
     storyAudioElement.pause();
     storyAudioElement = null;
@@ -2758,6 +2772,8 @@ function closeStoryViewer() {
   document.getElementById("storyViewerOverlay").classList.remove("active");
   document.getElementById("storyReplyInput").value = "";
   document.getElementById("musicBadge").style.display = "none";
+  const indicator = document.getElementById('storyPauseIndicator');
+  if (indicator) indicator.style.display = 'none';
   storyViewerData = null;
   viewingStoryUid = null;
 }
