@@ -155,50 +155,29 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Handle push notifications
-self.addEventListener('push', (event) => {
-  console.log('📬 Push received:', event);
-  
-  let notificationData = {
-    title: 'Nexa Messenger',
-    body: 'You have a new message',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    tag: 'nexa-notification',
-    requireInteraction: false,
-  };
+// ─── Push Notification Handling ───
+// NOTE: FCM push notifications are handled by firebase-messaging-sw.js
+// (registered separately). This sw.js only handles non-FCM web push
+// events, if any. The firebase-messaging-sw.js is the primary handler
+// for all FCM data messages.
 
-  if (event.data) {
-    try {
-      const data = event.data.json();
-      notificationData = { ...notificationData, ...data };
-    } catch (e) {
-      notificationData.body = event.data.text();
-    }
-  }
-
-  event.waitUntil(
-    self.registration.showNotification(notificationData.title, notificationData)
-  );
-});
-
-// Handle notification clicks
+// Handle notification clicks (works as a fallback for any SW scope)
 self.addEventListener('notificationclick', (event) => {
   console.log('👆 Notification clicked:', event);
   event.notification.close();
 
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Check if app is already open
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
-        if (client.url === '/' && 'focus' in client) {
+        if ((client.url.includes('dashboard') || client.url.endsWith('/')) && 'focus' in client) {
           return client.focus();
         }
       }
       // Open app if not open
       if (clients.openWindow) {
-        return clients.openWindow('/');
+        return clients.openWindow('/dashboard.html');
       }
     })
   );
@@ -219,4 +198,4 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-console.log('✅ Service Worker loaded');
+console.log('✅ Service Worker loaded');

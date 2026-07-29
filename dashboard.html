@@ -931,6 +931,36 @@ async function initFCM(uid) {
         }).catch(e => console.warn('Failed to save FCM token:', e));
         console.log('🔔 FCM token saved:', token);
       }
+
+      // ── Foreground message handler ──
+      // Since we use data-only messages (no `notification` key),
+      // FCM SDK won't auto-display anything when the app is in
+      // the foreground. We handle it manually here.
+      messaging.onMessage((payload) => {
+        console.log('[FCM] Foreground message received:', payload);
+        const data = payload.data || {};
+        const title = data.title || 'Nexa Messenger';
+        const body = data.body || 'You have a new message';
+
+        // Show an in-app toast
+        if (typeof showNotifToast === 'function') {
+          showNotifToast(`${title}: ${body}`, 'info');
+        }
+
+        // Also show a system notification (so it appears in the
+        // notification tray even when the tab is focused)
+        if (Notification.permission === 'granted' && registration) {
+          registration.showNotification(title, {
+            body: body,
+            icon: data.icon || '/icon-192.png',
+            badge: data.badge || '/icon-192.png',
+            tag: data.tag || 'nexa-foreground-' + Date.now(),
+            data: data,
+            requireInteraction: false
+          });
+        }
+      });
+
       return token;
     }
   } catch (e) {
@@ -938,6 +968,7 @@ async function initFCM(uid) {
   }
   return null;
 }
+
 
 function isStandaloneApp() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
