@@ -27,6 +27,7 @@
   
   
   <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js" async defer></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 <link rel="stylesheet" href="dashboard.css">
 </head>
 
@@ -36,6 +37,34 @@
   <div class="pwa-banner-text">📲 Install Nexa Messenger for instant access</div>
   <button class="pwa-btn" onclick="installPWA()">Install</button>
   <button class="pwa-btn" onclick="dismissPWABanner()">Not now</button>
+</div>
+
+<!-- PWA INSTALL POPUP MODAL -->
+<div class="pwa-modal-overlay" id="pwaModalPopup">
+  <div class="pwa-modal-card">
+    <div class="pwa-icon-wrap">
+      <img src="icon-192.png" alt="Nexa Messenger">
+    </div>
+    <div class="pwa-modal-title">Install Nexa Messenger</div>
+    <div class="pwa-modal-desc">Install the app on your device for instant messaging, push notifications, and fast access directly from your home screen.</div>
+    <div class="pwa-modal-actions">
+      <button class="pwa-modal-btn secondary" onclick="dismissPWAPopup()">Not now</button>
+      <button class="pwa-modal-btn primary" onclick="triggerPWAInstall()">
+        <i data-lucide="download" style="width: 18px; height: 18px;"></i> Install App
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW ONCE MEDIA MODAL -->
+<div class="view-once-modal-overlay" id="viewOnceModal">
+  <div class="view-once-header">
+    <span style="font-size: 14px; font-weight: 700; color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+      <i data-lucide="eye" style="width: 18px; height: 18px;"></i> View Once Media
+    </span>
+    <button onclick="closeViewOnceModal()" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+  </div>
+  <div class="view-once-content" id="viewOnceContent"></div>
 </div>
 
 <div id="oneSignalStatus">⏳ Connecting OneSignal...</div>
@@ -64,10 +93,10 @@
       </div>
       <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
       <div class="sidebar-tab-switcher">
-        <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats">💬</button>
-        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories">⭕</button>
-        <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings">⚙️</button>
-        <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile">👤</button>
+        <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
+        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i></button>
+        <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
+        <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
       </div>
     </div>
 
@@ -176,14 +205,6 @@
           </div>
 
           <div class="profile-field-group">
-            <label class="profile-field-label">Display Name</label>
-            <div style="display: flex; gap: 8px;">
-              <input type="text" id="profileTabNameInput" placeholder="Enter display name" style="flex: 1; padding: 12px 14px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--border-md); color: var(--text-1); font-size: 14px; outline: none;">
-              <button onclick="saveProfileTabName()" style="padding: 12px 16px; border-radius: 10px; background: var(--primary); border: none; color: #fff; font-weight: 600; cursor: pointer;">Save</button>
-            </div>
-          </div>
-
-          <div class="profile-field-group">
             <label class="profile-field-label">Username</label>
             <div class="profile-info-box" id="profileTabNameDisplay" style="user-select: text; font-weight: 600;">Loading...</div>
             <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">🔒 Username is locked and cannot be changed</div>
@@ -224,10 +245,10 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="hdr-btn" onclick="openVoiceCall()" title="Voice Call">☎️</button>
-        <button class="hdr-btn" onclick="openCallModal('video')" title="Video Call">📹</button>
-        <button class="hdr-btn" onclick="openChatInfo()" title="Chat Info">ℹ️</button>
-        <button class="hdr-btn" onclick="openSearchModal()" title="Search">🔍</button>
+        <button class="hdr-btn" onclick="openVoiceCall()" title="Voice Call"><i data-lucide="phone" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" onclick="openCallModal('video')" title="Video Call"><i data-lucide="video" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" onclick="openChatInfo()" title="Chat Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" onclick="openSearchModal()" title="Search"><i data-lucide="search" style="width: 18px; height: 18px;"></i></button>
       </div>
     </div>
 
@@ -245,11 +266,12 @@
     <div class="input-area">
       <div class="input-wrap">
         <textarea id="text" placeholder="Type a message…" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
-        <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image">📷</button>
-        <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File">📎</button>
-        <button class="iact-btn record-btn" id="recordBtn" title="Hold to record">🎤</button>
+        <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
+        <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
-      <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)">➤</button>
+      <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
     </div>
 
     <div class="ai-panel" id="aiPanel">
@@ -279,19 +301,19 @@
 <!-- MOBILE BOTTOM NAVIGATION BAR -->
 <div class="mobile-bottom-nav" id="mobileBottomNav">
   <button class="nav-item active" id="navBtnChats" onclick="switchTab('chats')">
-    <span class="nav-icon">💬</span>
+    <span class="nav-icon"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Chats</span>
   </button>
   <button class="nav-item" id="navBtnStories" onclick="switchTab('stories')">
-    <span class="nav-icon">⭕</span>
+    <span class="nav-icon"><i data-lucide="circle-dot" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Stories</span>
   </button>
   <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
-    <span class="nav-icon">⚙️</span>
+    <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Settings</span>
   </button>
   <button class="nav-item" id="navBtnProfile" onclick="switchTab('profile')">
-    <span class="nav-icon">👤</span>
+    <span class="nav-icon"><i data-lucide="user" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Profile</span>
   </button>
 </div>
@@ -300,6 +322,9 @@
 <div class="story-viewer-overlay" id="storyViewerOverlay">
   <div class="story-viewer-bg" id="storyViewerBg"></div>
   <div class="story-viewer-main" id="storyViewerMain">
+    <div class="story-pause-indicator" id="storyPauseIndicator">
+      <i data-lucide="pause" style="width: 16px; height: 16px;"></i> PAUSED
+    </div>
     <div class="story-progress-row" id="storyProgressRow"></div>
     <div class="story-viewer-header" id="storyViewerHeader">
       <img class="story-user-av" id="storyUserAv" src="https://i.imgur.com/HeIi0wU.png">
@@ -315,10 +340,11 @@
         <button class="story-close-btn" onclick="closeStoryViewer()">✕</button>
       </div>
     </div>
-    <div class="story-viewer-content" id="storyViewerContent"></div>
+    <div class="story-viewer-content" id="storyViewerContent" onclick="handleStoryContentClick(event)"></div>
     <div class="music-badge" id="musicBadge" style="display: none;"></div>
     <button class="story-nav-left" onclick="prevStorySlide()"></button>
     <button class="story-nav-right" onclick="nextStorySlide()"></button>
+
     
     <!-- STATS BAR FOR OWN STORY (VIEWS, LIKES, RESHARES) -->
     <div class="story-stats-bar" id="storyStatsBar" style="display: none;" onclick="openStoryAnalyticsModal()">
@@ -769,6 +795,67 @@ document.getElementById("profileUpload").addEventListener("change", async (e) =>
   e.target.value = "";
 });
 
+function saveLatestMsgState() {
+  try {
+    localStorage.setItem("nexa_latest_msg_time", JSON.stringify(latestMsgTime));
+    localStorage.setItem("nexa_latest_msg_text", JSON.stringify(latestMsgText));
+  } catch (e) {}
+}
+
+function loadLatestMsgState() {
+  try {
+    const savedTime = localStorage.getItem("nexa_latest_msg_time");
+    const savedText = localStorage.getItem("nexa_latest_msg_text");
+    if (savedTime) latestMsgTime = { ...JSON.parse(savedTime), ...latestMsgTime };
+    if (savedText) latestMsgText = { ...JSON.parse(savedText), ...latestMsgText };
+  } catch (e) {}
+}
+
+async function loadInitialChatTimestamps() {
+  if (!currentUser) return;
+  loadLatestMsgState(); // Instantly restore cached chat order from localStorage
+
+  try {
+    const [sentSnap, recvSnap] = await Promise.all([
+      db.collection("chats")
+        .where("from", "==", currentUser.uid)
+        .orderBy("createdAt", "desc")
+        .limit(60)
+        .get(),
+      db.collection("chats")
+        .where("to", "==", currentUser.uid)
+        .orderBy("createdAt", "desc")
+        .limit(60)
+        .get()
+    ]);
+
+    sentSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.to && d.createdAt) {
+        if (!latestMsgTime[d.to] || d.createdAt > latestMsgTime[d.to]) {
+          latestMsgTime[d.to] = d.createdAt;
+          latestMsgText[d.to] = d.text || (d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
+        }
+      }
+    });
+
+    recvSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.from && d.createdAt) {
+        if (!latestMsgTime[d.from] || d.createdAt > latestMsgTime[d.from]) {
+          latestMsgTime[d.from] = d.createdAt;
+          latestMsgText[d.from] = d.text || (d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
+        }
+      }
+    });
+
+    saveLatestMsgState();
+    renderUsers();
+  } catch (err) {
+    console.warn("Initial chat timestamp fetch:", err.message);
+  }
+}
+
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -778,12 +865,14 @@ auth.onAuthStateChanged(async (user) => {
   currentUser = user;
   console.log("👤 User:", user.email);
   showNotifToast("Initializing...", "info");
+  loadLatestMsgState();
   await initFCM(user.uid);
 
   await loadProfile();
 
   if (!profileSetupRequired) {
     startUsersListener();
+    loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
     listenIncoming();
@@ -801,27 +890,23 @@ window.showNotifToast = function(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 };
 
-async function sendPushNotification(title, body) {
-  // Ensure we have a selected user and notifications enabled
-  if (!selectedUser || !notificationSettings.messages) return;
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/send-notification`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        targetUid: selectedUser.uid,
-        title: title,
-        body: body,
-        icon: '/icon-192.png',
-        data: { senderUid: currentUser ? currentUser.uid : null }
-      })
-    });
-    if (res.ok) {
-      console.log('✅ Push notification sent via FCM');
-    }
-  } catch (err) {
-    console.error('Push notification error:', err);
-  }
+function sendPushNotification(title, body, targetUidOverride = null) {
+  const targetUid = targetUidOverride || (selectedUser ? selectedUser.uid : null);
+  if (!targetUid || !notificationSettings.messages) return;
+
+  fetch(`${BACKEND_URL}/api/send-notification`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      targetUid: targetUid,
+      title: title,
+      body: body,
+      icon: '/icon-192.png',
+      data: { senderUid: currentUser ? currentUser.uid : null, timestamp: Date.now() }
+    })
+  }).then(res => {
+    if (res.ok) console.log('✅ Instant push notification dispatched');
+  }).catch(err => console.warn('Push notification error:', err.message));
 }
 
 const vapidKey = "BGD7zwejdkH_EnGAfFgi872tkBWDM8-k0It7Px7QzitJ_abkqyK8d1ZEfQFslGS4TY6JXY1mylpSIH5QNDfhCRI";
@@ -854,12 +939,24 @@ async function initFCM(uid) {
   return null;
 }
 
+function isStandaloneApp() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
 function initPWA() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    showPWABanner();
+    if (!isStandaloneApp()) {
+      showPWAPopup();
+    }
   });
+
+  setTimeout(() => {
+    if (!isStandaloneApp() && !localStorage.getItem('pwaPopupDismissed')) {
+      showPWAPopup();
+    }
+  }, 2500);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
@@ -875,26 +972,43 @@ function initPWA() {
 }
 
 function showPWABanner() {
-  const banner = document.getElementById('pwaInstallBanner');
-  banner.classList.add('show');
+  showPWAPopup();
 }
 
 function dismissPWABanner() {
-  const banner = document.getElementById('pwaInstallBanner');
-  banner.classList.remove('show');
+  dismissPWAPopup();
+}
+
+function showPWAPopup() {
+  const modal = document.getElementById('pwaModalPopup');
+  if (modal) {
+    modal.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function dismissPWAPopup() {
+  const modal = document.getElementById('pwaModalPopup');
+  if (modal) modal.classList.remove('active');
+  localStorage.setItem('pwaPopupDismissed', 'true');
+}
+
+async function triggerPWAInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      showNotifToast('✅ Installing Nexa Messenger...', 'success');
+    }
+    deferredPrompt = null;
+  } else {
+    alert('To install Nexa Messenger on your device:\n1. Tap the Share icon in your browser menu\n2. Select "Add to Home Screen" or "Install App"');
+  }
+  dismissPWAPopup();
 }
 
 async function installPWA() {
-  if (!deferredPrompt) {
-    alert('Installation not available. Use the browser menu to install.');
-    return;
-  }
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  if (outcome === 'accepted') {
-    showNotifToast('✅ Installing Nexa Messenger...', 'success');
-  }
-  deferredPrompt = null;
+  triggerPWAInstall();
 }
 
 function handleLogout() {
@@ -989,23 +1103,18 @@ function renderUsers() {
   if (q) list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
 
   list.sort((a, b) => {
-    // 1. Currently selected active chat stays at the very top
-    if (selectedUser) {
-      if (a.uid === selectedUser.uid) return -1;
-      if (b.uid === selectedUser.uid) return 1;
-    }
-    // 2. Favorited chats
+    // 1. Favorited chats first
     if (favoritedChats[a.uid] && !favoritedChats[b.uid]) return -1;
     if (!favoritedChats[a.uid] && favoritedChats[b.uid]) return 1;
-    // 3. Most recent message time
+    // 2. Arrange based on recent message timestamp (most recent at top, like WhatsApp)
     const timeA = latestMsgTime[a.uid] || 0;
     const timeB = latestMsgTime[b.uid] || 0;
     if (timeA !== timeB) return timeB - timeA;
-    // 4. Online users first
+    // 3. Online users first
     const onlineA = isUserOnline(userPresenceCache[a.uid]) ? 1 : 0;
     const onlineB = isUserOnline(userPresenceCache[b.uid]) ? 1 : 0;
     if (onlineA !== onlineB) return onlineB - onlineA;
-    // 5. Alphabetical fallback
+    // 4. Alphabetical fallback
     return (a.displayName || "").localeCompare(b.displayName || "");
   });
 
@@ -1082,6 +1191,8 @@ function switchTab(tabName) {
   } else if (tabName === 'profile') {
     renderProfileTab();
   }
+
+  if (window.lucide) lucide.createIcons();
 }
 
 function closeMobileChat() {
@@ -1680,6 +1791,58 @@ function renderMessageList() {
   renderUsers();
 }
 
+let isViewOnceActive = false;
+
+function toggleViewOnceMode() {
+  isViewOnceActive = !isViewOnceActive;
+  const btn = document.getElementById("viewOnceToggleBtn");
+  if (btn) btn.classList.toggle("active", isViewOnceActive);
+  showNotifToast(isViewOnceActive ? "1 View Once enabled for next media" : "View Once disabled", "info");
+}
+
+function openViewOnceModal(mediaUrl, mediaType, docId) {
+  const modal = document.getElementById("viewOnceModal");
+  const container = document.getElementById("viewOnceContent");
+  if (!modal || !container) return;
+
+  container.innerHTML = "";
+  if (mediaType === "image") {
+    const img = document.createElement("img");
+    img.src = mediaUrl;
+    container.appendChild(img);
+  } else if (mediaType === "video") {
+    const vid = document.createElement("video");
+    vid.src = mediaUrl;
+    vid.controls = true;
+    vid.autoplay = true;
+    container.appendChild(vid);
+  } else if (mediaType === "audio") {
+    const aud = document.createElement("audio");
+    aud.src = mediaUrl;
+    aud.controls = true;
+    aud.autoplay = true;
+    container.appendChild(aud);
+  }
+
+  modal.classList.add("active");
+  if (window.lucide) lucide.createIcons();
+
+  if (docId) {
+    db.collection("chats").doc(docId).update({
+      viewOnceOpened: true,
+      read: true
+    }).catch(err => console.error("Error updating viewOnce state:", err));
+  }
+}
+
+function closeViewOnceModal() {
+  const modal = document.getElementById("viewOnceModal");
+  const container = document.getElementById("viewOnceContent");
+  if (modal) modal.classList.remove("active");
+  if (container) container.innerHTML = "";
+  renderMessageList();
+}
+
 function buildMessage(id, msg, fromMe) {
   const el = document.createElement("div");
   el.className = `msg ${fromMe ? "me" : "them"}`;
@@ -1708,31 +1871,61 @@ function buildMessage(id, msg, fromMe) {
     }
   }
 
-  if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
+  // Handle View Once Media
+  if (msg.isViewOnce && (msg.image || msg.video || msg.audio)) {
+    const isOpened = msg.viewOnceOpened;
+    const mediaType = msg.image ? "Photo" : msg.video ? "Video" : msg.audio ? "Voice note" : "Media";
+    const typeKey = msg.image ? "image" : msg.video ? "video" : "audio";
+    const mediaUrl = msg.image || msg.video || msg.audio;
 
-  if (msg.image) {
-    inner += `<div class="media-container">
-      <img src="${msg.image}"
-           style="width: 100%; display: block; border-radius: 8px;"
-           onclick="viewImg('${msg.image}')"
-           loading="lazy"
-           alt="shared image">
-    </div>`;
-  }
+    const badge = document.createElement("div");
+    badge.className = `view-once-badge ${isOpened ? "opened" : ""}`;
 
-  if (msg.video) {
-    inner += `<div class="media-container">
-      <video controls
+    if (isOpened) {
+      badge.innerHTML = `
+        <div class="view-once-circle">✓</div>
+        <span>Opened (${mediaType})</span>
+      `;
+    } else {
+      badge.innerHTML = `
+        <div class="view-once-circle">1</div>
+        <span>${mediaType} (Tap to view)</span>
+      `;
+      if (!fromMe || currentUser.uid === msg.to) {
+        badge.onclick = () => openViewOnceModal(mediaUrl, typeKey, id);
+      } else {
+        badge.onclick = () => showNotifToast("Sent as View Once media", "info");
+      }
+    }
+
+    bubble.appendChild(badge);
+  } else {
+    if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
+
+    if (msg.image) {
+      inner += `<div class="media-container">
+        <img src="${msg.image}"
              style="width: 100%; display: block; border-radius: 8px;"
-             preload="metadata">
-        <source src="${msg.video}" type="video/mp4">
-        Your browser does not support video playback.
-      </video>
-    </div>`;
-  }
+             onclick="viewImg('${msg.image}')"
+             loading="lazy"
+             alt="shared image">
+      </div>`;
+    }
 
-  if (msg.audio) {
-    inner += `<audio controls src="${msg.audio}" style="max-width: 200px; margin-top: 6px; display: block;"></audio>`;
+    if (msg.video) {
+      inner += `<div class="media-container">
+        <video controls
+               style="width: 100%; display: block; border-radius: 8px;"
+               preload="metadata">
+          <source src="${msg.video}" type="video/mp4">
+          Your browser does not support video playback.
+        </video>
+      </div>`;
+    }
+
+    if (msg.audio) {
+      inner += `<audio controls src="${msg.audio}" style="max-width: 200px; margin-top: 6px; display: block;"></audio>`;
+    }
   }
 
   if (msg.reactions && Object.keys(msg.reactions).length) {
@@ -1748,7 +1941,15 @@ function buildMessage(id, msg, fromMe) {
   const editLabel = msg.edited ? ' <span style="font-size: 9.5px; opacity: 0.55; font-style: italic;">(edited)</span>' : '';
   inner += `<div class="msg-meta"><span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""} ${editLabel}</div>`;
 
-  bubble.innerHTML = inner;
+  if (!msg.isViewOnce || !(msg.image || msg.video || msg.audio)) {
+    bubble.innerHTML = inner;
+  } else {
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "msg-meta";
+    metaDiv.innerHTML = `<span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""} ${editLabel}`;
+    bubble.appendChild(metaDiv);
+  }
+
   row.appendChild(bubble);
 
   // Touch swipe right to reply (WhatsApp style)
@@ -2057,7 +2258,8 @@ async function sendMessage() {
 }
 
 function baseMsg(extras = {}) {
-  return {
+  const hasMedia = extras.image || extras.video || extras.audio;
+  const msg = {
     from: currentUser.uid,
     to: selectedUser.uid,
     text: "",
@@ -2068,8 +2270,18 @@ function baseMsg(extras = {}) {
     edited: false,
     read: false,
     createdAt: Date.now(),
+    isViewOnce: (hasMedia && isViewOnceActive) ? true : false,
+    viewOnceOpened: false,
     ...extras
   };
+
+  if (hasMedia && isViewOnceActive) {
+    isViewOnceActive = false;
+    const btn = document.getElementById("viewOnceToggleBtn");
+    if (btn) btn.classList.remove("active");
+  }
+
+  return msg;
 }
 
 /* =========================================================================
@@ -2317,15 +2529,13 @@ function listenIncoming() {
       if (!latestMsgTime[uid] || msg.createdAt > latestMsgTime[uid]) {
         latestMsgTime[uid] = msg.createdAt;
         latestMsgText[uid] = preview;
+        saveLatestMsgState();
       }
       if (!selectedUser || selectedUser.uid !== uid) {
-        if (!mutedChats[uid]) {
-          db.collection("users").doc(uid).get().then(d => {
-            const name = d.data()?.displayName || "User";
-            if (notificationSettings.messages) {
-              sendPushNotification(name, preview, oneSignalPlayerId);
-            }
-          });
+        if (!mutedChats[uid] && notificationSettings.messages) {
+          const senderUser = allUsersData.find(u => u.uid === uid);
+          const name = senderUser ? (senderUser.displayName || "User") : "Nexa User";
+          sendPushNotification(name, preview, currentUser.uid);
         }
       }
       db.collection("chats").doc(change.doc.id).update({ status: "delivered" });
@@ -2581,6 +2791,11 @@ function renderStorySlide(idx) {
 
   function startStoryAnimation(duration) {
     storyCurrentDuration = duration;
+    storyPauseElapsed = 0;
+    isStoryPaused = false;
+    const indicator = document.getElementById("storyPauseIndicator");
+    if (indicator) indicator.classList.remove("show");
+
     clearTimeout(storyTimer);
     cancelAnimationFrame(storyAnimFrame);
     const fillEl = document.getElementById(`spf-${idx}`);
@@ -2588,12 +2803,14 @@ function renderStorySlide(idx) {
     storyProgressStart = Date.now();
 
     function animFill() {
+      if (isStoryPaused) return;
       const elapsed = Date.now() - storyProgressStart;
       const pct = Math.min((elapsed / storyCurrentDuration) * 100, 100);
       fillEl.style.width = pct + "%";
       if (pct < 100) {
         storyAnimFrame = requestAnimationFrame(animFill);
       } else {
+        storyPauseElapsed = 0;
         storyViewerIndex++;
         renderStorySlide(storyViewerIndex);
       }
@@ -2720,6 +2937,72 @@ function renderStorySlide(idx) {
   } else {
     musicBadge.style.display = "none";
     startStoryAnimation(5000);
+  }
+}
+
+let isStoryPaused = false;
+let storyPauseElapsed = 0;
+
+function handleStoryContentClick(e) {
+  if (e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar')) return;
+  toggleStoryPause();
+}
+
+function toggleStoryPause() {
+  if (isStoryPaused) {
+    resumeStoryPlayback();
+  } else {
+    pauseStoryPlayback();
+  }
+}
+
+function pauseStoryPlayback() {
+  isStoryPaused = true;
+  cancelAnimationFrame(storyAnimFrame);
+  clearTimeout(storyTimer);
+  if (storyProgressStart) {
+    storyPauseElapsed += Date.now() - storyProgressStart;
+  }
+  if (storyAudioElement && !storyAudioElement.paused) storyAudioElement.pause();
+  const vid = document.querySelector('#storyViewerContent video');
+  if (vid && !vid.paused) vid.pause();
+
+  const indicator = document.getElementById('storyPauseIndicator');
+  if (indicator) {
+    indicator.classList.add('show');
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function resumeStoryPlayback() {
+  isStoryPaused = false;
+  const indicator = document.getElementById('storyPauseIndicator');
+  if (indicator) indicator.classList.remove('show');
+
+  if (storyAudioElement && storyAudioElement.paused) storyAudioElement.play().catch(() => {});
+  const vid = document.querySelector('#storyViewerContent video');
+  if (vid && vid.paused) vid.play().catch(() => {});
+
+  if (storyCurrentDuration > 0) {
+    storyProgressStart = Date.now();
+    const idx = storyViewerIndex;
+    const fillEl = document.getElementById(`spf-${idx}`);
+
+    function animFill() {
+      if (isStoryPaused) return;
+      const currentElapsed = storyPauseElapsed + (Date.now() - storyProgressStart);
+      const pct = Math.min((currentElapsed / storyCurrentDuration) * 100, 100);
+      if (fillEl) fillEl.style.width = pct + "%";
+
+      if (pct < 100) {
+        storyAnimFrame = requestAnimationFrame(animFill);
+      } else {
+        storyPauseElapsed = 0;
+        storyViewerIndex++;
+        renderStorySlide(storyViewerIndex);
+      }
+    }
+    storyAnimFrame = requestAnimationFrame(animFill);
   }
 }
 
@@ -3330,6 +3613,10 @@ function loadPrefs() {
     setTheme(currentTheme);
   } catch (e) {}
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (window.lucide) lucide.createIcons();
+});
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
 </script>
