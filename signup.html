@@ -237,9 +237,17 @@ async function signup() {
 
     // 🗄️ SAVE PROFILE
     await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
       username,
       displayName,
+      name: displayName,
       email,
+      photo: "https://i.imgur.com/HeIi0wU.png",
+      photoUrl: "https://i.imgur.com/HeIi0wU.png",
+      status: "online",
+      lastSeen: Date.now(),
+      banned: false,
+      profileSetupComplete: true,
       createdAt: Date.now()
     });
 

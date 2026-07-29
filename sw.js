@@ -1,4 +1,8 @@
-importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+try {
+  importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+} catch (e) {
+  console.warn("OneSignal SDK not loaded:", e.message);
+}
 
 // =====================================================
 // NEXA MESSENGER SERVICE WORKER

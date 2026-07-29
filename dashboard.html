@@ -25,7 +25,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   
-  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  
   <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js" async defer></script>
 <link rel="stylesheet" href="dashboard.css">
 </head>
@@ -176,6 +176,14 @@
           </div>
 
           <div class="profile-field-group">
+            <label class="profile-field-label">Display Name</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="profileTabNameInput" placeholder="Enter display name" style="flex: 1; padding: 12px 14px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--border-md); color: var(--text-1); font-size: 14px; outline: none;">
+              <button onclick="saveProfileTabName()" style="padding: 12px 16px; border-radius: 10px; background: var(--primary); border: none; color: #fff; font-weight: 600; cursor: pointer;">Save</button>
+            </div>
+          </div>
+
+          <div class="profile-field-group">
             <label class="profile-field-label">Username</label>
             <div class="profile-info-box" id="profileTabNameDisplay" style="user-select: text; font-weight: 600;">Loading...</div>
             <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">🔒 Username is locked and cannot be changed</div>
@@ -236,7 +244,7 @@
 
     <div class="input-area">
       <div class="input-wrap">
-        <textarea id="text" placeholder="Type a message…" onkeypress="handleKeyPress(event)" oninput="toggleActionButtons()"></textarea>
+        <textarea id="text" placeholder="Type a message…" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
         <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image">📷</button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File">📎</button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record">🎤</button>
@@ -519,27 +527,6 @@
 <script>
 /* =========================================================================
    NEXA MESSENGER — client script
-   -------------------------------------------------------------------------
-   Fixes applied in this rewrite (see chat for full explanation):
-   1. loadMessages() now queries ONLY the two users in the open conversation
-      (two `from`/`to` listeners merged client-side) instead of the entire
-      global chats collection. This was the main cause of "shaking" — any
-      message from anyone, anywhere, was re-rendering your open chat.
-   2. Every listener (messages, presence-for-open-chat, typing) is properly
-      unsubscribed before a new one is created when you switch chats, so
-      listeners no longer pile up over time.
-   3. Presence dots are now subscribed ONCE per user (tracked in a map) in
-      startUsersListener, instead of being re-subscribed on every single
-      renderUsers() call (which was happening dozens of times a minute).
-   4. Auto-scroll-to-bottom only happens if you were already near the
-      bottom, so reactions/edits/read-receipts don't yank your scroll
-      position while you're reading older messages.
-   5. Message text / reply quotes / search results are HTML-escaped before
-      insertion (linkify() escapes then wraps URLs) to prevent HTML/script
-      injection through chat messages.
-   6. Fixed a broken/malformed onclick in the context menu's Copy button
-      and switched copyMsg() to look up text by id instead of embedding
-      raw (unescaped) text inside an inline attribute.
    ========================================================================= */
 
 let currentUser = null;
@@ -547,7 +534,7 @@ let selectedUser = null;
 let messageRepliedTo = null;
 let editingMessageId = null;
 let deferredPrompt = null;
-let oneSignalPlayerId = null;
+
 let profileSetupRequired = false;
 
 const CLOUD_NAME = "doasf3d1u";
@@ -561,6 +548,37 @@ let musicDuration = 30;
 let statusTab = 'image';
 let statusFile = null;
 let storyAudioElement = null;
+
+/// Story pause/resume handling
+let typingResumeTimer = null;
+function pauseStory() {
+  if (window.storySlideTimer) clearInterval(window.storySlideTimer);
+  if (storyAudioElement && !storyAudioElement.paused) storyAudioElement.pause();
+}
+function resumeStory() {
+  if (window.storySlideTimer) {
+    clearInterval(window.storySlideTimer);
+    window.storySlideTimer = setInterval(nextStorySlide, 5000);
+  }
+  if (storyAudioElement && storyAudioElement.paused) storyAudioElement.play().catch(() => {});
+}
+function handleStoryPauseOnTyping() {
+  pauseStory();
+}
+function handleStoryResumeOnTyping() {
+  clearTimeout(typingResumeTimer);
+  typingResumeTimer = setTimeout(resumeStory, 800);
+}
+// Profile picture modal
+function openProfilePic(src) {
+  const modal = document.getElementById('profilePicModal');
+  const img = document.getElementById('modalProfileImg');
+  img.src = src;
+  modal.classList.add('active');
+}
+function closeProfilePicModal() {
+  document.getElementById('profilePicModal').classList.remove('active');
+}
 
 console.log('🚀 Nexa Messenger Starting...');
 
@@ -576,9 +594,6 @@ firebase.initializeApp({
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-/* -------------------------------------------------------------------------
-   Small utilities: HTML escaping + linkify (fix #5)
-   ------------------------------------------------------------------------- */
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/[&<>"']/g, c => ({
@@ -593,75 +608,8 @@ function linkify(text) {
   return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
-/* =========================================================================
-   PUSH NOTIFICATIONS (OneSignal)
-   ========================================================================= */
-window.OneSignal = window.OneSignal || [];
-OneSignal.push(async function() {
-  await OneSignal.init({
-    appId: "a0974c00-b4f3-4b48-a6e4-2aa784ce0532",
-    allowLocalhostAsSecureOrigin: true,
-    serviceWorkerPath: "sw.js"
-  });
 
-  OneSignal.Slidedown.promptPush();
 
-  if (Notification.permission === 'granted') {
-    updateOneSignalStatus('ready');
-  } else {
-    updateOneSignalStatus('loading');
-  }
-
-  const pushSub = OneSignal.User?.PushSubscription;
-  if (pushSub) {
-    if (pushSub.id) {
-      oneSignalPlayerId = pushSub.id;
-      console.log("✅ OneSignal Subscription ID:", oneSignalPlayerId.substring(0, 20) + "...");
-      updateOneSignalStatus('ready');
-      saveOneSignalIdToFirestore(oneSignalPlayerId);
-    }
-    pushSub.addEventListener("change", (event) => {
-      console.log("🔔 OneSignal Subscription Change:", event.current);
-      oneSignalPlayerId = event.current.id;
-      if (oneSignalPlayerId) {
-        updateOneSignalStatus('ready');
-        saveOneSignalIdToFirestore(oneSignalPlayerId);
-      } else {
-        updateOneSignalStatus('loading');
-      }
-    });
-  }
-});
-
-async function saveOneSignalIdToFirestore(subId) {
-  if (!currentUser || !subId) return;
-  try {
-    await db.collection("users").doc(currentUser.uid).set({
-      oneSignalPlayerId: subId
-    }, { merge: true });
-    console.log("Uploaded OneSignal ID to Firestore:", subId);
-  } catch (err) {
-    console.warn("Failed to upload OneSignal ID to Firestore:", err);
-  }
-}
-
-function updateOneSignalStatus(status) {
-  const el = document.getElementById("oneSignalStatus");
-  if (!el) return;
-  el.classList.remove('loading', 'error', 'ready');
-  el.classList.add(status);
-  if (status === 'ready') {
-    el.textContent = '✓ Notifications Ready';
-  } else if (status === 'loading') {
-    el.textContent = '⏳ Connecting OneSignal...';
-  } else {
-    el.textContent = '✕ Notifications Error';
-  }
-}
-
-/* =========================================================================
-   PROFILE SETUP / LOADING
-   ========================================================================= */
 async function showProfileSetupModal() {
   document.getElementById("profileSetupOverlay").classList.add("active");
   document.getElementById("setupNameInput").focus();
@@ -747,9 +695,6 @@ async function loadProfile() {
   startStatusListener();
 }
 
-/* =========================================================================
-   NOTIFICATION SETTINGS
-   ========================================================================= */
 let notificationSettings = {
   messages: true,
   stories: true,
@@ -824,9 +769,6 @@ document.getElementById("profileUpload").addEventListener("change", async (e) =>
   e.target.value = "";
 });
 
-/* =========================================================================
-   AUTH STATE
-   ========================================================================= */
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -836,6 +778,7 @@ auth.onAuthStateChanged(async (user) => {
   currentUser = user;
   console.log("👤 User:", user.email);
   showNotifToast("Initializing...", "info");
+  await initFCM(user.uid);
 
   await loadProfile();
 
@@ -846,9 +789,6 @@ auth.onAuthStateChanged(async (user) => {
     listenIncoming();
     initPWA();
     await updateOnline(true);
-    if (oneSignalPlayerId) {
-      saveOneSignalIdToFirestore(oneSignalPlayerId);
-    }
     console.log("✅ App fully ready");
   }
 });
@@ -861,30 +801,59 @@ window.showNotifToast = function(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 };
 
-async function sendPushNotification(title, body, targetPlayerId) {
-  const recipientId = targetPlayerId || (selectedUser ? selectedUser.oneSignalPlayerId : null);
-  if (!recipientId || !notificationSettings.messages) return;
+async function sendPushNotification(title, body) {
+  // Ensure we have a selected user and notifications enabled
+  if (!selectedUser || !notificationSettings.messages) return;
   try {
-    const res = await fetch(BACKEND_URL + '/send-onesignal', {
+    const res = await fetch(`${BACKEND_URL}/api/send-notification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        playerId: recipientId,
+        targetUid: selectedUser.uid,
         title: title,
-        body: body
+        body: body,
+        icon: '/icon-192.png',
+        data: { senderUid: currentUser ? currentUser.uid : null }
       })
     });
     if (res.ok) {
-      console.log('✅ Push notification sent to:', recipientId.substring(0, 20) + "...");
+      console.log('✅ Push notification sent via FCM');
     }
   } catch (err) {
     console.error('Push notification error:', err);
   }
 }
 
-/* =========================================================================
-   PWA
-   ========================================================================= */
+const vapidKey = "BGD7zwejdkH_EnGAfFgi872tkBWDM8-k0It7Px7QzitJ_abkqyK8d1ZEfQFslGS4TY6JXY1mylpSIH5QNDfhCRI";
+
+async function initFCM(uid) {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) return null;
+  try {
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.warn('🔔 Notification permission not granted');
+      return null;
+    }
+    if (firebase.messaging.isSupported && await firebase.messaging.isSupported()) {
+      const messaging = firebase.messaging();
+      const token = await messaging.getToken({ vapidKey, serviceWorkerRegistration: registration });
+      if (token) {
+        await fetch(`${BACKEND_URL}/api/save-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid, token })
+        }).catch(e => console.warn('Failed to save FCM token:', e));
+        console.log('🔔 FCM token saved:', token);
+      }
+      return token;
+    }
+  } catch (e) {
+    console.warn('FCM init warning:', e.message);
+  }
+  return null;
+}
+
 function initPWA() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -934,10 +903,6 @@ function handleLogout() {
   }
 }
 
-/* =========================================================================
-   USERS LIST + PRESENCE (fix #3: presence subscribed ONCE per user, not
-   re-subscribed on every renderUsers() call)
-   ========================================================================= */
 let allUsersData = [];
 let unreadMessages = {};
 let mutedChats = {};
@@ -947,9 +912,9 @@ let latestMsgTime = {};
 let latestMsgText = {};
 let userPresenceCache = {};
 let userStatus = "online";
-let presenceUnsubs = {}; // uid -> unsubscribe function, one per user, ever
+let presenceUnsubs = {};
 
-const PRESENCE_TIMEOUT_MS = 35000; // 35 seconds cutoff for active status
+const PRESENCE_TIMEOUT_MS = 35000;
 
 function isUserOnline(pdata) {
   if (!pdata) return false;
@@ -1257,6 +1222,9 @@ function renderProfileTab() {
   const pNameDisplay = document.getElementById("profileTabNameDisplay");
   if (pNameDisplay) pNameDisplay.textContent = myName === "Loading…" ? (currentUser.displayName || currentUser.email?.split('@')[0] || "User") : myName;
 
+  const pNameInput = document.getElementById("profileTabNameInput");
+  if (pNameInput && !pNameInput.value) pNameInput.value = (myName !== "Loading…" ? myName : currentUser.displayName) || "";
+
   const pEmail = document.getElementById("profileTabEmail");
   if (pEmail) pEmail.textContent = currentUser.email || "No email";
 }
@@ -1284,6 +1252,8 @@ async function saveProfileTabName() {
     }, { merge: true });
 
     document.getElementById("myName").textContent = newName;
+    const pNameDisplay = document.getElementById("profileTabNameDisplay");
+    if (pNameDisplay) pNameDisplay.textContent = newName;
     showNotifToast("✓ Profile name updated!", "success");
     renderUsers();
   } catch (err) {
@@ -1437,7 +1407,7 @@ function closeSidebarFn() {
 function _sidebarOutsideClick(e) {
   const sidebar = document.getElementById("sidebar");
   const btn = document.getElementById("mobileMenuBtn");
-  if (!sidebar.contains(e.target) && !btn.contains(e.target)) closeSidebarFn();
+  if (sidebar && !sidebar.contains(e.target) && (!btn || !btn.contains(e.target))) closeSidebarFn();
 }
 
 function updateChatHeaderPresence(data) {
@@ -2020,7 +1990,11 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         await db.collection("chats").add(baseMsg({ video: url }));
         clearReply();
         showNotifToast("✓ Video sent!", "success");
-        sendPushNotification(`🎥 Video from ${document.getElementById('myName').textContent || 'Nexa User'}`, 'New video message', selectedUser.oneSignalPlayerId);
+        sendPushNotification({
+          targetUid: selectedUser.uid,
+          title: `🎥 Video from ${document.getElementById('myName').textContent || 'Nexa User'}`,
+          body: 'New video message'
+        });
       }
     } else {
       showNotifToast("📎 Uploading file...", "info");
@@ -3279,7 +3253,19 @@ async function shareStatus() {
 }
 
 function openAI() {
-  window.open("https://askifyai.onrender.com/", "_blank");
+  const panel = document.getElementById("aiPanel");
+  if (panel) {
+    panel.classList.add("active");
+  } else {
+    window.open("https://askifyai.onrender.com/", "_blank");
+  }
+}
+
+function closeAI() {
+  const panel = document.getElementById("aiPanel");
+  if (panel) {
+    panel.classList.remove("active");
+  }
 }
 
 function openCallModal(type) {
@@ -3347,5 +3333,6 @@ function loadPrefs() {
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
 </script>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
 </body>
 </html>
