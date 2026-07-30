@@ -1780,6 +1780,12 @@ function loadMessages() {
   if (unsubMessagesB) { unsubMessagesB(); unsubMessagesB = null; }
   _msgsA = [];
   _msgsB = [];
+  allMessages = [];
+
+  const box = document.getElementById("messages");
+  if (box) {
+    box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 14px; font-weight: 500; color: var(--text-3);">Loading conversation...</div></div>';
+  }
 
   if (!selectedUser) return;
 
@@ -1979,6 +1985,15 @@ function renderMessageList() {
     }
   });
 
+  // Handle empty chat container
+  const emptyChatEl = box.querySelector(".empty-chat");
+  if (!allMessages.length) {
+    box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger</div><div style="font-size: 13px; color: var(--text-3);">No messages yet. Send a message to start conversation!</div></div>';
+    return;
+  } else if (emptyChatEl) {
+    emptyChatEl.remove();
+  }
+
   let maxTime = latestMsgTime[selectedUser.uid] || 0;
   let lastDate = null;
 
@@ -1995,7 +2010,6 @@ function renderMessageList() {
 
     if (!msgEl) {
       msgEl = buildMessage(msg.id, msg, fromMe);
-      box.appendChild(msgEl);
     } else {
       // In-place tick update
       const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
@@ -2019,6 +2033,9 @@ function renderMessageList() {
         }
       }
     }
+
+    // Always re-append to enforce 100% strict chronological order in DOM
+    box.appendChild(msgEl);
   });
 
   if (allMessages.length > 0) {
