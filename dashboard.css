@@ -278,8 +278,8 @@ button:focus-visible {
 }
 
 @keyframes msgIn {
-  from { opacity: 0; transform: translateY(10px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes stripIn {
@@ -902,7 +902,7 @@ button:focus-visible {
   font-size: 10.5px;
   font-weight: 800;
   box-shadow: 0 3px 12px rgba(79, 143, 255, 0.35);
-  animation: badgePop var(--duration-lg) var(--spring);
+  animation: scaleIn 0.15s ease-out;
 }
 
 .no-users {
@@ -1218,8 +1218,11 @@ button:focus-visible {
 
 .msg {
   max-width: min(62%, 520px);
-  animation: msgIn var(--duration-md) var(--spring);
   position: relative;
+}
+
+.msg.msg-new {
+  animation: msgIn 0.15s ease-out;
 }
 
 .msg-row {

@@ -557,7 +557,13 @@ let currentUser = null;
 let selectedUser = null;
 let messageRepliedTo = null;
 let editingMessageId = null;
-let deferredPrompt = null;
+let deferredPrompt = window.deferredPrompt || null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  window.deferredPrompt = e;
+  console.log("📱 Nexa PWA automatic install prompt captured");
+});
 
 let profileSetupRequired = false;
 
@@ -922,11 +928,16 @@ async function initFCM(uid) {
       const messaging = firebase.messaging();
       const token = await messaging.getToken({ vapidKey, serviceWorkerRegistration: registration });
       if (token) {
+        db.collection("users").doc(uid).set({
+          fcmToken: token,
+          fcmTokens: firebase.firestore.FieldValue.arrayUnion(token)
+        }, { merge: true }).catch(err => console.warn("Client FCM token save error:", err));
+
         await fetch(`${BACKEND_URL}/api/save-token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uid, token })
-        }).catch(e => console.warn('Failed to save FCM token:', e));
+        }).catch(e => console.warn('Failed to save FCM token via backend:', e));
         console.log('🔔 FCM token saved:', token);
       }
 
@@ -1031,12 +1042,19 @@ function dismissPWAPopup() {
 }
 
 async function triggerPWAInstall() {
-  const promptEvent = deferredPrompt || window.deferredPrompt;
+  let promptEvent = deferredPrompt || window.deferredPrompt;
+  
+  if (!promptEvent) {
+    // Wait briefly in case event was just dispatched
+    await new Promise(r => setTimeout(r, 300));
+    promptEvent = deferredPrompt || window.deferredPrompt;
+  }
+
   if (promptEvent) {
     try {
       promptEvent.prompt();
-      const { outcome } = await promptEvent.userChoice;
-      if (outcome === 'accepted') {
+      const choice = await promptEvent.userChoice;
+      if (choice && choice.outcome === 'accepted') {
         showNotifToast('✅ Installing Nexa Messenger...', 'success');
       }
     } catch (err) {
@@ -1045,10 +1063,16 @@ async function triggerPWAInstall() {
     deferredPrompt = null;
     window.deferredPrompt = null;
     dismissPWAPopup();
-  } else {
-    showNotifToast("📱 To install: Tap Share button in your browser and select 'Add to Home Screen'", "info");
-    dismissPWAPopup();
+    return;
   }
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS) {
+    showNotifToast("📱 To install on iOS Safari: Tap Share button and select 'Add to Home Screen'", "info");
+  } else {
+    showNotifToast("📱 Tap Install or look for the Install icon in your browser address bar", "info");
+  }
+  dismissPWAPopup();
 }
 
 async function installPWA() {
@@ -2010,8 +2034,10 @@ function renderMessageList() {
 
     if (!msgEl) {
       msgEl = buildMessage(msg.id, msg, fromMe);
+      msgEl.classList.add("msg-new");
+      box.appendChild(msgEl);
     } else {
-      // In-place tick update
+      // In-place tick update without DOM re-attachment or shaking
       const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
       const editLabel = msg.edited ? ' <span style="font-size: 9.5px; opacity: 0.55; font-style: italic;">(edited)</span>' : '';
       const metaEl = msgEl.querySelector(".msg-meta");
@@ -2033,9 +2059,6 @@ function renderMessageList() {
         }
       }
     }
-
-    // Always re-append to enforce 100% strict chronological order in DOM
-    box.appendChild(msgEl);
   });
 
   if (allMessages.length > 0) {

@@ -1936,16 +1936,10 @@ footer {
     });
     
     // PWA Install Prompt
-    let deferredPrompt;
-    const alreadyHandled = localStorage.getItem("nexa_install_handled");
-    
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
-      deferredPrompt = e;
-      if (!alreadyHandled) {
-        // You could show a custom install prompt here
-        console.log("Install prompt available");
-      }
+      window.deferredPrompt = e;
+      console.log("📱 Nexa PWA install prompt ready on landing page");
     });
   </script>
 </body>
