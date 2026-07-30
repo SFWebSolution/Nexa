@@ -60,6 +60,50 @@
     .input-group {
       position: relative;
       margin-bottom: 1.5rem;
+      width: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-toggle-btn {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: #7a8899;
+      cursor: pointer;
+      padding: 6px;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      z-index: 10;
+      border-radius: 50%;
+    }
+
+    .password-toggle-btn:hover {
+      color: #00f0ff;
+      background: rgba(0, 240, 255, 0.1);
+      transform: translateY(-50%);
+      box-shadow: none;
+    }
+
+    .password-toggle-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    input#password {
+      padding-right: 52px !important;
     }
 
     input {
@@ -172,7 +216,10 @@
   </div>
   
   <div class="input-group">
-    <input type="password" id="password" placeholder="Password">
+    <input type="password" id="password" placeholder="Password" style="padding-right: 48px;">
+    <button type="button" class="password-toggle-btn" id="togglePasswordBtn" title="Toggle password visibility">
+      <svg id="eyeIcon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
   </div>
 
   <div class="forgot">
@@ -213,6 +260,20 @@ const auth = getAuth(app);
 
 const msg = document.getElementById("msg");
 const btn = document.getElementById("loginBtn");
+
+const togglePasswordBtn = document.getElementById("togglePasswordBtn");
+const passwordInput = document.getElementById("password");
+const eyeIcon = document.getElementById("eyeIcon");
+
+if (togglePasswordBtn && passwordInput && eyeIcon) {
+  togglePasswordBtn.addEventListener("click", () => {
+    const isPassword = passwordInput.type === "password";
+    passwordInput.type = isPassword ? "text" : "password";
+    eyeIcon.innerHTML = isPassword
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  });
+}
 
 btn.addEventListener("click", login);
 

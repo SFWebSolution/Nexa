@@ -67,8 +67,6 @@
   <div class="view-once-content" id="viewOnceContent"></div>
 </div>
 
-<div id="oneSignalStatus">⏳ Connecting OneSignal...</div>
-
 <div class="profile-setup-overlay" id="profileSetupOverlay">
   <div class="profile-setup-modal">
     <div class="setup-title">👋 Welcome to Nexa!</div>
@@ -978,9 +976,17 @@ function initPWA() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    window.deferredPrompt = e;
     if (!isStandaloneApp()) {
       showPWAPopup();
     }
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    window.deferredPrompt = null;
+    dismissPWAPopup();
+    showNotifToast('🎉 Nexa Messenger was successfully installed!', 'success');
   });
 
   setTimeout(() => {
@@ -990,9 +996,9 @@ function initPWA() {
   }, 2500);
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
+    navigator.serviceWorker.register('/firebase-messaging-sw.js')
       .then(reg => {
-        console.log('✅ Service Worker registered');
+        console.log('✅ Unified Service Worker registered');
       })
       .catch(e => {
         console.warn('⚠️ SW registration failed:', e.message);
@@ -1025,17 +1031,24 @@ function dismissPWAPopup() {
 }
 
 async function triggerPWAInstall() {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      showNotifToast('✅ Installing Nexa Messenger...', 'success');
+  const promptEvent = deferredPrompt || window.deferredPrompt;
+  if (promptEvent) {
+    try {
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
+      if (outcome === 'accepted') {
+        showNotifToast('✅ Installing Nexa Messenger...', 'success');
+      }
+    } catch (err) {
+      console.warn("PWA prompt error:", err);
     }
     deferredPrompt = null;
+    window.deferredPrompt = null;
+    dismissPWAPopup();
   } else {
-    alert('To install Nexa Messenger on your device:\n1. Tap the Share icon in your browser menu\n2. Select "Add to Home Screen" or "Install App"');
+    showNotifToast("📱 To install: Tap Share button in your browser and select 'Add to Home Screen'", "info");
+    dismissPWAPopup();
   }
-  dismissPWAPopup();
 }
 
 async function installPWA() {
@@ -1124,11 +1137,12 @@ function startUsersListener() {
   });
 }
 
+let lastRenderedUserOrder = "";
+
 function renderUsers() {
   const box = document.getElementById("users");
   if (!box) return;
 
-  box.innerHTML = "";
   const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
   let list = allUsersData.filter(u => !blockedUsers[u.uid]);
   if (q) list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
@@ -1149,38 +1163,94 @@ function renderUsers() {
     return (a.displayName || "").localeCompare(b.displayName || "");
   });
 
-  if (!list.length) { box.innerHTML = '<div class="no-users">👋 No users found</div>'; return; }
+  if (!list.length) { 
+    box.innerHTML = '<div class="no-users">👋 No users found</div>'; 
+    lastRenderedUserOrder = "";
+    return; 
+  }
 
-  list.forEach(user => {
+  const currentOrder = list.map(u => u.uid).join(",");
+  const orderChanged = currentOrder !== lastRenderedUserOrder;
+  lastRenderedUserOrder = currentOrder;
+
+  // Clear loading/empty state placeholder if users are found
+  const noUsersEl = box.querySelector(".no-users");
+  if (noUsersEl) {
+    noUsersEl.remove();
+  }
+
+  const validUids = new Set(list.map(u => u.uid));
+  box.querySelectorAll(".user-item").forEach(item => {
+    if (!validUids.has(item.dataset.uid)) {
+      item.remove();
+    }
+  });
+
+  list.forEach((user) => {
     const name = escapeHtml(user.displayName || "User");
     const photo = user.photo || "https://i.imgur.com/HeIi0wU.png";
-    const el = document.createElement("div");
-    el.className = "user-item" + (selectedUser && selectedUser.uid === user.uid ? " active" : "");
-    el.dataset.uid = user.uid;
     const unread = unreadMessages[user.uid] || 0;
     const t = latestMsgTime[user.uid];
     const timeStr = t ? formatTime(t) : "";
     const pdata = userPresenceCache[user.uid];
     const online = isUserOnline(pdata);
     const prevText = latestMsgText[user.uid] || "Tap to chat";
+    const isSelected = selectedUser && selectedUser.uid === user.uid;
 
-    el.innerHTML = `
-      <div class="user-avatar-wrap">
-        <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-        <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
-      </div>
-      <div class="user-info">
-        <div class="user-name">${favoritedChats[user.uid] ? '⭐ ' : ''}${name}</div>
-        <div class="user-preview" id="prev-${user.uid}">${escapeHtml(prevText)}</div>
-      </div>
-      <div class="user-meta">
-        ${timeStr ? `<div class="user-time">${timeStr}</div>` : ''}
-        ${unread > 0 ? `<div class="unread-badge">${unread > 99 ? '99+' : unread}</div>` : ''}
-      </div>
-    `;
+    let el = box.querySelector(`.user-item[data-uid="${user.uid}"]`);
 
-    el.addEventListener("click", () => selectChat(user, el));
-    box.appendChild(el);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "user-item" + (isSelected ? " active" : "");
+      el.dataset.uid = user.uid;
+      el.innerHTML = `
+        <div class="user-avatar-wrap">
+          <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
+        </div>
+        <div class="user-info">
+          <div class="user-name">${favoritedChats[user.uid] ? '⭐ ' : ''}${name}</div>
+          <div class="user-preview" id="prev-${user.uid}">${escapeHtml(prevText)}</div>
+        </div>
+        <div class="user-meta">
+          <div class="user-time">${timeStr}</div>
+          ${unread > 0 ? `<div class="unread-badge">${unread > 99 ? '99+' : unread}</div>` : ''}
+        </div>
+      `;
+      el.addEventListener("click", () => selectChat(user, el));
+      box.appendChild(el);
+    } else {
+      el.className = "user-item" + (isSelected ? " active" : "");
+      
+      const dot = el.querySelector(`.status-dot`);
+      if (dot) dot.className = `status-dot ${online ? 'online' : ''}`;
+      
+      const nameEl = el.querySelector(`.user-name`);
+      if (nameEl) nameEl.innerHTML = `${favoritedChats[user.uid] ? '⭐ ' : ''}${name}`;
+      
+      const prevEl = el.querySelector(`.user-preview`);
+      if (prevEl && prevEl.textContent !== prevText) prevEl.textContent = prevText;
+      
+      const timeEl = el.querySelector(`.user-time`);
+      if (timeEl && timeEl.textContent !== timeStr) timeEl.textContent = timeStr;
+      
+      let badge = el.querySelector(`.unread-badge`);
+      if (unread > 0) {
+        if (!badge) {
+          badge = document.createElement("div");
+          badge.className = "unread-badge";
+          const metaBox = el.querySelector(".user-meta");
+          if (metaBox) metaBox.appendChild(badge);
+        }
+        if (badge) badge.textContent = unread > 99 ? '99+' : unread;
+      } else if (badge) {
+        badge.remove();
+      }
+    }
+
+    if (orderChanged) {
+      box.appendChild(el);
+    }
   });
 }
 
@@ -1192,6 +1262,7 @@ function searchUsers() { renderUsers(); }
 let currentTab = 'chats';
 
 function switchTab(tabName) {
+  closeStoryViewer();
   currentTab = tabName;
 
   // 1. Update sidebar top tab icons
@@ -1740,6 +1811,129 @@ function loadMessages() {
     }, err => console.error("messages(B) listener error:", err));
 }
 
+let activeAudioPlayer = null;
+
+function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
+  const container = document.createElement("div");
+  container.className = "nexa-vn-player";
+  container.dataset.vnId = msgId;
+
+  const barCount = 18;
+  let seed = 0;
+  for (let i = 0; i < (msgId || "").length; i++) seed += msgId.charCodeAt(i);
+  
+  let barsHtml = "";
+  for (let i = 0; i < barCount; i++) {
+    const h = 25 + Math.abs(Math.sin(seed + i * 0.8) * 70);
+    barsHtml += `<div class="vn-bar" data-bar-idx="${i}" style="height: ${h.toFixed(1)}%;"></div>`;
+  }
+
+  container.innerHTML = `
+    <button type="button" class="vn-btn-play" title="Play voice note">
+      <svg class="vn-icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <svg class="vn-icon-pause" viewBox="0 0 24 24" style="display: none;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    </button>
+    <div class="vn-body">
+      <div class="vn-waveform-wrap">${barsHtml}</div>
+      <div class="vn-meta">
+        <span class="vn-time">0:00</span>
+        <button type="button" class="vn-speed-btn" title="Playback speed">1x</button>
+      </div>
+    </div>
+  `;
+
+  const audio = new Audio(audioUrl);
+  audio.preload = "metadata";
+  let playbackRate = 1.0;
+
+  const playBtn = container.querySelector(".vn-btn-play");
+  const playIcon = container.querySelector(".vn-icon-play");
+  const pauseIcon = container.querySelector(".vn-icon-pause");
+  const timeEl = container.querySelector(".vn-time");
+  const speedBtn = container.querySelector(".vn-speed-btn");
+  const bars = container.querySelectorAll(".vn-bar");
+  const waveWrap = container.querySelector(".vn-waveform-wrap");
+
+  function fmtVnTime(sec) {
+    if (isNaN(sec) || !isFinite(sec)) return "0:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  if (durationMs && durationMs > 0 && durationMs < 3600000) {
+    timeEl.textContent = fmtVnTime(durationMs / 1000);
+  }
+
+  audio.addEventListener("loadedmetadata", () => {
+    timeEl.textContent = fmtVnTime(audio.duration);
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    if (!audio.duration) return;
+    const progress = audio.currentTime / audio.duration;
+    timeEl.textContent = `${fmtVnTime(audio.currentTime)} / ${fmtVnTime(audio.duration)}`;
+    
+    const playedBars = Math.floor(progress * barCount);
+    bars.forEach((b, idx) => {
+      if (idx <= playedBars) {
+        b.classList.add("played");
+      } else {
+        b.classList.remove("played");
+      }
+    });
+  });
+
+  audio.addEventListener("ended", () => {
+    playIcon.style.display = "block";
+    pauseIcon.style.display = "none";
+    bars.forEach(b => b.classList.remove("played"));
+    if (audio.duration) timeEl.textContent = fmtVnTime(audio.duration);
+    if (activeAudioPlayer === audio) activeAudioPlayer = null;
+  });
+
+  playBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (audio.paused) {
+      if (activeAudioPlayer && activeAudioPlayer !== audio) {
+        try { activeAudioPlayer.pause(); } catch(err) {}
+      }
+      activeAudioPlayer = audio;
+      audio.playbackRate = playbackRate;
+      audio.play().then(() => {
+        playIcon.style.display = "none";
+        pauseIcon.style.display = "block";
+      }).catch(err => console.log("Audio play error:", err));
+    } else {
+      audio.pause();
+      playIcon.style.display = "block";
+      pauseIcon.style.display = "none";
+      if (activeAudioPlayer === audio) activeAudioPlayer = null;
+    }
+  });
+
+  waveWrap.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const rect = waveWrap.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const pct = Math.max(0, Math.min(1, clickX / rect.width));
+    if (audio.duration) {
+      audio.currentTime = pct * audio.duration;
+    }
+  });
+
+  speedBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (playbackRate === 1.0) playbackRate = 1.5;
+    else if (playbackRate === 1.5) playbackRate = 2.0;
+    else playbackRate = 1.0;
+    speedBtn.textContent = playbackRate + "x";
+    audio.playbackRate = playbackRate;
+  });
+
+  return container;
+}
+
 function renderMessageList() {
   if (!selectedUser) return;
   const box = document.getElementById("messages");
@@ -1776,26 +1970,55 @@ function renderMessageList() {
 
   // Preserve scroll position unless the user was already near the bottom.
   const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  const currentMsgIds = new Set(allMessages.map(m => m.id));
 
-  box.innerHTML = "";
+  // Remove deleted messages
+  box.querySelectorAll(".msg").forEach(el => {
+    if (el.dataset.msgId && !currentMsgIds.has(el.dataset.msgId)) {
+      el.remove();
+    }
+  });
+
   let maxTime = latestMsgTime[selectedUser.uid] || 0;
   let lastDate = null;
 
   allMessages.forEach(msg => {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
-
     const fromMe = msg.from === currentUser.uid;
 
     const dateStr = new Date(msg.createdAt).toLocaleDateString();
     if (dateStr !== lastDate) {
-      const sep = document.createElement("div");
-      sep.className = "date-sep";
-      sep.innerHTML = `<span>${fmtDateSep(msg.createdAt)}</span>`;
-      box.appendChild(sep);
       lastDate = dateStr;
     }
 
-    box.appendChild(buildMessage(msg.id, msg, fromMe));
+    let msgEl = box.querySelector(`.msg[data-msg-id="${msg.id}"]`);
+
+    if (!msgEl) {
+      msgEl = buildMessage(msg.id, msg, fromMe);
+      box.appendChild(msgEl);
+    } else {
+      // In-place tick update
+      const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
+      const editLabel = msg.edited ? ' <span style="font-size: 9.5px; opacity: 0.55; font-style: italic;">(edited)</span>' : '';
+      const metaEl = msgEl.querySelector(".msg-meta");
+      if (metaEl) {
+        metaEl.innerHTML = `<span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""} ${editLabel}`;
+      }
+
+      // In-place view once update
+      if (msg.isViewOnce) {
+        const badge = msgEl.querySelector(".view-once-badge");
+        if (badge) {
+          const isOpened = msg.viewOnceOpened;
+          badge.className = `view-once-badge ${isOpened ? "opened" : ""}`;
+          if (isOpened) {
+            const mediaType = msg.image ? "Photo" : msg.video ? "Video" : msg.audio ? "Voice note" : "Media";
+            badge.innerHTML = `<div class="view-once-circle">✓</div><span>Opened (${mediaType})</span>`;
+            badge.onclick = null;
+          }
+        }
+      }
+    }
   });
 
   if (allMessages.length > 0) {
@@ -1953,10 +2176,6 @@ function buildMessage(id, msg, fromMe) {
         </video>
       </div>`;
     }
-
-    if (msg.audio) {
-      inner += `<audio controls src="${msg.audio}" style="max-width: 200px; margin-top: 6px; display: block;"></audio>`;
-    }
   }
 
   if (msg.reactions && Object.keys(msg.reactions).length) {
@@ -1974,6 +2193,15 @@ function buildMessage(id, msg, fromMe) {
 
   if (!msg.isViewOnce || !(msg.image || msg.video || msg.audio)) {
     bubble.innerHTML = inner;
+    if (msg.audio && !msg.isViewOnce) {
+      const vnNode = renderVoiceNotePlayer(id, msg.audio, msg.duration, fromMe);
+      const metaEl = bubble.querySelector(".msg-meta");
+      if (metaEl) {
+        bubble.insertBefore(vnNode, metaEl);
+      } else {
+        bubble.appendChild(vnNode);
+      }
+    }
   } else {
     const metaDiv = document.createElement("div");
     metaDiv.className = "msg-meta";
@@ -2199,7 +2427,8 @@ document.getElementById("img").addEventListener("change", async e => {
       await db.collection("chats").add(baseMsg({ image: url }));
       clearReply();
       showNotifToast("✓ Image sent!", "success");
-      sendPushNotification(`📷 Photo from ${document.getElementById('myName').textContent || 'Nexa User'}`, 'New photo message', selectedUser.oneSignalPlayerId);
+      const senderName = document.getElementById('myName').textContent || 'Nexa User';
+      sendPushNotification(senderName, 'You have received a new message (📷 Photo)', selectedUser.uid);
     }
   } catch (err) {
     showNotifToast("Image upload failed: " + err.message, "error");
@@ -2213,6 +2442,7 @@ document.getElementById("fileInput").addEventListener("change", async e => {
   if (!file || !selectedUser) return;
 
   const isVideo = file.type.startsWith("video/");
+  const senderName = document.getElementById('myName').textContent || 'Nexa User';
 
   try {
     if (isVideo) {
@@ -2222,11 +2452,7 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         await db.collection("chats").add(baseMsg({ video: url }));
         clearReply();
         showNotifToast("✓ Video sent!", "success");
-        sendPushNotification({
-          targetUid: selectedUser.uid,
-          title: `🎥 Video from ${document.getElementById('myName').textContent || 'Nexa User'}`,
-          body: 'New video message'
-        });
+        sendPushNotification(senderName, 'You have received a new message (🎥 Video)', selectedUser.uid);
       }
     } else {
       showNotifToast("📎 Uploading file...", "info");
@@ -2235,7 +2461,7 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
         clearReply();
         showNotifToast("✓ File sent!", "success");
-        sendPushNotification(`📎 File from ${document.getElementById('myName').textContent || 'Nexa User'}`, file.name, selectedUser.oneSignalPlayerId);
+        sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
       }
     }
   } catch (err) {
@@ -2277,10 +2503,11 @@ async function sendMessage() {
   renderUsers();
   await db.collection("chats").add(baseMsg(extras));
   clearReply();
+  const senderName = document.getElementById('myName').textContent || 'Nexa User';
   sendPushNotification(
-    `Message from ${document.getElementById('myName').textContent || 'Nexa User'}`,
-    text.substring(0, 50),
-    selectedUser.oneSignalPlayerId
+    senderName,
+    `You have received a new message: ${text.substring(0, 80)}`,
+    selectedUser.uid
   );
   setTimeout(() => {
     const box = document.getElementById("messages");
@@ -2387,7 +2614,8 @@ async function sendVoice() {
     if (url) {
       await db.collection("chats").add(baseMsg({ audio: url, duration: Date.now() - recStart }));
       cancelVoice();
-      sendPushNotification(`🎤 Voice message from ${document.getElementById('myName').textContent || 'Nexa User'}`, 'New voice message', selectedUser.oneSignalPlayerId);
+      const senderName = document.getElementById('myName').textContent || 'Nexa User';
+      sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
     }
   } catch (e) {
     alert("Failed: " + e.message);
@@ -2566,7 +2794,7 @@ function listenIncoming() {
         if (!mutedChats[uid] && notificationSettings.messages) {
           const senderUser = allUsersData.find(u => u.uid === uid);
           const name = senderUser ? (senderUser.displayName || "User") : "Nexa User";
-          sendPushNotification(name, preview, currentUser.uid);
+          showNotifToast(`${name}: You have received a new message`, 'info');
         }
       }
       db.collection("chats").doc(change.doc.id).update({ status: "delivered" });
@@ -3062,19 +3290,71 @@ function nextStorySlide() {
   renderStorySlide(storyViewerIndex);
 }
 
-function closeStoryViewer() {
+function stopAllStoryMedia() {
   clearTimeout(storyTimer);
+  if (window.storySlideTimer) {
+    clearInterval(window.storySlideTimer);
+    window.storySlideTimer = null;
+  }
   cancelAnimationFrame(storyAnimFrame);
+
   if (storyAudioElement) {
-    storyAudioElement.pause();
+    try {
+      storyAudioElement.pause();
+      storyAudioElement.removeAttribute("src");
+      storyAudioElement.load();
+    } catch(e) {}
     storyAudioElement = null;
   }
-  document.getElementById("storyViewerOverlay").classList.remove("active");
-  document.getElementById("storyReplyInput").value = "";
-  document.getElementById("musicBadge").style.display = "none";
+
+  const overlay = document.getElementById("storyViewerOverlay");
+  if (overlay) {
+    overlay.querySelectorAll("video, audio").forEach(media => {
+      try {
+        media.pause();
+        media.removeAttribute("src");
+        media.load();
+      } catch(e) {}
+    });
+  }
+
+  const content = document.getElementById("storyViewerContent");
+  if (content) content.innerHTML = "";
+}
+
+function closeStoryViewer() {
+  stopAllStoryMedia();
+  const overlay = document.getElementById("storyViewerOverlay");
+  if (overlay) overlay.classList.remove("active");
+  const replyInput = document.getElementById("storyReplyInput");
+  if (replyInput) replyInput.value = "";
+  const musicBadge = document.getElementById("musicBadge");
+  if (musicBadge) musicBadge.style.display = "none";
   storyViewerData = null;
   viewingStoryUid = null;
+  isStoryPaused = false;
+  storyPauseElapsed = 0;
 }
+
+// Auto-stop story when switching tab or leaving page
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    closeStoryViewer();
+    if (activeAudioPlayer) {
+      try { activeAudioPlayer.pause(); } catch(e) {}
+    }
+  }
+});
+
+window.addEventListener("pagehide", closeStoryViewer);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeStoryViewer();
+    closeViewOnceModal();
+    closeProfilePicModal();
+  }
+});
 
 function deleteStory() {
   if (!storyViewerData || storyViewerIndex >= storyViewerData.length) return;
