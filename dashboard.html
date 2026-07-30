@@ -823,13 +823,9 @@ async function loadInitialChatTimestamps() {
     const [sentSnap, recvSnap] = await Promise.all([
       db.collection("chats")
         .where("from", "==", currentUser.uid)
-        .orderBy("createdAt", "desc")
-        .limit(60)
         .get(),
       db.collection("chats")
         .where("to", "==", currentUser.uid)
-        .orderBy("createdAt", "desc")
-        .limit(60)
         .get()
     ]);
 
@@ -1175,15 +1171,24 @@ function renderUsers() {
     // 1. Favorited chats first
     if (favoritedChats[a.uid] && !favoritedChats[b.uid]) return -1;
     if (!favoritedChats[a.uid] && favoritedChats[b.uid]) return 1;
-    // 2. Arrange based on recent message timestamp (most recent at top, like WhatsApp)
+
     const timeA = latestMsgTime[a.uid] || 0;
     const timeB = latestMsgTime[b.uid] || 0;
+
+    // 2. Active chats (users with message history) ALWAYS come before contacts with no messages
+    const hasMsgA = timeA > 0 ? 1 : 0;
+    const hasMsgB = timeB > 0 ? 1 : 0;
+    if (hasMsgA !== hasMsgB) return hasMsgB - hasMsgA;
+
+    // 3. Among active chats, sort strictly by recent message timestamp (most recent at top, like WhatsApp)
     if (timeA !== timeB) return timeB - timeA;
-    // 3. Online users first
+
+    // 4. Online users first for contacts without chat history
     const onlineA = isUserOnline(userPresenceCache[a.uid]) ? 1 : 0;
     const onlineB = isUserOnline(userPresenceCache[b.uid]) ? 1 : 0;
     if (onlineA !== onlineB) return onlineB - onlineA;
-    // 4. Alphabetical fallback
+
+    // 5. Alphabetical fallback
     return (a.displayName || "").localeCompare(b.displayName || "");
   });
 
