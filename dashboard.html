@@ -250,6 +250,11 @@
       </div>
     </div>
 
+    <div id="disappearingNotice" class="disappearing-banner" style="display: none;">
+      <span class="disappearing-banner-icon">⏱️</span>
+      <span id="disappearingBannerText">Disappearing messages are turned on</span>
+    </div>
+
     <div class="messages" id="messages">
       <div class="empty-chat">
         <div class="empty-chat-icon">💬</div>
@@ -1560,20 +1565,16 @@ function listenDisappearingSettings() {
 }
 
 function updateDisappearingBadge(duration) {
-  let badge = document.getElementById("disappearingBadge");
-  const headerPeer = document.querySelector(".chat-peer-info");
-  if (!headerPeer) return;
+  const banner = document.getElementById("disappearingNotice");
+  const bannerText = document.getElementById("disappearingBannerText");
 
-  if (duration && duration !== 'off') {
-    if (!badge) {
-      badge = document.createElement("div");
-      badge.id = "disappearingBadge";
-      badge.className = "disappearing-badge";
-      headerPeer.appendChild(badge);
-    }
-    badge.textContent = `⏱️ Disappearing (${formatDisappearingLabel(duration)})`;
-  } else if (badge) {
-    badge.remove();
+  const isActive = duration && duration !== 'off';
+
+  if (banner) {
+    banner.style.display = isActive ? 'flex' : 'none';
+  }
+  if (bannerText && isActive) {
+    bannerText.textContent = `Disappearing messages · ${formatDisappearingLabel(duration)}`;
   }
 }
 
