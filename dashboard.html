@@ -1969,7 +1969,7 @@ function renderMessageList() {
   const box = document.getElementById("messages");
   if (!box) return;
 
-  allMessages = [..._msgsA, ..._msgsB].sort((a, b) => a.createdAt - b.createdAt);
+  allMessages = [..._msgsA, ..._msgsB].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
   // Check and apply disappearing messages filter
   const key = getChatKey(currentUser.uid, selectedUser.uid);
@@ -2021,7 +2021,7 @@ function renderMessageList() {
   let maxTime = latestMsgTime[selectedUser.uid] || 0;
   let lastDate = null;
 
-  allMessages.forEach(msg => {
+  allMessages.forEach((msg, idx) => {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
     const fromMe = msg.from === currentUser.uid;
 
@@ -2035,7 +2035,7 @@ function renderMessageList() {
     if (!msgEl) {
       msgEl = buildMessage(msg.id, msg, fromMe);
       msgEl.classList.add("msg-new");
-      box.appendChild(msgEl);
+      setTimeout(() => { if (msgEl) msgEl.classList.remove("msg-new"); }, 200);
     } else {
       // In-place tick update without DOM re-attachment or shaking
       const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
@@ -2058,6 +2058,12 @@ function renderMessageList() {
           }
         }
       }
+    }
+
+    // Enforce 100% strict chronological order in DOM without shaking
+    const currentChild = box.children[idx];
+    if (currentChild !== msgEl) {
+      box.insertBefore(msgEl, currentChild || null);
     }
   });
 
