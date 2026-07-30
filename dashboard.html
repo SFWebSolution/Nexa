@@ -1210,7 +1210,7 @@ function renderUsers() {
     }
   });
 
-  list.forEach((user) => {
+  list.forEach((user, idx) => {
     const name = escapeHtml(user.displayName || "User");
     const photo = user.photo || "https://i.imgur.com/HeIi0wU.png";
     const unread = unreadMessages[user.uid] || 0;
@@ -1242,7 +1242,6 @@ function renderUsers() {
         </div>
       `;
       el.addEventListener("click", () => selectChat(user, el));
-      box.appendChild(el);
     } else {
       el.className = "user-item" + (isSelected ? " active" : "");
       
@@ -1272,8 +1271,9 @@ function renderUsers() {
       }
     }
 
-    if (orderChanged) {
-      box.appendChild(el);
+    const currentChild = box.children[idx];
+    if (currentChild !== el) {
+      box.insertBefore(el, currentChild || null);
     }
   });
 }
