@@ -1902,10 +1902,10 @@ footer {
           if (user) {
             try {
               const doc = await db.collection("users").doc(user.uid).get();
-              if (doc.exists && doc.data()?.banned !== true) {
-                window.location.replace("dashboard.html");
-              } else {
+              if (doc.exists && doc.data()?.banned === true) {
                 await auth.signOut();
+              } else {
+                window.location.replace("dashboard.html");
               }
             } catch (e) {
               console.warn("User auth check failed:", e);

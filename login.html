@@ -325,13 +325,6 @@ async function login(){
       return;
     }
 
-    if (!userDoc.exists()) {
-      await signOut(auth);
-      showMsg("❌ Account does not exist or has been deleted.", "error");
-      btn.innerText = "Login";
-      return;
-    }
-
     showMsg("Login successful!", "success");
 
     setTimeout(()=>{
