@@ -861,14 +861,38 @@ async function loadInitialChatTimestamps() {
   }
 }
 
+let accountStatusUnsub = null;
+function listenCurrentAccountStatus(uid) {
+  if (accountStatusUnsub) accountStatusUnsub();
+  accountStatusUnsub = db.collection("users").doc(uid).onSnapshot(doc => {
+    if (!doc.exists) {
+      alert("❌ Your account has been deleted by an administrator.");
+      auth.signOut().then(() => {
+        window.location.href = "login.html?deleted=1";
+      });
+      return;
+    }
+    const data = doc.data();
+    if (data && data.banned === true) {
+      alert("🚫 Your account has been banned by an administrator.");
+      auth.signOut().then(() => {
+        window.location.href = "login.html?banned=1";
+      });
+      return;
+    }
+  });
+}
+
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
+    if (accountStatusUnsub) accountStatusUnsub();
     window.location.href = "login.html";
     return;
   }
 
   currentUser = user;
   console.log("👤 User:", user.email);
+  listenCurrentAccountStatus(user.uid);
   showNotifToast("Initializing...", "info");
   loadLatestMsgState();
   await initFCM(user.uid);
@@ -897,7 +921,11 @@ window.showNotifToast = function(message, type = 'info') {
 
 function sendPushNotification(title, body, targetUidOverride = null) {
   const targetUid = targetUidOverride || (selectedUser ? selectedUser.uid : null);
-  if (!targetUid || !notificationSettings.messages) return;
+  if (!targetUid) return;
+
+  const isReaction = title.toLowerCase().includes("react");
+  if (isReaction && !notificationSettings.reactions) return;
+  if (!isReaction && !notificationSettings.messages) return;
 
   fetch(`${BACKEND_URL}/api/send-notification`, {
     method: 'POST',
@@ -913,6 +941,7 @@ function sendPushNotification(title, body, targetUidOverride = null) {
     if (res.ok) console.log('✅ Instant push notification dispatched');
   }).catch(err => console.warn('Push notification error:', err.message));
 }
+
 
 const vapidKey = "BGD7zwejdkH_EnGAfFgi872tkBWDM8-k0It7Px7QzitJ_abkqyK8d1ZEfQFslGS4TY6JXY1mylpSIH5QNDfhCRI";
 
@@ -2149,6 +2178,58 @@ function closeViewOnceModal() {
   renderMessageList();
 }
 
+function buildStoryReplyPreview(msg) {
+  const isOwnStory = msg.storyReplyUid === currentUser?.uid;
+  const authorName = isOwnStory ? "Your Story" : (escapeHtml(selectedUser?.displayName || "User") + "'s Story");
+
+  // Fallback to active userStatuses cache if properties missing from msg document
+  let storyObj = null;
+  if (userStatuses && userStatuses[msg.storyReplyUid]) {
+    storyObj = userStatuses[msg.storyReplyUid].find(s => s.id === msg.storyReplyId);
+  }
+
+  const url = msg.storyUrl || storyObj?.url || null;
+  const text = msg.storyText || storyObj?.text || null;
+  const type = msg.storyType || storyObj?.type || (url ? "image" : "text");
+  const musicTitle = msg.storyMusicTitle || storyObj?.musicData?.title || null;
+
+  let thumbnailHtml = "";
+  if (url && type !== "music") {
+    if (type === "video") {
+      thumbnailHtml = `<div class="story-reply-thumb"><video src="${url}" style="width:40px; height:40px; object-fit:cover; border-radius:6px; pointer-events:none;"></video></div>`;
+    } else {
+      thumbnailHtml = `<div class="story-reply-thumb"><img src="${url}" style="width:40px; height:40px; object-fit:cover; border-radius:6px;" onerror="this.style.display='none'"></div>`;
+    }
+  } else if (type === "music" || musicTitle) {
+    thumbnailHtml = `<div class="story-reply-thumb story-thumb-music">🎵</div>`;
+  } else if (text) {
+    thumbnailHtml = `<div class="story-reply-thumb story-thumb-text">📝</div>`;
+  } else {
+    thumbnailHtml = `<div class="story-reply-thumb story-thumb-default">📷</div>`;
+  }
+
+  let previewSubtext = "Story update";
+  if (musicTitle) {
+    previewSubtext = `🎵 ${escapeHtml(musicTitle)}`;
+  } else if (text) {
+    previewSubtext = escapeHtml(text);
+  } else if (type === "video") {
+    previewSubtext = "🎥 Video Story";
+  } else if (type === "image" || url) {
+    previewSubtext = "📷 Photo Story";
+  }
+
+  return `
+    <div class="whatsapp-story-reply-card" onclick="openStoryViewer('${msg.storyReplyUid}', '${msg.storyReplyId}')">
+      <div class="story-reply-info-col">
+        <div class="story-reply-author">↩️ ${authorName}</div>
+        <div class="story-reply-subtext">${previewSubtext}</div>
+      </div>
+      ${thumbnailHtml}
+    </div>
+  `;
+}
+
 function buildMessage(id, msg, fromMe) {
   const el = document.createElement("div");
   el.className = `msg ${fromMe ? "me" : "them"}`;
@@ -2162,10 +2243,9 @@ function buildMessage(id, msg, fromMe) {
 
   let inner = "";
 
-  // Handle story reply
+  // Handle story reply with WhatsApp-style preview card
   if (msg.storyReplyId && msg.storyReplyUid) {
-    const storyLabel = msg.storyReplyUid === currentUser.uid ? "Your story" : escapeHtml(selectedUser?.displayName) + "'s story";
-    inner += `<div class="reply-quote" onclick="openStoryViewer('${msg.storyReplyUid}', '${msg.storyReplyId}')" style="cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.3)'" onmouseout="this.style.background='rgba(0,0,0,0.2)'"><div class="reply-quote-author">↩️ Replied to ${storyLabel}</div></div>`;
+    inner += buildStoryReplyPreview(msg);
   }
 
   // Handle regular reply
@@ -2233,11 +2313,25 @@ function buildMessage(id, msg, fromMe) {
   if (msg.reactions && Object.keys(msg.reactions).length) {
     inner += '<div class="msg-reactions">';
     for (const [emoji, users] of Object.entries(msg.reactions)) {
-      const mine = users.includes(currentUser.uid);
-      inner += `<div class="reaction${mine ? ' me-reacted' : ''}" onclick="toggleReact('${id}', '${emoji}')">${emoji}<span class="reaction-count">${users.length}</span></div>`;
+      if (!Array.isArray(users) || !users.length) continue;
+      const mine = currentUser && users.includes(currentUser.uid);
+      
+      const reactorNames = users.map(uId => {
+        if (currentUser && uId === currentUser.uid) return "You";
+        const found = allUsersData.find(u => u.uid === uId);
+        return found ? (found.displayName || found.name || "User") : "User";
+      }).join(", ");
+
+      inner += `<div class="reaction${mine ? ' me-reacted' : ''}" 
+                     title="${escapeHtml(reactorNames)}" 
+                     onclick="event.stopPropagation(); toggleReact('${id}', '${emoji}')">
+                  <span class="reaction-emoji">${emoji}</span>
+                  <span class="reaction-count">${users.length}</span>
+                </div>`;
     }
     inner += '</div>';
   }
+
 
   const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
   const editLabel = msg.edited ? ' <span style="font-size: 9.5px; opacity: 0.55; font-style: italic;">(edited)</span>' : '';
@@ -2358,16 +2452,24 @@ function showCtxMenu(e, id, msg) {
   const menu = document.getElementById("ctxMenu");
   const fromMe = msg.from === currentUser.uid;
   menu.innerHTML = `
+    <div class="ctx-reaction-bar">
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '❤️')">❤️</button>
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '😂')">😂</button>
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '😮')">😮</button>
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '😢')">😢</button>
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '🙏')">🙏</button>
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '👍')">👍</button>
+      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '🔥')">🔥</button>
+    </div>
+    <div class="ctx-divider"></div>
     <div class="ctx-item" onclick="replyMsg('${id}')">↩️ Reply</div>
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
     ${fromMe && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏️ Edit</div>` : ''}
-    <div class="ctx-item" onclick="addQuickReact('${id}', '❤️')">❤️ React</div>
-    <div class="ctx-item" onclick="addQuickReact('${id}', '😂')">😂 React</div>
     ${fromMe ? `<div class="ctx-item danger" onclick="deleteMsg('${id}')">🗑️ Delete</div>` : ''}
   `;
   menu.classList.add("active");
-  menu.style.top = Math.min(e.clientY, window.innerHeight - 220) + "px";
-  menu.style.left = Math.min(e.clientX, window.innerWidth - 190) + "px";
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 240) + "px";
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + "px";
   setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
 }
 
@@ -2385,7 +2487,7 @@ function copyMsg(id) {
 }
 
 function deleteMsg(id) {
-  if (confirm("Delete?")) {
+  if (confirm("Delete this message?")) {
     db.collection("chats").doc(id).delete();
   }
   closeCtxMenu();
@@ -2397,29 +2499,44 @@ function addQuickReact(msgId, emoji) {
 }
 
 async function toggleReact(msgId, emoji) {
+  if (!currentUser) return;
   const msg = allMessages.find(m => m.id === msgId);
   if (!msg) return;
+
   const r = { ...(msg.reactions || {}) };
   r[emoji] = r[emoji] ? [...r[emoji]] : [];
   const i = r[emoji].indexOf(currentUser.uid);
+  const wasAdded = (i === -1);
+
   if (i > -1) {
     r[emoji].splice(i, 1);
     if (!r[emoji].length) delete r[emoji];
   } else {
     r[emoji].push(currentUser.uid);
   }
-  await db.collection("chats").doc(msgId).update({ reactions: r });
-  if (notificationSettings.reactions && i < 0 && msg.from !== currentUser.uid) {
-    const targetUser = allUsersData.find(u => u.uid === msg.from);
-    if (targetUser && targetUser.oneSignalPlayerId) {
-      sendPushNotification(
-        '🎉 New reaction!',
-        `${document.getElementById('myName').textContent || 'Someone'} reacted to your message`,
-        targetUser.oneSignalPlayerId
-      );
-    }
+
+  // Optimistic UI update
+  msg.reactions = r;
+  renderMessages();
+
+  try {
+    await db.collection("chats").doc(msgId).update({ reactions: r });
+  } catch (err) {
+    console.error("Error updating reaction:", err);
+    showNotifToast("Error updating reaction: " + err.message, "error");
+  }
+
+  // Send push notification if reaction was added and message is from another user
+  if (wasAdded && notificationSettings.reactions && msg.from !== currentUser.uid) {
+    const myName = (document.getElementById('myName')?.textContent || 'Someone').trim();
+    sendPushNotification(
+      '🎉 New reaction!',
+      `${myName} reacted ${emoji} to your message`,
+      msg.from
+    );
   }
 }
+
 
 function scrollToMsg(msgId) {
   const el = document.querySelector(`[data-msg-id="${msgId}"]`);
@@ -3430,13 +3547,19 @@ async function sendStoryReply() {
   const text = document.getElementById("storyReplyInput").value.trim();
   if (!text) return;
 
+  const currentStory = storyViewerData[storyViewerIndex] || {};
+
   try {
     await db.collection("chats").add({
       from: currentUser.uid,
       to: viewingStoryUid,
       text: text,
-      storyReplyId: storyViewerData[storyViewerIndex].id,
+      storyReplyId: currentStory.id || null,
       storyReplyUid: viewingStoryUid,
+      storyUrl: currentStory.url || null,
+      storyText: currentStory.text || null,
+      storyType: currentStory.type || "image",
+      storyMusicTitle: currentStory.musicData ? currentStory.musicData.title : null,
       createdAt: Date.now(),
       read: false,
       status: "sent"

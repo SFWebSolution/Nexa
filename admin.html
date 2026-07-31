@@ -897,6 +897,185 @@ td {
     box-shadow: none;
   }
 }
+
+.filter-tab-btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border-md);
+  border-radius: 10px;
+  background: rgba(22, 32, 46, 0.6);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all var(--tf);
+  white-space: nowrap;
+}
+
+.filter-tab-btn:hover {
+  background: rgba(79, 143, 255, 0.1);
+  border-color: var(--primary);
+  color: var(--primary-lt);
+}
+
+.filter-tab-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(79, 143, 255, 0.35);
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.status-active {
+  background: rgba(16, 217, 129, 0.15);
+  color: var(--online);
+  border: 1px solid rgba(16, 217, 129, 0.3);
+}
+
+.status-offline {
+  background: rgba(107, 122, 149, 0.15);
+  color: var(--text-3);
+  border: 1px solid rgba(107, 122, 149, 0.3);
+}
+
+.status-banned {
+  background: rgba(255, 56, 96, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(255, 56, 96, 0.3);
+}
+
+.online-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--online);
+  display: inline-block;
+  box-shadow: 0 0 8px rgba(16, 217, 129, 0.8);
+  animation: pulseGlow 1.5s infinite ease-in-out;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
+
+.leaderboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.leaderboard-card {
+  background: rgba(21, 27, 39, 0.75);
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+  overflow: hidden;
+  transition: all var(--t);
+  box-shadow: var(--shadow-sm);
+}
+
+.leaderboard-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+
+.leaderboard-card.rank-1 {
+  border-color: rgba(255, 215, 0, 0.6);
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(21, 27, 39, 0.85) 100%);
+}
+
+.leaderboard-card.rank-2 {
+  border-color: rgba(192, 192, 192, 0.6);
+  background: linear-gradient(135deg, rgba(192, 192, 192, 0.1) 0%, rgba(21, 27, 39, 0.85) 100%);
+}
+
+.leaderboard-card.rank-3 {
+  border-color: rgba(205, 127, 50, 0.6);
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.1) 0%, rgba(21, 27, 39, 0.85) 100%);
+}
+
+.rank-badge {
+  font-size: 24px;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  font-weight: 800;
+}
+
+.leaderboard-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.leaderboard-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboard-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.leaderboard-score {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.score-val {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary-lt);
+}
+
+.score-label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-bar-bg {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.activity-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--cyan));
+}
   </style>
 </head>
 <body>
@@ -938,21 +1117,14 @@ td {
         <div class="stat-icon">👥</div>
         <div class="stat-label">Total Users</div>
         <div class="stat-value" id="totalUsers">0</div>
-        <div class="stat-change" id="newUsersText">0 new today</div>
+        <div class="stat-change" id="newUsersText">0 registered today</div>
       </div>
 
       <div class="stat-card">
         <div class="stat-icon">🟢</div>
         <div class="stat-label">Active Today</div>
         <div class="stat-value" id="activeToday">0</div>
-        <div class="stat-change" id="activeText">Last 24 hours</div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon">🚫</div>
-        <div class="stat-label">Banned Users</div>
-        <div class="stat-value" id="bannedUsers">0</div>
-        <div class="stat-change" id="bannedText">Under review</div>
+        <div class="stat-change" id="activeText">Active in last 24h</div>
       </div>
 
       <div class="stat-card">
@@ -961,16 +1133,44 @@ td {
         <div class="stat-value" id="onlineNow">0</div>
         <div class="stat-change" id="onlineText">Live status</div>
       </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">🚫</div>
+        <div class="stat-label">Banned Users</div>
+        <div class="stat-value" id="bannedUsers">0</div>
+        <div class="stat-change" id="bannedText">Restricted access</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">💬</div>
+        <div class="stat-label">Total Messages</div>
+        <div class="stat-value" id="totalMessages">0</div>
+        <div class="stat-change">Platform chats</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">⭕</div>
+        <div class="stat-label">Active Stories</div>
+        <div class="stat-value" id="activeStories">0</div>
+        <div class="stat-change">Posted in 24h</div>
+      </div>
     </div>
 
-    <!-- Search -->
-    <div class="search-box">
+    <!-- Search & Filter Controls -->
+    <div class="search-box" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
       <input 
         id="searchInput" 
         type="text" 
         class="search-input" 
         placeholder="🔍 Search by name, email, or UID..."
+        style="flex: 1; min-width: 240px;"
       >
+      <div id="filterTabs" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+        <button class="filter-tab-btn active" data-filter="all" onclick="setFilter('all')">All Users</button>
+        <button class="filter-tab-btn" data-filter="active" onclick="setFilter('active')">Active (24h)</button>
+        <button class="filter-tab-btn" data-filter="online" onclick="setFilter('online')">Online</button>
+        <button class="filter-tab-btn" data-filter="banned" onclick="setFilter('banned')">Banned</button>
+      </div>
     </div>
 
     <!-- Users Table -->
@@ -991,12 +1191,13 @@ td {
               <th>UID</th>
               <th>Status</th>
               <th>Joined</th>
+              <th>Last Seen</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="usersTable">
             <tr>
-              <td colspan="6" style="text-align: center; padding: 40px;">
+              <td colspan="7" style="text-align: center; padding: 40px;">
                 <div class="empty-state">
                   <div class="empty-icon">📂</div>
                   <div class="empty-text">Loading users...</div>
@@ -1005,6 +1206,20 @@ td {
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Weekly Leaderboard -->
+    <div class="section-header" style="margin-top: 40px;">
+      <div>
+        <div class="section-title">🏆 Weekly Most Active Users</div>
+        <div class="section-subtitle">Top contributors by messages & stories in the last 7 days</div>
+      </div>
+    </div>
+
+    <div class="leaderboard-grid" id="leaderboardGrid">
+      <div class="leaderboard-card">
+        <div style="color: var(--text-3); font-size: 13px;">Analyzing weekly user activity...</div>
       </div>
     </div>
 
@@ -1049,8 +1264,13 @@ const db = firebase.firestore();
 const ADMIN_EMAIL = "neuro_stack@outlook.com";
 
 let users = [];
+let presenceData = {};
+let totalMessagesCount = 0;
+let activeStoriesCount = 0;
+let weeklyUserScores = {};
 let chart = null;
 let currentUser = null;
+let currentFilter = "all";
 
 /* =====================================================
    LOGIN
@@ -1092,8 +1312,23 @@ function handleLogout() {
     document.getElementById("loginContainer").classList.remove("hidden");
     document.getElementById("emailInput").value = "";
     users = [];
+    presenceData = {};
+    weeklyUserScores = {};
     log("Admin logged out", "warning");
   }).catch(err => console.error(err));
+}
+
+const PRESENCE_TIMEOUT_MS = 35000;
+
+function checkUserOnline(u) {
+  const uid = typeof u === "string" ? u : u.uid;
+  const p = presenceData[uid];
+  if (!p) return false;
+  // If Firestore says explicitly offline, trust it
+  if (p.online === false || p.status === "offline") return false;
+  // Otherwise, check heartbeat freshness — user must have updated lastSeen within 35s
+  const lastSeen = p.lastSeen || 0;
+  return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
 
 /* =====================================================
@@ -1101,20 +1336,78 @@ function handleLogout() {
    ===================================================== */
 function initDashboard() {
   listenUsers();
+  listenPresence();
+  listenChats();
+  listenStories();
 
-  document.getElementById("searchInput").addEventListener("input", e => {
-    const query = e.target.value.toLowerCase();
-    const filtered = users.filter(u =>
-      (u.displayName || "").toLowerCase().includes(query) ||
-      (u.email || "").toLowerCase().includes(query) ||
-      (u.uid || "").toLowerCase().includes(query)
-    );
-    renderTable(filtered);
+  document.getElementById("searchInput").addEventListener("input", applyFiltersAndRender);
+
+  // Refresh online counts & table every 5s to expire stale heartbeats
+  // (does NOT re-render chart to avoid flicker)
+  setInterval(() => {
+    refreshOnlineCounts();
+  }, 5000);
+}
+
+// Lightweight refresh — only updates online count stat card + re-filters table
+function refreshOnlineCounts() {
+  if (!users.length) return;
+  const now = Date.now();
+  const day = 86400000;
+
+  let onlineCount = 0;
+  let activeTodayCount = 0;
+
+  users.forEach(u => {
+    if (checkUserOnline(u)) onlineCount++;
+    const p = presenceData[u.uid] || {};
+    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    if (lastSeen >= (now - day)) activeTodayCount++;
   });
+
+  document.getElementById("onlineNow").textContent = onlineCount;
+  document.getElementById("activeToday").textContent = activeTodayCount;
+
+  applyFiltersAndRender();
+}
+
+function setFilter(filterName) {
+  currentFilter = filterName;
+  document.querySelectorAll(".filter-tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === filterName);
+  });
+  applyFiltersAndRender();
+}
+
+function applyFiltersAndRender() {
+  const query = (document.getElementById("searchInput")?.value || "").toLowerCase().trim();
+  const now = Date.now();
+
+  const filtered = users.filter(u => {
+    const matchesSearch = 
+      (u.displayName || "").toLowerCase().includes(query) ||
+      (u.name || "").toLowerCase().includes(query) ||
+      (u.email || "").toLowerCase().includes(query) ||
+      (u.uid || "").toLowerCase().includes(query);
+
+    if (!matchesSearch) return false;
+
+    const isOnline = checkUserOnline(u);
+    const p = presenceData[u.uid] || {};
+    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const isActiveToday = lastSeen >= (now - 86400000);
+
+    if (currentFilter === "active") return isActiveToday;
+    if (currentFilter === "online") return isOnline;
+    if (currentFilter === "banned") return u.banned === true;
+    return true;
+  });
+
+  renderTable(filtered);
 }
 
 /* =====================================================
-   REALTIME USERS LISTENER
+   REALTIME LISTENERS
    ===================================================== */
 function listenUsers() {
   db.collection("users").onSnapshot(
@@ -1139,6 +1432,146 @@ function listenUsers() {
   );
 }
 
+function listenPresence() {
+  db.collection("presence").onSnapshot(
+    snapshot => {
+      // Reset presenceData from scratch each snapshot to clear stale/deleted docs
+      presenceData = {};
+      snapshot.docs.forEach(doc => {
+        presenceData[doc.id] = doc.data();
+      });
+      refreshOnlineCounts();
+    },
+    err => console.error("Presence listener error:", err)
+  );
+}
+
+function listenChats() {
+  db.collection("chats").onSnapshot(
+    snapshot => {
+      totalMessagesCount = snapshot.size;
+      const el = document.getElementById("totalMessages");
+      if (el) el.textContent = totalMessagesCount.toLocaleString();
+
+      // Calculate weekly message scores per user
+      const weekAgo = Date.now() - 7 * 86400000;
+      const msgScores = {};
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.from && data.createdAt && data.createdAt >= weekAgo) {
+          msgScores[data.from] = (msgScores[data.from] || 0) + 1;
+        }
+      });
+
+      // Merge into weeklyUserScores
+      users.forEach(u => {
+        const uid = u.uid;
+        weeklyUserScores[uid] = (weeklyUserScores[uid] || 0) + (msgScores[uid] || 0);
+      });
+
+      renderLeaderboard(msgScores);
+    },
+    err => console.error("Chats count error:", err)
+  );
+}
+
+function listenStories() {
+  db.collection("status").onSnapshot(
+    snapshot => {
+      const now = Date.now();
+      const weekAgo = now - 7 * 86400000;
+      let activeCount = 0;
+      const storyScores = {};
+
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.createdAt && (now - data.createdAt < 86400000)) {
+          activeCount++;
+        }
+        if (data.uid && data.createdAt && data.createdAt >= weekAgo) {
+          storyScores[data.uid] = (storyScores[data.uid] || 0) + 2; // 2 points per story
+        }
+      });
+
+      activeStoriesCount = activeCount;
+      const el = document.getElementById("activeStories");
+      if (el) el.textContent = activeStoriesCount;
+
+      renderLeaderboard(null, storyScores);
+    },
+    err => console.error("Stories count error:", err)
+  );
+}
+
+/* =====================================================
+   WEEKLY LEADERBOARD RENDERER
+   ===================================================== */
+let cachedMsgScores = {};
+let cachedStoryScores = {};
+
+function renderLeaderboard(msgScores, storyScores) {
+  if (msgScores) cachedMsgScores = msgScores;
+  if (storyScores) cachedStoryScores = storyScores;
+
+  const leaderboardGrid = document.getElementById("leaderboardGrid");
+  if (!leaderboardGrid || !users.length) return;
+
+  // Build composite user scores for last 7 days
+  const userRankList = users.map(u => {
+    const msgs = cachedMsgScores[u.uid] || 0;
+    const stories = cachedStoryScores[u.uid] || 0;
+    const totalScore = msgs + stories;
+    return {
+      uid: u.uid,
+      displayName: u.displayName || u.name || "Nexa User",
+      photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
+      email: u.email || "",
+      banned: u.banned === true,
+      msgs: msgs,
+      stories: stories / 2,
+      score: totalScore
+    };
+  }).filter(u => !u.banned);
+
+  userRankList.sort((a, b) => b.score - a.score);
+
+  const topUsers = userRankList.slice(0, 5);
+  const maxScore = topUsers.length && topUsers[0].score > 0 ? topUsers[0].score : 1;
+
+  if (!topUsers.length || topUsers[0].score === 0) {
+    leaderboardGrid.innerHTML = `
+      <div class="leaderboard-card" style="grid-column: 1 / -1;">
+        <div style="color: var(--text-3); font-size: 13px;">No user activity recorded in the last 7 days.</div>
+      </div>
+    `;
+    return;
+  }
+
+  leaderboardGrid.innerHTML = topUsers.map((u, idx) => {
+    const rank = idx + 1;
+    const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+    const rankClass = rank <= 3 ? `rank-${rank}` : "";
+    const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
+
+    return `
+      <div class="leaderboard-card ${rankClass}">
+        <div class="rank-badge">${rankBadge}</div>
+        <div class="leaderboard-info">
+          <div class="leaderboard-name">${escapeHtml(u.displayName)}</div>
+          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
+          <div class="activity-bar-bg">
+            <div class="activity-bar-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+        <div class="leaderboard-score">
+          <div class="score-val">${u.score}</div>
+          <div class="score-label">Points</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 /* =====================================================
    TIMESTAMP HELPER
    ===================================================== */
@@ -1150,30 +1583,55 @@ function normalizeTimestamp(value) {
   return isNaN(parsed) ? Date.now() : parsed;
 }
 
+function formatLastSeen(ts) {
+  if (!ts) return "Never";
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+
+  if (m < 2) return "Just now";
+  if (m < 60) return `${m}m ago`;
+  if (h < 24) return `${h}h ago`;
+  if (d === 1) return "Yesterday";
+  if (d < 30) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
 /* =====================================================
    RENDER DASHBOARD
    ===================================================== */
 function render() {
   const now = Date.now();
   const day = 86400000;
-  const week = day * 7;
 
-  // Calculate stats
   const totalUsers = users.length;
   const todayUsers = users.filter(u => u.createdAt >= now - day).length;
   const bannedUsers = users.filter(u => u.banned).length;
-  const onlineUsers = users.filter(u => u.online).length;
 
-  // Update stats
+  let activeTodayCount = 0;
+  let onlineCount = 0;
+
+  users.forEach(u => {
+    const p = presenceData[u.uid] || {};
+    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const isOnline = checkUserOnline(u);
+    const isActive = lastSeen >= (now - day);
+
+    if (isOnline) onlineCount++;
+    if (isActive) activeTodayCount++;
+  });
+
   document.getElementById("totalUsers").textContent = totalUsers;
-  document.getElementById("activeToday").textContent = todayUsers;
+  document.getElementById("activeToday").textContent = activeTodayCount;
   document.getElementById("bannedUsers").textContent = bannedUsers;
-  document.getElementById("onlineNow").textContent = onlineUsers;
-  document.getElementById("newUsersText").textContent = `${todayUsers} new today`;
+  document.getElementById("onlineNow").textContent = onlineCount;
+  document.getElementById("newUsersText").textContent = `${todayUsers} registered today`;
   document.getElementById("userCount").textContent = `${totalUsers} users total`;
 
-  renderTable(users);
+  applyFiltersAndRender();
   renderChart();
+  renderLeaderboard();
 }
 
 /* =====================================================
@@ -1185,7 +1643,7 @@ function renderTable(data) {
   if (!data || data.length === 0) {
     table.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align: center; padding: 40px;">
+        <td colspan="7" style="text-align: center; padding: 40px;">
           <div class="empty-state">
             <div class="empty-icon">🔍</div>
             <div class="empty-text">No users found</div>
@@ -1196,24 +1654,39 @@ function renderTable(data) {
     return;
   }
 
+  const now = Date.now();
+
   table.innerHTML = data.map(u => {
-    const status = u.banned ? "🚫 Banned" : "🟢 Active";
-    const statusClass = u.banned ? "status-banned" : "status-active";
-    const dateStr = new Date(u.createdAt).toLocaleDateString();
+    const p = presenceData[u.uid] || {};
+    const lastSeenTs = p.lastSeen || u.lastSeen || 0;
+    const isOnline = checkUserOnline(u);
+    const isAway = p.status === "away" && isOnline;
+
+    let statusLabel = u.banned 
+      ? "🚫 Banned" 
+      : isOnline 
+        ? (isAway ? "🟡 Away" : `<span class="online-pulse-dot"></span>Online`) 
+        : "⚪ Offline";
+
+    let statusClass = u.banned ? "status-banned" : isOnline ? "status-active" : "status-offline";
+    
+    const joinedStr = new Date(u.createdAt).toLocaleDateString();
+    const lastSeenStr = isOnline && !u.banned ? "Online now" : formatLastSeen(lastSeenTs);
     const nameDisplay = u.displayName || u.name || "—";
     const emailDisplay = u.email || "—";
 
     return `
       <tr>
-        <td>${nameDisplay}</td>
-        <td>${emailDisplay}</td>
-        <td><span class="uid-text">${u.uid}</span></td>
-        <td><span class="status-badge ${statusClass}">${status}</span></td>
-        <td>${dateStr}</td>
+        <td><strong>${escapeHtml(nameDisplay)}</strong></td>
+        <td>${escapeHtml(emailDisplay)}</td>
+        <td><span class="uid-text" title="${u.uid}">${u.uid}</span></td>
+        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        <td>${joinedStr}</td>
+        <td><span style="font-weight: 500; color: ${isOnline ? 'var(--online)' : 'var(--text-3)'}">${lastSeenStr}</span></td>
         <td>
           <div class="actions">
             <button class="action-btn warning" onclick="editUser('${u.uid}')">Edit</button>
-            <button class="action-btn warning" onclick="toggleBan('${u.uid}', ${u.banned})">
+            <button class="action-btn warning" onclick="toggleBan('${u.uid}', ${u.banned === true})">
               ${u.banned ? "Unban" : "Ban"}
             </button>
             <button class="action-btn danger" onclick="deleteUser('${u.uid}')">Delete</button>
@@ -1224,6 +1697,15 @@ function renderTable(data) {
   }).join("");
 }
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /* =====================================================
    USER ACTIONS
    ===================================================== */
@@ -1231,7 +1713,7 @@ function editUser(uid) {
   const user = users.find(u => u.uid === uid);
   if (!user) return;
 
-  const newName = prompt("Enter new name:", user.displayName || user.name || "");
+  const newName = prompt("Enter new display name:", user.displayName || user.name || "");
   if (newName === null) return;
 
   db.collection("users").doc(uid).update({
@@ -1248,59 +1730,123 @@ function editUser(uid) {
 }
 
 function toggleBan(uid, currentState) {
+  if (currentUser && currentUser.uid === uid) {
+    alert("⚠️ Action restricted: You cannot ban your own admin account!");
+    return;
+  }
+
   const action = currentState ? "unban" : "ban";
   if (!confirm(`${action.toUpperCase()} this user?`)) return;
 
-  db.collection("users").doc(uid).update({
-    banned: !currentState,
-    updatedAt: Date.now()
-  }).then(() => {
-    log(`${currentState ? "Unbanned" : "Banned"} user ${uid}`, "warning");
-  }).catch(err => {
-    console.error(err);
-    alert("❌ Error: " + err.message);
-    log(`Failed to toggle ban for ${uid}`, "error");
+  const newBannedState = !currentState;
+
+  // Optimistically update local array
+  const u = users.find(x => x.uid === uid);
+  if (u) {
+    u.banned = newBannedState;
+    render();
+  }
+
+  // Call backend endpoint with fallback to direct Firestore
+  fetch("http://localhost:3000/api/admin/ban-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, banned: newBannedState })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
+    } else {
+      throw new Error(data.error || "Failed");
+    }
+  })
+  .catch(() => {
+    // Fallback to direct Firestore update if backend is unreachable
+    db.collection("users").doc(uid).update({
+      banned: newBannedState,
+      updatedAt: Date.now()
+    }).then(() => {
+      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
+    }).catch(err => {
+      console.error(err);
+      alert("❌ Error: " + err.message);
+      log(`Failed to toggle ban for ${uid}`, "error");
+      if (u) { u.banned = currentState; render(); }
+    });
   });
 }
 
 function deleteUser(uid) {
-  if (!confirm("❌ PERMANENTLY DELETE this user? This cannot be undone!")) return;
+  if (currentUser && currentUser.uid === uid) {
+    alert("⚠️ Action restricted: You cannot delete your own admin account!");
+    return;
+  }
 
-  db.collection("users").doc(uid).delete().then(() => {
-    log(`Deleted user ${uid}`, "error");
-  }).catch(err => {
-    console.error(err);
-    alert("❌ Error: " + err.message);
-    log(`Failed to delete user ${uid}`, "error");
+  if (!confirm("❌ PERMANENTLY DELETE this user? This action cannot be undone!")) return;
+
+  // Optimistically remove from local array
+  const oldUsers = [...users];
+  users = users.filter(x => x.uid !== uid);
+  render();
+
+  // Call backend endpoint with fallback to direct Firestore
+  fetch("http://localhost:3000/api/admin/delete-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      log(`Permanently deleted user ${uid}`, "error");
+    } else {
+      throw new Error(data.error || "Failed");
+    }
+  })
+  .catch(() => {
+    // Fallback to direct Firestore delete if backend is unreachable
+    db.collection("users").doc(uid).delete().then(() => {
+      db.collection("presence").doc(uid).delete().catch(() => {});
+      log(`Permanently deleted user ${uid}`, "error");
+    }).catch(err => {
+      console.error(err);
+      alert("❌ Error: " + err.message);
+      log(`Failed to delete user ${uid}`, "error");
+      users = oldUsers;
+      render();
+    });
   });
 }
 
+
 /* =====================================================
-   CHART
+   CHART (Calendar Day Accuracy)
    ===================================================== */
 function renderChart() {
   const ctx = document.getElementById("chart");
   if (!ctx) return;
 
-  // Last 7 days
-  const days = [];
+  const countsMap = {};
   const labels = [];
   const now = new Date();
 
   for (let i = 6; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    days.push(0);
-    labels.push(date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }));
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const key = d.toDateString();
+    countsMap[key] = 0;
+    labels.push(d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }));
   }
 
   users.forEach(u => {
-    const userDate = new Date(u.createdAt);
-    const dayIndex = days.length - 1 - Math.floor((now - userDate) / 86400000);
-    if (dayIndex >= 0 && dayIndex < days.length) {
-      days[dayIndex]++;
+    if (!u.createdAt) return;
+    const uDateKey = new Date(u.createdAt).toDateString();
+    if (countsMap.hasOwnProperty(uDateKey)) {
+      countsMap[uDateKey]++;
     }
   });
+
+  const chartData = Object.values(countsMap);
 
   if (chart) chart.destroy();
 
@@ -1309,13 +1855,13 @@ function renderChart() {
     data: {
       labels: labels,
       datasets: [{
-        label: "New Users",
-        data: days,
+        label: "New Registrations",
+        data: chartData,
         borderColor: "#4f8fff",
-        backgroundColor: "rgba(79,143,255,0.1)",
+        backgroundColor: "rgba(79,143,255,0.12)",
         borderWidth: 2,
         fill: true,
-        tension: 0.4,
+        tension: 0.35,
         pointRadius: 5,
         pointBackgroundColor: "#4f8fff",
         pointBorderColor: "#fff",
@@ -1339,8 +1885,8 @@ function renderChart() {
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: "rgba(79,143,255,0.1)" },
-          ticks: { color: "#a8b5cc" }
+          ticks: { color: "#a8b5cc", stepSize: 1 },
+          grid: { color: "rgba(79,143,255,0.1)" }
         },
         x: {
           grid: { display: false },
@@ -1356,6 +1902,7 @@ function renderChart() {
    ===================================================== */
 function log(text, type = "info") {
   const box = document.getElementById("logBox");
+  if (!box) return;
   const time = new Date().toLocaleTimeString("en-US", { hour12: true });
   const entry = document.createElement("div");
   entry.className = "log-entry";
@@ -1365,12 +1912,10 @@ function log(text, type = "info") {
   `;
   box.insertBefore(entry, box.firstChild);
 
-  // Keep only last 50 entries
   while (box.children.length > 50) {
     box.removeChild(box.lastChild);
   }
 }
 </script>
-
 </body>
 </html>

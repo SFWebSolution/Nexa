@@ -1090,8 +1090,13 @@ button:focus-visible {
 }
 
 .chat-peer-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
   min-width: 0;
   overflow: hidden;
+  flex: 1;
 }
 
 .chat-peer-name {
@@ -1100,6 +1105,7 @@ button:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25;
   color: var(--text-0);
 }
 
@@ -1118,7 +1124,10 @@ button:focus-visible {
   color: var(--text-3);
   transition: all var(--tf);
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+  display: block;
 }
 
 #status.online-status {
@@ -2838,6 +2847,41 @@ input[type="range"] {
 
 .ctx-menu.active {
   display: flex;
+}
+
+.ctx-reaction-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-dk);
+  gap: 4px;
+}
+
+.ctx-emoji-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275), background 0.15s ease;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ctx-emoji-btn:hover {
+  transform: scale(1.35) translateY(-2px);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ctx-divider {
+  height: 1px;
+  background: var(--border-dk);
+  margin: 0;
 }
 
 .ctx-item {
@@ -4624,6 +4668,93 @@ input[type="range"] {
 .vn-speed-btn:hover {
   background: rgba(0, 240, 255, 0.25);
   color: #fff;
+}
+
+/* =========================================================================
+   WHATSAPP-STYLE STORY REPLY PREVIEW CARD
+   ========================================================================= */
+.whatsapp-story-reply-card {
+  background: rgba(0, 0, 0, 0.28);
+  border-left: 3.5px solid var(--cyan);
+  border-radius: var(--radius-xs);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background var(--tf), border-color var(--tf);
+  max-width: 320px;
+  user-select: none;
+}
+
+.msg.me .whatsapp-story-reply-card {
+  background: rgba(0, 0, 0, 0.22);
+  border-left-color: #00ffff;
+}
+
+.whatsapp-story-reply-card:hover {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.story-reply-info-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.story-reply-author {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cyan);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg.me .story-reply-author {
+  color: var(--primary-lt);
+}
+
+.story-reply-subtext {
+  font-size: 11.5px;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.9;
+}
+
+.story-reply-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-3);
+  font-size: 18px;
+  border: 1px solid var(--border-md);
+}
+
+.story-thumb-music {
+  background: linear-gradient(135deg, var(--primary), var(--cyan));
+  color: #fff;
+}
+
+.story-thumb-text {
+  background: linear-gradient(135deg, var(--bg-4), var(--bg-5));
+  color: #fff;
+}
+
+.story-thumb-default {
+  background: var(--bg-4);
+  color: var(--text-2);
 }
 
 

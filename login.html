@@ -243,8 +243,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getAuth,
   signInWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+import {
+  getFirestore,
+  doc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
@@ -257,9 +264,22 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 
 const msg = document.getElementById("msg");
 const btn = document.getElementById("loginBtn");
+
+function showMsg(text, type) {
+  msg.textContent = text;
+  msg.className = `msg ${type}`;
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("banned") === "1") {
+  showMsg("🚫 Your account has been banned by an administrator.", "error");
+} else if (urlParams.get("deleted") === "1") {
+  showMsg("❌ Your account has been deleted by an administrator.", "error");
+}
 
 const togglePasswordBtn = document.getElementById("togglePasswordBtn");
 const passwordInput = document.getElementById("password");
@@ -295,7 +315,22 @@ async function login(){
 
   try {
 
-    await signInWithEmailAndPassword(auth, email, password);
+    const userCred = await signInWithEmailAndPassword(auth, email, password);
+    const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
+
+    if (userDoc.exists() && userDoc.data().banned === true) {
+      await signOut(auth);
+      showMsg("🚫 Your account has been banned by an administrator.", "error");
+      btn.innerText = "Login";
+      return;
+    }
+
+    if (!userDoc.exists()) {
+      await signOut(auth);
+      showMsg("❌ Account does not exist or has been deleted.", "error");
+      btn.innerText = "Login";
+      return;
+    }
 
     showMsg("Login successful!", "success");
 
@@ -309,6 +344,7 @@ async function login(){
 
   btn.innerText = "Login";
 }
+
 
 async function resetPassword(e){
 
