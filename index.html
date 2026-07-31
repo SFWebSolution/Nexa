@@ -99,7 +99,7 @@ Discord, LinkedIn, etc.) -->
   <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
   
-  <!-- Firebase -->
+  <!-- Firebase - COMPLETE SUITE -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -1876,12 +1876,12 @@ footer {
     </div>
   </footer>
   
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-  
+  <!-- Firebase Initialization & Authentication -->
   <script>
-    // Initialize Firebase
+    // ========================================================================
+    // FIREBASE CONFIGURATION & INITIALIZATION
+    // ========================================================================
+    
     const firebaseConfig = {
       apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
       authDomain: "mel-odix.firebaseapp.com",
@@ -1891,31 +1891,78 @@ footer {
       appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
     };
     
+    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
     
-    // Redirect logged-in users to dashboard if account is active
-    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-      .then(() => {
-        auth.onAuthStateChanged(async (user) => {
-          if (user) {
-            try {
-              const doc = await db.collection("users").doc(user.uid).get();
-              if (doc.exists && doc.data()?.banned === true) {
-                await auth.signOut();
-              } else {
-                window.location.replace("dashboard.html");
-              }
-            } catch (e) {
-              console.warn("User auth check failed:", e);
-            }
-          }
-        });
-      })
-      .catch((error) => console.error("Auth error:", error));
+    console.log("✅ Firebase initialized successfully");
     
-    // Service Worker Registration
+    // ========================================================================
+    // AUTO-LOGIN HANDLER - FIXED VERSION
+    // ========================================================================
+    
+    function initializeAuthListener() {
+      // Set persistence to LOCAL for automatic login across browser sessions
+      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .then(() => {
+          console.log("✅ Persistence set to LOCAL");
+          
+          // Listen for authentication state changes
+          auth.onAuthStateChanged(async (user) => {
+            if (user) {
+              console.log("👤 User detected:", user.uid);
+              
+              try {
+                // Fetch user document from Firestore
+                const userDoc = await db.collection("users").doc(user.uid).get();
+                
+                if (userDoc.exists) {
+                  const userData = userDoc.data();
+                  console.log("📋 User document found");
+                  
+                  // Check if user is banned
+                  if (userData.banned === true) {
+                    console.warn("⛔ User is banned. Signing out...");
+                    await auth.signOut();
+                    return;
+                  }
+                  
+                  // User is active and not banned - redirect to dashboard
+                  console.log("✨ User is active. Redirecting to dashboard...");
+                  setTimeout(() => {
+                    window.location.replace("dashboard.html");
+                  }, 500);
+                } else {
+                  console.warn("⚠️ User document does not exist in Firestore");
+                  // User exists in Auth but not in Firestore - allow them to stay
+                  // or redirect based on your app logic
+                }
+              } catch (error) {
+                console.error("❌ Error fetching user document:", error);
+                // Fail gracefully - let user stay on landing page
+              }
+            } else {
+              console.log("➖ No user logged in");
+            }
+          });
+        })
+        .catch((error) => {
+          console.error("❌ Error setting persistence:", error);
+        });
+    }
+    
+    // Initialize auth listener when page loads
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initializeAuthListener);
+    } else {
+      initializeAuthListener();
+    }
+    
+    // ========================================================================
+    // SERVICE WORKER REGISTRATION
+    // ========================================================================
+    
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js")
@@ -1924,14 +1971,32 @@ footer {
       });
     }
     
-    // FAQ Toggle
-    document.querySelectorAll(".faq-item").forEach(item => {
-      item.querySelector(".faq-question").addEventListener("click", () => {
-        item.classList.toggle("active");
-      });
-    });
+    // ========================================================================
+    // FAQ TOGGLE FUNCTIONALITY
+    // ========================================================================
     
-    // Smooth scroll for navigation links
+    function initializeFAQ() {
+      document.querySelectorAll(".faq-item").forEach(item => {
+        const question = item.querySelector(".faq-question");
+        if (question) {
+          question.addEventListener("click", () => {
+            item.classList.toggle("active");
+          });
+        }
+      });
+      console.log("✅ FAQ functionality initialized");
+    }
+    
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initializeFAQ);
+    } else {
+      initializeFAQ();
+    }
+    
+    // ========================================================================
+    // SMOOTH SCROLL NAVIGATION
+    // ========================================================================
+    
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       anchor.addEventListener("click", function(e) {
         const href = this.getAttribute("href");
@@ -1945,11 +2010,14 @@ footer {
       });
     });
     
-    // PWA Install Prompt
+    // ========================================================================
+    // PWA INSTALL PROMPT
+    // ========================================================================
+    
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       window.deferredPrompt = e;
-      console.log("📱 Nexa PWA install prompt ready on landing page");
+      console.log("📱 Nexa PWA install prompt ready");
     });
   </script>
 </body>
