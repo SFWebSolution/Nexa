@@ -100,6 +100,7 @@
       stroke-width: 2;
       stroke-linecap: round;
       stroke-linejoin: round;
+      pointer-events: none;
     }
 
     input#password {
@@ -283,19 +284,38 @@ if (urlParams.get("banned") === "1") {
 
 const togglePasswordBtn = document.getElementById("togglePasswordBtn");
 const passwordInput = document.getElementById("password");
+const emailInput = document.getElementById("email");
 const eyeIcon = document.getElementById("eyeIcon");
 
 if (togglePasswordBtn && passwordInput && eyeIcon) {
-  togglePasswordBtn.addEventListener("click", () => {
-    const isPassword = passwordInput.type === "password";
-    passwordInput.type = isPassword ? "text" : "password";
+  togglePasswordBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const isPassword = passwordInput.getAttribute("type") === "password" || passwordInput.type === "password";
+    const newType = isPassword ? "text" : "password";
+    passwordInput.setAttribute("type", newType);
+    passwordInput.type = newType;
     eyeIcon.innerHTML = isPassword
       ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`
       : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
   });
 }
 
-btn.addEventListener("click", login);
+[emailInput, passwordInput].forEach(inp => {
+  if (inp) {
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        login();
+      }
+    });
+  }
+});
+
+btn.addEventListener("click", (e) => {
+  e.preventDefault();
+  login();
+});
 
 document
   .getElementById("forgotPassword")
@@ -303,38 +323,55 @@ document
 
 async function login(){
 
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
+  const email = emailInput ? emailInput.value.trim() : "";
+  const password = passwordInput ? passwordInput.value : "";
 
   if(!email || !password){
-    showMsg("Fill all fields", "error");
+    showMsg("Please enter both email and password", "error");
     return;
   }
 
+  btn.disabled = true;
   btn.innerText = "Logging in...";
 
   try {
 
     const userCred = await signInWithEmailAndPassword(auth, email, password);
-    const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
 
-    if (userDoc.exists() && userDoc.data().banned === true) {
-      await signOut(auth);
-      showMsg("🚫 Your account has been banned by an administrator.", "error");
-      btn.innerText = "Login";
-      return;
+    // Check ban status safely
+    try {
+      const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
+      if (userDoc.exists() && userDoc.data().banned === true) {
+        await signOut(auth);
+        showMsg("🚫 Your account has been banned by an administrator.", "error");
+        btn.disabled = false;
+        btn.innerText = "Login";
+        return;
+      }
+    } catch (docErr) {
+      console.warn("User ban check warning:", docErr);
     }
 
-    showMsg("Login successful!", "success");
+    showMsg("Login successful! Redirecting...", "success");
 
     setTimeout(()=>{
       window.location.href = "dashboard.html";
-    },1000);
+    }, 800);
 
   } catch (error) {
-    showMsg(error.message, "error");
+    console.error("Login error:", error);
+    let errMsg = error.message;
+    if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
+      errMsg = "Invalid email or password. Please check your credentials.";
+    } else if (error.code === "auth/invalid-email") {
+      errMsg = "Invalid email format.";
+    } else if (error.code === "auth/too-many-requests") {
+      errMsg = "Too many failed attempts. Please wait a moment and try again.";
+    }
+    showMsg(errMsg, "error");
   }
 
+  btn.disabled = false;
   btn.innerText = "Login";
 }
 
@@ -343,7 +380,7 @@ async function resetPassword(e){
 
   e.preventDefault();
 
-  const email = document.getElementById("email").value.trim();
+  const email = emailInput ? emailInput.value.trim() : "";
 
   if(!email){
     showMsg("Enter your email first", "error");
@@ -364,10 +401,6 @@ async function resetPassword(e){
   }
 }
 
-function showMsg(text, type){
-  msg.textContent = text;
-  msg.className = "msg " + type;
-}
 
 </script>
 

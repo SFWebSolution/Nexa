@@ -2524,7 +2524,7 @@ async function toggleReact(msgId, emoji) {
 
   // Optimistic UI update
   msg.reactions = r;
-  renderMessages();
+  renderMessageList();
 
   try {
     await db.collection("chats").doc(msgId).update({ reactions: r });
@@ -2543,6 +2543,11 @@ async function toggleReact(msgId, emoji) {
     );
   }
 }
+
+window.toggleReact = toggleReact;
+window.addQuickReact = addQuickReact;
+window.renderMessages = renderMessageList;
+
 
 
 function scrollToMsg(msgId) {
