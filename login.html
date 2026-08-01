@@ -245,7 +245,10 @@ import {
   getAuth,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence,
+  onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 import {
@@ -267,6 +270,11 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Enable local persistence
+setPersistence(auth, browserLocalPersistence).catch(err => {
+  console.warn("Persistence error:", err);
+});
+
 const msg = document.getElementById("msg");
 const btn = document.getElementById("loginBtn");
 
@@ -281,6 +289,28 @@ if (urlParams.get("banned") === "1") {
 } else if (urlParams.get("deleted") === "1") {
   showMsg("❌ Your account has been deleted by an administrator.", "error");
 }
+
+// AUTO-LOGIN LISTENER
+let isAutoLoggingIn = false;
+onAuthStateChanged(auth, async (user) => {
+  if (user && !isAutoLoggingIn) {
+    isAutoLoggingIn = true;
+    try {
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists() && userDoc.data().banned === true) {
+        await signOut(auth);
+        showMsg("🚫 Your account has been banned by an administrator.", "error");
+        isAutoLoggingIn = false;
+        return;
+      }
+      showMsg("✨ Auto-logging in...", "success");
+      window.location.replace("dashboard.html");
+    } catch (e) {
+      console.warn("Auto-login check issue:", e);
+      window.location.replace("dashboard.html");
+    }
+  }
+});
 
 const togglePasswordBtn = document.getElementById("togglePasswordBtn");
 const passwordInput = document.getElementById("password");
@@ -356,7 +386,7 @@ async function login(){
 
     setTimeout(()=>{
       window.location.href = "dashboard.html";
-    }, 800);
+    }, 400);
 
   } catch (error) {
     console.error("Login error:", error);

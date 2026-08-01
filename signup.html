@@ -230,7 +230,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getAuth,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   getFirestore,
@@ -251,9 +254,21 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Enable local persistence
+setPersistence(auth, browserLocalPersistence).catch(err => console.warn("Persistence error:", err));
+
 // UI
 const msg = document.getElementById("msg");
 const btn = document.getElementById("signupBtn");
+
+let isCreatingAccount = false;
+
+// AUTO-LOGIN CHECK: If already logged in, redirect to dashboard
+onAuthStateChanged(auth, (user) => {
+  if (user && !isCreatingAccount) {
+    window.location.replace("dashboard.html");
+  }
+});
 
 const togglePasswordBtn = document.getElementById("togglePasswordBtn");
 const passwordInput = document.getElementById("password");
@@ -303,6 +318,7 @@ async function signup() {
     return;
   }
 
+  isCreatingAccount = true;
   btn.disabled = true;
   btn.innerText = "Creating account...";
 
@@ -336,18 +352,18 @@ async function signup() {
     // ✅ SUCCESS POPUP
     showPopup("Account created successfully 🚀");
 
-    showMsg("Success! Redirecting...", "success");
+    showMsg("Success! Redirecting to Nexa...", "success");
 
     setTimeout(() => {
-      window.location.href = "login.html";
-    }, 1500);
+      window.location.replace("dashboard.html");
+    }, 800);
 
   } catch (error) {
+    isCreatingAccount = false;
     showMsg(error.message, "error");
+    btn.disabled = false;
+    btn.innerText = "Sign Up";
   }
-
-  btn.disabled = false;
-  btn.innerText = "Sign Up";
 }
 
 // MESSAGE

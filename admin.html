@@ -275,6 +275,40 @@ body {
   min-width: 200px;
 }
 
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(16,217,129,0.1);
+  color: var(--online);
+  border: 1px solid rgba(16,217,129,0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.sync-indicator.syncing {
+  background: rgba(245,158,11,0.1);
+  color: var(--warning);
+  border-color: rgba(245,158,11,0.3);
+}
+
+.sync-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: syncPulse 1.5s infinite;
+}
+
+@keyframes syncPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.5; }
+}
+
 .logout-btn {
   padding: clamp(8px, 2vw, 10px) clamp(14px, 3vw, 18px);
   border: 1px solid var(--danger-soft);
@@ -676,6 +710,11 @@ td {
     width: 100%;
   }
 
+  .sync-indicator {
+    width: 100%;
+    justify-content: center;
+  }
+
   .logout-btn {
     width: 100%;
   }
@@ -730,6 +769,11 @@ td {
 
   .dashboard-title {
     font-size: 16px;
+  }
+
+  .sync-indicator {
+    font-size: 10px;
+    padding: 5px 10px;
   }
 
   .logout-btn {
@@ -1107,6 +1151,10 @@ td {
 <div id="dashboard" class="dashboard hidden">
   <div class="dashboard-header">
     <div class="dashboard-title">📊 Nexa Admin Dashboard</div>
+    <div class="sync-indicator" id="syncIndicator">
+      <span class="sync-pulse"></span>
+      <span>Real-time Sync</span>
+    </div>
     <button class="logout-btn" onclick="handleLogout()">Logout</button>
   </div>
 
@@ -1125,6 +1173,13 @@ td {
         <div class="stat-label">Active Today</div>
         <div class="stat-value" id="activeToday">0</div>
         <div class="stat-change" id="activeText">Active in last 24h</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">⚡</div>
+        <div class="stat-label">Weekly Active</div>
+        <div class="stat-value" id="weeklyActiveUsers">0</div>
+        <div class="stat-change" id="weeklyActiveText">Active in last 7 days</div>
       </div>
 
       <div class="stat-card">
@@ -1210,11 +1265,14 @@ td {
     </div>
 
     <!-- Weekly Leaderboard -->
-    <div class="section-header" style="margin-top: 40px;">
+    <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
         <div class="section-title">🏆 Weekly Most Active Users</div>
-        <div class="section-subtitle">Top contributors by messages & stories in the last 7 days</div>
+        <div class="section-subtitle" id="weeklySubtitle">Top active contributors in the last 7 days • Reloads weekly</div>
       </div>
+      <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
+        🔄 Reload Weekly Stats
+      </button>
     </div>
 
     <div class="leaderboard-grid" id="leaderboardGrid">
@@ -1249,7 +1307,7 @@ td {
 
 <script>
 /* =====================================================
-   FIREBASE INIT
+   FIREBASE INIT & PERSISTENCE
    ===================================================== */
 const firebaseConfig = {
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
@@ -1261,6 +1319,11 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// Enable Local Auth Persistence for Admin Auto-Login
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
+  console.warn("Admin persistence set error:", err);
+});
+
 const ADMIN_EMAIL = "neuro_stack@outlook.com";
 
 let users = [];
@@ -1271,6 +1334,19 @@ let weeklyUserScores = {};
 let chart = null;
 let currentUser = null;
 let currentFilter = "all";
+let isDashboardInitialized = false;
+let userListenerUnsubscribe = null;
+
+// AUTO-LOGIN LISTENER FOR ADMIN
+auth.onAuthStateChanged(user => {
+  if (user && !isDashboardInitialized) {
+    currentUser = user;
+    document.getElementById("loginContainer").classList.add("hidden");
+    document.getElementById("dashboard").classList.remove("hidden");
+    initDashboard();
+    log("Admin session restored via auto-login", "success");
+  }
+});
 
 /* =====================================================
    LOGIN
@@ -1308,6 +1384,8 @@ function handleLogin(e) {
 function handleLogout() {
   if (!confirm("Logout from admin panel?")) return;
   auth.signOut().then(() => {
+    isDashboardInitialized = false;
+    if (userListenerUnsubscribe) userListenerUnsubscribe();
     document.getElementById("dashboard").classList.add("hidden");
     document.getElementById("loginContainer").classList.remove("hidden");
     document.getElementById("emailInput").value = "";
@@ -1324,9 +1402,7 @@ function checkUserOnline(u) {
   const uid = typeof u === "string" ? u : u.uid;
   const p = presenceData[uid];
   if (!p) return false;
-  // If Firestore says explicitly offline, trust it
   if (p.online === false || p.status === "offline") return false;
-  // Otherwise, check heartbeat freshness — user must have updated lastSeen within 35s
   const lastSeen = p.lastSeen || 0;
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
@@ -1335,21 +1411,25 @@ function checkUserOnline(u) {
    INIT DASHBOARD
    ===================================================== */
 function initDashboard() {
+  if (isDashboardInitialized) return;
+  isDashboardInitialized = true;
+
   listenUsers();
   listenPresence();
   listenChats();
   listenStories();
 
-  document.getElementById("searchInput").addEventListener("input", applyFiltersAndRender);
+  document.getElementById("searchInput")?.addEventListener("input", applyFiltersAndRender);
 
-  // Refresh online counts & table every 5s to expire stale heartbeats
-  // (does NOT re-render chart to avoid flicker)
   setInterval(() => {
     refreshOnlineCounts();
   }, 5000);
+
+  setInterval(() => {
+    renderLeaderboard();
+  }, 60000);
 }
 
-// Lightweight refresh — only updates online count stat card + re-filters table
 function refreshOnlineCounts() {
   if (!users.length) return;
   const now = Date.now();
@@ -1407,11 +1487,17 @@ function applyFiltersAndRender() {
 }
 
 /* =====================================================
-   REALTIME LISTENERS
+   REALTIME LISTENERS - GUARANTEED SYNC
    ===================================================== */
 function listenUsers() {
-  db.collection("users").onSnapshot(
+  // Unsubscribe from old listener if exists
+  if (userListenerUnsubscribe) userListenerUnsubscribe();
+
+  userListenerUnsubscribe = db.collection("users").onSnapshot(
     snapshot => {
+      // Mark sync as active
+      updateSyncIndicator(true);
+
       users = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -1422,12 +1508,15 @@ function listenUsers() {
       });
 
       render();
-      log(`Loaded ${users.length} users`, "success");
+      log(`📡 Synced ${users.length} users across devices`, "success");
+
+      // Pulse sync indicator
+      setTimeout(() => updateSyncIndicator(false), 1000);
     },
     err => {
       console.error("Firestore Error:", err);
       log("Firestore connection error: " + err.message, "error");
-      alert("❌ Database Error: " + err.message);
+      updateSyncIndicator(false);
     }
   );
 }
@@ -1435,7 +1524,6 @@ function listenUsers() {
 function listenPresence() {
   db.collection("presence").onSnapshot(
     snapshot => {
-      // Reset presenceData from scratch each snapshot to clear stale/deleted docs
       presenceData = {};
       snapshot.docs.forEach(doc => {
         presenceData[doc.id] = doc.data();
@@ -1453,7 +1541,6 @@ function listenChats() {
       const el = document.getElementById("totalMessages");
       if (el) el.textContent = totalMessagesCount.toLocaleString();
 
-      // Calculate weekly message scores per user
       const weekAgo = Date.now() - 7 * 86400000;
       const msgScores = {};
       snapshot.docs.forEach(doc => {
@@ -1463,13 +1550,7 @@ function listenChats() {
         }
       });
 
-      // Merge into weeklyUserScores
-      users.forEach(u => {
-        const uid = u.uid;
-        weeklyUserScores[uid] = (weeklyUserScores[uid] || 0) + (msgScores[uid] || 0);
-      });
-
-      renderLeaderboard(msgScores);
+      renderLeaderboard(msgScores, null);
     },
     err => console.error("Chats count error:", err)
   );
@@ -1489,7 +1570,7 @@ function listenStories() {
           activeCount++;
         }
         if (data.uid && data.createdAt && data.createdAt >= weekAgo) {
-          storyScores[data.uid] = (storyScores[data.uid] || 0) + 2; // 2 points per story
+          storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
         }
       });
 
@@ -1504,10 +1585,42 @@ function listenStories() {
 }
 
 /* =====================================================
-   WEEKLY LEADERBOARD RENDERER
+   SYNC INDICATOR
+   ===================================================== */
+function updateSyncIndicator(isSyncing) {
+  const indicator = document.getElementById("syncIndicator");
+  if (!indicator) return;
+  
+  if (isSyncing) {
+    indicator.classList.add("syncing");
+  } else {
+    indicator.classList.remove("syncing");
+  }
+}
+
+/* =====================================================
+   WEEKLY LEADERBOARD RENDERER & RELOAD
    ===================================================== */
 let cachedMsgScores = {};
 let cachedStoryScores = {};
+
+function reloadWeeklyStats() {
+  const btn = document.getElementById("reloadWeeklyBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Reloading...";
+  }
+
+  log("🔄 Weekly stats manually reloaded by admin", "info");
+
+  setTimeout(() => {
+    render();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = "🔄 Reload Weekly Stats";
+    }
+  }, 400);
+}
 
 function renderLeaderboard(msgScores, storyScores) {
   if (msgScores) cachedMsgScores = msgScores;
@@ -1516,11 +1629,21 @@ function renderLeaderboard(msgScores, storyScores) {
   const leaderboardGrid = document.getElementById("leaderboardGrid");
   if (!leaderboardGrid || !users.length) return;
 
-  // Build composite user scores for last 7 days
+  const now = Date.now();
+  const weekAgo = now - 7 * 86400000;
+
   const userRankList = users.map(u => {
     const msgs = cachedMsgScores[u.uid] || 0;
     const stories = cachedStoryScores[u.uid] || 0;
-    const totalScore = msgs + stories;
+    const p = presenceData[u.uid] || {};
+    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const isOnline = checkUserOnline(u);
+    const isWeeklyActive = lastSeen >= weekAgo || u.createdAt >= weekAgo || msgs > 0 || stories > 0;
+
+    const activeBonus = isWeeklyActive ? 5 : 0;
+    const onlineBonus = isOnline ? 3 : 0;
+    const totalScore = msgs + stories + activeBonus + onlineBonus;
+
     return {
       uid: u.uid,
       displayName: u.displayName || u.name || "Nexa User",
@@ -1528,7 +1651,9 @@ function renderLeaderboard(msgScores, storyScores) {
       email: u.email || "",
       banned: u.banned === true,
       msgs: msgs,
-      stories: stories / 2,
+      stories: Math.floor(stories / 2),
+      isOnline: isOnline,
+      isWeeklyActive: isWeeklyActive,
       score: totalScore
     };
   }).filter(u => !u.banned);
@@ -1552,12 +1677,13 @@ function renderLeaderboard(msgScores, storyScores) {
     const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
     const rankClass = rank <= 3 ? `rank-${rank}` : "";
     const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
+    const onlineTag = u.isOnline ? ` • <span style="color: var(--online);">🟢 Online</span>` : "";
 
     return `
       <div class="leaderboard-card ${rankClass}">
         <div class="rank-badge">${rankBadge}</div>
         <div class="leaderboard-info">
-          <div class="leaderboard-name">${escapeHtml(u.displayName)}</div>
+          <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
           <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
           <div class="activity-bar-bg">
             <div class="activity-bar-fill" style="width: ${pct}%;"></div>
@@ -1604,12 +1730,14 @@ function formatLastSeen(ts) {
 function render() {
   const now = Date.now();
   const day = 86400000;
+  const week = 7 * day;
 
   const totalUsers = users.length;
   const todayUsers = users.filter(u => u.createdAt >= now - day).length;
   const bannedUsers = users.filter(u => u.banned).length;
 
   let activeTodayCount = 0;
+  let weeklyActiveCount = 0;
   let onlineCount = 0;
 
   users.forEach(u => {
@@ -1617,13 +1745,17 @@ function render() {
     const lastSeen = p.lastSeen || u.lastSeen || 0;
     const isOnline = checkUserOnline(u);
     const isActive = lastSeen >= (now - day);
+    const isWeeklyActive = lastSeen >= (now - week) || u.createdAt >= (now - week) || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
 
     if (isOnline) onlineCount++;
     if (isActive) activeTodayCount++;
+    if (isWeeklyActive && !u.banned) weeklyActiveCount++;
   });
 
   document.getElementById("totalUsers").textContent = totalUsers;
   document.getElementById("activeToday").textContent = activeTodayCount;
+  const weeklyEl = document.getElementById("weeklyActiveUsers");
+  if (weeklyEl) weeklyEl.textContent = weeklyActiveCount;
   document.getElementById("bannedUsers").textContent = bannedUsers;
   document.getElementById("onlineNow").textContent = onlineCount;
   document.getElementById("newUsersText").textContent = `${todayUsers} registered today`;
@@ -1632,6 +1764,347 @@ function render() {
   applyFiltersAndRender();
   renderChart();
   renderLeaderboard();
+}
+
+/* =====================================================
+   EDIT USER WITH MODAL & REAL-TIME SYNC
+   ===================================================== */
+function showEditModal(uid) {
+  const user = users.find(u => u.uid === uid);
+  if (!user) return;
+
+  const currentName = user.displayName || user.name || "Unnamed User";
+  const currentEmail = user.email || "";
+
+  const modal = document.createElement("div");
+  modal.id = "editModal_" + uid;
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+  `;
+
+  const modalContent = document.createElement("div");
+  modalContent.style.cssText = `
+    background: rgba(21,27,39,0.95);
+    border: 1px solid var(--border-md);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  `;
+
+  modalContent.innerHTML = `
+    <div style="font-size: 18px; font-weight: 700; color: var(--text-0); margin-bottom: 16px;">✏️ Edit User Profile</div>
+    
+    <div style="margin-bottom: 16px;">
+      <label style="font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Display Name</label>
+      <input id="editNameInput_${uid}" type="text" value="${escapeHtml(currentName)}" style="
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-md);
+        outline: none;
+        border-radius: 10px;
+        background: rgba(26,35,50,0.6);
+        color: var(--text-1);
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        transition: all 0.2s;
+      ">
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <label style="font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Email</label>
+      <input id="editEmailInput_${uid}" type="email" value="${escapeHtml(currentEmail)}" style="
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-md);
+        outline: none;
+        border-radius: 10px;
+        background: rgba(26,35,50,0.6);
+        color: var(--text-1);
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        transition: all 0.2s;
+      ">
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+      <button id="cancelBtn_${uid}" style="
+        flex: 1;
+        padding: 12px;
+        border: 1px solid var(--border-md);
+        background: rgba(26,35,50,0.5);
+        color: var(--text-2);
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+        font-family: inherit;
+        transition: all 0.2s;
+      ">
+        Cancel
+      </button>
+      <button id="saveBtn_${uid}" style="
+        flex: 1;
+        padding: 12px;
+        border: none;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-lt) 100%);
+        color: var(--bg-0);
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 700;
+        font-family: inherit;
+        box-shadow: 0 6px 20px rgba(79,143,255,0.3);
+        transition: all 0.2s;
+      ">
+        Save Changes
+      </button>
+    </div>
+  `;
+
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+
+  // Properly attach event listeners
+  const cancelBtn = document.getElementById("cancelBtn_" + uid);
+  const saveBtn = document.getElementById("saveBtn_" + uid);
+  const nameInput = document.getElementById("editNameInput_" + uid);
+  const emailInput = document.getElementById("editEmailInput_" + uid);
+
+  // Focus and select name input
+  setTimeout(() => {
+    nameInput.focus();
+    nameInput.select();
+  }, 0);
+
+  // Add focus/blur styling to inputs
+  nameInput.addEventListener("focus", function() {
+    this.style.borderColor = "var(--primary)";
+    this.style.background = "rgba(79,143,255,0.06)";
+  });
+  nameInput.addEventListener("blur", function() {
+    this.style.borderColor = "var(--border-md)";
+    this.style.background = "rgba(26,35,50,0.6)";
+  });
+
+  emailInput.addEventListener("focus", function() {
+    this.style.borderColor = "var(--primary)";
+    this.style.background = "rgba(79,143,255,0.06)";
+  });
+  emailInput.addEventListener("blur", function() {
+    this.style.borderColor = "var(--border-md)";
+    this.style.background = "rgba(26,35,50,0.6)";
+  });
+
+  // Button hover effects
+  cancelBtn.addEventListener("mouseover", function() {
+    this.style.background = "rgba(79,143,255,0.1)";
+    this.style.borderColor = "var(--primary)";
+    this.style.color = "var(--primary)";
+  });
+  cancelBtn.addEventListener("mouseout", function() {
+    this.style.background = "rgba(26,35,50,0.5)";
+    this.style.borderColor = "var(--border-md)";
+    this.style.color = "var(--text-2)";
+  });
+
+  saveBtn.addEventListener("mouseover", function() {
+    this.style.boxShadow = "0 10px 32px rgba(79,143,255,0.4)";
+    this.style.transform = "translateY(-2px)";
+  });
+  saveBtn.addEventListener("mouseout", function() {
+    this.style.boxShadow = "0 6px 20px rgba(79,143,255,0.3)";
+    this.style.transform = "translateY(0)";
+  });
+
+  // Cancel button handler
+  cancelBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (modal.parentNode) {
+      document.body.removeChild(modal);
+    }
+  });
+
+  // Save button handler
+  saveBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    saveUserEdit(uid, modal, nameInput, emailInput);
+  });
+
+  // Close on background click
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+    }
+  });
+
+  // Allow Enter key to save
+  nameInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      saveUserEdit(uid, modal, nameInput, emailInput);
+    }
+  });
+  emailInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      saveUserEdit(uid, modal, nameInput, emailInput);
+    }
+  });
+}
+
+function saveUserEdit(uid, modal, nameInput, emailInput) {
+  const newName = nameInput.value.trim();
+  const newEmail = emailInput.value.trim();
+
+  if (!newName) {
+    alert("⚠️ Display name cannot be empty!");
+    return;
+  }
+
+  if (newEmail && !newEmail.includes("@")) {
+    alert("⚠️ Invalid email format!");
+    return;
+  }
+
+  const saveBtn = document.getElementById("saveBtn_" + uid);
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "💾 Saving...";
+  }
+
+  // Real-time sync: Update Firestore with new data
+  const updateData = {
+    displayName: newName,
+    name: newName,
+    updatedAt: Date.now(),
+    lastModifiedBy: currentUser?.uid || "admin"
+  };
+
+  if (newEmail) {
+    updateData.email = newEmail;
+  }
+
+  db.collection("users").doc(uid).update(updateData)
+    .then(() => {
+      log(`✏️ Updated user ${uid}: name="${newName}" ${newEmail ? `email="${newEmail}"` : ''}`, "success");
+      
+      // Close modal immediately
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+
+      // The Firestore listener will automatically update the dashboard across all devices
+      // No need to manually refresh - the onSnapshot listener handles it
+    })
+    .catch(err => {
+      console.error("Edit error:", err);
+      alert("❌ Error saving changes: " + err.message);
+      log(`Failed to edit user ${uid}: ${err.message}`, "error");
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save Changes";
+      }
+    });
+}
+
+function editUser(uid) {
+  showEditModal(uid);
+}
+
+/* =====================================================
+   USER ACTIONS
+   ===================================================== */
+function toggleBan(uid, currentState) {
+  if (currentUser && currentUser.uid === uid) {
+    alert("⚠️ Action restricted: You cannot ban your own admin account!");
+    return;
+  }
+
+  const action = currentState ? "unban" : "ban";
+  if (!confirm(`${action.toUpperCase()} this user?`)) return;
+
+  const newBannedState = !currentState;
+
+  const u = users.find(x => x.uid === uid);
+  if (u) {
+    u.banned = newBannedState;
+    render();
+  }
+
+  fetch("http://localhost:3000/api/admin/ban-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, banned: newBannedState })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
+    } else {
+      throw new Error(data.error || "Failed");
+    }
+  })
+  .catch(() => {
+    db.collection("users").doc(uid).update({
+      banned: newBannedState,
+      updatedAt: Date.now()
+    }).then(() => {
+      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
+    }).catch(err => {
+      console.error(err);
+      alert("❌ Error: " + err.message);
+      log(`Failed to toggle ban for ${uid}`, "error");
+      if (u) { u.banned = currentState; render(); }
+    });
+  });
+}
+
+function deleteUser(uid) {
+  if (currentUser && currentUser.uid === uid) {
+    alert("⚠️ Action restricted: You cannot delete your own admin account!");
+    return;
+  }
+
+  if (!confirm("❌ PERMANENTLY DELETE this user? This action cannot be undone!")) return;
+
+  const oldUsers = [...users];
+  users = users.filter(x => x.uid !== uid);
+  render();
+
+  fetch("http://localhost:3000/api/admin/delete-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      log(`Permanently deleted user ${uid}`, "error");
+    } else {
+      throw new Error(data.error || "Failed");
+    }
+  })
+  .catch(() => {
+    db.collection("users").doc(uid).delete().then(() => {
+      db.collection("presence").doc(uid).delete().catch(() => {});
+      log(`Permanently deleted user ${uid}`, "error");
+    }).catch(err => {
+      console.error(err);
+      alert("❌ Error: " + err.message);
+      log(`Failed to delete user ${uid}`, "error");
+      users = oldUsers;
+      render();
+    });
+  });
 }
 
 /* =====================================================
@@ -1705,120 +2178,6 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
-/* =====================================================
-   USER ACTIONS
-   ===================================================== */
-function editUser(uid) {
-  const user = users.find(u => u.uid === uid);
-  if (!user) return;
-
-  const newName = prompt("Enter new display name:", user.displayName || user.name || "");
-  if (newName === null) return;
-
-  db.collection("users").doc(uid).update({
-    displayName: newName,
-    name: newName,
-    updatedAt: Date.now()
-  }).then(() => {
-    log(`Edited user ${uid}: name = ${newName}`, "success");
-  }).catch(err => {
-    console.error(err);
-    alert("❌ Error: " + err.message);
-    log(`Failed to edit user ${uid}`, "error");
-  });
-}
-
-function toggleBan(uid, currentState) {
-  if (currentUser && currentUser.uid === uid) {
-    alert("⚠️ Action restricted: You cannot ban your own admin account!");
-    return;
-  }
-
-  const action = currentState ? "unban" : "ban";
-  if (!confirm(`${action.toUpperCase()} this user?`)) return;
-
-  const newBannedState = !currentState;
-
-  // Optimistically update local array
-  const u = users.find(x => x.uid === uid);
-  if (u) {
-    u.banned = newBannedState;
-    render();
-  }
-
-  // Call backend endpoint with fallback to direct Firestore
-  fetch("http://localhost:3000/api/admin/ban-user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uid, banned: newBannedState })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
-    } else {
-      throw new Error(data.error || "Failed");
-    }
-  })
-  .catch(() => {
-    // Fallback to direct Firestore update if backend is unreachable
-    db.collection("users").doc(uid).update({
-      banned: newBannedState,
-      updatedAt: Date.now()
-    }).then(() => {
-      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
-    }).catch(err => {
-      console.error(err);
-      alert("❌ Error: " + err.message);
-      log(`Failed to toggle ban for ${uid}`, "error");
-      if (u) { u.banned = currentState; render(); }
-    });
-  });
-}
-
-function deleteUser(uid) {
-  if (currentUser && currentUser.uid === uid) {
-    alert("⚠️ Action restricted: You cannot delete your own admin account!");
-    return;
-  }
-
-  if (!confirm("❌ PERMANENTLY DELETE this user? This action cannot be undone!")) return;
-
-  // Optimistically remove from local array
-  const oldUsers = [...users];
-  users = users.filter(x => x.uid !== uid);
-  render();
-
-  // Call backend endpoint with fallback to direct Firestore
-  fetch("http://localhost:3000/api/admin/delete-user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uid })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      log(`Permanently deleted user ${uid}`, "error");
-    } else {
-      throw new Error(data.error || "Failed");
-    }
-  })
-  .catch(() => {
-    // Fallback to direct Firestore delete if backend is unreachable
-    db.collection("users").doc(uid).delete().then(() => {
-      db.collection("presence").doc(uid).delete().catch(() => {});
-      log(`Permanently deleted user ${uid}`, "error");
-    }).catch(err => {
-      console.error(err);
-      alert("❌ Error: " + err.message);
-      log(`Failed to delete user ${uid}`, "error");
-      users = oldUsers;
-      render();
-    });
-  });
-}
-
 
 /* =====================================================
    CHART (Calendar Day Accuracy)
