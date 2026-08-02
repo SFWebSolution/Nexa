@@ -1120,6 +1120,21 @@ td {
   border-radius: 3px;
   background: linear-gradient(90deg, var(--primary), var(--cyan));
 }
+
+.week-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(79, 143, 255, 0.1);
+  border: 1px solid rgba(79, 143, 255, 0.3);
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--primary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
   </style>
 </head>
 <body>
@@ -1179,7 +1194,7 @@ td {
         <div class="stat-icon">⚡</div>
         <div class="stat-label">Weekly Active</div>
         <div class="stat-value" id="weeklyActiveUsers">0</div>
-        <div class="stat-change" id="weeklyActiveText">Active in last 7 days</div>
+        <div class="stat-change" id="weeklyActiveText">Active this calendar week</div>
       </div>
 
       <div class="stat-card">
@@ -1268,7 +1283,7 @@ td {
     <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
         <div class="section-title">🏆 Weekly Most Active Users</div>
-        <div class="section-subtitle" id="weeklySubtitle">Top active contributors in the last 7 days • Reloads weekly</div>
+        <div class="section-subtitle" id="weeklySubtitle">Top active contributors <span class="week-indicator" id="weekIndicator">Mon-Sun</span> • Auto-resets Monday</div>
       </div>
       <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
         🔄 Reload Weekly Stats
@@ -1330,7 +1345,9 @@ let users = [];
 let presenceData = {};
 let totalMessagesCount = 0;
 let activeStoriesCount = 0;
-let weeklyUserScores = {};
+let cachedMsgScores = {};
+let cachedStoryScores = {};
+let currentWeekStart = null;
 let chart = null;
 let currentUser = null;
 let currentFilter = "all";
@@ -1391,7 +1408,8 @@ function handleLogout() {
     document.getElementById("emailInput").value = "";
     users = [];
     presenceData = {};
-    weeklyUserScores = {};
+    cachedMsgScores = {};
+    cachedStoryScores = {};
     log("Admin logged out", "warning");
   }).catch(err => console.error(err));
 }
@@ -1408,12 +1426,62 @@ function checkUserOnline(u) {
 }
 
 /* =====================================================
+   CALENDAR WEEK CALCULATIONS
+   ===================================================== */
+function getMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+  return new Date(d.setDate(diff));
+}
+
+function getCurrentWeekStart() {
+  const monday = getMonday(new Date());
+  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()).getTime();
+}
+
+function getWeekDateRange() {
+  const weekStart = getCurrentWeekStart();
+  const monday = new Date(weekStart);
+  const sunday = new Date(weekStart + 6 * 86400000);
+  
+  const monthStart = monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const monthEnd = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  
+  return `${monthStart} - ${monthEnd}`;
+}
+
+function initWeeklyAutoRefresh() {
+  currentWeekStart = getCurrentWeekStart();
+  updateWeekIndicator();
+  
+  // Check every minute if we've crossed into a new week (Monday)
+  setInterval(() => {
+    const now = getCurrentWeekStart();
+    if (now !== currentWeekStart) {
+      currentWeekStart = now;
+      updateWeekIndicator();
+      log("📅 New calendar week started! Leaderboard reset", "success");
+      render();
+    }
+  }, 60000); // Check every minute
+}
+
+function updateWeekIndicator() {
+  const indicator = document.getElementById("weekIndicator");
+  if (indicator) {
+    indicator.textContent = getWeekDateRange();
+  }
+}
+
+/* =====================================================
    INIT DASHBOARD
    ===================================================== */
 function initDashboard() {
   if (isDashboardInitialized) return;
   isDashboardInitialized = true;
 
+  initWeeklyAutoRefresh();
   listenUsers();
   listenPresence();
   listenChats();
@@ -1541,16 +1609,17 @@ function listenChats() {
       const el = document.getElementById("totalMessages");
       if (el) el.textContent = totalMessagesCount.toLocaleString();
 
-      const weekAgo = Date.now() - 7 * 86400000;
+      const weekStart = getCurrentWeekStart();
       const msgScores = {};
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-        if (data.from && data.createdAt && data.createdAt >= weekAgo) {
+        if (data.from && data.createdAt && data.createdAt >= weekStart) {
           msgScores[data.from] = (msgScores[data.from] || 0) + 1;
         }
       });
 
-      renderLeaderboard(msgScores, null);
+      cachedMsgScores = msgScores;
+      renderLeaderboard();
     },
     err => console.error("Chats count error:", err)
   );
@@ -1560,7 +1629,7 @@ function listenStories() {
   db.collection("status").onSnapshot(
     snapshot => {
       const now = Date.now();
-      const weekAgo = now - 7 * 86400000;
+      const weekStart = getCurrentWeekStart();
       let activeCount = 0;
       const storyScores = {};
 
@@ -1569,7 +1638,7 @@ function listenStories() {
         if (data.createdAt && (now - data.createdAt < 86400000)) {
           activeCount++;
         }
-        if (data.uid && data.createdAt && data.createdAt >= weekAgo) {
+        if (data.uid && data.createdAt && data.createdAt >= weekStart) {
           storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
         }
       });
@@ -1578,7 +1647,8 @@ function listenStories() {
       const el = document.getElementById("activeStories");
       if (el) el.textContent = activeStoriesCount;
 
-      renderLeaderboard(null, storyScores);
+      cachedStoryScores = storyScores;
+      renderLeaderboard();
     },
     err => console.error("Stories count error:", err)
   );
@@ -1601,9 +1671,6 @@ function updateSyncIndicator(isSyncing) {
 /* =====================================================
    WEEKLY LEADERBOARD RENDERER & RELOAD
    ===================================================== */
-let cachedMsgScores = {};
-let cachedStoryScores = {};
-
 function reloadWeeklyStats() {
   const btn = document.getElementById("reloadWeeklyBtn");
   if (btn) {
@@ -1622,15 +1689,12 @@ function reloadWeeklyStats() {
   }, 400);
 }
 
-function renderLeaderboard(msgScores, storyScores) {
-  if (msgScores) cachedMsgScores = msgScores;
-  if (storyScores) cachedStoryScores = storyScores;
-
+function renderLeaderboard() {
   const leaderboardGrid = document.getElementById("leaderboardGrid");
   if (!leaderboardGrid || !users.length) return;
 
   const now = Date.now();
-  const weekAgo = now - 7 * 86400000;
+  const weekStart = getCurrentWeekStart();
 
   const userRankList = users.map(u => {
     const msgs = cachedMsgScores[u.uid] || 0;
@@ -1638,7 +1702,7 @@ function renderLeaderboard(msgScores, storyScores) {
     const p = presenceData[u.uid] || {};
     const lastSeen = p.lastSeen || u.lastSeen || 0;
     const isOnline = checkUserOnline(u);
-    const isWeeklyActive = lastSeen >= weekAgo || u.createdAt >= weekAgo || msgs > 0 || stories > 0;
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
     const activeBonus = isWeeklyActive ? 5 : 0;
     const onlineBonus = isOnline ? 3 : 0;
@@ -1666,7 +1730,7 @@ function renderLeaderboard(msgScores, storyScores) {
   if (!topUsers.length || topUsers[0].score === 0) {
     leaderboardGrid.innerHTML = `
       <div class="leaderboard-card" style="grid-column: 1 / -1;">
-        <div style="color: var(--text-3); font-size: 13px;">No user activity recorded in the last 7 days.</div>
+        <div style="color: var(--text-3); font-size: 13px;">No user activity recorded this calendar week.</div>
       </div>
     `;
     return;
@@ -1730,7 +1794,7 @@ function formatLastSeen(ts) {
 function render() {
   const now = Date.now();
   const day = 86400000;
-  const week = 7 * day;
+  const weekStart = getCurrentWeekStart();
 
   const totalUsers = users.length;
   const todayUsers = users.filter(u => u.createdAt >= now - day).length;
@@ -1745,7 +1809,7 @@ function render() {
     const lastSeen = p.lastSeen || u.lastSeen || 0;
     const isOnline = checkUserOnline(u);
     const isActive = lastSeen >= (now - day);
-    const isWeeklyActive = lastSeen >= (now - week) || u.createdAt >= (now - week) || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
 
     if (isOnline) onlineCount++;
     if (isActive) activeTodayCount++;
