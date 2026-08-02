@@ -545,6 +545,26 @@
   </div>
 </div>
 
+<!-- DELETE CHAT MODAL -->
+<div class="delete-chat-overlay" id="deleteChatModal" onclick="if(event.target===this)closeDeleteChatModal()">
+  <div class="delete-chat-modal">
+    <div class="delete-chat-hdr">
+      <div class="delete-chat-title">Delete Chat</div>
+      <button class="delete-chat-close" onclick="closeDeleteChatModal()">✕</button>
+    </div>
+    <div class="delete-chat-body">
+      Delete chat with <strong id="deleteChatTargetName">User</strong>?
+    </div>
+    <div class="delete-chat-desc">
+      This conversation will be removed from your chat list. You can find it again anytime by searching for their name.
+    </div>
+    <div class="delete-chat-actions">
+      <button class="delete-chat-btn cancel" onclick="closeDeleteChatModal()">Cancel</button>
+      <button class="delete-chat-btn danger" onclick="confirmDeleteChat()">Delete Chat</button>
+    </div>
+  </div>
+</div>
+
 <!-- CONTEXT MENU -->
 <div class="ctx-menu" id="ctxMenu"></div>
 
@@ -820,6 +840,24 @@ function loadLatestMsgState() {
   } catch (e) {}
 }
 
+function saveCachedUsers() {
+  if (!currentUser || !allUsersData.length) return;
+  try {
+    localStorage.setItem("nexa_cached_users_" + currentUser.uid, JSON.stringify(allUsersData));
+  } catch (e) {}
+}
+
+function loadCachedUsers() {
+  if (!currentUser) return;
+  try {
+    const saved = localStorage.getItem("nexa_cached_users_" + currentUser.uid);
+    if (saved) {
+      allUsersData = JSON.parse(saved);
+      renderUsers();
+    }
+  } catch (e) {}
+}
+
 async function loadInitialChatTimestamps() {
   if (!currentUser) return;
   loadLatestMsgState(); // Instantly restore cached chat order from localStorage
@@ -906,6 +944,7 @@ auth.onAuthStateChanged(async (user) => {
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
   loadLatestMsgState();
+  loadDeletedChats();
   await initFCM(user.uid);
 
   await loadProfile();
@@ -1131,11 +1170,69 @@ let unreadMessages = {};
 let mutedChats = {};
 let favoritedChats = {};
 let blockedUsers = {};
+let deletedChats = {};
 let latestMsgTime = {};
 let latestMsgText = {};
 let userPresenceCache = {};
 let userStatus = "online";
 let presenceUnsubs = {};
+let userToDelete = null;
+
+function loadDeletedChats() {
+  if (!currentUser) return;
+  try {
+    const saved = localStorage.getItem("nexa_deleted_chats_" + currentUser.uid);
+    if (saved) deletedChats = JSON.parse(saved);
+    else deletedChats = {};
+  } catch (e) {
+    deletedChats = {};
+  }
+}
+
+function saveDeletedChats() {
+  if (!currentUser) return;
+  try {
+    localStorage.setItem("nexa_deleted_chats_" + currentUser.uid, JSON.stringify(deletedChats));
+  } catch (e) {}
+}
+
+function openDeleteChatModal(user) {
+  if (!user) return;
+  userToDelete = user;
+  const name = user.displayName || user.name || "User";
+  const nameEl = document.getElementById("deleteChatTargetName");
+  if (nameEl) nameEl.textContent = name;
+  const modal = document.getElementById("deleteChatModal");
+  if (modal) modal.classList.add("active");
+}
+
+function closeDeleteChatModal() {
+  userToDelete = null;
+  const modal = document.getElementById("deleteChatModal");
+  if (modal) modal.classList.remove("active");
+}
+
+function confirmDeleteChat() {
+  if (!userToDelete || !currentUser) return;
+  const uid = userToDelete.uid;
+  deletedChats[uid] = true;
+  saveDeletedChats();
+
+  if (selectedUser && selectedUser.uid === uid) {
+    selectedUser = null;
+    const chatNameEl = document.getElementById("chatName");
+    if (chatNameEl) chatNameEl.textContent = "Select a conversation";
+    const msgBox = document.getElementById("messages");
+    if (msgBox) msgBox.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 16px; font-weight: 600;">Nexa Messenger</div><div style="font-size: 13px; color: var(--text-3);">Select a user to start chatting</div></div>';
+    if (window.innerWidth <= 768) {
+      closeMobileChat();
+    }
+  }
+
+  renderUsers();
+  closeDeleteChatModal();
+  showNotifToast("Chat removed from user list", "info");
+}
 
 const PRESENCE_TIMEOUT_MS = 35000;
 
@@ -1153,6 +1250,8 @@ function updateUserOnlineDot(uid, pdata) {
 }
 
 function startUsersListener() {
+  loadCachedUsers();
+
   db.collection("users").onSnapshot(snap => {
     allUsersData = [];
     const seenUids = new Set();
@@ -1198,6 +1297,7 @@ function startUsersListener() {
       }
     });
 
+    saveCachedUsers();
     renderUsers();
   });
 }
@@ -1210,7 +1310,11 @@ function renderUsers() {
 
   const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
   let list = allUsersData.filter(u => !blockedUsers[u.uid]);
-  if (q) list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
+  if (!q) {
+    list = list.filter(u => !deletedChats[u.uid]);
+  } else {
+    list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
+  }
 
   list.sort((a, b) => {
     // 1. Favorited chats first
@@ -1291,7 +1395,6 @@ function renderUsers() {
           ${unread > 0 ? `<div class="unread-badge">${unread > 99 ? '99+' : unread}</div>` : ''}
         </div>
       `;
-      el.addEventListener("click", () => selectChat(user, el));
     } else {
       el.className = "user-item" + (isSelected ? " active" : "");
       
@@ -1321,6 +1424,44 @@ function renderUsers() {
       }
     }
 
+    el._userData = user;
+
+    if (!el.dataset.boundLongPress) {
+      el.dataset.boundLongPress = "true";
+      let pressTimer = null;
+      let isLongPress = false;
+
+      el.addEventListener("touchstart", (e) => {
+        isLongPress = false;
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+          isLongPress = true;
+          if (navigator.vibrate) navigator.vibrate(40);
+          if (el._userData) openDeleteChatModal(el._userData);
+        }, 500);
+      }, { passive: true });
+
+      el.addEventListener("touchend", () => clearTimeout(pressTimer));
+      el.addEventListener("touchmove", () => clearTimeout(pressTimer));
+      el.addEventListener("touchcancel", () => clearTimeout(pressTimer));
+
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (el._userData) openDeleteChatModal(el._userData);
+      });
+
+      el.addEventListener("click", (e) => {
+        if (isLongPress) {
+          e.preventDefault();
+          e.stopPropagation();
+          isLongPress = false;
+          return;
+        }
+        if (el._userData) selectChat(el._userData, el);
+      });
+    }
+
     const currentChild = box.children[idx];
     if (currentChild !== el) {
       box.insertBefore(el, currentChild || null);
@@ -1328,7 +1469,13 @@ function renderUsers() {
   });
 }
 
-function searchUsers() { renderUsers(); }
+let searchUsersTimer = null;
+function searchUsers() {
+  clearTimeout(searchUsersTimer);
+  searchUsersTimer = setTimeout(() => {
+    renderUsers();
+  }, 100);
+}
 
 /* =========================================================================
    TAB & NAVIGATION CONTROL (Chats, Stories, Settings, Profile)
@@ -1640,6 +1787,10 @@ async function changeDisappearingSetting(value) {
 
 function selectChat(user, el) {
   selectedUser = user;
+  if (deletedChats[user.uid]) {
+    delete deletedChats[user.uid];
+    saveDeletedChats();
+  }
   messageRepliedTo = null;
   clearReply();
   document.getElementById("chatName").textContent = user.displayName || "User";
@@ -2314,7 +2465,6 @@ function buildMessage(id, msg, fromMe) {
     if (msg.image) {
       inner += `<div class="media-container">
         <img src="${msg.image}"
-             style="width: 100%; display: block; border-radius: 8px;"
              onclick="viewImg('${msg.image}')"
              loading="lazy"
              alt="shared image">
@@ -2323,9 +2473,7 @@ function buildMessage(id, msg, fromMe) {
 
     if (msg.video) {
       inner += `<div class="media-container">
-        <video controls
-               style="width: 100%; display: block; border-radius: 8px;"
-               preload="metadata">
+        <video controls preload="metadata">
           <source src="${msg.video}" type="video/mp4">
           Your browser does not support video playback.
         </video>
@@ -2687,29 +2835,49 @@ function toggleActionButtons() {
 
 async function sendMessage() {
   if (!selectedUser) { alert("Select a user first"); return; }
+  if (deletedChats[selectedUser.uid]) {
+    delete deletedChats[selectedUser.uid];
+    saveDeletedChats();
+  }
   const text = document.getElementById("text").value.trim();
   if (!text) return;
   document.getElementById("text").value = "";
   const ta = document.getElementById("text");
   ta.style.height = "auto";
   toggleActionButtons();
+
   const extras = { text };
   if (messageRepliedTo) { extras.replyTo = messageRepliedTo.id; }
+  const tempMsgObj = baseMsg(extras);
+  tempMsgObj.id = "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
+
   latestMsgTime[selectedUser.uid] = Date.now();
   latestMsgText[selectedUser.uid] = text;
+  saveLatestMsgState();
   renderUsers();
-  await db.collection("chats").add(baseMsg(extras));
+
+  // Optimistic UI push for 0ms delay feedback
+  _msgsA.push(tempMsgObj);
+  renderMessageList();
   clearReply();
-  const senderName = document.getElementById('myName').textContent || 'Nexa User';
-  sendPushNotification(
-    senderName,
-    `You have received a new message: ${text.substring(0, 80)}`,
-    selectedUser.uid
-  );
-  setTimeout(() => {
-    const box = document.getElementById("messages");
-    box.scrollTop = box.scrollHeight;
-  }, 80);
+
+  const box = document.getElementById("messages");
+  if (box) box.scrollTop = box.scrollHeight;
+
+  try {
+    await db.collection("chats").add(baseMsg(extras));
+    const idx = _msgsA.findIndex(m => m.id === tempMsgObj.id);
+    if (idx > -1) _msgsA.splice(idx, 1);
+
+    const senderName = document.getElementById('myName').textContent || 'Nexa User';
+    sendPushNotification(
+      senderName,
+      `You have received a new message: ${text.substring(0, 80)}`,
+      selectedUser.uid
+    );
+  } catch (err) {
+    showNotifToast("Failed to send message: " + err.message, "error");
+  }
 }
 
 function baseMsg(extras = {}) {
@@ -2981,6 +3149,10 @@ function listenIncoming() {
       const msg = change.doc.data();
       const uid = msg.from;
       if (blockedUsers[uid]) return;
+      if (deletedChats[uid]) {
+        delete deletedChats[uid];
+        saveDeletedChats();
+      }
       const preview = msg.text || (msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
       if (!latestMsgTime[uid] || msg.createdAt > latestMsgTime[uid]) {
         latestMsgTime[uid] = msg.createdAt;
