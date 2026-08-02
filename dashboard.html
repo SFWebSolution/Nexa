@@ -1995,6 +1995,7 @@ function setupHeartbeat() {
 let allMessages = [];
 let _msgsA = [];
 let _msgsB = [];
+let chatJustOpened = false;
 
 function loadMessages() {
   if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
@@ -2002,6 +2003,7 @@ function loadMessages() {
   _msgsA = [];
   _msgsB = [];
   allMessages = [];
+  chatJustOpened = true;
 
   const box = document.getElementById("messages");
   if (box) {
@@ -2284,7 +2286,18 @@ function renderMessageList() {
     }
   }
 
-  if (wasNearBottom) {
+  if (chatJustOpened) {
+    // Force scroll to bottom on chat open — multiple deferred attempts
+    // to handle async DOM layout, images loading, and both Firestore snapshots
+    const forceScroll = () => { box.scrollTop = box.scrollHeight; };
+    forceScroll();
+    requestAnimationFrame(forceScroll);
+    setTimeout(forceScroll, 50);
+    setTimeout(forceScroll, 200);
+    setTimeout(forceScroll, 500);
+    // Only clear the flag after enough time for both snapshots to fire
+    setTimeout(() => { chatJustOpened = false; }, 600);
+  } else if (wasNearBottom) {
     box.scrollTop = box.scrollHeight;
   }
 
