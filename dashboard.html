@@ -2864,6 +2864,9 @@ function buildMessage(id, msg, fromMe) {
              onclick="viewImg('${msg.image}')"
              loading="lazy"
              alt="shared image">
+        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${msg.image}', 'image')" title="Save image">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>`;
     }
 
@@ -2873,6 +2876,9 @@ function buildMessage(id, msg, fromMe) {
           <source src="${msg.video}" type="video/mp4">
           Your browser does not support video playback.
         </video>
+        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${msg.video}', 'video')" title="Save video">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>`;
     }
   }
@@ -3465,6 +3471,18 @@ function viewImg(url) {
   window.open(url, "_blank");
 }
 
+// Download image or video
+function downloadMedia(url, type) {
+  const filename = type === 'image' ? 'nexa-image.jpg' : 'nexa-video.mp4';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 /* =========================================================================
    CHAT INFO PANEL
    ========================================================================= */
@@ -3491,10 +3509,20 @@ function loadMediaGrid() {
     const el = document.createElement("div");
     el.className = "media-thumb";
     if (m.image) {
-      el.innerHTML = `<img src="${m.image}" alt="media">`;
+      el.innerHTML = `
+        <img src="${m.image}" alt="media">
+        <button class="media-thumb-download" onclick="event.stopPropagation(); downloadMedia('${m.image}', 'image')" title="Save image">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      `;
       el.addEventListener("click", () => viewImg(m.image));
     } else if (m.video) {
-      el.innerHTML = `<video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>`;
+      el.innerHTML = `
+        <video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+        <button class="media-thumb-download" onclick="event.stopPropagation(); downloadMedia('${m.video}', 'video')" title="Save video">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      `;
       el.addEventListener("click", () => window.open(m.video, "_blank"));
     }
     grid.appendChild(el);

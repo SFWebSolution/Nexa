@@ -1487,6 +1487,67 @@ button:focus-visible {
   transform: scale(1.02);
 }
 
+/* Download button for chat media */
+.media-download-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t), transform var(--t), background var(--t);
+  color: white;
+  z-index: 2;
+}
+.media-container {
+  position: relative;
+}
+.media-container:hover .media-download-btn {
+  opacity: 1;
+}
+.media-download-btn:hover {
+  background: var(--primary);
+  transform: scale(1.1);
+}
+
+/* Download button for media grid thumbnails */
+.media-thumb {
+  position: relative;
+  overflow: hidden;
+}
+.media-thumb-download {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t), transform var(--t), background var(--t);
+  color: white;
+  z-index: 2;
+}
+.media-thumb:hover .media-thumb-download {
+  opacity: 1;
+}
+.media-thumb-download:hover {
+  background: var(--primary);
+  transform: scale(1.1);
+}
+
 @media (max-width: 768px) {
   .media-container {
     max-width: 200px;
