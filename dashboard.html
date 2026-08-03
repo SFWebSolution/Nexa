@@ -3300,6 +3300,7 @@ let callState = 'idle';         // 'idle' | 'ringing' | 'active' | 'ended'
 let callStartTime = null;
 let callTimerInterval = null;
 let callSignalUnsub = null;
+let callStatusUnsub = null;
 let incomingCallData = null;
 let isMicMuted = false;
 let isCameraOff = false;
@@ -3590,12 +3591,20 @@ async function startCall(type) {
 
 // ── Listen for call status changes ──
 function listenCallStatus(callDocId) {
-  const unsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
-    if (!doc.exists) return;
+  // Clean up previous listener if exists
+  if (callStatusUnsub) {
+    callStatusUnsub();
+    callStatusUnsub = null;
+  }
+  
+  callStatusUnsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
+    // Don't process if call is no longer relevant
+    if (!doc.exists || callState === 'idle') return;
+    
     const data = doc.data();
 
-    // If still ringing, keep listening
-    if (data.status === "ringing") {
+    // If still ringing, keep listening (for incoming calls)
+    if (data.status === "ringing" && callState === "ringing") {
       return;
     }
 
@@ -3624,11 +3633,11 @@ function listenCallStatus(callDocId) {
         return;
       }
       
-      // Callee side – UI update (PeerJS call answered in answerCall())
-      if (callDirection === "incoming" && callState === "ringing") {
+      // Callee side – UI update (call was answered by this user)
+      // Note: callState is already "active" at this point because answerCall() set it
+      if (callDirection === "incoming" && callState === "active") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
-        callState = "active";
         document.getElementById("callStatusLabel").textContent = "Connected";
         document.getElementById("callConnectingSpinner").classList.add("hidden");
         document.getElementById("callTimerDisplay").style.display = "block";
@@ -3645,7 +3654,6 @@ function listenCallStatus(callDocId) {
       showNotifToast("Call declined", "info");
       logCallToChat('declined', callType, 0);
       cleanupCall();
-      unsub();
       return;
     }
 
@@ -3655,7 +3663,6 @@ function listenCallStatus(callDocId) {
         logCallToChat('missed', callType, 0);
       }
       cleanupCall();
-      unsub();
       return;
     }
 
@@ -3666,17 +3673,15 @@ function listenCallStatus(callDocId) {
         logCallToChat('completed', callType, duration);
       }
       cleanupCall();
-      unsub();
       return;
     }
 
     // Call failed (e.g., PeerJS error)
-    if (data.status === "failed" && callState === "ringing") {
+    if (data.status === "failed") {
       showNotifToast("Call failed. Please try again.", "error");
       cleanupCall();
+      return;
     }
-    cleanupCall();
-    unsub();
   });
 }
 
@@ -3794,9 +3799,17 @@ async function answerCall() {
     const callWaitTimeout = setTimeout(() => {
       if (callState === 'active' && !activeCall) {
         console.warn('📞 No PeerJS call received within timeout');
-        showNotifToast("Connection issue. Try again.", "warning");
+        showNotifToast("Connection failed. Please try again.", "error");
+        // Update Firestore and cleanup
+        if (incomingCallData && incomingCallData.id) {
+          db.collection("calls").doc(incomingCallData.id).update({
+            status: "failed",
+            failedAt: Date.now()
+          }).catch(() => {});
+        }
+        cleanupCall();
       }
-    }, 10000);
+    }, 15000); // 15 seconds timeout
     
     // Store timeout for cleanup
     window.callWaitTimeout = callWaitTimeout;
@@ -4127,6 +4140,12 @@ function cleanupCall() {
   if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
   if (navigator.vibrate) navigator.vibrate(0);
 
+  // Unsubscribe from Firestore listeners
+  if (callStatusUnsub) {
+    callStatusUnsub();
+    callStatusUnsub = null;
+  }
+
   // Close PeerJS call
   if (activeCall) {
     try { activeCall.close(); } catch (e) {}
@@ -4156,6 +4175,11 @@ function cleanupCall() {
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
   document.getElementById("callConnectingSpinner").classList.add("hidden");
+  
+  // Reset call controls visibility
+  document.getElementById("activeCallControls").style.display = "none";
+  document.getElementById("incomingCallControls").style.display = "none";
+  document.getElementById("callTimerDisplay").style.display = "none";
 
   callState = 'idle';
   callDirection = null;
