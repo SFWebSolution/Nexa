@@ -902,7 +902,6 @@ async function loadLeaderboardData() {
       const rankClass = rank <= 3 ? `rank-${rank}` : "";
       const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
       const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢</span>' : '';
-      const onlineTimeStr = u.onlineMinutes > 0 ? ` • ⏱️ ${formatOnlineMinutes(u.onlineMinutes)}` : '';
       
       html += `
         <div class="leaderboard-modal-item ${rankClass}">
@@ -910,7 +909,7 @@ async function loadLeaderboardData() {
           <img class="leaderboard-modal-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
           <div class="leaderboard-modal-info">
             <div class="leaderboard-modal-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
-            <div class="leaderboard-modal-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}${onlineTimeStr}</div>
+            <div class="leaderboard-modal-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
           </div>
           <div class="leaderboard-modal-score-wrap">
             <div class="leaderboard-modal-score">${u.score}</div>
