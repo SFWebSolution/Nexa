@@ -3794,6 +3794,25 @@ function setupCallStreamHandlers(mediaCall) {
     console.log('📞 Remote stream received');
     remoteStream = stream;
 
+    // Play remote audio - attach stream to audio element
+    let remoteAudio = document.getElementById("remoteAudio");
+    if (!remoteAudio) {
+      remoteAudio = document.createElement("audio");
+      remoteAudio.id = "remoteAudio";
+      remoteAudio.style.display = "none";
+      document.body.appendChild(remoteAudio);
+    }
+    remoteAudio.srcObject = stream;
+    remoteAudio.play().catch(e => {
+      console.warn("Remote audio autoplay blocked, will play on user interaction:", e);
+      // Add click listener to enable audio
+      const enableAudio = () => {
+        remoteAudio.play().catch(() => {});
+        document.removeEventListener('click', enableAudio);
+      };
+      document.addEventListener('click', enableAudio);
+    });
+
     if (callType === 'video') {
       const remoteVid = document.getElementById("remoteVideo");
       remoteVid.srcObject = stream;
@@ -3961,7 +3980,14 @@ async function flipCamera() {
 
 function toggleCallSpeaker() {
   isSpeakerOn = !isSpeakerOn;
+  const remoteAudio = document.getElementById("remoteAudio");
   const remoteVid = document.getElementById("remoteVideo");
+  
+  // Toggle audio mute
+  if (remoteAudio) {
+    remoteAudio.muted = !isSpeakerOn;
+  }
+  // Also toggle video mute for video calls
   if (remoteVid) remoteVid.muted = !isSpeakerOn;
 
   const btn = document.getElementById("callSpeakerBtn");
@@ -4012,6 +4038,13 @@ function cleanupCall() {
 
   remoteStream = null;
 
+  // Clean up remote audio element
+  const remoteAudio = document.getElementById("remoteAudio");
+  if (remoteAudio) {
+    remoteAudio.pause();
+    remoteAudio.srcObject = null;
+  }
+
   // Reset UI
   document.getElementById("callOverlay").classList.remove("active");
   document.getElementById("floatingCallBar").classList.remove("active");
@@ -4026,6 +4059,7 @@ function cleanupCall() {
   incomingCallData = null;
   isMicMuted = false;
   isCameraOff = false;
+  isSpeakerOn = false;
 }
 
 // ── Log Call to Chat ──
