@@ -901,12 +901,11 @@ async function loadLeaderboardData() {
       const rank = idx + 1;
       const rankClass = rank <= 3 ? `rank-${rank}` : "";
       const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-      const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢</span>' : '';
+      const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢 Online</span>' : '';
       
       html += `
         <div class="leaderboard-modal-item ${rankClass}">
           <div class="leaderboard-modal-rank">${rankBadge}</div>
-          <img class="leaderboard-modal-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
           <div class="leaderboard-modal-info">
             <div class="leaderboard-modal-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
             <div class="leaderboard-modal-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
@@ -993,17 +992,16 @@ async function loadLeaderboardPreview() {
       const rank = idx + 1;
       const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
       const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
-      const onlineBadge = u.isOnline ? ' 🟢' : '';
+      const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢 Online</span>' : '';
       
       html += `
         <div class="leaderboard-preview-item">
           <div class="leaderboard-preview-rank ${rankClass}">${rankBadge}</div>
-          <img class="leaderboard-preview-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
           <div class="leaderboard-preview-info">
             <div class="leaderboard-preview-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
-            <div class="leaderboard-preview-sub">💬 ${u.msgs} msgs • ⭕ ${u.stories} stories</div>
+            <div class="leaderboard-preview-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
           </div>
-          <div class="leaderboard-preview-score">${u.score}</div>
+          <div class="leaderboard-preview-score">${u.score} pts</div>
         </div>
       `;
     });
