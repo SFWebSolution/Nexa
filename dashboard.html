@@ -3338,6 +3338,26 @@ function initPeerJS() {
     return;
   }
 
+  // Reusable function to set up all PeerJS event handlers
+  function setupPeerEventHandlers(peer) {
+    peer.on('open', (id) => {
+      console.log('📞 PeerJS connected with ID:', id);
+      db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
+    });
+
+    peer.on('call', (incomingMediaCall) => {
+      console.log('📞 Incoming PeerJS media call received');
+      activeCall = incomingMediaCall;
+    });
+
+    peer.on('disconnected', () => {
+      console.log('📞 PeerJS disconnected, reconnecting...');
+      if (peer && !peer.destroyed) {
+        try { peer.reconnect(); } catch (e) {}
+      }
+    });
+  }
+
   if (nexaPeer && !nexaPeer.destroyed && nexaPeer.disconnected) {
     console.log('📞 PeerJS disconnected, attempting reconnect...');
     try { nexaPeer.reconnect(); return; } catch (e) {}
@@ -3350,7 +3370,7 @@ function initPeerJS() {
   }
 
   nexaPeer = new Peer(sessionPeerId, {
-    debug: 0,
+    debug: 2,
     config: {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -3362,31 +3382,31 @@ function initPeerJS() {
     }
   });
 
-  nexaPeer.on('open', (id) => {
-    console.log('📞 PeerJS connected with ID:', id);
-    db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
-  });
-
-  nexaPeer.on('call', (incomingMediaCall) => {
-    console.log('📞 Incoming PeerJS media call received');
-    activeCall = incomingMediaCall;
-  });
+  // Set up all event handlers
+  setupPeerEventHandlers(nexaPeer);
 
   nexaPeer.on('error', (err) => {
     console.warn('⚠️ PeerJS error:', err.type, err.message);
+    
+    // Handle unavailable ID - recreate with new ID
     if (err.type === 'unavailable-id') {
       const fallbackId = 'nexa_' + currentUser.uid + '_' + Date.now();
-      nexaPeer = new Peer(fallbackId, { debug: 0 });
-      nexaPeer.on('open', (id) => {
-        db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
+      console.log('📞 Creating new Peer with fallback ID:', fallbackId);
+      nexaPeer = new Peer(fallbackId, {
+        debug: 2,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
       });
+      setupPeerEventHandlers(nexaPeer);
     }
-  });
-
-  nexaPeer.on('disconnected', () => {
-    console.log('📞 PeerJS disconnected, reconnecting...');
-    if (nexaPeer && !nexaPeer.destroyed) {
-      try { nexaPeer.reconnect(); } catch (e) {}
+    
+    // Handle browser not supported
+    if (err.type === 'browser-incompatible') {
+      showNotifToast("Your browser doesn't support video calls", "error");
     }
   });
 
@@ -3398,17 +3418,20 @@ async function ensurePeerConnected() {
   if (nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected) return true;
 
   initPeerJS();
-
+  
+  // Wait for Peer to be ready
   let attempts = 0;
-  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < MAX_RETRY_ATTEMPTS) {
-    if (nexaPeer && nexaPeer.disconnected && !nexaPeer.destroyed) {
-      try { nexaPeer.reconnect(); } catch (e) {}
-    }
-    await new Promise(r => setTimeout(r, 100));
+  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < 50) {
+    await new Promise(r => setTimeout(r, 200));
     attempts++;
   }
-
-  return Boolean(nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected);
+  
+  if (nexaPeer && nexaPeer.open) {
+    console.log('📞 PeerJS ready with ID:', nexaPeer.id);
+    return true;
+  }
+  
+  return false;
 }
 
 // ── Firestore Signaling: Listen for incoming calls ──
@@ -3596,6 +3619,8 @@ function listenCallStatus(callDocId) {
         callState = "active";
         document.getElementById("callStatusLabel").textContent = "Connected";
         document.getElementById("callConnectingSpinner").classList.add("hidden");
+        document.getElementById("callTimerDisplay").style.display = "block";
+        document.getElementById("callTimerDisplay").textContent = "00:00";
         startCallTimer();
         return;
       }
@@ -3606,6 +3631,8 @@ function listenCallStatus(callDocId) {
         callState = "active";
         document.getElementById("callStatusLabel").textContent = "Connected";
         document.getElementById("callConnectingSpinner").classList.add("hidden");
+        document.getElementById("callTimerDisplay").style.display = "block";
+        document.getElementById("callTimerDisplay").textContent = "00:00";
         startCallTimer();
         return;
       }
@@ -3735,6 +3762,14 @@ async function answerCall() {
     return;
   }
 
+  // Ensure PeerJS is connected
+  const peerReady = await ensurePeerConnected();
+  if (!peerReady) {
+    showNotifToast("Connection error. Try again.", "error");
+    rejectCall();
+    return;
+  }
+
   // Update Firestore signal to "answered"
   try {
     await db.collection("calls").doc(incomingCallData.id).update({
@@ -3749,30 +3784,36 @@ async function answerCall() {
 
   // Answer the PeerJS call if it already came in
   if (activeCall) {
-    console.log('📞 Answering PeerJS call');
+    console.log('📞 Answering existing PeerJS call');
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
   } else {
-    console.log('📞 No PeerJS call yet, waiting...');
+    console.log('📞 No PeerJS call yet, setting up listener...');
+    
     // Set up a timeout to wait for the PeerJS call
     const callWaitTimeout = setTimeout(() => {
       if (callState === 'active' && !activeCall) {
         console.warn('📞 No PeerJS call received within timeout');
         showNotifToast("Connection issue. Try again.", "warning");
       }
-    }, 8000);
+    }, 10000);
     
     // Store timeout for cleanup
     window.callWaitTimeout = callWaitTimeout;
     
-    // Wait for PeerJS call to arrive
-    nexaPeer.on('call', (mediaCall) => {
-      clearTimeout(window.callWaitTimeout);
+    // Handler for incoming PeerJS call
+    const callHandler = (mediaCall) => {
+      clearTimeout(callWaitTimeout);
       console.log('📞 Incoming PeerJS call received and answered');
       activeCall = mediaCall;
       mediaCall.answer(localStream);
       setupCallStreamHandlers(mediaCall);
-    });
+      // Remove this handler after it's called
+      nexaPeer.removeListener('call', callHandler);
+    };
+    
+    // Wait for PeerJS call to arrive
+    nexaPeer.on('call', callHandler);
   }
 
   // Listen for status changes
@@ -3880,6 +3921,7 @@ function setupCallStreamHandlers(mediaCall) {
         document.addEventListener('click', enableAudio, { once: true });
       });
     } else {
+      // No audio tracks - still update UI for video calls without audio
       document.getElementById("callStatusLabel").textContent = "In call";
     }
   });
