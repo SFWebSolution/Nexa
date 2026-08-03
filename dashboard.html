@@ -2609,6 +2609,7 @@ function buildMessage(id, msg, fromMe) {
       }).join(", ");
 
       inner += `<div class="reaction${mine ? ' me-reacted' : ''}" 
+                     data-emoji="${emoji}"
                      title="${escapeHtml(reactorNames)}" 
                      onclick="event.stopPropagation(); toggleReact('${id}', '${emoji}')">
                   <span class="reaction-emoji">${emoji}</span>
@@ -2801,9 +2802,9 @@ async function toggleReact(msgId, emoji) {
     r[emoji].push(currentUser.uid);
   }
 
-  // Optimistic UI update
+  // Optimistic UI update - update immediately without full re-render
   msg.reactions = r;
-  renderMessageList();
+  updateReactionUI(msgId, emoji, r);
 
   try {
     await db.collection("chats").doc(msgId).update({ reactions: r });
@@ -2821,6 +2822,63 @@ async function toggleReact(msgId, emoji) {
       msg.from
     );
   }
+}
+
+// Update reaction UI immediately without re-rendering entire list
+function updateReactionUI(msgId, emoji, reactions) {
+  const msgEl = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!msgEl) return;
+
+  const reactionsContainer = msgEl.querySelector('.msg-reactions');
+  
+  // Remove the specific reaction element if it exists
+  const existingReaction = msgEl.querySelector(`.reaction[data-emoji="${emoji}"]`);
+  if (existingReaction) {
+    existingReaction.remove();
+  }
+
+  // If there are no reactions, remove the container
+  if (!reactions || Object.keys(reactions).length === 0) {
+    if (reactionsContainer) reactionsContainer.remove();
+    return;
+  }
+
+  // Create or update reactions container
+  let container = reactionsContainer;
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'msg-reactions';
+    // Insert before msg-meta
+    const msgMeta = msgEl.querySelector('.msg-meta');
+    if (msgMeta) {
+      msgEl.insertBefore(container, msgMeta);
+    } else {
+      msgEl.appendChild(container);
+    }
+  }
+
+  // Build reaction elements for all reactions
+  let html = '';
+  for (const [reactEmoji, users] of Object.entries(reactions)) {
+    if (!Array.isArray(users) || !users.length) continue;
+    const mine = currentUser && users.includes(currentUser.uid);
+    
+    const reactorNames = users.map(uId => {
+      if (currentUser && uId === currentUser.uid) return "You";
+      const found = allUsersData.find(u => u.uid === uId);
+      return found ? (found.displayName || found.name || "User") : "User";
+    }).join(", ");
+
+    html += `<div class="reaction${mine ? ' me-reacted' : ''}" 
+                  data-emoji="${reactEmoji}"
+                  title="${escapeHtml(reactorNames)}" 
+                  onclick="event.stopPropagation(); toggleReact('${msgId}', '${reactEmoji}')">
+                <span class="reaction-emoji">${reactEmoji}</span>
+                <span class="reaction-count">${users.length}</span>
+              </div>`;
+  }
+  
+  container.innerHTML = html;
 }
 
 window.toggleReact = toggleReact;
