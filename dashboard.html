@@ -83,7 +83,7 @@
   <div class="sidebar" id="sidebar">
     <div class="top">
       <div class="top-user-area">
-        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Profile picture" onclick="openProfilePic(this.src)">
+        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="View profile picture" onclick="viewMyProfilePic()">
         <div class="top-info">
           <div class="top-name" id="myName">Loading…</div>
           <div class="top-subtext">Online</div>
@@ -118,7 +118,7 @@
         </div>
         <div class="my-story-card" onclick="openMyStoryOrAdd()">
           <div class="story-avatar-wrap">
-            <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar">
+            <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar" onclick="event.stopPropagation(); viewMyProfilePic()">
             <div class="story-plus-badge">+</div>
           </div>
           <div class="story-card-info">
@@ -195,11 +195,11 @@
         </div>
         <div class="profile-tab-content">
           <div class="profile-avatar-editor">
-            <div class="profile-avatar-preview-wrap" onclick="triggerProfilePhotoUpload()">
+            <div class="profile-avatar-preview-wrap" onclick="viewMyProfilePic()">
               <img src="https://i.imgur.com/HeIi0wU.png" id="profileTabPic" class="profile-large-avatar">
-              <div class="avatar-edit-overlay">📷</div>
+              <div class="avatar-edit-overlay">👁️</div>
             </div>
-            <div class="profile-avatar-hint">Tap photo to change profile picture</div>
+            <div class="profile-avatar-hint">Tap to view photo • <a href="#" onclick="event.preventDefault(); triggerProfilePhotoUpload()" style="color: var(--primary);">Change photo</a></div>
           </div>
 
           <div class="profile-field-group">
@@ -234,7 +234,7 @@
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
         <div class="chat-avatar-wrap">
-          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
+          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar" onclick="event.stopPropagation(); viewSelectedUserProfilePic()">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
         <div class="chat-peer-info">
@@ -595,8 +595,11 @@
   <div id="callConnectingSpinner" class="spinner hidden"></div>
     <!-- TOP HEADER -->
     <div class="call-top-bar">
-      <button class="call-icon-btn" onclick="minimizeCallOverlay()" title="Minimize call"><i data-lucide="chevron-down"></i></button>
-      <div class="call-security-badge"><i data-lucide="lock" style="width: 12px; height: 12px;"></i> End-to-end encrypted</div>
+      <button class="call-icon-btn call-end-btn" onclick="endCall()" title="End call"><i data-lucide="phone-off"></i></button>
+      <div class="call-info-center">
+        <div class="call-peer-info-mini" id="callPeerNameMini">User</div>
+        <div class="call-security-badge"><i data-lucide="lock" style="width: 12px; height: 12px;"></i> Encrypted</div>
+      </div>
       <button class="call-icon-btn" onclick="toggleCallSpeaker()" id="callSpeakerBtn" title="Speaker"><i data-lucide="volume-2"></i></button>
     </div>
 
@@ -612,7 +615,7 @@
 
       <!-- VOICE CALL / OUTGOING / INCOMING PROFILE CARD -->
       <div class="call-profile-card" id="callProfileCard">
-        <div class="call-avatar-wrap" id="callAvatarWrap">
+        <div class="call-avatar-wrap" id="callAvatarWrap" onclick="viewCallPeerProfile()">
           <div class="call-pulse-ring ring-1"></div>
           <div class="call-pulse-ring ring-2"></div>
           <div class="call-pulse-ring ring-3"></div>
@@ -1482,7 +1485,7 @@ function renderUsers() {
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
-          <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <img src="${photo}" class="user-avatar" onclick="viewUserProfilePic('${user.uid}')" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
           <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
         </div>
         <div class="user-info">
@@ -1672,7 +1675,7 @@ function renderStoriesTab() {
 
     card.innerHTML = `
       <div class="story-feed-ring ${allSeen ? 'seen' : 'unseen'}">
-        <img src="${photo}" class="story-feed-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <img src="${photo}" class="story-feed-avatar" onclick="viewUserProfilePic('${user.uid}')" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
       </div>
       <div class="story-feed-info">
         <div class="story-feed-name">${name}</div>
@@ -3464,6 +3467,7 @@ async function startCall(type) {
   // Set up call UI
   document.getElementById("callPeerAvatar").src = peerPhoto;
   document.getElementById("callPeerName").textContent = peerName;
+  document.getElementById("callPeerNameMini").textContent = peerName;
   document.getElementById("callStatusLabel").textContent = type === 'video' ? "Nexa Video Call" : "Nexa Voice Call";
   document.getElementById("callTimerDisplay").style.display = "none";
   document.getElementById("callProfileCard").style.display = "flex";
@@ -3637,6 +3641,7 @@ function showIncomingCallUI(data) {
 
   document.getElementById("callPeerAvatar").src = peerPhoto;
   document.getElementById("callPeerName").textContent = peerName;
+  document.getElementById("callPeerNameMini").textContent = peerName;
   document.getElementById("callStatusLabel").textContent = data.type === 'video' ? "Nexa Video Call" : "Nexa Voice Call";
   document.getElementById("callTimerDisplay").style.display = "none";
   document.getElementById("callProfileCard").style.display = "flex";
@@ -5200,20 +5205,69 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
-function openProfilePic(src) {
+function openProfilePic(src, title = 'Profile Picture') {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
+  const titleEl = document.getElementById('profilePicModalTitle');
   img.src = src;
+  titleEl.textContent = title;
   modal.classList.add('active');
 }
 
-function closeProfilePicModal(event) {
-  if (event.target.id === 'profilePicModal') {
-    event.target.classList.remove('active');
+function viewMyProfilePic() {
+  const myPhoto = document.getElementById('myPic').src || "https://i.imgur.com/HeIi0wU.png";
+  const myName = document.getElementById('myName').textContent || 'Your Profile';
+  openProfilePic(myPhoto, myName + "'s Profile");
+}
+
+function viewUserProfilePic(uid) {
+  const user = findUserByUid(uid);
+  if (user) {
+    const photo = user.photo || user.photoUrl || "https://i.imgur.com/HeIi0wU.png";
+    const name = user.displayName || user.name || 'User';
+    openProfilePic(photo, name + "'s Profile");
   }
 }
 
+function viewSelectedUserProfilePic() {
+  if (selectedUser) {
+    const photo = selectedUser.photo || selectedUser.photoUrl || document.getElementById('chatPic').src || "https://i.imgur.com/HeIi0wU.png";
+    const name = selectedUser.displayName || selectedUser.name || 'User';
+    openProfilePic(photo, name + "'s Profile");
+  }
+}
+
+function viewCallPeerProfile() {
+  const photo = document.getElementById('callPeerAvatar').src || "https://i.imgur.com/HeIi0wU.png";
+  const name = document.getElementById('callPeerName').textContent || 'User';
+  openProfilePic(photo, name + "'s Profile");
+}
+
+function findUserByUid(uid) {
+  if (selectedUser && selectedUser.uid === uid) return selectedUser;
+  if (window.userCache && window.userCache[uid]) return window.userCache[uid];
+  const userItems = document.querySelectorAll('.user-item');
+  for (const item of userItems) {
+    if (item.dataset.uid === uid && item._userData) return item._userData;
+  }
+  return null;
+}
+
+function closeProfilePicModal() {
+  document.getElementById('profilePicModal').classList.remove('active');
+}
+
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
+  <div class="modal-content profile-pic-modal-content" onclick="event.stopPropagation()">
+    <div class="profile-pic-modal-header">
+      <span class="profile-pic-modal-title" id="profilePicModalTitle">Profile Picture</span>
+      <button class="profile-pic-modal-close" onclick="closeProfilePicModal()">✕</button>
+    </div>
+    <div class="profile-pic-modal-body">
+      <img id="modalProfileImg" src="" alt="Profile Picture">
+    </div>
+  </div>
+</div>
 </body>
 </html>
