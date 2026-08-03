@@ -2804,6 +2804,13 @@ async function toggleReact(msgId, emoji) {
 
   // Optimistic UI update - update immediately without full re-render
   msg.reactions = r;
+  
+  // Also update the message in _msgsA and _msgsB so it persists
+  const msgInA = _msgsA.find(m => m.id === msgId);
+  const msgInB = _msgsB.find(m => m.id === msgId);
+  if (msgInA) msgInA.reactions = r;
+  if (msgInB) msgInB.reactions = r;
+  
   updateReactionUI(msgId, emoji, r);
 
   try {
@@ -2826,34 +2833,38 @@ async function toggleReact(msgId, emoji) {
 
 // Update reaction UI immediately without re-rendering entire list
 function updateReactionUI(msgId, emoji, reactions) {
+  // Look for the bubble element inside the message (reactions are in the bubble)
   const msgEl = document.querySelector(`[data-msg-id="${msgId}"]`);
   if (!msgEl) return;
 
-  const reactionsContainer = msgEl.querySelector('.msg-reactions');
+  const bubble = msgEl.querySelector('.bubble');
+  if (!bubble) return;
+
+  // Find the reactions container inside the bubble
+  let container = bubble.querySelector('.msg-reactions');
   
   // Remove the specific reaction element if it exists
-  const existingReaction = msgEl.querySelector(`.reaction[data-emoji="${emoji}"]`);
+  const existingReaction = bubble.querySelector(`.reaction[data-emoji="${emoji}"]`);
   if (existingReaction) {
     existingReaction.remove();
   }
 
   // If there are no reactions, remove the container
   if (!reactions || Object.keys(reactions).length === 0) {
-    if (reactionsContainer) reactionsContainer.remove();
+    if (container) container.remove();
     return;
   }
 
   // Create or update reactions container
-  let container = reactionsContainer;
   if (!container) {
     container = document.createElement('div');
     container.className = 'msg-reactions';
-    // Insert before msg-meta
-    const msgMeta = msgEl.querySelector('.msg-meta');
+    // Insert before msg-meta inside the bubble
+    const msgMeta = bubble.querySelector('.msg-meta');
     if (msgMeta) {
-      msgEl.insertBefore(container, msgMeta);
+      bubble.insertBefore(container, msgMeta);
     } else {
-      msgEl.appendChild(container);
+      bubble.appendChild(container);
     }
   }
 
@@ -3498,24 +3509,41 @@ function listenForIncomingCalls() {
   if (!currentUser) return;
   if (callSignalUnsub) callSignalUnsub();
 
+  // Listen for all calls to this user (no status filter for reliability)
   callSignalUnsub = db.collection("calls")
     .where("to", "==", currentUser.uid)
-    .where("status", "==", "ringing")
     .onSnapshot(snap => {
       snap.docChanges().forEach(change => {
-        if (change.type === "added" || change.type === "modified") {
-          const data = change.doc.data();
-          if (data.status === "ringing" && callState === "idle") {
-            incomingCallData = { id: change.doc.id, ...data };
-            showIncomingCallUI(incomingCallData);
-          }
+        const data = change.doc.data();
+        
+        // New incoming call
+        if (change.type === "added" && data.status === "ringing" && callState === "idle") {
+          incomingCallData = { id: change.doc.id, ...data };
+          showIncomingCallUI(incomingCallData);
+          return;
         }
-        if (change.type === "modified") {
-          const data = change.doc.data();
-          if (data.status === "ended" || data.status === "declined" || data.status === "missed") {
-            if (callState === "ringing" && callDirection === "incoming") {
-              cleanupCall();
-            }
+        
+        // Call ended/cancelled/declined by caller
+        if (change.type === "modified" && 
+            (data.status === "ended" || data.status === "declined" || data.status === "missed")) {
+          if (callDirection === "incoming" && (callState === "ringing" || callState === "active")) {
+            console.log('📞 Incoming call ended/cancelled by caller');
+            stopRingtone();
+            if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+            if (navigator.vibrate) navigator.vibrate(0);
+            cleanupCall();
+          }
+          return;
+        }
+        
+        // Document removed from Firestore (caller ended call before we answered)
+        if (change.type === "removed") {
+          if (callDirection === "incoming" && callState === "ringing") {
+            console.log('📞 Incoming call removed (caller cancelled)');
+            stopRingtone();
+            if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+            if (navigator.vibrate) navigator.vibrate(0);
+            cleanupCall();
           }
         }
       });
