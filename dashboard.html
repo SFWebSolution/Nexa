@@ -3491,6 +3491,7 @@ async function startCall(type) {
       video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    console.log('📞 Local stream obtained:', localStream.getTracks());
 
     // Show local video PiP if video call
     if (type === 'video') {
@@ -3569,24 +3570,28 @@ function listenCallStatus(callDocId) {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
         callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connected";
-        document.getElementById("callConnectingSpinner").classList.add("hidden");
+        document.getElementById("callStatusLabel").textContent = "Connecting...";
+        document.getElementById("callConnectingSpinner").classList.remove("hidden");
+        
         const recipientPeerId = data.receiverPeerId;
         if (recipientPeerId && localStream) {
+          console.log('📞 Initiating PeerJS call to:', recipientPeerId);
           activeCall = nexaPeer.call(recipientPeerId, localStream);
           setupCallStreamHandlers(activeCall);
+        } else {
+          console.error('📞 Missing recipientPeerId or localStream');
+          showNotifToast("Call connection failed", "error");
+          cleanupCall();
         }
-        startCallTimer();
         return;
       }
-      // Callee side – UI update only
+      // Callee side – UI update only (PeerJS call already answered in answerCall())
       if (callDirection === "incoming" && callState === "ringing") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
         callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connected";
-        document.getElementById("callConnectingSpinner").classList.add("hidden");
-        startCallTimer();
+        document.getElementById("callStatusLabel").textContent = "Connecting...";
+        document.getElementById("callConnectingSpinner").classList.remove("hidden");
         return;
       }
     }
@@ -3686,7 +3691,8 @@ async function answerCall() {
   // Switch to active controls
   document.getElementById("activeCallControls").style.display = "flex";
   document.getElementById("incomingCallControls").style.display = "none";
-  document.getElementById("callStatusLabel").textContent = "Connecting…";
+  document.getElementById("callStatusLabel").textContent = "Connecting...";
+  document.getElementById("callConnectingSpinner").classList.remove("hidden");
 
   // Get local media
   try {
@@ -3695,7 +3701,9 @@ async function answerCall() {
       video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    console.log('📞 Local stream obtained:', localStream.getTracks());
 
+    // Show local video if video call
     if (callType === 'video') {
       const localVid = document.getElementById("localVideo");
       localVid.srcObject = localStream;
@@ -3703,7 +3711,7 @@ async function answerCall() {
     }
   } catch (err) {
     console.error("❌ Media access error on answer:", err);
-    showNotifToast("Cannot access " + (callType === 'video' ? "camera" : "microphone"), "error");
+    showNotifToast("Cannot access " + (callType === 'video' ? "camera" : "microphone") + ": " + err.message, "error");
     rejectCall();
     return;
   }
@@ -3715,17 +3723,38 @@ async function answerCall() {
       receiverPeerId: nexaPeer.id,
       answeredAt: Date.now()
     });
+    console.log('📞 Updated Firestore to answered');
   } catch (err) {
     console.error("Error updating call status:", err);
   }
 
   // Answer the PeerJS call if it already came in
   if (activeCall) {
+    console.log('📞 Answering existing PeerJS call');
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
   } else {
+    console.log('📞 Waiting for PeerJS call...');
+    // Set up a timeout to wait for the PeerJS call
+    const callWaitTimeout = setTimeout(() => {
+      if (callState === 'active' && !activeCall) {
+        console.warn('📞 No PeerJS call received, trying direct answer');
+        // Try to initiate a call back to the caller
+        const callerPeerId = incomingCallData.callerPeerId;
+        if (callerPeerId && localStream) {
+          activeCall = nexaPeer.call(callerPeerId, localStream);
+          setupCallStreamHandlers(activeCall);
+        }
+      }
+    }, 3000);
+    
+    // Store timeout for cleanup
+    window.callWaitTimeout = callWaitTimeout;
+    
     // Wait for PeerJS call to arrive
     nexaPeer.on('call', (mediaCall) => {
+      clearTimeout(window.callWaitTimeout);
+      console.log('📞 Incoming PeerJS call received and answered');
       activeCall = mediaCall;
       mediaCall.answer(localStream);
       setupCallStreamHandlers(mediaCall);
@@ -3785,13 +3814,13 @@ async function endCall() {
     logCallToChat('cancelled', callType, 0);
   }
 
-  cleanupCall(true); // keep UI briefly to show duration
+  cleanupCall();
 }
 
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
   mediaCall.on('stream', (stream) => {
-    console.log('📞 Remote stream received');
+    console.log('📞 Remote stream received', stream.getTracks());
     remoteStream = stream;
 
     // Play remote audio - attach stream to audio element
@@ -3803,17 +3832,36 @@ function setupCallStreamHandlers(mediaCall) {
       document.body.appendChild(remoteAudio);
     }
     remoteAudio.srcObject = stream;
-    remoteAudio.play().catch(e => {
-      console.warn("Remote audio autoplay blocked, will play on user interaction:", e);
-      // Add click listener to enable audio
-      const enableAudio = () => {
-        remoteAudio.play().catch(() => {});
+    
+    // Try to play, if blocked by autoplay, set up click listener
+    const playRemoteAudio = () => {
+      remoteAudio.play().then(() => {
+        console.log('📞 Remote audio playing');
+      }).catch(e => {
+        console.warn("Remote audio play failed:", e);
+      });
+    };
+    
+    // Check if audio tracks exist
+    const audioTracks = stream.getAudioTracks();
+    console.log('📞 Remote audio tracks:', audioTracks.length);
+    
+    if (audioTracks.length > 0) {
+      // If autoplay is blocked, enable on first interaction
+      playRemoteAudio();
+      
+      // Add click listener as fallback for autoplay policy
+      document.addEventListener('click', function enableAudio() {
+        playRemoteAudio();
         document.removeEventListener('click', enableAudio);
-      };
-      document.addEventListener('click', enableAudio);
-    });
+      }, { once: true });
+    }
 
-    if (callType === 'video') {
+    // Handle video
+    const videoTracks = stream.getVideoTracks();
+    console.log('📞 Remote video tracks:', videoTracks.length);
+    
+    if (callType === 'video' && videoTracks.length > 0) {
       const remoteVid = document.getElementById("remoteVideo");
       remoteVid.srcObject = stream;
       remoteVid.classList.add("active");
@@ -3835,7 +3883,7 @@ function setupCallStreamHandlers(mediaCall) {
 
   mediaCall.on('error', (err) => {
     console.error('📞 Call error:', err);
-    showNotifToast("Call connection error", "error");
+    showNotifToast("Call connection error: " + err.message, "error");
     document.getElementById("callConnectingSpinner").classList.add("hidden");
     cleanupCall();
   });
@@ -4020,6 +4068,7 @@ function maximizeCallOverlay() {
 function cleanupCall() {
   stopRingtone();
   clearTimeout(callTimeoutTimer);
+  clearTimeout(window.callWaitTimeout);
   clearInterval(callTimerInterval);
   if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
   if (navigator.vibrate) navigator.vibrate(0);
@@ -4052,6 +4101,7 @@ function cleanupCall() {
   document.getElementById("localVideoContainer").classList.remove("active");
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
+  document.getElementById("callConnectingSpinner").classList.add("hidden");
 
   callState = 'idle';
   callDirection = null;
