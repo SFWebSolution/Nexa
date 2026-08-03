@@ -5112,6 +5112,41 @@ input[type="range"] {
   transform: scaleX(-1); /* Mirror the local video */
 }
 
+/* CALL CONNECTING SPINNER */
+.call-overlay .spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+  width: 40px;
+  height: 40px;
+}
+
+.call-overlay .spinner::before,
+.call-overlay .spinner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+}
+
+.call-overlay .spinner::before {
+  border-top-color: var(--primary);
+  animation: callSpin 1s linear infinite;
+}
+
+.call-overlay .spinner::after {
+  inset: 6px;
+  border-top-color: var(--primary-lt);
+  animation: callSpin 0.8s linear infinite reverse;
+}
+
+@keyframes callSpin {
+  to { transform: rotate(360deg); }
+}
+
 /* PROFILE CARD FOR AUDIO / RINGING */
 .call-profile-card {
   display: flex;
