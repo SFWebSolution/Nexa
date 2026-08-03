@@ -3439,9 +3439,14 @@ function listenForIncomingCalls() {
 
 // ── Start a Call (Outgoing) ──
 async function startCall(type) {
-  if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
-  if (callState !== 'idle') { showNotifToast("Already in a call", "warning"); return; }
-  if (callTimeoutTimer) clearTimeout(callTimeoutTimer);
+   if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
+   // Prevent self calls
+   if (selectedUser.uid === currentUser.uid) {
+     showNotifToast("You cannot call yourself", "warning");
+     return;
+   }
+   if (callState !== 'idle') { showNotifToast("Already in a call", "warning"); return; }
+   if (callTimeoutTimer) clearTimeout(callTimeoutTimer);
 
   const peerReady = await ensurePeerConnected();
   if (!peerReady) {
