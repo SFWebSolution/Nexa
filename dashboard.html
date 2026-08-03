@@ -83,7 +83,7 @@
   <div class="sidebar" id="sidebar">
     <div class="top">
       <div class="top-user-area">
-        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Profile picture" onclick="switchTab('profile')">
+        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Profile picture" onclick="openProfilePic(this.src)">
         <div class="top-info">
           <div class="top-name" id="myName">Loading…</div>
           <div class="top-subtext">Online</div>
@@ -5200,6 +5200,19 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
+function openProfilePic(src) {
+  const modal = document.getElementById('profilePicModal');
+  const img = document.getElementById('modalProfileImg');
+  img.src = src;
+  modal.classList.add('active');
+}
+
+function closeProfilePicModal(event) {
+  if (event.target.id === 'profilePicModal') {
+    event.target.classList.remove('active');
+  }
+}
+
 </script>
 <div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
 </body>
