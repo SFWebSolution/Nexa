@@ -864,7 +864,7 @@ async function loadLeaderboardData() {
       presenceData[doc.id] = doc.data();
     });
     
-    // Calculate scores
+    // Calculate scores (matching admin formula)
     const userScores = users.map(u => {
       const msgs = msgCounts[u.uid] || 0;
       const stories = storyCounts[u.uid] || 0;
@@ -872,8 +872,12 @@ async function loadLeaderboardData() {
       const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
       const lastSeen = p.lastSeen || u.lastSeen || 0;
       const isOnline = (Date.now() - lastSeen) < 120000;
-      const score = msgs + (stories * 2) + Math.round(weeklyOnlineMinutes * 2);
+      const onlineTimePoints = Math.round(weeklyOnlineMinutes * 2);
       const isWeeklyActive = lastSeen >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
+      
+      const activeBonus = isWeeklyActive ? 5 : 0;
+      const onlineBonus = isOnline ? 3 : 0;
+      const score = msgs + stories + activeBonus + onlineBonus + onlineTimePoints;
       
       return {
         uid: u.uid,
@@ -891,17 +895,14 @@ async function loadLeaderboardData() {
       return;
     }
     
-    const topUsers = userScores.slice(0, 10);
+    const topUsers = userScores.slice(0, 5);
     let html = '';
     topUsers.forEach((u, idx) => {
       const rank = idx + 1;
       const rankClass = rank <= 3 ? `rank-${rank}` : "";
       const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-      const onlineBadge = u.isOnline ? '<span class="online-badge">🟢</span>' : '';
-      const subText = [];
-      if (u.msgs > 0) subText.push(`${u.msgs} msgs`);
-      if (u.stories > 0) subText.push(`${u.stories} stories`);
-      if (u.onlineMinutes > 0) subText.push(formatOnlineMinutes(u.onlineMinutes));
+      const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢</span>' : '';
+      const onlineTimeStr = u.onlineMinutes > 0 ? ` • ⏱️ ${formatOnlineMinutes(u.onlineMinutes)}` : '';
       
       html += `
         <div class="leaderboard-modal-item ${rankClass}">
@@ -909,7 +910,7 @@ async function loadLeaderboardData() {
           <img class="leaderboard-modal-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
           <div class="leaderboard-modal-info">
             <div class="leaderboard-modal-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
-            <div class="leaderboard-modal-sub">${subText.join(' • ') || 'Active this week'}</div>
+            <div class="leaderboard-modal-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}${onlineTimeStr}</div>
           </div>
           <div class="leaderboard-modal-score-wrap">
             <div class="leaderboard-modal-score">${u.score}</div>
@@ -964,8 +965,12 @@ async function loadLeaderboardPreview() {
       const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
       const lastSeen = p.lastSeen || u.lastSeen || 0;
       const isOnline = (Date.now() - lastSeen) < 120000;
-      const score = msgs + (stories * 2) + Math.round(weeklyOnlineMinutes * 2);
+      const onlineTimePoints = Math.round(weeklyOnlineMinutes * 2);
       const isWeeklyActive = lastSeen >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
+      
+      const activeBonus = isWeeklyActive ? 5 : 0;
+      const onlineBonus = isOnline ? 3 : 0;
+      const score = msgs + stories + activeBonus + onlineBonus + onlineTimePoints;
       
       return {
         uid: u.uid,
@@ -983,20 +988,21 @@ async function loadLeaderboardPreview() {
       return;
     }
     
-    const topUsers = userScores.slice(0, 3);
+    const topUsers = userScores.slice(0, 5);
     let html = '';
     topUsers.forEach((u, idx) => {
       const rank = idx + 1;
       const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
       const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+      const onlineBadge = u.isOnline ? ' 🟢' : '';
       
       html += `
         <div class="leaderboard-preview-item">
           <div class="leaderboard-preview-rank ${rankClass}">${rankBadge}</div>
           <img class="leaderboard-preview-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
           <div class="leaderboard-preview-info">
-            <div class="leaderboard-preview-name">${escapeHtml(u.displayName)}</div>
-            <div class="leaderboard-preview-sub">${u.msgs} msgs • ${u.stories} stories</div>
+            <div class="leaderboard-preview-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
+            <div class="leaderboard-preview-sub">💬 ${u.msgs} msgs • ⭕ ${u.stories} stories</div>
           </div>
           <div class="leaderboard-preview-score">${u.score}</div>
         </div>
