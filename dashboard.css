@@ -5084,12 +5084,12 @@ input[type="range"] {
   position: absolute;
   top: 16px;
   right: 16px;
-  width: 110px;
+  width: 120px;
   height: 160px;
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(79, 143, 255, 0.4);
   display: none;
   z-index: 10;
   background: #111;
@@ -5109,6 +5109,7 @@ input[type="range"] {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: scaleX(-1); /* Mirror the local video */
 }
 
 /* PROFILE CARD FOR AUDIO / RINGING */
