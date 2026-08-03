@@ -38,17 +38,22 @@ self.addEventListener("push", (event) => {
   const body = notification.body || data.body || "You have received a new message";
   const icon = notification.icon || data.icon || "/icon-192.png";
   const badge = notification.badge || data.badge || "/icon-192.png";
+  const isCall = title.includes("Call") || data.isCall === "true";
 
   const options = {
     body: body,
     icon: icon,
     badge: badge,
-    tag: data.tag || ("nexa-msg-" + (data.senderUid || Date.now())),
+    sound: isCall ? "/iphone.mp3" : null,
+    tag: isCall ? "nexa-incoming-call" : (data.tag || ("nexa-msg-" + (data.senderUid || Date.now()))),
     data: data,
     renotify: true,
-    requireInteraction: true,
-    vibrate: [200, 100, 200],
-    actions: [
+    requireInteraction: isCall ? true : true,
+    vibrate: isCall ? [500, 250, 500, 250, 500, 250, 500, 250, 500] : [200, 100, 200],
+    actions: isCall ? [
+      { action: "answer", title: "📞 Answer Call" },
+      { action: "decline", title: "❌ Decline" }
+    ] : [
       { action: "open", title: "Open Chat" },
       { action: "dismiss", title: "Dismiss" }
     ]
@@ -66,17 +71,22 @@ messaging.onBackgroundMessage((payload) => {
   const data = payload.data || {};
   const title = data.title || "Nexa Messenger";
   const body = data.body || "You have received a new message";
+  const isCall = title.includes("Call") || data.isCall === "true";
 
   const options = {
     body: body,
     icon: data.icon || "/icon-192.png",
     badge: data.badge || "/icon-192.png",
-    tag: data.tag || ("nexa-msg-" + (data.senderUid || Date.now())),
+    sound: isCall ? "/iphone.mp3" : null,
+    tag: isCall ? "nexa-incoming-call" : (data.tag || ("nexa-msg-" + (data.senderUid || Date.now()))),
     data: data,
     renotify: true,
-    requireInteraction: true,
-    vibrate: [200, 100, 200],
-    actions: [
+    requireInteraction: isCall ? true : true,
+    vibrate: isCall ? [500, 250, 500, 250, 500, 250, 500, 250, 500] : [200, 100, 200],
+    actions: isCall ? [
+      { action: "answer", title: "📞 Answer Call" },
+      { action: "decline", title: "❌ Decline" }
+    ] : [
       { action: "open", title: "Open Chat" },
       { action: "dismiss", title: "Dismiss" }
     ]
@@ -88,7 +98,7 @@ messaging.onBackgroundMessage((payload) => {
 // ─── Handle Notification Clicks ───
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  if (event.action === "dismiss") return;
+  if (event.action === "dismiss" || event.action === "decline") return;
 
   const clickAction = event.notification.data?.click_action || "/dashboard.html";
 

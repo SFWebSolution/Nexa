@@ -25,8 +25,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   
-  
-  <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js" async defer></script>
+  <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 <link rel="stylesheet" href="dashboard.css">
 </head>
@@ -568,6 +567,93 @@
 <!-- CONTEXT MENU -->
 <div class="ctx-menu" id="ctxMenu"></div>
 
+<!-- AUDIO RINGTONES FOR CALLS -->
+<audio id="ringtoneIncoming" src="iphone.mp3" loop preload="auto"></audio>
+<audio id="ringtoneOutgoing" src="samsung_galaxy_puddles.mp3" loop preload="auto"></audio>
+
+<!-- MINIMIZED FLOATING CALL BAR (WHATSAPP STYLE) -->
+<div class="floating-call-bar" id="floatingCallBar" onclick="maximizeCallOverlay()">
+  <div class="floating-call-info">
+    <div class="floating-call-avatar-wrap">
+      <img src="https://i.imgur.com/HeIi0wU.png" id="floatingCallAvatar" class="floating-call-avatar">
+    </div>
+    <div class="floating-call-text">
+      <div class="floating-call-name" id="floatingCallName">User</div>
+      <div class="floating-call-timer" id="floatingCallTimer">00:00</div>
+    </div>
+  </div>
+  <div class="floating-call-actions">
+    <button class="floating-call-btn danger" onclick="event.stopPropagation(); endCall()" title="End call"><i data-lucide="phone-off"></i></button>
+    <button class="floating-call-btn primary" onclick="event.stopPropagation(); maximizeCallOverlay()" title="Expand"><i data-lucide="maximize-2"></i></button>
+  </div>
+</div>
+
+<!-- FULLSCREEN WHATSAPP CALL OVERLAY -->
+<div class="call-overlay" id="callOverlay">
+  <div class="call-container" id="callContainer">
+    <!-- TOP HEADER -->
+    <div class="call-top-bar">
+      <button class="call-icon-btn" onclick="minimizeCallOverlay()" title="Minimize call"><i data-lucide="chevron-down"></i></button>
+      <div class="call-security-badge"><i data-lucide="lock" style="width: 12px; height: 12px;"></i> End-to-end encrypted</div>
+      <button class="call-icon-btn" onclick="toggleCallSpeaker()" id="callSpeakerBtn" title="Speaker"><i data-lucide="volume-2"></i></button>
+    </div>
+
+    <!-- MAIN CALL VIEWPORT FOR VIDEO / VOICE -->
+    <div class="call-viewport" id="callViewport">
+      <!-- REMOTE VIDEO STREAM -->
+      <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
+      
+      <!-- LOCAL PIP VIDEO STREAM -->
+      <div class="local-video-container" id="localVideoContainer">
+        <video id="localVideo" class="local-video" autoplay playsinline muted></video>
+      </div>
+
+      <!-- VOICE CALL / OUTGOING / INCOMING PROFILE CARD -->
+      <div class="call-profile-card" id="callProfileCard">
+        <div class="call-avatar-wrap" id="callAvatarWrap">
+          <div class="call-pulse-ring ring-1"></div>
+          <div class="call-pulse-ring ring-2"></div>
+          <div class="call-pulse-ring ring-3"></div>
+          <img src="https://i.imgur.com/HeIi0wU.png" id="callPeerAvatar" class="call-peer-avatar">
+        </div>
+        <div class="call-peer-name" id="callPeerName">User</div>
+        <div class="call-status-label" id="callStatusLabel">Calling…</div>
+        <div class="call-timer" id="callTimerDisplay" style="display: none;">00:00</div>
+      </div>
+    </div>
+
+    <!-- ACTION BUTTONS BAR -->
+    <div class="call-actions-bar" id="callActionsBar">
+      <!-- OUTGOING / ACTIVE CALL CONTROLS -->
+      <div class="call-controls-row" id="activeCallControls">
+        <button class="call-action-circle" id="btnMuteMic" onclick="toggleMuteMic()" title="Mute/Unmute Mic">
+          <i data-lucide="mic"></i>
+        </button>
+        <button class="call-action-circle" id="btnToggleVideo" onclick="toggleVideoCamera()" title="Turn Camera On/Off">
+          <i data-lucide="video"></i>
+        </button>
+        <button class="call-action-circle" id="btnFlipCamera" onclick="flipCamera()" title="Switch Camera">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+        <button class="call-action-circle end-call-btn" onclick="endCall()" title="End Call">
+          <i data-lucide="phone-off"></i>
+        </button>
+      </div>
+
+      <!-- INCOMING CALL CONTROLS (ACCEPT / REJECT) -->
+      <div class="call-incoming-row" id="incomingCallControls" style="display: none;">
+        <button class="call-action-circle decline-btn" onclick="rejectCall()" title="Decline Call">
+          <i data-lucide="phone-off"></i>
+        </button>
+        <button class="call-action-circle accept-btn" onclick="answerCall()" title="Accept Call">
+          <i data-lucide="phone"></i>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- FILE INPUTS -->
 <input type="file" id="img" hidden accept="image/*">
 <input type="file" id="fileInput" hidden accept="*">
@@ -866,9 +952,13 @@ async function loadInitialChatTimestamps() {
     const [sentSnap, recvSnap] = await Promise.all([
       db.collection("chats")
         .where("from", "==", currentUser.uid)
+        .orderBy("createdAt", "desc")
+        .limit(50)
         .get(),
       db.collection("chats")
         .where("to", "==", currentUser.uid)
+        .orderBy("createdAt", "desc")
+        .limit(50)
         .get()
     ]);
 
@@ -947,6 +1037,8 @@ auth.onAuthStateChanged(async (user) => {
   loadDeletedChats();
   await initFCM(user.uid);
 
+  initPeerJS();
+
   await loadProfile();
 
   if (!profileSetupRequired) {
@@ -969,13 +1061,16 @@ window.showNotifToast = function(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 };
 
-function sendPushNotification(title, body, targetUidOverride = null) {
+function sendPushNotification(title, body, targetUidOverride = null, extraData = {}) {
   const targetUid = targetUidOverride || (selectedUser ? selectedUser.uid : null);
   if (!targetUid) return;
 
+  const isCall = title.includes("Call") || extraData.isCall === "true";
   const isReaction = title.toLowerCase().includes("react");
+
+  if (isCall && !notificationSettings.calls) return;
   if (isReaction && !notificationSettings.reactions) return;
-  if (!isReaction && !notificationSettings.messages) return;
+  if (!isCall && !isReaction && !notificationSettings.messages) return;
 
   fetch(`${BACKEND_URL}/api/send-notification`, {
     method: 'POST',
@@ -985,7 +1080,12 @@ function sendPushNotification(title, body, targetUidOverride = null) {
       title: title,
       body: body,
       icon: '/icon-192.png',
-      data: { senderUid: currentUser ? currentUser.uid : null, timestamp: Date.now() }
+      data: {
+        senderUid: currentUser ? currentUser.uid : null,
+        timestamp: String(Date.now()),
+        isCall: isCall ? "true" : "false",
+        ...extraData
+      }
     })
   }).then(res => {
     if (res.ok) console.log('✅ Instant push notification dispatched');
@@ -1316,29 +1416,26 @@ function renderUsers() {
     list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
   }
 
+  const userMetrics = new Map();
+  list.forEach(u => {
+    const time = latestMsgTime[u.uid] || 0;
+    userMetrics.set(u.uid, {
+      fav: favoritedChats[u.uid] ? 1 : 0,
+      time: time,
+      hasMsg: time > 0 ? 1 : 0,
+      online: isUserOnline(userPresenceCache[u.uid]) ? 1 : 0,
+      name: (u.displayName || "").toLowerCase()
+    });
+  });
+
   list.sort((a, b) => {
-    // 1. Favorited chats first
-    if (favoritedChats[a.uid] && !favoritedChats[b.uid]) return -1;
-    if (!favoritedChats[a.uid] && favoritedChats[b.uid]) return 1;
-
-    const timeA = latestMsgTime[a.uid] || 0;
-    const timeB = latestMsgTime[b.uid] || 0;
-
-    // 2. Active chats (users with message history) ALWAYS come before contacts with no messages
-    const hasMsgA = timeA > 0 ? 1 : 0;
-    const hasMsgB = timeB > 0 ? 1 : 0;
-    if (hasMsgA !== hasMsgB) return hasMsgB - hasMsgA;
-
-    // 3. Among active chats, sort strictly by recent message timestamp (most recent at top, like WhatsApp)
-    if (timeA !== timeB) return timeB - timeA;
-
-    // 4. Online users first for contacts without chat history
-    const onlineA = isUserOnline(userPresenceCache[a.uid]) ? 1 : 0;
-    const onlineB = isUserOnline(userPresenceCache[b.uid]) ? 1 : 0;
-    if (onlineA !== onlineB) return onlineB - onlineA;
-
-    // 5. Alphabetical fallback
-    return (a.displayName || "").localeCompare(b.displayName || "");
+    const mA = userMetrics.get(a.uid);
+    const mB = userMetrics.get(b.uid);
+    if (mA.fav !== mB.fav) return mB.fav - mA.fav;
+    if (mA.hasMsg !== mB.hasMsg) return mB.hasMsg - mA.hasMsg;
+    if (mA.time !== mB.time) return mB.time - mA.time;
+    if (mA.online !== mB.online) return mB.online - mA.online;
+    return mA.name.localeCompare(mB.name);
   });
 
   if (!list.length) { 
@@ -3185,9 +3282,727 @@ function listenIncoming() {
   });
 }
 
+/* =========================================================================
+   VOICE & VIDEO CALLING ENGINE (WebRTC + PeerJS + Firestore Signaling)
+   ========================================================================= */
+let nexaPeer = null;
+let activeCall = null;
+let localStream = null;
+let remoteStream = null;
+let callType = null;            // 'voice' | 'video'
+let callDirection = null;       // 'outgoing' | 'incoming'
+let callState = 'idle';         // 'idle' | 'ringing' | 'active' | 'ended'
+let callStartTime = null;
+let callTimerInterval = null;
+let callSignalUnsub = null;
+let incomingCallData = null;
+let isMicMuted = false;
+let isCameraOff = false;
+let isSpeakerOn = true;
+let currentFacingMode = 'user';
+const CALL_TIMEOUT_MS = 45000;  // 45 seconds ring timeout
+let callTimeoutTimer = null;
+let vibrationInterval = null;
+
+// ── Initialize PeerJS (called once on login) ──
+function initPeerJS() {
+  if (!currentUser) return;
+
+  if (typeof Peer === 'undefined') {
+    console.warn("⏳ Waiting for PeerJS script to load...");
+    setTimeout(initPeerJS, 500);
+    return;
+  }
+
+  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.id) {
+    return;
+  }
+
+  const sessionPeerId = 'nexa_' + currentUser.uid + '_' + Math.floor(1000 + Math.random() * 9000);
+
+  if (nexaPeer && !nexaPeer.destroyed) {
+    try { nexaPeer.destroy(); } catch (e) {}
+  }
+
+  nexaPeer = new Peer(sessionPeerId, {
+    debug: 0,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
+    }
+  });
+
+  nexaPeer.on('open', (id) => {
+    console.log('📞 PeerJS connected with ID:', id);
+    db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
+  });
+
+  nexaPeer.on('call', (incomingMediaCall) => {
+    console.log('📞 Incoming PeerJS media call received');
+    activeCall = incomingMediaCall;
+  });
+
+  nexaPeer.on('error', (err) => {
+    console.warn('⚠️ PeerJS error:', err.type, err.message);
+    if (err.type === 'unavailable-id') {
+      const fallbackId = 'nexa_' + currentUser.uid + '_' + Date.now();
+      nexaPeer = new Peer(fallbackId, { debug: 0 });
+      nexaPeer.on('open', (id) => {
+        db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
+      });
+    }
+  });
+
+  nexaPeer.on('disconnected', () => {
+    console.log('📞 PeerJS disconnected, reconnecting...');
+    if (nexaPeer && !nexaPeer.destroyed) {
+      try { nexaPeer.reconnect(); } catch (e) {}
+    }
+  });
+
+  listenForIncomingCalls();
+}
+
+async function ensurePeerConnected() {
+  if (!currentUser) return false;
+  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.id) return true;
+
+  initPeerJS();
+
+  let attempts = 0;
+  while ((!nexaPeer || !nexaPeer.id || nexaPeer.destroyed) && attempts < 50) {
+    await new Promise(r => setTimeout(r, 100));
+    attempts++;
+  }
+
+  return nexaPeer && !nexaPeer.destroyed && Boolean(nexaPeer.id);
+}
+
+// ── Firestore Signaling: Listen for incoming calls ──
+function listenForIncomingCalls() {
+  if (!currentUser) return;
+  if (callSignalUnsub) callSignalUnsub();
+
+  callSignalUnsub = db.collection("calls")
+    .where("to", "==", currentUser.uid)
+    .where("status", "==", "ringing")
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === "added" || change.type === "modified") {
+          const data = change.doc.data();
+          if (data.status === "ringing" && callState === "idle") {
+            incomingCallData = { id: change.doc.id, ...data };
+            showIncomingCallUI(incomingCallData);
+          }
+        }
+        if (change.type === "modified") {
+          const data = change.doc.data();
+          if (data.status === "ended" || data.status === "declined" || data.status === "missed") {
+            if (callState === "ringing" && callDirection === "incoming") {
+              cleanupCall();
+            }
+          }
+        }
+      });
+    });
+}
+
+// ── Start a Call (Outgoing) ──
+async function startCall(type) {
+  if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
+  if (callState !== 'idle') { showNotifToast("Already in a call", "warning"); return; }
+
+  const peerReady = await ensurePeerConnected();
+  if (!peerReady) {
+    showNotifToast("Connecting call network... Please try again", "warning");
+    return;
+  }
+
+  callType = type;  // 'voice' or 'video'
+  callDirection = 'outgoing';
+  callState = 'ringing';
+
+  const peerName = selectedUser.displayName || "User";
+  const peerPhoto = selectedUser.photo || "https://i.imgur.com/HeIi0wU.png";
+
+  // Set up call UI
+  document.getElementById("callPeerAvatar").src = peerPhoto;
+  document.getElementById("callPeerName").textContent = peerName;
+  document.getElementById("callStatusLabel").textContent = type === 'video' ? "Nexa Video Call" : "Nexa Voice Call";
+  document.getElementById("callTimerDisplay").style.display = "none";
+  document.getElementById("callProfileCard").style.display = "flex";
+  document.getElementById("activeCallControls").style.display = "flex";
+  document.getElementById("incomingCallControls").style.display = "none";
+  document.getElementById("remoteVideo").classList.remove("active");
+  document.getElementById("localVideoContainer").classList.remove("active");
+
+  // Show call overlay
+  document.getElementById("callOverlay").classList.add("active");
+  if (window.lucide) lucide.createIcons();
+
+  // Play outgoing ringtone (samsung)
+  playRingtone('outgoing');
+
+  // Get local media stream
+  try {
+    const constraints = {
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
+    };
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    // Show local video PiP if video call
+    if (type === 'video') {
+      const localVid = document.getElementById("localVideo");
+      localVid.srcObject = localStream;
+      document.getElementById("localVideoContainer").classList.add("active");
+    }
+  } catch (err) {
+    console.error("❌ Media access error:", err);
+    showNotifToast("Cannot access " + (type === 'video' ? "camera" : "microphone") + ": " + err.message, "error");
+    cleanupCall();
+    return;
+  }
+
+  // Write call signal to Firestore
+  const callDocId = `call_${currentUser.uid}_${selectedUser.uid}_${Date.now()}`;
+  try {
+    await db.collection("calls").doc(callDocId).set({
+      from: currentUser.uid,
+      to: selectedUser.uid,
+      type: type,
+      status: "ringing",
+      callerName: document.getElementById("myName")?.textContent || "Nexa User",
+      callerPhoto: document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png",
+      callerPeerId: nexaPeer.id,
+      createdAt: Date.now()
+    });
+
+    incomingCallData = { id: callDocId };
+
+    // Send FCM push for incoming call
+    sendPushNotification(
+      `📞 Incoming ${type === 'video' ? 'Video' : 'Voice'} Call`,
+      `${document.getElementById("myName")?.textContent || "Someone"} is calling you`,
+      selectedUser.uid,
+      { isCall: "true", callType: type }
+    );
+
+    // Listen for call status changes (answer / decline)
+    listenCallStatus(callDocId);
+
+    // Set timeout for unanswered call
+    callTimeoutTimer = setTimeout(() => {
+      if (callState === 'ringing') {
+        db.collection("calls").doc(callDocId).update({ status: "missed" }).catch(() => {});
+        logCallToChat('missed', callType, 0);
+        showNotifToast("Call not answered", "info");
+        cleanupCall();
+      }
+    }, CALL_TIMEOUT_MS);
+
+  } catch (err) {
+    console.error("❌ Error creating call signal:", err);
+    showNotifToast("Failed to start call", "error");
+    cleanupCall();
+  }
+}
+
+// ── Listen for call status changes ──
+function listenCallStatus(callDocId) {
+  const unsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
+    if (!doc.exists) return;
+    const data = doc.data();
+
+    if (data.status === "answered" && callState === "ringing" && callDirection === "outgoing") {
+      // Recipient answered — initiate PeerJS media call
+      stopRingtone();
+      clearTimeout(callTimeoutTimer);
+      callState = 'active';
+
+      document.getElementById("callStatusLabel").textContent = "Connected";
+
+      // Start PeerJS call to recipient
+      const recipientPeerId = data.receiverPeerId;
+      if (recipientPeerId && localStream) {
+        activeCall = nexaPeer.call(recipientPeerId, localStream);
+        setupCallStreamHandlers(activeCall);
+      }
+
+      startCallTimer();
+    }
+
+    if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
+      stopRingtone();
+      clearTimeout(callTimeoutTimer);
+      showNotifToast("Call declined", "info");
+      logCallToChat('declined', callType, 0);
+      cleanupCall();
+    }
+
+    if (data.status === "ended") {
+      const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
+      if (callState === 'active') {
+        logCallToChat('completed', callType, duration);
+      }
+      cleanupCall();
+      unsub();
+    }
+  });
+}
+
+// ── Show Incoming Call UI ──
+function showIncomingCallUI(data) {
+  callDirection = 'incoming';
+  callState = 'ringing';
+  callType = data.type || 'voice';
+  incomingCallData = data;
+
+  const peerName = data.callerName || "Unknown";
+  const peerPhoto = data.callerPhoto || "https://i.imgur.com/HeIi0wU.png";
+
+  document.getElementById("callPeerAvatar").src = peerPhoto;
+  document.getElementById("callPeerName").textContent = peerName;
+  document.getElementById("callStatusLabel").textContent = data.type === 'video' ? "Nexa Video Call" : "Nexa Voice Call";
+  document.getElementById("callTimerDisplay").style.display = "none";
+  document.getElementById("callProfileCard").style.display = "flex";
+  document.getElementById("activeCallControls").style.display = "none";
+  document.getElementById("incomingCallControls").style.display = "flex";
+  document.getElementById("remoteVideo").classList.remove("active");
+  document.getElementById("localVideoContainer").classList.remove("active");
+
+  document.getElementById("callOverlay").classList.add("active");
+  if (window.lucide) lucide.createIcons();
+
+  // Play incoming ringtone (iphone)
+  playRingtone('incoming');
+
+  // Vibrate device
+  if (navigator.vibrate) {
+    vibrationInterval = setInterval(() => {
+      navigator.vibrate([400, 200, 400, 200, 400]);
+    }, 2000);
+    navigator.vibrate([400, 200, 400, 200, 400]);
+  }
+
+  // Auto-decline after timeout
+  callTimeoutTimer = setTimeout(() => {
+    if (callState === 'ringing' && callDirection === 'incoming') {
+      rejectCall();
+    }
+  }, CALL_TIMEOUT_MS);
+}
+
+// ── Answer Incoming Call ──
+async function answerCall() {
+  if (!incomingCallData || callState !== 'ringing') return;
+
+  stopRingtone();
+  clearTimeout(callTimeoutTimer);
+  if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+  if (navigator.vibrate) navigator.vibrate(0);
+
+  callState = 'active';
+
+  // Switch to active controls
+  document.getElementById("activeCallControls").style.display = "flex";
+  document.getElementById("incomingCallControls").style.display = "none";
+  document.getElementById("callStatusLabel").textContent = "Connecting…";
+
+  // Get local media
+  try {
+    const constraints = {
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
+    };
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    if (callType === 'video') {
+      const localVid = document.getElementById("localVideo");
+      localVid.srcObject = localStream;
+      document.getElementById("localVideoContainer").classList.add("active");
+    }
+  } catch (err) {
+    console.error("❌ Media access error on answer:", err);
+    showNotifToast("Cannot access " + (callType === 'video' ? "camera" : "microphone"), "error");
+    rejectCall();
+    return;
+  }
+
+  // Update Firestore signal to "answered"
+  try {
+    await db.collection("calls").doc(incomingCallData.id).update({
+      status: "answered",
+      receiverPeerId: nexaPeer.id,
+      answeredAt: Date.now()
+    });
+  } catch (err) {
+    console.error("Error updating call status:", err);
+  }
+
+  // Answer the PeerJS call if it already came in
+  if (activeCall) {
+    activeCall.answer(localStream);
+    setupCallStreamHandlers(activeCall);
+  } else {
+    // Wait for PeerJS call to arrive
+    nexaPeer.on('call', (mediaCall) => {
+      activeCall = mediaCall;
+      mediaCall.answer(localStream);
+      setupCallStreamHandlers(mediaCall);
+    });
+  }
+
+  // Listen for status changes
+  listenCallStatus(incomingCallData.id);
+  startCallTimer();
+}
+
+// ── Reject Incoming Call ──
+async function rejectCall() {
+  stopRingtone();
+  clearTimeout(callTimeoutTimer);
+  if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+  if (navigator.vibrate) navigator.vibrate(0);
+
+  if (incomingCallData && incomingCallData.id) {
+    try {
+      await db.collection("calls").doc(incomingCallData.id).update({
+        status: "declined",
+        declinedAt: Date.now()
+      });
+    } catch (err) {
+      console.error("Error declining call:", err);
+    }
+  }
+
+  cleanupCall();
+}
+
+// ── End Active Call ──
+async function endCall() {
+  stopRingtone();
+  clearTimeout(callTimeoutTimer);
+  if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+  if (navigator.vibrate) navigator.vibrate(0);
+
+  const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
+
+  if (incomingCallData && incomingCallData.id) {
+    try {
+      await db.collection("calls").doc(incomingCallData.id).update({
+        status: "ended",
+        endedAt: Date.now(),
+        duration: duration
+      });
+    } catch (err) {
+      console.error("Error ending call:", err);
+    }
+  }
+
+  if (callState === 'active' && duration > 0) {
+    logCallToChat('completed', callType, duration);
+  } else if (callState === 'ringing' && callDirection === 'outgoing') {
+    logCallToChat('cancelled', callType, 0);
+  }
+
+  cleanupCall();
+}
+
+// ── Set up PeerJS media stream handlers ──
+function setupCallStreamHandlers(mediaCall) {
+  mediaCall.on('stream', (stream) => {
+    console.log('📞 Remote stream received');
+    remoteStream = stream;
+
+    if (callType === 'video') {
+      const remoteVid = document.getElementById("remoteVideo");
+      remoteVid.srcObject = stream;
+      remoteVid.classList.add("active");
+      // Hide profile card, show video
+      document.getElementById("callProfileCard").style.display = "none";
+    }
+
+    document.getElementById("callStatusLabel").textContent = "In call";
+  });
+
+  mediaCall.on('close', () => {
+    console.log('📞 Call stream closed');
+    if (callState === 'active') {
+      const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
+      logCallToChat('completed', callType, duration);
+      cleanupCall();
+    }
+  });
+
+  mediaCall.on('error', (err) => {
+    console.error('📞 Call error:', err);
+    showNotifToast("Call connection error", "error");
+    cleanupCall();
+  });
+}
+
+// ── Call Timer ──
+function startCallTimer() {
+  callStartTime = Date.now();
+  document.getElementById("callTimerDisplay").style.display = "block";
+
+  callTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const secs = (elapsed % 60).toString().padStart(2, '0');
+    const timeStr = `${mins}:${secs}`;
+
+    document.getElementById("callTimerDisplay").textContent = timeStr;
+    document.getElementById("floatingCallTimer").textContent = timeStr;
+  }, 1000);
+}
+
+// ── Ringtone Control ──
+function playRingtone(type) {
+  stopRingtone();
+  try {
+    if (type === 'incoming') {
+      const ring = document.getElementById("ringtoneIncoming");
+      ring.currentTime = 0;
+      ring.volume = 1;
+      ring.play().catch(e => console.warn("Incoming ringtone play error:", e));
+    } else {
+      const ring = document.getElementById("ringtoneOutgoing");
+      ring.currentTime = 0;
+      ring.volume = 0.7;
+      ring.play().catch(e => console.warn("Outgoing ringtone play error:", e));
+    }
+  } catch (e) {
+    console.warn("Ringtone error:", e);
+  }
+}
+
+function stopRingtone() {
+  try {
+    const incoming = document.getElementById("ringtoneIncoming");
+    if (incoming) { incoming.pause(); incoming.currentTime = 0; }
+    const outgoing = document.getElementById("ringtoneOutgoing");
+    if (outgoing) { outgoing.pause(); outgoing.currentTime = 0; }
+  } catch (e) {}
+}
+
+// ── Media Controls ──
+function toggleMuteMic() {
+  if (!localStream) return;
+  isMicMuted = !isMicMuted;
+  localStream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted; });
+  const btn = document.getElementById("btnMuteMic");
+  btn.classList.toggle("muted", isMicMuted);
+  showNotifToast(isMicMuted ? "🔇 Mic muted" : "🔊 Mic unmuted", "info");
+}
+
+function toggleVideoCamera() {
+  if (!localStream) return;
+  const videoTracks = localStream.getVideoTracks();
+  if (videoTracks.length === 0) {
+    // No video track — try adding one
+    addVideoTrack();
+    return;
+  }
+  isCameraOff = !isCameraOff;
+  videoTracks.forEach(t => { t.enabled = !isCameraOff; });
+  const btn = document.getElementById("btnToggleVideo");
+  btn.classList.toggle("off", isCameraOff);
+
+  if (isCameraOff) {
+    document.getElementById("localVideoContainer").classList.remove("active");
+  } else {
+    document.getElementById("localVideoContainer").classList.add("active");
+  }
+  showNotifToast(isCameraOff ? "📷 Camera off" : "📷 Camera on", "info");
+}
+
+async function addVideoTrack() {
+  try {
+    const videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const videoTrack = videoStream.getVideoTracks()[0];
+    localStream.addTrack(videoTrack);
+
+    document.getElementById("localVideo").srcObject = localStream;
+    document.getElementById("localVideoContainer").classList.add("active");
+
+    // Replace track on active call
+    if (activeCall && activeCall.peerConnection) {
+      const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) {
+        sender.replaceTrack(videoTrack);
+      } else {
+        activeCall.peerConnection.addTrack(videoTrack, localStream);
+      }
+    }
+
+    isCameraOff = false;
+    document.getElementById("btnToggleVideo").classList.remove("off");
+    callType = 'video';
+    showNotifToast("📷 Camera on", "info");
+  } catch (err) {
+    showNotifToast("Cannot access camera: " + err.message, "error");
+  }
+}
+
+async function flipCamera() {
+  if (!localStream) return;
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const newTrack = newStream.getVideoTracks()[0];
+
+    // Replace in local stream
+    const oldTrack = localStream.getVideoTracks()[0];
+    if (oldTrack) {
+      localStream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    localStream.addTrack(newTrack);
+    document.getElementById("localVideo").srcObject = localStream;
+
+    // Replace in PeerConnection
+    if (activeCall && activeCall.peerConnection) {
+      const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) sender.replaceTrack(newTrack);
+    }
+
+    showNotifToast("📷 Camera flipped", "info");
+  } catch (err) {
+    showNotifToast("Cannot flip camera: " + err.message, "error");
+  }
+}
+
+function toggleCallSpeaker() {
+  isSpeakerOn = !isSpeakerOn;
+  const remoteVid = document.getElementById("remoteVideo");
+  if (remoteVid) remoteVid.muted = !isSpeakerOn;
+
+  const btn = document.getElementById("callSpeakerBtn");
+  btn.classList.toggle("active", isSpeakerOn);
+  showNotifToast(isSpeakerOn ? "🔊 Speaker on" : "🔇 Speaker off", "info");
+}
+
+// ── Minimize / Maximize Call Overlay ──
+function minimizeCallOverlay() {
+  if (callState !== 'active') return;
+  document.getElementById("callOverlay").classList.remove("active");
+
+  const bar = document.getElementById("floatingCallBar");
+  const peerName = document.getElementById("callPeerName").textContent;
+  const peerPhoto = document.getElementById("callPeerAvatar").src;
+  document.getElementById("floatingCallName").textContent = peerName;
+  document.getElementById("floatingCallAvatar").src = peerPhoto;
+  bar.classList.add("active");
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function maximizeCallOverlay() {
+  document.getElementById("floatingCallBar").classList.remove("active");
+  document.getElementById("callOverlay").classList.add("active");
+  if (window.lucide) lucide.createIcons();
+}
+
+// ── Cleanup Call ──
+function cleanupCall() {
+  stopRingtone();
+  clearTimeout(callTimeoutTimer);
+  clearInterval(callTimerInterval);
+  if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+  if (navigator.vibrate) navigator.vibrate(0);
+
+  // Close PeerJS call
+  if (activeCall) {
+    try { activeCall.close(); } catch (e) {}
+    activeCall = null;
+  }
+
+  // Stop all local media tracks
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+
+  remoteStream = null;
+
+  // Reset UI
+  document.getElementById("callOverlay").classList.remove("active");
+  document.getElementById("floatingCallBar").classList.remove("active");
+  document.getElementById("remoteVideo").classList.remove("active");
+  document.getElementById("localVideoContainer").classList.remove("active");
+  document.getElementById("remoteVideo").srcObject = null;
+  document.getElementById("localVideo").srcObject = null;
+
+  callState = 'idle';
+  callDirection = null;
+  callStartTime = null;
+  incomingCallData = null;
+  isMicMuted = false;
+  isCameraOff = false;
+}
+
+// ── Log Call to Chat ──
+function logCallToChat(result, type, durationSec) {
+  if (!currentUser) return;
+
+  const otherUid = callDirection === 'outgoing'
+    ? (selectedUser ? selectedUser.uid : null)
+    : (incomingCallData ? incomingCallData.from : null);
+
+  if (!otherUid) return;
+
+  let emoji = type === 'video' ? '📹' : '📞';
+  let text = '';
+  if (result === 'completed') {
+    const mins = Math.floor(durationSec / 60);
+    const secs = durationSec % 60;
+    text = `${emoji} ${type === 'video' ? 'Video' : 'Voice'} call • ${mins}m ${secs.toString().padStart(2, '0')}s`;
+  } else if (result === 'missed') {
+    emoji = '🚫';
+    text = `${emoji} Missed ${type === 'video' ? 'video' : 'voice'} call`;
+  } else if (result === 'declined') {
+    text = `${emoji} ${type === 'video' ? 'Video' : 'Voice'} call declined`;
+  } else if (result === 'cancelled') {
+    text = `${emoji} ${type === 'video' ? 'Video' : 'Voice'} call cancelled`;
+  }
+
+  if (text) {
+    db.collection("chats").add({
+      from: currentUser.uid,
+      to: otherUid,
+      text: text,
+      callLog: true,
+      callType: type,
+      callResult: result,
+      callDuration: durationSec,
+      createdAt: Date.now(),
+      read: false,
+      status: "sent"
+    }).catch(err => console.warn("Error logging call:", err));
+  }
+}
+
+// ── Public Entry Points (called from chat header buttons) ──
 async function openVoiceCall() {
-  if (!selectedUser) { alert("Select a user first"); return; }
-  alert("Voice calling coming soon!");
+  if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
+  startCall('voice');
+}
+
+function openCallModal(type) {
+  if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
+  startCall(type || 'video');
 }
 
 function openUserProfile() {
@@ -4250,9 +5065,6 @@ function closeAI() {
   }
 }
 
-function openCallModal(type) {
-  alert("Video calling coming soon!");
-}
 
 /* =========================================================================
    FORMATTING HELPERS
