@@ -25,7 +25,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   
-  <script src="https://cdn.peerjs.com/1.5.2/peerjs.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script>if (typeof Peer === 'undefined') { document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>'); }</script>
   <script src="https://unpkg.com/lucide@latest"></script>
 <link rel="stylesheet" href="dashboard.css">
 </head>
@@ -591,6 +592,7 @@
 <!-- FULLSCREEN WHATSAPP CALL OVERLAY -->
 <div class="call-overlay" id="callOverlay">
   <div class="call-container" id="callContainer">
+  <div id="callConnectingSpinner" class="spinner hidden"></div>
     <!-- TOP HEADER -->
     <div class="call-top-bar">
       <button class="call-icon-btn" onclick="minimizeCallOverlay()" title="Minimize call"><i data-lucide="chevron-down"></i></button>
@@ -3301,6 +3303,7 @@ let isCameraOff = false;
 let isSpeakerOn = true;
 let currentFacingMode = 'user';
 const CALL_TIMEOUT_MS = 45000;  // 45 seconds ring timeout
+const MAX_RETRY_ATTEMPTS = 3;  // max PeerJS reconnect attempts
 let callTimeoutTimer = null;
 let vibrationInterval = null;
 
@@ -3310,12 +3313,31 @@ function initPeerJS() {
 
   if (typeof Peer === 'undefined') {
     console.warn("⏳ Waiting for PeerJS script to load...");
-    setTimeout(initPeerJS, 500);
+    if (!document.getElementById("peerjs-dynamic-script")) {
+      const script = document.createElement("script");
+      script.id = "peerjs-dynamic-script";
+      script.src = "https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js";
+      script.onload = () => initPeerJS();
+      script.onerror = () => {
+        const fallbackScript = document.createElement("script");
+        fallbackScript.src = "https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js";
+        fallbackScript.onload = () => initPeerJS();
+        document.head.appendChild(fallbackScript);
+      };
+      document.head.appendChild(script);
+    } else {
+      setTimeout(initPeerJS, 500);
+    }
     return;
   }
 
-  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.id) {
+  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected) {
     return;
+  }
+
+  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.disconnected) {
+    console.log('📞 PeerJS disconnected, attempting reconnect...');
+    try { nexaPeer.reconnect(); return; } catch (e) {}
   }
 
   const sessionPeerId = 'nexa_' + currentUser.uid + '_' + Math.floor(1000 + Math.random() * 9000);
@@ -3370,17 +3392,20 @@ function initPeerJS() {
 
 async function ensurePeerConnected() {
   if (!currentUser) return false;
-  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.id) return true;
+  if (nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected) return true;
 
   initPeerJS();
 
   let attempts = 0;
-  while ((!nexaPeer || !nexaPeer.id || nexaPeer.destroyed) && attempts < 50) {
+  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < MAX_RETRY_ATTEMPTS) {
+    if (nexaPeer && nexaPeer.disconnected && !nexaPeer.destroyed) {
+      try { nexaPeer.reconnect(); } catch (e) {}
+    }
     await new Promise(r => setTimeout(r, 100));
     attempts++;
   }
 
-  return nexaPeer && !nexaPeer.destroyed && Boolean(nexaPeer.id);
+  return Boolean(nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected);
 }
 
 // ── Firestore Signaling: Listen for incoming calls ──
@@ -3416,6 +3441,7 @@ function listenForIncomingCalls() {
 async function startCall(type) {
   if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
   if (callState !== 'idle') { showNotifToast("Already in a call", "warning"); return; }
+  if (callTimeoutTimer) clearTimeout(callTimeoutTimer);
 
   const peerReady = await ensurePeerConnected();
   if (!peerReady) {
@@ -3443,6 +3469,7 @@ async function startCall(type) {
 
   // Show call overlay
   document.getElementById("callOverlay").classList.add("active");
+  document.getElementById("callConnectingSpinner").classList.remove("hidden");
   if (window.lucide) lucide.createIcons();
 
   // Play outgoing ringtone (samsung)
@@ -3519,40 +3546,66 @@ function listenCallStatus(callDocId) {
     if (!doc.exists) return;
     const data = doc.data();
 
+    // If still ringing, keep listening
+    if (data.status === "ringing") {
+      return;
+    }
+
+    // Outgoing call answered – initiate PeerJS media call
     if (data.status === "answered" && callState === "ringing" && callDirection === "outgoing") {
-      // Recipient answered — initiate PeerJS media call
       stopRingtone();
       clearTimeout(callTimeoutTimer);
-      callState = 'active';
+      callState = "active";
 
       document.getElementById("callStatusLabel").textContent = "Connected";
+      document.getElementById("callConnectingSpinner").classList.add("hidden");
 
-      // Start PeerJS call to recipient
       const recipientPeerId = data.receiverPeerId;
       if (recipientPeerId && localStream) {
         activeCall = nexaPeer.call(recipientPeerId, localStream);
         setupCallStreamHandlers(activeCall);
       }
-
       startCallTimer();
+      // Keep listening for further status changes (ended, failed, etc.)
+      return;
     }
 
+    // Outgoing call declined
     if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
       stopRingtone();
       clearTimeout(callTimeoutTimer);
       showNotifToast("Call declined", "info");
       logCallToChat('declined', callType, 0);
       cleanupCall();
+      unsub();
+      return;
     }
 
+    // Call missed (no answer within timeout)
+    if (data.status === "missed") {
+      cleanupCall();
+      unsub();
+      return;
+    }
+
+    // Call ended after active conversation
     if (data.status === "ended") {
       const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
-      if (callState === 'active') {
+      if (callState === "active") {
         logCallToChat('completed', callType, duration);
       }
       cleanupCall();
       unsub();
+      return;
     }
+
+    // Call failed (e.g., PeerJS error)
+    if (data.status === "failed" && callState === "ringing") {
+      showNotifToast("Call failed. Please try again.", "error");
+      cleanupCall();
+    }
+    cleanupCall();
+    unsub();
   });
 }
 
@@ -3743,6 +3796,7 @@ function setupCallStreamHandlers(mediaCall) {
   mediaCall.on('error', (err) => {
     console.error('📞 Call error:', err);
     showNotifToast("Call connection error", "error");
+    document.getElementById("callConnectingSpinner").classList.add("hidden");
     cleanupCall();
   });
 }
