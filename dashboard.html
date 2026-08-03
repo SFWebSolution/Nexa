@@ -3556,25 +3556,36 @@ function listenCallStatus(callDocId) {
       return;
     }
 
-    // Outgoing call answered – initiate PeerJS media call
-    if (data.status === "answered" && callState === "ringing" && callDirection === "outgoing") {
-      stopRingtone();
-      clearTimeout(callTimeoutTimer);
-      callState = "active";
 
-      document.getElementById("callStatusLabel").textContent = "Connected";
-      document.getElementById("callConnectingSpinner").classList.add("hidden");
 
-      const recipientPeerId = data.receiverPeerId;
-      if (recipientPeerId && localStream) {
-        activeCall = nexaPeer.call(recipientPeerId, localStream);
-        setupCallStreamHandlers(activeCall);
+    // Call answered – handle both caller and callee sides
+    if (data.status === "answered") {
+      // Caller side – initiate PeerJS call
+      if (callDirection === "outgoing" && callState === "ringing") {
+        stopRingtone();
+        clearTimeout(callTimeoutTimer);
+        callState = "active";
+        document.getElementById("callStatusLabel").textContent = "Connected";
+        document.getElementById("callConnectingSpinner").classList.add("hidden");
+        const recipientPeerId = data.receiverPeerId;
+        if (recipientPeerId && localStream) {
+          activeCall = nexaPeer.call(recipientPeerId, localStream);
+          setupCallStreamHandlers(activeCall);
+        }
+        startCallTimer();
+        return;
       }
-      startCallTimer();
-      // Keep listening for further status changes (ended, failed, etc.)
-      return;
+      // Callee side – UI update only
+      if (callDirection === "incoming" && callState === "ringing") {
+        stopRingtone();
+        clearTimeout(callTimeoutTimer);
+        callState = "active";
+        document.getElementById("callStatusLabel").textContent = "Connected";
+        document.getElementById("callConnectingSpinner").classList.add("hidden");
+        startCallTimer();
+        return;
+      }
     }
-
     // Outgoing call declined
     if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
       stopRingtone();
