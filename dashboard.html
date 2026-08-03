@@ -3769,7 +3769,7 @@ async function endCall() {
     logCallToChat('cancelled', callType, 0);
   }
 
-  cleanupCall();
+  cleanupCall(true); // keep UI briefly to show duration
 }
 
 // ── Set up PeerJS media stream handlers ──
