@@ -171,6 +171,22 @@
           </div>
 
           <div class="settings-group">
+            <div class="settings-group-title">🏆 Weekly Leaderboard</div>
+            <div class="leaderboard-preview-card" onclick="openWeeklyLeaderboard()">
+              <div class="leaderboard-preview-header">
+                <span class="leaderboard-preview-title">Top Active Users</span>
+                <span class="leaderboard-preview-week">This Week</span>
+              </div>
+              <div class="leaderboard-preview-list" id="leaderboardPreviewList">
+                <div class="leaderboard-preview-loading">Loading...</div>
+              </div>
+              <div class="leaderboard-preview-footer">
+                <span>Tap to view full leaderboard →</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group">
             <div class="settings-group-title">🤖 AI Assistant</div>
             <button class="settings-action-btn" onclick="openAI()">
               <span>🤖 Launch Askify AI</span>
@@ -565,6 +581,22 @@
   </div>
 </div>
 
+<!-- WEEKLY LEADERBOARD MODAL -->
+<div class="leaderboard-modal-overlay" id="leaderboardModal" onclick="closeLeaderboardModal(event)">
+  <div class="leaderboard-modal">
+    <div class="leaderboard-modal-header">
+      <div class="leaderboard-modal-title">
+        🏆 Weekly Leaderboard
+        <span class="leaderboard-preview-week">This Week</span>
+      </div>
+      <button class="leaderboard-modal-close" onclick="closeLeaderboardModal()">✕</button>
+    </div>
+    <div class="leaderboard-modal-body" id="leaderboardModalBody">
+      <div class="leaderboard-preview-loading">Loading...</div>
+    </div>
+  </div>
+</div>
+
 <!-- CONTEXT MENU -->
 <div class="ctx-menu" id="ctxMenu"></div>
 
@@ -754,6 +786,229 @@ function linkify(text) {
   return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
+// Get start of current week (Monday 00:00:00)
+function getCurrentWeekStart() {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(now.setDate(diff));
+  monday.setHours(0, 0, 0, 0);
+  return monday.getTime();
+}
+
+// Format online minutes to readable string
+function formatOnlineMinutes(minutes) {
+  if (!minutes || minutes < 1) return "";
+  if (minutes < 60) return `${Math.round(minutes)}m online`;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  return mins > 0 ? `${hours}h ${mins}m online` : `${hours}h online`;
+}
+
+// Open weekly leaderboard modal
+function openWeeklyLeaderboard() {
+  document.getElementById("leaderboardModal").classList.add("active");
+  loadLeaderboardData();
+}
+
+// Close leaderboard modal
+function closeLeaderboardModal(event) {
+  if (!event || event.target === document.getElementById("leaderboardModal")) {
+    document.getElementById("leaderboardModal").classList.remove("active");
+  }
+}
+
+// Load and display full leaderboard
+async function loadLeaderboardData() {
+  const body = document.getElementById("leaderboardModalBody");
+  body.innerHTML = '<div class="leaderboard-preview-loading">Loading...</div>';
+  
+  try {
+    const weekStart = getCurrentWeekStart();
+    
+    // Get all users
+    const usersSnap = await db.collection("users").get();
+    const users = [];
+    usersSnap.forEach(doc => {
+      const data = doc.data();
+      if (!data.banned) {
+        users.push({ uid: doc.id, ...data });
+      }
+    });
+    
+    // Get messages this week
+    const msgSnap = await db.collection("chats")
+      .where("createdAt", ">=", weekStart)
+      .get();
+    const msgCounts = {};
+    msgSnap.forEach(doc => {
+      const data = doc.data();
+      msgCounts[data.from] = (msgCounts[data.from] || 0) + 1;
+    });
+    
+    // Get stories this week
+    const storySnap = await db.collection("stories")
+      .where("createdAt", ">=", weekStart)
+      .get();
+    const storyCounts = {};
+    storySnap.forEach(doc => {
+      const data = doc.data();
+      const uid = data.uid || data.userId;
+      if (uid) storyCounts[uid] = (storyCounts[uid] || 0) + 1;
+    });
+    
+    // Get presence data for online time
+    const presenceSnap = await db.collection("presence").get();
+    const presenceData = {};
+    presenceSnap.forEach(doc => {
+      presenceData[doc.id] = doc.data();
+    });
+    
+    // Calculate scores
+    const userScores = users.map(u => {
+      const msgs = msgCounts[u.uid] || 0;
+      const stories = storyCounts[u.uid] || 0;
+      const p = presenceData[u.uid] || {};
+      const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
+      const lastSeen = p.lastSeen || u.lastSeen || 0;
+      const isOnline = (Date.now() - lastSeen) < 120000;
+      const score = msgs + (stories * 2) + Math.round(weeklyOnlineMinutes * 2);
+      const isWeeklyActive = lastSeen >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
+      
+      return {
+        uid: u.uid,
+        displayName: u.displayName || u.name || "Nexa User",
+        photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
+        msgs, stories, onlineMinutes: weeklyOnlineMinutes,
+        isOnline, score, isWeeklyActive
+      };
+    }).filter(u => u.isWeeklyActive);
+    
+    userScores.sort((a, b) => b.score - a.score);
+    
+    if (userScores.length === 0) {
+      body.innerHTML = '<div class="leaderboard-preview-empty">No activity this week yet. Be the first!</div>';
+      return;
+    }
+    
+    const topUsers = userScores.slice(0, 10);
+    let html = '';
+    topUsers.forEach((u, idx) => {
+      const rank = idx + 1;
+      const rankClass = rank <= 3 ? `rank-${rank}` : "";
+      const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+      const onlineBadge = u.isOnline ? '<span class="online-badge">🟢</span>' : '';
+      const subText = [];
+      if (u.msgs > 0) subText.push(`${u.msgs} msgs`);
+      if (u.stories > 0) subText.push(`${u.stories} stories`);
+      if (u.onlineMinutes > 0) subText.push(formatOnlineMinutes(u.onlineMinutes));
+      
+      html += `
+        <div class="leaderboard-modal-item ${rankClass}">
+          <div class="leaderboard-modal-rank">${rankBadge}</div>
+          <img class="leaderboard-modal-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
+          <div class="leaderboard-modal-info">
+            <div class="leaderboard-modal-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
+            <div class="leaderboard-modal-sub">${subText.join(' • ') || 'Active this week'}</div>
+          </div>
+          <div class="leaderboard-modal-score-wrap">
+            <div class="leaderboard-modal-score">${u.score}</div>
+            <div class="leaderboard-modal-score-label">pts</div>
+          </div>
+        </div>
+      `;
+    });
+    
+    body.innerHTML = html;
+  } catch (err) {
+    console.error("Error loading leaderboard:", err);
+    body.innerHTML = '<div class="leaderboard-preview-empty">Error loading leaderboard</div>';
+  }
+}
+
+// Load leaderboard preview (for settings tab)
+async function loadLeaderboardPreview() {
+  const container = document.getElementById("leaderboardPreviewList");
+  if (!container) return;
+  
+  try {
+    const weekStart = getCurrentWeekStart();
+    
+    const usersSnap = await db.collection("users").get();
+    const users = [];
+    usersSnap.forEach(doc => {
+      const data = doc.data();
+      if (!data.banned) users.push({ uid: doc.id, ...data });
+    });
+    
+    const msgSnap = await db.collection("chats").where("createdAt", ">=", weekStart).get();
+    const msgCounts = {};
+    msgSnap.forEach(doc => { msgCounts[doc.data().from] = (msgCounts[doc.data().from] || 0) + 1; });
+    
+    const storySnap = await db.collection("stories").where("createdAt", ">=", weekStart).get();
+    const storyCounts = {};
+    storySnap.forEach(doc => {
+      const data = doc.data();
+      const uid = data.uid || data.userId;
+      if (uid) storyCounts[uid] = (storyCounts[uid] || 0) + 1;
+    });
+    
+    const presenceSnap = await db.collection("presence").get();
+    const presenceData = {};
+    presenceSnap.forEach(doc => { presenceData[doc.id] = doc.data(); });
+    
+    const userScores = users.map(u => {
+      const msgs = msgCounts[u.uid] || 0;
+      const stories = storyCounts[u.uid] || 0;
+      const p = presenceData[u.uid] || {};
+      const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
+      const lastSeen = p.lastSeen || u.lastSeen || 0;
+      const isOnline = (Date.now() - lastSeen) < 120000;
+      const score = msgs + (stories * 2) + Math.round(weeklyOnlineMinutes * 2);
+      const isWeeklyActive = lastSeen >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
+      
+      return {
+        uid: u.uid,
+        displayName: u.displayName || u.name || "Nexa User",
+        photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
+        msgs, stories, onlineMinutes: weeklyOnlineMinutes,
+        isOnline, score, isWeeklyActive
+      };
+    }).filter(u => u.isWeeklyActive);
+    
+    userScores.sort((a, b) => b.score - a.score);
+    
+    if (userScores.length === 0) {
+      container.innerHTML = '<div class="leaderboard-preview-empty">No activity this week yet</div>';
+      return;
+    }
+    
+    const topUsers = userScores.slice(0, 3);
+    let html = '';
+    topUsers.forEach((u, idx) => {
+      const rank = idx + 1;
+      const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+      const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+      
+      html += `
+        <div class="leaderboard-preview-item">
+          <div class="leaderboard-preview-rank ${rankClass}">${rankBadge}</div>
+          <img class="leaderboard-preview-avatar" src="${u.photo}" alt="${escapeHtml(u.displayName)}">
+          <div class="leaderboard-preview-info">
+            <div class="leaderboard-preview-name">${escapeHtml(u.displayName)}</div>
+            <div class="leaderboard-preview-sub">${u.msgs} msgs • ${u.stories} stories</div>
+          </div>
+          <div class="leaderboard-preview-score">${u.score}</div>
+        </div>
+      `;
+    });
+    
+    container.innerHTML = html;
+  } catch (err) {
+    console.error("Error loading leaderboard preview:", err);
+    container.innerHTML = '<div class="leaderboard-preview-empty">Unable to load</div>';
+  }
+}
 
 
 async function showProfileSetupModal() {
@@ -1706,6 +1961,9 @@ function renderSettingsTab() {
   if (stToggle) stToggle.classList.toggle("active", notificationSettings.stories);
   const clToggle = document.getElementById("tabNotifCalls");
   if (clToggle) clToggle.classList.toggle("active", notificationSettings.calls);
+  
+  // Load leaderboard preview
+  loadLeaderboardPreview();
 
   const grid = document.getElementById("settingsThemeGrid");
   if (!grid) return;
@@ -2027,9 +2285,32 @@ async function updateOnline(on) {
   if (!currentUser) return;
   const isOnlineState = on && document.visibilityState === "visible";
   userStatus = isOnlineState ? "online" : "offline";
+  const now = Date.now();
+  
   try {
-    await db.collection("presence").doc(currentUser.uid).set(
-      { online: isOnlineState, status: isOnlineState ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
+    const presenceRef = db.collection("presence").doc(currentUser.uid);
+    const presenceDoc = await presenceRef.get().catch(() => null);
+    const existingData = presenceDoc?.exists ? presenceDoc.data() : {};
+    
+    // Calculate online time for this session
+    let weeklyOnlineMinutes = existingData.weeklyOnlineMinutes || 0;
+    const weekStart = getCurrentWeekStart();
+    if (existingData.weekStart !== weekStart) {
+      weeklyOnlineMinutes = 0;
+    }
+    if (isOnlineState) {
+      weeklyOnlineMinutes += (10 / 60); // Add 10 seconds worth of minutes
+    }
+    
+    await presenceRef.set(
+      { 
+        online: isOnlineState, 
+        status: isOnlineState ? "online" : "offline", 
+        lastSeen: now, 
+        uid: currentUser.uid,
+        weeklyOnlineMinutes: Math.round(weeklyOnlineMinutes * 100) / 100,
+        weekStart: weekStart
+      },
       { merge: true }
     );
   } catch (err) {
@@ -2583,6 +2864,9 @@ function buildMessage(id, msg, fromMe) {
              onclick="viewImg('${msg.image}')"
              loading="lazy"
              alt="shared image">
+        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${msg.image}', 'image')" title="Save image">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>`;
     }
 
@@ -2592,6 +2876,9 @@ function buildMessage(id, msg, fromMe) {
           <source src="${msg.video}" type="video/mp4">
           Your browser does not support video playback.
         </video>
+        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${msg.video}', 'video')" title="Save video">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>`;
     }
   }
@@ -3184,6 +3471,18 @@ function viewImg(url) {
   window.open(url, "_blank");
 }
 
+// Download image or video
+function downloadMedia(url, type) {
+  const filename = type === 'image' ? 'nexa-image.jpg' : 'nexa-video.mp4';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 /* =========================================================================
    CHAT INFO PANEL
    ========================================================================= */
@@ -3210,10 +3509,20 @@ function loadMediaGrid() {
     const el = document.createElement("div");
     el.className = "media-thumb";
     if (m.image) {
-      el.innerHTML = `<img src="${m.image}" alt="media">`;
+      el.innerHTML = `
+        <img src="${m.image}" alt="media">
+        <button class="media-thumb-download" onclick="event.stopPropagation(); downloadMedia('${m.image}', 'image')" title="Save image">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      `;
       el.addEventListener("click", () => viewImg(m.image));
     } else if (m.video) {
-      el.innerHTML = `<video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>`;
+      el.innerHTML = `
+        <video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+        <button class="media-thumb-download" onclick="event.stopPropagation(); downloadMedia('${m.video}', 'video')" title="Save video">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      `;
       el.addEventListener("click", () => window.open(m.video, "_blank"));
     }
     grid.appendChild(el);

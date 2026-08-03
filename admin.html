@@ -1702,11 +1702,13 @@ function renderLeaderboard() {
     const p = presenceData[u.uid] || {};
     const lastSeen = p.lastSeen || u.lastSeen || 0;
     const isOnline = checkUserOnline(u);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
+    const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
+    const onlineTimePoints = Math.round(weeklyOnlineMinutes * 2);
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
 
     const activeBonus = isWeeklyActive ? 5 : 0;
     const onlineBonus = isOnline ? 3 : 0;
-    const totalScore = msgs + stories + activeBonus + onlineBonus;
+    const totalScore = msgs + stories + activeBonus + onlineBonus + onlineTimePoints;
 
     return {
       uid: u.uid,
@@ -1716,6 +1718,7 @@ function renderLeaderboard() {
       banned: u.banned === true,
       msgs: msgs,
       stories: Math.floor(stories / 2),
+      onlineMinutes: weeklyOnlineMinutes,
       isOnline: isOnline,
       isWeeklyActive: isWeeklyActive,
       score: totalScore
@@ -1742,13 +1745,14 @@ function renderLeaderboard() {
     const rankClass = rank <= 3 ? `rank-${rank}` : "";
     const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
     const onlineTag = u.isOnline ? ` • <span style="color: var(--online);">🟢 Online</span>` : "";
+    const onlineTimeStr = u.onlineMinutes > 0 ? ` • ⏱️ ${formatOnlineTime(u.onlineMinutes)}` : "";
 
     return `
       <div class="leaderboard-card ${rankClass}">
         <div class="rank-badge">${rankBadge}</div>
         <div class="leaderboard-info">
           <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
-          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
+          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}${onlineTimeStr}</div>
           <div class="activity-bar-bg">
             <div class="activity-bar-fill" style="width: ${pct}%;"></div>
           </div>
@@ -1765,6 +1769,16 @@ function renderLeaderboard() {
 /* =====================================================
    TIMESTAMP HELPER
    ===================================================== */
+
+// Format online minutes to readable string
+function formatOnlineTime(minutes) {
+  if (minutes < 1) return `${Math.round(minutes * 60)}s`;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
 function normalizeTimestamp(value) {
   if (!value) return Date.now();
   if (typeof value.toDate === "function") return value.toDate().getTime();
