@@ -3506,6 +3506,21 @@ async function startCall(type) {
     return;
   }
 
+  // Get recipient's peer ID
+  let recipientPeerId = selectedUser.peerId;
+  
+  // If no peer ID, try to get from Firestore
+  if (!recipientPeerId) {
+    try {
+      const userDoc = await db.collection("users").doc(selectedUser.uid).get();
+      if (userDoc.exists) {
+        recipientPeerId = userDoc.data().peerId;
+      }
+    } catch (err) {
+      console.error("Error getting recipient peer ID:", err);
+    }
+  }
+
   // Write call signal to Firestore
   const callDocId = `call_${currentUser.uid}_${selectedUser.uid}_${Date.now()}`;
   try {
@@ -3532,6 +3547,17 @@ async function startCall(type) {
 
     // Listen for call status changes (answer / decline)
     listenCallStatus(callDocId);
+
+    // IMMEDIATELY initiate PeerJS call (WhatsApp style)
+    if (recipientPeerId && localStream) {
+      console.log('📞 Initiating PeerJS call immediately to:', recipientPeerId);
+      activeCall = nexaPeer.call(recipientPeerId, localStream);
+      setupCallStreamHandlers(activeCall);
+    } else {
+      console.warn('📞 Recipient peer ID not found, will retry after answer');
+      // Store for later when we get the peer ID
+      window.pendingCallRecipientUid = selectedUser.uid;
+    }
 
     // Set timeout for unanswered call
     callTimeoutTimer = setTimeout(() => {
@@ -3561,40 +3587,30 @@ function listenCallStatus(callDocId) {
       return;
     }
 
-
-
-    // Call answered – handle both caller and callee sides
+    // Call answered by callee
     if (data.status === "answered") {
-      // Caller side – initiate PeerJS call
+      // Caller side – PeerJS call already initiated in startCall()
       if (callDirection === "outgoing" && callState === "ringing") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
         callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connecting...";
-        document.getElementById("callConnectingSpinner").classList.remove("hidden");
-        
-        const recipientPeerId = data.receiverPeerId;
-        if (recipientPeerId && localStream) {
-          console.log('📞 Initiating PeerJS call to:', recipientPeerId);
-          activeCall = nexaPeer.call(recipientPeerId, localStream);
-          setupCallStreamHandlers(activeCall);
-        } else {
-          console.error('📞 Missing recipientPeerId or localStream');
-          showNotifToast("Call connection failed", "error");
-          cleanupCall();
-        }
+        document.getElementById("callStatusLabel").textContent = "Connected";
+        document.getElementById("callConnectingSpinner").classList.add("hidden");
+        startCallTimer();
         return;
       }
-      // Callee side – UI update only (PeerJS call already answered in answerCall())
+      // Callee side – UI update (PeerJS call answered in answerCall())
       if (callDirection === "incoming" && callState === "ringing") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
         callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connecting...";
-        document.getElementById("callConnectingSpinner").classList.remove("hidden");
+        document.getElementById("callStatusLabel").textContent = "Connected";
+        document.getElementById("callConnectingSpinner").classList.add("hidden");
+        startCallTimer();
         return;
       }
     }
+    
     // Outgoing call declined
     if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
       stopRingtone();
@@ -3608,6 +3624,9 @@ function listenCallStatus(callDocId) {
 
     // Call missed (no answer within timeout)
     if (data.status === "missed") {
+      if (callState === "ringing") {
+        logCallToChat('missed', callType, 0);
+      }
       cleanupCall();
       unsub();
       return;
@@ -3730,23 +3749,18 @@ async function answerCall() {
 
   // Answer the PeerJS call if it already came in
   if (activeCall) {
-    console.log('📞 Answering existing PeerJS call');
+    console.log('📞 Answering PeerJS call');
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
   } else {
-    console.log('📞 Waiting for PeerJS call...');
+    console.log('📞 No PeerJS call yet, waiting...');
     // Set up a timeout to wait for the PeerJS call
     const callWaitTimeout = setTimeout(() => {
       if (callState === 'active' && !activeCall) {
-        console.warn('📞 No PeerJS call received, trying direct answer');
-        // Try to initiate a call back to the caller
-        const callerPeerId = incomingCallData.callerPeerId;
-        if (callerPeerId && localStream) {
-          activeCall = nexaPeer.call(callerPeerId, localStream);
-          setupCallStreamHandlers(activeCall);
-        }
+        console.warn('📞 No PeerJS call received within timeout');
+        showNotifToast("Connection issue. Try again.", "warning");
       }
-    }, 3000);
+    }, 8000);
     
     // Store timeout for cleanup
     window.callWaitTimeout = callWaitTimeout;
@@ -3763,7 +3777,6 @@ async function answerCall() {
 
   // Listen for status changes
   listenCallStatus(incomingCallData.id);
-  startCallTimer();
 }
 
 // ── Reject Incoming Call ──
@@ -3823,44 +3836,13 @@ function setupCallStreamHandlers(mediaCall) {
     console.log('📞 Remote stream received', stream.getTracks());
     remoteStream = stream;
 
-    // Play remote audio - attach stream to audio element
-    let remoteAudio = document.getElementById("remoteAudio");
-    if (!remoteAudio) {
-      remoteAudio = document.createElement("audio");
-      remoteAudio.id = "remoteAudio";
-      remoteAudio.style.display = "none";
-      document.body.appendChild(remoteAudio);
-    }
-    remoteAudio.srcObject = stream;
-    
-    // Try to play, if blocked by autoplay, set up click listener
-    const playRemoteAudio = () => {
-      remoteAudio.play().then(() => {
-        console.log('📞 Remote audio playing');
-      }).catch(e => {
-        console.warn("Remote audio play failed:", e);
-      });
-    };
-    
-    // Check if audio tracks exist
+    // Get stream info
     const audioTracks = stream.getAudioTracks();
-    console.log('📞 Remote audio tracks:', audioTracks.length);
-    
-    if (audioTracks.length > 0) {
-      // If autoplay is blocked, enable on first interaction
-      playRemoteAudio();
-      
-      // Add click listener as fallback for autoplay policy
-      document.addEventListener('click', function enableAudio() {
-        playRemoteAudio();
-        document.removeEventListener('click', enableAudio);
-      }, { once: true });
-    }
-
-    // Handle video
     const videoTracks = stream.getVideoTracks();
+    console.log('📞 Remote audio tracks:', audioTracks.length);
     console.log('📞 Remote video tracks:', videoTracks.length);
-    
+
+    // Handle video for video calls
     if (callType === 'video' && videoTracks.length > 0) {
       const remoteVid = document.getElementById("remoteVideo");
       remoteVid.srcObject = stream;
@@ -3869,7 +3851,37 @@ function setupCallStreamHandlers(mediaCall) {
       document.getElementById("callProfileCard").style.display = "none";
     }
 
-    document.getElementById("callStatusLabel").textContent = "In call";
+    // Handle audio - always play remote audio
+    // Create a separate audio-only stream for audio playback
+    if (audioTracks.length > 0) {
+      const audioStream = new MediaStream(audioTracks);
+      let remoteAudio = document.getElementById("remoteAudio");
+      if (!remoteAudio) {
+        remoteAudio = document.createElement("audio");
+        remoteAudio.id = "remoteAudio";
+        remoteAudio.style.display = "none";
+        document.body.appendChild(remoteAudio);
+      }
+      remoteAudio.srcObject = audioStream;
+      
+      // Try to play
+      remoteAudio.play().then(() => {
+        console.log('📞 Remote audio playing');
+        document.getElementById("callStatusLabel").textContent = "In call";
+      }).catch(e => {
+        console.warn("Remote audio play failed (autoplay blocked):", e);
+        // Enable on user interaction
+        const enableAudio = () => {
+          remoteAudio.play().then(() => {
+            document.getElementById("callStatusLabel").textContent = "In call";
+          }).catch(() => {});
+          document.removeEventListener('click', enableAudio);
+        };
+        document.addEventListener('click', enableAudio, { once: true });
+      });
+    } else {
+      document.getElementById("callStatusLabel").textContent = "In call";
+    }
   });
 
   mediaCall.on('close', () => {
