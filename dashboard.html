@@ -3509,24 +3509,41 @@ function listenForIncomingCalls() {
   if (!currentUser) return;
   if (callSignalUnsub) callSignalUnsub();
 
+  // Listen for all calls to this user (no status filter for reliability)
   callSignalUnsub = db.collection("calls")
     .where("to", "==", currentUser.uid)
-    .where("status", "==", "ringing")
     .onSnapshot(snap => {
       snap.docChanges().forEach(change => {
-        if (change.type === "added" || change.type === "modified") {
-          const data = change.doc.data();
-          if (data.status === "ringing" && callState === "idle") {
-            incomingCallData = { id: change.doc.id, ...data };
-            showIncomingCallUI(incomingCallData);
-          }
+        const data = change.doc.data();
+        
+        // New incoming call
+        if (change.type === "added" && data.status === "ringing" && callState === "idle") {
+          incomingCallData = { id: change.doc.id, ...data };
+          showIncomingCallUI(incomingCallData);
+          return;
         }
-        if (change.type === "modified") {
-          const data = change.doc.data();
-          if (data.status === "ended" || data.status === "declined" || data.status === "missed") {
-            if (callState === "ringing" && callDirection === "incoming") {
-              cleanupCall();
-            }
+        
+        // Call ended/cancelled/declined by caller
+        if (change.type === "modified" && 
+            (data.status === "ended" || data.status === "declined" || data.status === "missed")) {
+          if (callDirection === "incoming" && (callState === "ringing" || callState === "active")) {
+            console.log('📞 Incoming call ended/cancelled by caller');
+            stopRingtone();
+            if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+            if (navigator.vibrate) navigator.vibrate(0);
+            cleanupCall();
+          }
+          return;
+        }
+        
+        // Document removed from Firestore (caller ended call before we answered)
+        if (change.type === "removed") {
+          if (callDirection === "incoming" && callState === "ringing") {
+            console.log('📞 Incoming call removed (caller cancelled)');
+            stopRingtone();
+            if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
+            if (navigator.vibrate) navigator.vibrate(0);
+            cleanupCall();
           }
         }
       });
