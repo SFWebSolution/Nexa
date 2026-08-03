@@ -3558,7 +3558,7 @@ async function startCall(type) {
       createdAt: Date.now()
     });
 
-    incomingCallData = { id: callDocId };
+    incomingCallData = { id: callDocId, recipientPeerId: recipientPeerId };
 
     // Send FCM push for incoming call
     sendPushNotification(
@@ -3570,17 +3570,6 @@ async function startCall(type) {
 
     // Listen for call status changes (answer / decline)
     listenCallStatus(callDocId);
-
-    // IMMEDIATELY initiate PeerJS call (WhatsApp style)
-    if (recipientPeerId && localStream) {
-      console.log('📞 Initiating PeerJS call immediately to:', recipientPeerId);
-      activeCall = nexaPeer.call(recipientPeerId, localStream);
-      setupCallStreamHandlers(activeCall);
-    } else {
-      console.warn('📞 Recipient peer ID not found, will retry after answer');
-      // Store for later when we get the peer ID
-      window.pendingCallRecipientUid = selectedUser.uid;
-    }
 
     // Set timeout for unanswered call
     callTimeoutTimer = setTimeout(() => {
@@ -3612,18 +3601,29 @@ function listenCallStatus(callDocId) {
 
     // Call answered by callee
     if (data.status === "answered") {
-      // Caller side – PeerJS call already initiated in startCall()
+      // Caller side – initiate PeerJS call NOW (callee is ready to receive)
       if (callDirection === "outgoing" && callState === "ringing") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
         callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connected";
-        document.getElementById("callConnectingSpinner").classList.add("hidden");
-        document.getElementById("callTimerDisplay").style.display = "block";
-        document.getElementById("callTimerDisplay").textContent = "00:00";
-        startCallTimer();
+        document.getElementById("callStatusLabel").textContent = "Connecting...";
+        document.getElementById("callConnectingSpinner").classList.remove("hidden");
+        
+        // Get recipient's peer ID from the answered signal
+        const recipientPeerId = data.receiverPeerId || incomingCallData?.recipientPeerId;
+        
+        if (recipientPeerId && localStream && nexaPeer) {
+          console.log('📞 Callee answered! Initiating PeerJS call to:', recipientPeerId);
+          activeCall = nexaPeer.call(recipientPeerId, localStream);
+          setupCallStreamHandlers(activeCall);
+        } else {
+          console.error('📞 Missing recipientPeerId, localStream, or nexaPeer');
+          showNotifToast("Connection failed", "error");
+          cleanupCall();
+        }
         return;
       }
+      
       // Callee side – UI update (PeerJS call answered in answerCall())
       if (callDirection === "incoming" && callState === "ringing") {
         stopRingtone();
