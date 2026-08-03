@@ -1728,7 +1728,6 @@ function renderLeaderboard() {
   userRankList.sort((a, b) => b.score - a.score);
 
   const topUsers = userRankList.slice(0, 5);
-  const maxScore = topUsers.length && topUsers[0].score > 0 ? topUsers[0].score : 1;
 
   if (!topUsers.length || topUsers[0].score === 0) {
     leaderboardGrid.innerHTML = `
@@ -1743,23 +1742,18 @@ function renderLeaderboard() {
     const rank = idx + 1;
     const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
     const rankClass = rank <= 3 ? `rank-${rank}` : "";
-    const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
     const onlineTag = u.isOnline ? ` • <span style="color: var(--online);">🟢 Online</span>` : "";
-    const onlineTimeStr = u.onlineMinutes > 0 ? ` • ⏱️ ${formatOnlineTime(u.onlineMinutes)}` : "";
 
     return `
       <div class="leaderboard-card ${rankClass}">
         <div class="rank-badge">${rankBadge}</div>
         <div class="leaderboard-info">
           <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
-          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}${onlineTimeStr}</div>
-          <div class="activity-bar-bg">
-            <div class="activity-bar-fill" style="width: ${pct}%;"></div>
-          </div>
+          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
         </div>
         <div class="leaderboard-score">
           <div class="score-val">${u.score}</div>
-          <div class="score-label">Points</div>
+          <div class="score-label">pts</div>
         </div>
       </div>
     `;
@@ -1769,15 +1763,6 @@ function renderLeaderboard() {
 /* =====================================================
    TIMESTAMP HELPER
    ===================================================== */
-
-// Format online minutes to readable string
-function formatOnlineTime(minutes) {
-  if (minutes < 1) return `${Math.round(minutes * 60)}s`;
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
 
 function normalizeTimestamp(value) {
   if (!value) return Date.now();
