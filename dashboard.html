@@ -3910,11 +3910,26 @@ async function startCall(type) {
   // Play outgoing ringtone (samsung)
   playRingtone('outgoing');
 
-  // Get local media stream
+  // Get local media stream (HD quality)
   try {
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 48000,
+        channelCount: 2,
+        volume: 1.0
+      },
+      video: type === 'video' ? {
+        facingMode: currentFacingMode,
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
+        frameRate: { ideal: 30, min: 24 },
+        bitrate: { ideal: 2500000 },
+        codec: 'vp9',
+        highFramerate: true
+      } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     console.log('📞 Local stream obtained:', localStream.getTracks());
@@ -4155,11 +4170,26 @@ async function answerCall() {
   document.getElementById("callStatusLabel").textContent = "Connecting...";
   document.getElementById("callConnectingSpinner").classList.remove("hidden");
 
-  // Get local media
+  // Get local media (HD quality)
   try {
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 48000,
+        channelCount: 2,
+        volume: 1.0
+      },
+      video: callType === 'video' ? {
+        facingMode: currentFacingMode,
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
+        frameRate: { ideal: 30, min: 24 },
+        bitrate: { ideal: 2500000 },
+        codec: 'vp9',
+        highFramerate: true
+      } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     console.log('📞 Local stream obtained:', localStream.getTracks());
@@ -4296,6 +4326,38 @@ async function endCall() {
 
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
+  // Apply HD quality settings to peer connection
+  if (mediaCall.peerConnection) {
+    const pc = mediaCall.peerConnection;
+    
+    // Set HD video constraints on peer connection
+    const setHDVideo = () => {
+      pc.getSenders().forEach(sender => {
+        if (sender.track && sender.track.kind === 'video') {
+          sender.setParameters({
+            ...sender.getParameters(),
+            encodings: [{
+              rid: 'hd',
+              active: true,
+              maxBitrate: 2500000, // 2.5 Mbps for HD
+              scalabilityMode: 'L1T3'
+            }]
+          }).catch(e => console.log('Video HD encoding not supported:', e.message));
+        }
+      });
+    };
+    
+    // Apply HD settings when connection is established
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        setHDVideo();
+      }
+    };
+    
+    // Also try immediately in case already connected
+    setTimeout(setHDVideo, 500);
+  }
+  
   mediaCall.on('stream', (stream) => {
     console.log('📞 Remote stream received', stream.getTracks());
     remoteStream = stream;
@@ -4313,6 +4375,9 @@ function setupCallStreamHandlers(mediaCall) {
       remoteVid.classList.add("active");
       // Hide profile card, show video
       document.getElementById("callProfileCard").style.display = "none";
+      
+      // Ensure remote video plays at full quality
+      remoteVid.play().catch(() => {});
     }
 
     // Handle audio - always play remote audio
@@ -4445,7 +4510,13 @@ function toggleVideoCamera() {
 async function addVideoTrack() {
   try {
     const videoStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: {
+        facingMode: currentFacingMode,
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
+        frameRate: { ideal: 30, min: 24 },
+        bitrate: { ideal: 2500000 }
+      }
     });
     const videoTrack = videoStream.getVideoTracks()[0];
     localStream.addTrack(videoTrack);
@@ -4478,7 +4549,13 @@ async function flipCamera() {
 
   try {
     const newStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: {
+        facingMode: currentFacingMode,
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
+        frameRate: { ideal: 30, min: 24 },
+        bitrate: { ideal: 2500000 }
+      }
     });
     const newTrack = newStream.getVideoTracks()[0];
 
