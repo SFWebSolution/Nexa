@@ -3752,15 +3752,22 @@ function initPeerJS() {
   }
 
   nexaPeer = new Peer(sessionPeerId, {
-    debug: 2,
+    debug: 1,
     config: {
       iceServers: [
+        // STUN servers for fast local connections
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
-      ]
+        { urls: 'stun:stun2.l.google.com:19305' },
+        { urls: 'stun:stun3.l.google.com:3478' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:stun01.sipphone.com:3478' },
+        { urls: 'stun:stun.ekiga.net:3478' },
+        // TURN server for NAT traversal (free tier)
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+      ],
+      iceCandidatePoolSize: 10
     }
   });
 
@@ -3775,12 +3782,14 @@ function initPeerJS() {
       const fallbackId = 'nexa_' + currentUser.uid + '_' + Date.now();
       console.log('📞 Creating new Peer with fallback ID:', fallbackId);
       nexaPeer = new Peer(fallbackId, {
-        debug: 2,
+        debug: 1,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
+          ],
+          iceCandidatePoolSize: 10
         }
       });
       setupPeerEventHandlers(nexaPeer);
@@ -3801,10 +3810,11 @@ async function ensurePeerConnected() {
 
   initPeerJS();
   
-  // Wait for Peer to be ready
+  // Wait for Peer to be ready (faster polling)
   let attempts = 0;
-  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < 50) {
-    await new Promise(r => setTimeout(r, 200));
+  const maxAttempts = 30; // 3 seconds max wait (was 10 seconds)
+  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < maxAttempts) {
+    await new Promise(r => setTimeout(r, 100)); // Faster polling (100ms vs 200ms)
     attempts++;
   }
   
@@ -3873,12 +3883,6 @@ async function startCall(type) {
    if (callState !== 'idle') { showNotifToast("Already in a call", "warning"); return; }
    if (callTimeoutTimer) clearTimeout(callTimeoutTimer);
 
-  const peerReady = await ensurePeerConnected();
-  if (!peerReady) {
-    showNotifToast("Connecting call network... Please try again", "warning");
-    return;
-  }
-
   callType = type;  // 'voice' or 'video'
   callDirection = 'outgoing';
   callState = 'ringing';
@@ -3924,6 +3928,14 @@ async function startCall(type) {
   } catch (err) {
     console.error("❌ Media access error:", err);
     showNotifToast("Cannot access " + (type === 'video' ? "camera" : "microphone") + ": " + err.message, "error");
+    cleanupCall();
+    return;
+  }
+
+  // Check peer connection (should be ready from pre-init)
+  const peerReady = await ensurePeerConnected();
+  if (!peerReady) {
+    showNotifToast("Connecting call network... Please try again", "warning");
     cleanupCall();
     return;
   }
