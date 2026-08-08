@@ -30,12 +30,18 @@
 - Firestore security rules must allow the `voice_rooms` / `voice_rooms/{id}/participants` / `voice_invites` / `calls` collections for this to work cross-device.
 
 ## Call engine gotchas (dashboard.html, ~line 4034 "VOICE & VIDEO CALLING ENGINE")
+- **ICE servers**: `NEXA_ICE_SERVERS` includes TURN relays (OpenRelay public + metered.ca). TURN is REQUIRED — STUN-only connects signaling but drops audio/video on symmetric NAT/carriers. Keep TURN in sync with `nexa-voice-room.js` `iceServers`.
 - Voice calls play remote audio through `<audio id="remoteAudio" autoplay playsinline>` (NOT `#remoteVideo`, which is `display:none` during voice calls). Video calls use `<video id="remoteVideo">`.
 - `setupCallStreamHandlers()` routes to the correct element based on `callType`.
 - Speaker toggle (`toggleCallSpeaker`) must mute/unmute BOTH `#remoteVideo` and `#remoteAudio`.
 - `callLogged` flag + `logCallOnce()` guard against double call-log entries (endCall, mediaCall.on('close'), and listenCallStatus all try to log).
 - `callStatusUnsub` holds the Firestore onSnapshot unsub for the calls/{id} doc and is cleared in `cleanupCall()`.
 - `answerCall()` uses a one-time `nexaPeer.on('call')` handler with an `answered` flag (PeerJS may not expose `.off`, so the flag is the real guard) to handle the race where the PeerJS call arrives after writing "answered" to Firestore.
+
+## Global exposure (CRITICAL)
+- `currentUser`, `allUsersData`, `userPresenceCache`, `isUserOnline` are declared with top-level `let` in dashboard.html's inline script. Top-level `let` does NOT attach to `window`, so external modules see `undefined`. They are explicitly assigned to `window.*` after declaration/login.
+- `allUsersData` is cleared IN PLACE (`allUsersData.length = 0; ...push()`) — never reassigned (`allUsersData = []`) — so `window.allUsersData` keeps the same array reference across refreshes. `loadCachedUsers()` also clears in place.
+- Without this, `nexa-voice-room.js` can't read the real Firebase user (falls back to a random id), can't detect online status (everyone shows Offline), and the invite user list is empty.
 
 ## Voice Room gotchas (nexa-voice-room.js)
 - Stable peer id per user: `peerIdFor(uid)` returns `nexa_vr_<sanitized uid>`. Keep this consistent across all clients.

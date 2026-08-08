@@ -1007,8 +1007,13 @@ function loadCachedUsers() {
   try {
     const saved = localStorage.getItem("nexa_cached_users_" + currentUser.uid);
     if (saved) {
-      allUsersData = JSON.parse(saved);
-      renderUsers();
+      // Clear + push in place to keep window.allUsersData reference valid.
+      const cached = JSON.parse(saved);
+      if (Array.isArray(cached)) {
+        allUsersData.length = 0;
+        cached.forEach(u => allUsersData.push(u));
+        renderUsers();
+      }
     }
   } catch (e) {}
 }
@@ -1099,6 +1104,9 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   currentUser = user;
+  // Expose on window so external modules (nexa-voice-room.js) can read the
+  // real Firebase user. Top-level `let` does NOT attach to window in browsers.
+  window.currentUser = user;
   console.log("👤 User:", user.email);
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
@@ -1348,6 +1356,12 @@ let userStatus = "online";
 let presenceUnsubs = {};
 let userToDelete = null;
 
+// Expose shared state/helpers on window for external modules (nexa-voice-room.js).
+// These are mutated in place below, so the window references stay valid.
+window.allUsersData = allUsersData;
+window.userPresenceCache = userPresenceCache;
+window.isUserOnline = isUserOnline;
+
 function loadDeletedChats() {
   if (!currentUser) return;
   try {
@@ -1423,7 +1437,9 @@ function startUsersListener() {
   loadCachedUsers();
 
   db.collection("users").onSnapshot(snap => {
-    allUsersData = [];
+    // Clear in place (NOT reassign) so the window.allUsersData reference
+    // exposed to external modules stays valid across refreshes.
+    allUsersData.length = 0;
     const seenUids = new Set();
 
     snap.forEach(doc => {
@@ -4062,13 +4078,21 @@ let callTimeoutTimer = null;
 let vibrationInterval = null;
 
 const NEXA_ICE_SERVERS = [
+  // STUN servers for candidate gathering
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:relay.metered.ca:80' }
+  // TURN relays — REQUIRED for calls across symmetric NAT / carrier networks.
+  // Without TURN, signaling connects but audio/video never flows for many users.
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:444?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:relay.metered.ca:80', username: 'e8dd4fab-c614-4ec1-bfb5-2d6e44c1e21e', credential: 'T5t0Lqr2k6seZFlr' },
+  { urls: 'turn:relay.metered.ca:443', username: 'e8dd4fab-c614-4ec1-bfb5-2d6e44c1e21e', credential: 'T5t0Lqr2k6seZFlr' },
+  { urls: 'turn:relay.metered.ca:443?transport=tcp', username: 'e8dd4fab-c614-4ec1-bfb5-2d6e44c1e21e', credential: 'T5t0Lqr2k6seZFlr' }
 ];
 
 // ── Initialize PeerJS (called once on login) ──
@@ -6142,4 +6166,4 @@ console.log("✨ All initialization complete! Nexa Messenger is ready.");
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->
 <script src="nexa-voice-room.js"></script>
 </body>
-</html>
+</html>

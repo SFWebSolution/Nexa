@@ -586,7 +586,13 @@
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'stun:relay.metered.ca:80' }
+        // TURN relays — REQUIRED for mesh audio across symmetric NAT / carriers.
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:444?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:relay.metered.ca:80', username: 'e8dd4fab-c614-4ec1-bfb5-2d6e44c1e21e', credential: 'T5t0Lqr2k6seZFlr' },
+        { urls: 'turn:relay.metered.ca:443', username: 'e8dd4fab-c614-4ec1-bfb5-2d6e44c1e21e', credential: 'T5t0Lqr2k6seZFlr' },
+        { urls: 'turn:relay.metered.ca:443?transport=tcp', username: 'e8dd4fab-c614-4ec1-bfb5-2d6e44c1e21e', credential: 'T5t0Lqr2k6seZFlr' }
       ];
 
       try {
@@ -937,18 +943,18 @@
 
     isUserOnline(uid) {
       if (!uid) return false;
-      // 1. Check window.isUserOnline & userPresenceCache from Nexa app
+      // 1. Delegate to the Nexa dashboard's canonical isUserOnline() — it knows
+      //    the exact presence schema (online/status/lastSeen) and timeout window.
       if (typeof window.isUserOnline === 'function' && window.userPresenceCache && window.userPresenceCache[uid]) {
         return !!window.isUserOnline(window.userPresenceCache[uid]);
       }
-      // 2. Direct presence cache inspection
+      // 2. Direct presence cache inspection (matches dashboard schema).
       if (window.userPresenceCache && window.userPresenceCache[uid]) {
         const pdata = window.userPresenceCache[uid];
-        if (pdata.state === 'online') return true;
-        if (pdata.last_seen) {
-          const lastSeen = pdata.last_seen.toDate ? pdata.last_seen.toDate().getTime() : (typeof pdata.last_seen === 'number' ? pdata.last_seen : 0);
-          return (Date.now() - lastSeen) < 35000;
-        }
+        if (pdata.online === false || pdata.status === 'offline') return false;
+        const lastSeen = pdata.lastSeen || pdata.last_seen || 0;
+        const seen = (typeof lastSeen.toDate === 'function') ? lastSeen.toDate().getTime() : (typeof lastSeen === 'number' ? lastSeen : 0);
+        return (Date.now() - seen) < 35000;
       }
       // 3. Fallback to user object property
       if (window.allUsersData) {
