@@ -17,6 +17,7 @@
       this.analyser = null;
       this.micGainNode = null;
       this.peer = null;
+      this.peerOpen = false;
       this.peerCalls = new Map(); // peerId -> MediaConnection
       this.isMuted = false;
       this.isSpeakerMuted = false;
@@ -44,9 +45,33 @@
       this.injectUIComponents();
       this.attachEventListeners();
       this.setupChannelListeners();
-      
+      this.setupLifecycleHooks();
+
       // Delay Firestore listener setup slightly to ensure Firebase is fully loaded
       setTimeout(() => this.setupFirestoreListeners(), 1000);
+    }
+
+    setupLifecycleHooks() {
+      // Clean up the room + participant doc when the page closes so peers are
+      // notified of the leave instead of waiting for the Firestore TTL.
+      window.addEventListener('beforeunload', () => {
+        if (!this.activeRoom) return;
+        const user = this.getCurrentUser();
+        try {
+          if (window.db) {
+            const ref = window.db.collection('voice_rooms').doc(this.activeRoom.id);
+            ref.collection('participants').doc(user.id).delete();
+          }
+          if (this.peerCalls) this.peerCalls.forEach(c => { try { c.close(); } catch (e) {} });
+          if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+        } catch (e) {}
+      });
+      // Reconnect PeerJS if the tab regains network.
+      window.addEventListener('online', () => {
+        if (this.activeRoom && this.peer && !this.peerOpen) {
+          try { this.peer.reconnect(); } catch (e) {}
+        }
+      });
     }
 
     getCurrentUser() {
@@ -428,23 +453,25 @@
       if (!this.activeRoom) return;
 
       const user = this.getCurrentUser();
+      const roomId = this.activeRoom.id;
       this.playChime('leave');
 
       // Broadcast leave
       this.broadcast('USER_LEFT', {
-        roomId: this.activeRoom.id,
+        roomId: roomId,
         userId: user.id
       });
 
       // Clean up peer connections
       if (this.peerCalls) {
-        this.peerCalls.forEach(call => call.close());
+        this.peerCalls.forEach(call => { try { call.close(); } catch (e) {} });
         this.peerCalls.clear();
       }
       if (this.peer) {
-        this.peer.destroy();
+        try { this.peer.destroy(); } catch (e) {}
         this.peer = null;
       }
+      this.peerOpen = false;
 
       // Remove remote audio elements from DOM
       document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
@@ -471,19 +498,17 @@
         this.roomFirestoreUnsub = null;
       }
 
-      // Remove self from Firestore room
-      if (window.db && this.activeRoom) {
-        window.db.collection('voice_rooms').doc(this.activeRoom.id).get().then(doc => {
-          if (doc.exists) {
-            const data = doc.data() || {};
-            const updated = (data.participants || []).filter(p => p.id !== user.id);
-            if (updated.length === 0) {
-              doc.ref.delete();
-            } else {
-              doc.ref.update({ participants: updated });
-            }
+      // Remove self from the participants subcollection; if the room is now
+      // empty, delete the room doc too so it doesn't linger in the list.
+      if (window.db) {
+        const roomRef = window.db.collection('voice_rooms').doc(roomId);
+        roomRef.collection('participants').doc(user.id).delete().catch(() => {});
+        // Best-effort cleanup of an empty room.
+        roomRef.collection('participants').get().then(snap => {
+          if (snap.empty) {
+            roomRef.delete().catch(() => {});
           }
-        }).catch(err => console.warn('[VoiceRoom] Leave Firestore update error:', err));
+        }).catch(() => {});
       }
 
       this.activeRoom = null;
@@ -508,32 +533,91 @@
       const peerId = 'nexa_vr_' + user.id.replace(/[^a-zA-Z0-9_]/g, '_');
 
       try {
-        this.peer = new window.Peer(peerId, { debug: 1 });
+        this.peer = new window.Peer(peerId, {
+          debug: 1,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun3.l.google.com:19302' },
+              { urls: 'stun:stun4.l.google.com:19302' }
+            ]
+          }
+        });
 
         this.peer.on('open', (id) => {
           console.log('[VoiceRoom] PeerJS connected with ID:', id);
-          // Call existing room participants
-          this.participants.forEach(p => {
-            if (p.id !== user.id) {
-              const targetPeerId = 'nexa_vr_' + p.id.replace(/[^a-zA-Z0-9_]/g, '_');
-              this.callPeer(targetPeerId);
-            }
-          });
+          this.peerOpen = true;
+          // Mesh: call every other participant already known in the room.
+          this.callAllKnownParticipants();
         });
 
         this.peer.on('call', (call) => {
+          // Answer with the local mic stream so the caller hears us.
           call.answer(this.localStream);
+          // Track the inbound connection so we can clean it up on leave.
+          this.peerCalls.set(call.peer, call);
           call.on('stream', (remoteStream) => {
             this.playRemoteAudioStream(call.peer, remoteStream);
           });
+          call.on('close', () => {
+            this.peerCalls.delete(call.peer);
+            this.removeRemoteAudio(call.peer);
+          });
+          call.on('error', (e) => {
+            console.warn('[VoiceRoom] Inbound call error:', e);
+            this.peerCalls.delete(call.peer);
+          });
+        });
+
+        this.peer.on('error', (err) => {
+          console.warn('[VoiceRoom] PeerJS error:', err.type, err.message);
+          this.peerOpen = false;
+          if (err.type === 'peer-unavailable') {
+            // The target peer isn't online yet; safe to ignore – we'll retry
+            // when its participant doc next changes.
+            return;
+          }
+          // For id/availability errors, try to recreate the peer shortly.
+          if (err.type === 'unavailable-id' || err.type === 'server-error' || err.type === 'network') {
+            setTimeout(() => this.initPeerJS(), 2000);
+          }
+        });
+
+        this.peer.on('disconnected', () => {
+          console.log('[VoiceRoom] PeerJS disconnected, reconnecting...');
+          this.peerOpen = false;
+          if (this.peer && !this.peer.destroyed) {
+            try { this.peer.reconnect(); } catch (e) {}
+          }
+        });
+
+        this.peer.on('close', () => {
+          this.peerOpen = false;
         });
       } catch (err) {
         console.warn('[VoiceRoom] PeerJS init error:', err);
       }
     }
 
+    peerIdForUid(uid) {
+      return 'nexa_vr_' + String(uid).replace(/[^a-zA-Z0-9_]/g, '_');
+    }
+
+    callAllKnownParticipants() {
+      const user = this.getCurrentUser();
+      if (!this.peer || !this.peerOpen || !this.localStream) return;
+      this.participants.forEach(p => {
+        if (p.id !== user.id) {
+          this.callPeer(this.peerIdForUid(p.id));
+        }
+      });
+    }
+
     callPeer(targetPeerId) {
-      if (!this.peer || !this.localStream || this.peerCalls.has(targetPeerId)) return;
+      if (!this.peer || !this.peerOpen || !this.localStream) return;
+      if (this.peerCalls.has(targetPeerId)) return;
 
       try {
         const call = this.peer.call(targetPeerId, this.localStream);
@@ -541,6 +625,14 @@
           this.peerCalls.set(targetPeerId, call);
           call.on('stream', (remoteStream) => {
             this.playRemoteAudioStream(targetPeerId, remoteStream);
+          });
+          call.on('close', () => {
+            this.peerCalls.delete(targetPeerId);
+            this.removeRemoteAudio(targetPeerId);
+          });
+          call.on('error', (e) => {
+            console.warn('[VoiceRoom] Outbound call error:', e);
+            this.peerCalls.delete(targetPeerId);
           });
         }
       } catch (e) {
@@ -554,9 +646,24 @@
         audioEl = document.createElement('audio');
         audioEl.id = 'audio_' + peerId;
         audioEl.autoplay = true;
+        audioEl.setAttribute('playsinline', '');
+        audioEl.style.display = 'none';
         document.body.appendChild(audioEl);
       }
       audioEl.srcObject = stream;
+      audioEl.muted = this.isSpeakerMuted;
+      audioEl.volume = 1;
+      const p = audioEl.play();
+      if (p && typeof p.then === 'function') {
+        p.catch(e => console.warn('[VoiceRoom] Remote audio autoplay:', e));
+      }
+    }
+
+    removeRemoteAudio(peerId) {
+      const audioEl = document.getElementById('audio_' + peerId);
+      if (audioEl) {
+        try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {}
+      }
     }
 
     async initMicrophone() {
@@ -610,6 +717,7 @@
 
       const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
       const vbars = document.querySelectorAll('#nexaVrWaveVisualizer .nexa-vr-vbar');
+      let speakingState = false; // hysteresis to avoid flicker
 
       this.vadInterval = setInterval(() => {
         if (this.isMuted) {
@@ -631,27 +739,24 @@
           bar.style.height = `${h}px`;
         });
 
-        const isSpeaking = average > 18;
-        this.setLocalSpeakingState(isSpeaking);
+        // Hysteresis: require a louder signal to start, a quieter one to stop.
+        if (!speakingState && average > 24) speakingState = true;
+        else if (speakingState && average < 14) speakingState = false;
+        this.setLocalSpeakingState(speakingState);
       }, 100);
     }
 
     startSimulatedVADLoop() {
+      // Microphone unavailable – animate the local waveform only.
+      // Do NOT broadcast a fake speaking state to other participants.
       const vbars = document.querySelectorAll('#nexaVrWaveVisualizer .nexa-vr-vbar');
+      const statusEl = document.getElementById('nexaVrMainSpeakerStatus');
+      if (statusEl) statusEl.textContent = '🔇 Microphone unavailable';
       this.vadInterval = setInterval(() => {
-        if (this.isMuted) {
-          this.setLocalSpeakingState(false);
-          vbars.forEach(bar => bar.style.height = '4px');
-          return;
-        }
-
-        const isSpeaking = Math.random() > 0.5;
         vbars.forEach(bar => {
-          const h = isSpeaking ? Math.floor(Math.random() * 24) + 6 : 4;
+          const h = Math.floor(Math.random() * 8) + 4;
           bar.style.height = `${h}px`;
         });
-
-        this.setLocalSpeakingState(isSpeaking);
       }, 150);
     }
 
@@ -676,6 +781,19 @@
           userId: user.id,
           isSpeaking: isSpeaking
         });
+
+        // Throttled Firestore write so cross-device clients also reflect the
+        // speaking ring (BroadcastChannel only covers same-browser tabs).
+        const now = Date.now();
+        if (!this._lastSpeakingSync || now - this._lastSpeakingSync > 1200) {
+          this._lastSpeakingSync = now;
+          if (window.db && this.activeRoom) {
+            window.db.collection('voice_rooms').doc(this.activeRoom.id)
+              .collection('participants').doc(user.id)
+              .update({ isSpeaking: isSpeaking, updatedAt: now })
+              .catch(() => {});
+          }
+        }
       }
     }
 
@@ -720,10 +838,17 @@
           cardMicStatus.innerHTML = '🎙️';
         }
       }
+
+      // Push the updated mute state to Firestore so peers see the mic badge.
+      this.syncRoomToFirestore();
     }
 
     toggleSpeaker() {
       this.isSpeakerMuted = !this.isSpeakerMuted;
+      // Actually mute/unmute every remote audio element.
+      document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
+        el.muted = this.isSpeakerMuted;
+      });
       const btn = document.getElementById('nexaVrSpeakerBtn');
       if (this.isSpeakerMuted) {
         btn?.classList.add('muted-mic');
@@ -972,44 +1097,100 @@
     syncRoomToFirestore() {
       if (!window.db || !this.activeRoom) return;
 
-      const participantsArr = Array.from(this.participants.values()).map(p => ({
-        id: p.id,
-        name: p.name,
-        avatar: p.avatar,
-        isHost: p.isHost,
-        isMuted: p.isMuted,
-        isSpeaking: p.isSpeaking,
-        handRaised: !!p.handRaised
-      }));
-
+      // Room metadata doc (host writes the canonical room info; merge keeps it).
       window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
         id: this.activeRoom.id,
         title: this.activeRoom.title,
         hostId: this.activeRoom.hostId,
         hostName: this.activeRoom.hostName,
-        participants: participantsArr,
         updatedAt: Date.now()
       }, { merge: true }).catch(err => console.warn('[VoiceRoom] Firestore sync error:', err));
+
+      // Write ONLY this user's own participant doc to a subcollection.
+      // Each client writes its own doc, so nobody overwrites anyone else's
+      // presence – this is what makes the participant list converge across
+      // devices and lets the mesh connect peer-to-peer.
+      const user = this.getCurrentUser();
+      const me = this.participants.get(user.id);
+      if (me) {
+        window.db.collection('voice_rooms').doc(this.activeRoom.id)
+          .collection('participants').doc(user.id)
+          .set({
+            id: me.id,
+            name: me.name,
+            avatar: me.avatar,
+            isHost: me.isHost,
+            isMuted: this.isMuted,
+            isSpeaking: !!me.isSpeaking,
+            handRaised: !!me.handRaised,
+            peerId: this.peerIdForUid(user.id),
+            updatedAt: Date.now()
+          }, { merge: true })
+          .catch(err => console.warn('[VoiceRoom] Participant sync error:', err));
+      }
     }
 
     subscribeToRoomFirestore() {
       if (!window.db || !this.activeRoom) return;
       if (this.roomFirestoreUnsub) this.roomFirestoreUnsub();
 
-      this.roomFirestoreUnsub = window.db.collection('voice_rooms').doc(this.activeRoom.id).onSnapshot(doc => {
-        if (!doc.exists) return;
-        const data = doc.data() || {};
-        if (Array.isArray(data.participants)) {
+      // Listen to the participants subcollection so every device sees every
+      // other participant join/leave in real time.
+      this.roomFirestoreUnsub = window.db.collection('voice_rooms')
+        .doc(this.activeRoom.id)
+        .collection('participants')
+        .onSnapshot(snap => {
           let updated = false;
-          data.participants.forEach(p => {
-            if (!this.participants.has(p.id)) {
-              this.participants.set(p.id, p);
+          const seenIds = new Set([this.getCurrentUser().id]);
+
+          snap.docChanges().forEach(change => {
+            const p = change.doc.data();
+            if (!p || !p.id) return;
+            seenIds.add(p.id);
+
+            if (change.type === 'removed') {
+              if (this.participants.has(p.id)) {
+                this.participants.delete(p.id);
+                this.removeRemoteAudio(this.peerIdForUid(p.id));
+                this.peerCalls.delete(this.peerIdForUid(p.id));
+                updated = true;
+                this.showToast(`🔴 ${p.name || 'A user'} left`);
+                this.playChime('leave');
+              }
+              return;
+            }
+
+            // added or modified
+            const existing = this.participants.get(p.id);
+            const isNew = !existing;
+            this.participants.set(p.id, {
+              id: p.id,
+              name: p.name,
+              avatar: p.avatar,
+              isHost: !!p.isHost,
+              isMuted: !!p.isMuted,
+              isSpeaking: !!p.isSpeaking,
+              handRaised: !!p.handRaised
+            });
+
+            if (isNew) {
               updated = true;
+              // New remote participant – establish a PeerJS mesh connection.
+              const targetPeerId = this.peerIdForUid(p.id);
+              if (p.id !== this.getCurrentUser().id) {
+                this.callPeer(targetPeerId);
+                this.showToast(`🟢 ${p.name} joined the Voice Chat`);
+                this.playChime('join');
+              }
+            } else {
+              // Update lightweight state without a full re-render.
+              const card = document.getElementById(`nexaVrCard_${p.id}`);
+              if (card) card.setAttribute('data-speaking', p.isSpeaking ? 'true' : 'false');
             }
           });
+
           if (updated) this.updateUI();
-        }
-      });
+        }, err => console.warn('[VoiceRoom] Room listener notice:', err));
     }
 
     setupFirestoreListeners() {
