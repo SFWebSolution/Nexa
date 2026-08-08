@@ -278,7 +278,7 @@
     <div class="chat-header">
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
-        <div class="chat-avatar-wrap">
+        <div class="chat-avatar-wrap" onclick="event.stopPropagation(); openProfilePic(document.getElementById('chatPic').src)">
           <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
@@ -632,6 +632,8 @@
 <!-- AUDIO RINGTONES FOR CALLS -->
 <audio id="ringtoneIncoming" src="iphone.mp3" loop preload="auto"></audio>
 <audio id="ringtoneOutgoing" src="samsung_galaxy_puddles.mp3" loop preload="auto"></audio>
+<!-- DEDICATED REMOTE AUDIO ELEMENT FOR VOICE CALLS (video calls use #remoteVideo) -->
+<audio id="remoteAudio" autoplay playsinline></audio>
 
 <!-- MINIMIZED FLOATING CALL BAR (WHATSAPP STYLE) -->
 <div class="floating-call-bar" id="floatingCallBar" onclick="maximizeCallOverlay()">
@@ -775,13 +777,17 @@ function handleStoryResumeOnTyping() {
 }
 // Profile picture modal
 function openProfilePic(src) {
+  if (!src) return;
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
   img.src = src;
   modal.classList.add('active');
 }
-function closeProfilePicModal() {
-  document.getElementById('profilePicModal').classList.remove('active');
+function closeProfilePicModal(event) {
+  // Close when clicking the backdrop (not the image itself) or via the close button
+  if (!event || event.target.id === 'profilePicModal' || event.target.classList.contains('profile-pic-close')) {
+    document.getElementById('profilePicModal').classList.remove('active');
+  }
 }
 
 console.log('🚀 Nexa Messenger Starting...');
@@ -4043,11 +4049,13 @@ let callState = 'idle';         // 'idle' | 'ringing' | 'active' | 'ended'
 let callStartTime = null;
 let callTimerInterval = null;
 let callSignalUnsub = null;
+let callStatusUnsub = null;
 let incomingCallData = null;
 let isMicMuted = false;
 let isCameraOff = false;
 let isSpeakerOn = true;
 let currentFacingMode = 'user';
+let callLogged = false;            // guards against double call-log entries
 const CALL_TIMEOUT_MS = 45000;  // 45 seconds ring timeout
 const MAX_RETRY_ATTEMPTS = 3;  // max PeerJS reconnect attempts
 let callTimeoutTimer = null;
@@ -4308,7 +4316,8 @@ async function startCall(type) {
 
 // ── Listen for call status changes ──
 function listenCallStatus(callDocId) {
-  const unsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
+  if (callStatusUnsub) { callStatusUnsub(); callStatusUnsub = null; }
+  callStatusUnsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
     if (!doc.exists) return;
     const data = doc.data();
 
@@ -4316,8 +4325,6 @@ function listenCallStatus(callDocId) {
     if (data.status === "ringing") {
       return;
     }
-
-
 
     // Call answered – handle both caller and callee sides
     if (data.status === "answered") {
@@ -4347,21 +4354,21 @@ function listenCallStatus(callDocId) {
         return;
       }
     }
+
     // Outgoing call declined
     if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
       stopRingtone();
       clearTimeout(callTimeoutTimer);
       showNotifToast("Call declined", "info");
-      logCallToChat('declined', callType, 0);
+      logCallOnce('declined', callType, 0);
       cleanupCall();
-      unsub();
       return;
     }
 
     // Call missed (no answer within timeout)
     if (data.status === "missed") {
+      if (callDirection === "outgoing") logCallOnce('missed', callType, 0);
       cleanupCall();
-      unsub();
       return;
     }
 
@@ -4369,10 +4376,9 @@ function listenCallStatus(callDocId) {
     if (data.status === "ended") {
       const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
       if (callState === "active") {
-        logCallToChat('completed', callType, duration);
+        logCallOnce('completed', callType, duration);
       }
       cleanupCall();
-      unsub();
       return;
     }
 
@@ -4381,9 +4387,14 @@ function listenCallStatus(callDocId) {
       showNotifToast("Call failed. Please try again.", "error");
       cleanupCall();
     }
-    cleanupCall();
-    unsub();
   });
+}
+
+// ── Log a call outcome exactly once per call session ──
+function logCallOnce(result, type, durationSec) {
+  if (callLogged) return;
+  callLogged = true;
+  logCallToChat(result, type, durationSec);
 }
 
 // ── Show Incoming Call UI ──
@@ -4475,17 +4486,35 @@ async function answerCall() {
     console.error("Error updating call status:", err);
   }
 
-  // Answer the PeerJS call if it already came in
+  // Answer the PeerJS call if it already came in; otherwise wait for it once.
+  // The global nexaPeer.on('call') handler in initPeerJS() also answers when
+  // callState==='active' && localStream, but during the brief window between
+  // writing "answered" and the caller placing the PeerJS call we attach a
+  // one-time listener so we don't leak permanent duplicate handlers.
   if (activeCall) {
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
   } else {
-    // Wait for PeerJS call to arrive
-    nexaPeer.on('call', (mediaCall) => {
-      activeCall = mediaCall;
-      mediaCall.answer(localStream);
-      setupCallStreamHandlers(mediaCall);
-    });
+    const waitTimeout = setTimeout(() => {
+      console.warn('⚠️ Timed out waiting for PeerJS call to arrive');
+    }, 20000);
+    let answered = false;
+    const oneTimeCallHandler = (mediaCall) => {
+      if (answered) return;
+      answered = true;
+      clearTimeout(waitTimeout);
+      // Best-effort removal; PeerJS may not expose .off, so the `answered` flag
+      // also prevents double-handling.
+      if (typeof nexaPeer.off === 'function') {
+        try { nexaPeer.off('call', oneTimeCallHandler); } catch (e) {}
+      }
+      if (!activeCall) {
+        activeCall = mediaCall;
+        mediaCall.answer(localStream);
+        setupCallStreamHandlers(mediaCall);
+      }
+    };
+    nexaPeer.on('call', oneTimeCallHandler);
   }
 
   // Listen for status changes
@@ -4536,9 +4565,9 @@ async function endCall() {
   }
 
   if (callState === 'active' && duration > 0) {
-    logCallToChat('completed', callType, duration);
+    logCallOnce('completed', callType, duration);
   } else if (callState === 'ringing' && callDirection === 'outgoing') {
-    logCallToChat('cancelled', callType, 0);
+    logCallOnce('cancelled', callType, 0);
   }
 
   cleanupCall(true); // keep UI briefly to show duration
@@ -4551,17 +4580,28 @@ function setupCallStreamHandlers(mediaCall) {
     remoteStream = stream;
 
     const remoteVid = document.getElementById("remoteVideo");
-    if (remoteVid) {
-      remoteVid.srcObject = stream;
-      remoteVid.muted = !isSpeakerOn;
-      remoteVid.volume = 1.0;
-      remoteVid.play().catch(err => console.warn('📞 Remote video play warning:', err));
-    }
+    const remoteAud = document.getElementById("remoteAudio");
 
     if (callType === 'video') {
-      if (remoteVid) remoteVid.classList.add("active");
+      // VIDEO: play remote audio + video through #remoteVideo
+      if (remoteAud) { remoteAud.pause(); remoteAud.srcObject = null; }
+      if (remoteVid) {
+        remoteVid.srcObject = stream;
+        remoteVid.muted = false;          // video element must be unmuted to play remote audio
+        remoteVid.volume = isSpeakerOn ? 1.0 : 0.0;
+        remoteVid.play().catch(err => console.warn('📞 Remote video play warning:', err));
+        remoteVid.classList.add("active");
+      }
       document.getElementById("callProfileCard").style.display = "none";
     } else {
+      // VOICE: play remote audio through dedicated #remoteAudio (NOT #remoteVideo)
+      if (remoteVid) { remoteVid.classList.remove("active"); remoteVid.srcObject = null; }
+      if (remoteAud) {
+        remoteAud.srcObject = stream;
+        remoteAud.muted = !isSpeakerOn;
+        remoteAud.volume = isSpeakerOn ? 1.0 : 0.0;
+        remoteAud.play().catch(err => console.warn('📞 Remote audio play warning:', err));
+      }
       if (remoteVid) remoteVid.classList.remove("active");
       document.getElementById("callProfileCard").style.display = "flex";
     }
@@ -4584,7 +4624,7 @@ function setupCallStreamHandlers(mediaCall) {
     console.log('📞 Call stream closed');
     if (callState === 'active') {
       const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
-      logCallToChat('completed', callType, duration);
+      logCallOnce('completed', callType, duration);
       cleanupCall();
     }
   });
@@ -4737,9 +4777,14 @@ async function flipCamera() {
 function toggleCallSpeaker() {
   isSpeakerOn = !isSpeakerOn;
   const remoteVid = document.getElementById("remoteVideo");
+  const remoteAud = document.getElementById("remoteAudio");
   if (remoteVid) {
     remoteVid.muted = !isSpeakerOn;
     remoteVid.volume = isSpeakerOn ? 1.0 : 0.0;
+  }
+  if (remoteAud) {
+    remoteAud.muted = !isSpeakerOn;
+    remoteAud.volume = isSpeakerOn ? 1.0 : 0.0;
   }
 
   const btn = document.getElementById("callSpeakerBtn");
@@ -4776,6 +4821,9 @@ function cleanupCall() {
   if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
   if (navigator.vibrate) navigator.vibrate(0);
 
+  // Stop listening to this call's status doc
+  if (callStatusUnsub) { try { callStatusUnsub(); } catch (e) {} callStatusUnsub = null; }
+
   // Close PeerJS call
   if (activeCall) {
     try { activeCall.close(); } catch (e) {}
@@ -4797,6 +4845,8 @@ function cleanupCall() {
   document.getElementById("localVideoContainer").classList.remove("active");
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
+  const remoteAud = document.getElementById("remoteAudio");
+  if (remoteAud) { try { remoteAud.pause(); } catch (e) {} remoteAud.srcObject = null; }
 
   callState = 'idle';
   callDirection = null;
@@ -4804,6 +4854,7 @@ function cleanupCall() {
   incomingCallData = null;
   isMicMuted = false;
   isCameraOff = false;
+  callLogged = false;
 }
 
 // ── Log Call to Chat ──
@@ -4860,10 +4911,11 @@ function openCallModal(type) {
 
 function openUserProfile() {
   if (!selectedUser) {
-    alert("Select a user first");
+    showNotifToast("Select a user first", "info");
     return;
   }
-  showNotifToast(`👤 ${selectedUser.displayName || 'User'}`, "info");
+  const photo = selectedUser.photo || "https://i.imgur.com/HeIi0wU.png";
+  openProfilePic(photo);
 }
 
 /* =========================================================================
@@ -5988,21 +6040,13 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
-function openProfilePic(src) {
-  const modal = document.getElementById('profilePicModal');
-  const img = document.getElementById('modalProfileImg');
-  img.src = src;
-  modal.classList.add('active');
-}
-
-function closeProfilePicModal(event) {
-  if (event.target.id === 'profilePicModal') {
-    event.target.classList.remove('active');
-  }
-}
-
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
+  <div class="modal-content profile-pic-content">
+    <button class="profile-pic-close" onclick="closeProfilePicModal(event)" title="Close" aria-label="Close">✕</button>
+    <img id="modalProfileImg" src="" alt="Profile Picture">
+  </div>
+</div>
 
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">
@@ -6098,4 +6142,4 @@ function closeProfilePicModal(event) {
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->
 <script src="nexa-voice-room.js"></script>
 </body>
-</html>
+</html>

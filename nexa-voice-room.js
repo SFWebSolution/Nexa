@@ -24,6 +24,10 @@
       this.timerInterval = null;
       this.vadInterval = null;
       this.roomFirestoreUnsub = null;
+      this.participantDocUnsub = null;
+      this.ownParticipantUnsub = null;
+      this.pendingMuteSync = null;
+      this.muteSyncTimer = null;
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -43,9 +47,46 @@
       this.injectUIComponents();
       this.attachEventListeners();
       this.setupChannelListeners();
-      
+
       // Delay Firestore listener setup slightly to ensure Firebase is fully loaded
       setTimeout(() => this.setupFirestoreListeners(), 1000);
+
+      // Auto-join a room when arriving via a ?voiceroom= link.
+      this.checkPendingRoomLink();
+    }
+
+    checkPendingRoomLink() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const roomId = params.get('voiceroom');
+        if (!roomId) return;
+        // Wait until Firebase + the current user are available, then join.
+        const tryJoin = (attempts) => {
+          if (this.activeRoom) return;
+          if (window.db && this.getCurrentUser()) {
+            // Fetch the room doc so we can preserve title/host info.
+            window.db.collection('voice_rooms').doc(roomId).get().then(doc => {
+              if (doc.exists) {
+                const d = doc.data() || {};
+                this.joinRoom({
+                  id: roomId,
+                  title: d.title || 'Voice Room',
+                  hostId: d.hostId,
+                  hostName: d.hostName || 'Host',
+                  startTime: d.startedAt || Date.now()
+                });
+              } else {
+                this.showToast('🎙️ That voice chat link is no longer active');
+              }
+            }).catch(() => {});
+          } else if (attempts < 20) {
+            setTimeout(() => tryJoin(attempts + 1), 500);
+          }
+        };
+        tryJoin(0);
+      } catch (e) {
+        console.warn('[VoiceRoom] Pending room link error:', e);
+      }
     }
 
     getCurrentUser() {
@@ -427,21 +468,23 @@
       if (!this.activeRoom) return;
 
       const user = this.getCurrentUser();
+      const roomId = this.activeRoom.id;
+      const wasHost = this.activeRoom.isHost;
       this.playChime('leave');
 
       // Broadcast leave
       this.broadcast('USER_LEFT', {
-        roomId: this.activeRoom.id,
+        roomId: roomId,
         userId: user.id
       });
 
       // Clean up peer connections
       if (this.peerCalls) {
-        this.peerCalls.forEach(call => call.close());
+        this.peerCalls.forEach(call => { try { call.close(); } catch (e) {} });
         this.peerCalls.clear();
       }
       if (this.peer) {
-        this.peer.destroy();
+        try { this.peer.destroy(); } catch (e) {}
         this.peer = null;
       }
 
@@ -465,24 +508,45 @@
       }
       if (this.timerInterval) clearInterval(this.timerInterval);
       if (this.vadInterval) clearInterval(this.vadInterval);
+      if (this.muteSyncTimer) { clearTimeout(this.muteSyncTimer); this.muteSyncTimer = null; }
       if (this.roomFirestoreUnsub) {
         this.roomFirestoreUnsub();
         this.roomFirestoreUnsub = null;
       }
 
-      // Remove self from Firestore room
-      if (window.db && this.activeRoom) {
-        window.db.collection('voice_rooms').doc(this.activeRoom.id).get().then(doc => {
-          if (doc.exists) {
-            const data = doc.data() || {};
-            const updated = (data.participants || []).filter(p => p.id !== user.id);
-            if (updated.length === 0) {
-              doc.ref.delete();
-            } else {
-              doc.ref.update({ participants: updated });
-            }
+      // Remove ONLY our own participant doc (never overwrite the participants
+      // array — that would clobber other users; see AGENTS.md).
+      if (window.db) {
+        const myDocRef = window.db.collection('voice_rooms')
+          .doc(roomId)
+          .collection('participants')
+          .doc(user.id);
+
+        myDocRef.delete().then(() => {
+          // If we were the host (or the room is now empty), clean up the room doc.
+          return window.db.collection('voice_rooms')
+            .doc(roomId)
+            .collection('participants')
+            .get();
+        }).then(snap => {
+          if (snap.empty) {
+            window.db.collection('voice_rooms').doc(roomId).delete().catch(() => {});
+          } else if (wasHost) {
+            // Migrate host to the next remaining participant so the room survives.
+            const nextHost = snap.docs[0].data();
+            window.db.collection('voice_rooms').doc(roomId).set({
+              hostId: nextHost.id,
+              hostName: nextHost.name,
+              updatedAt: Date.now()
+            }, { merge: true }).catch(() => {});
+            window.db.collection('voice_rooms')
+              .doc(roomId)
+              .collection('participants')
+              .doc(nextHost.id)
+              .set({ isHost: true, updatedAt: Date.now() }, { merge: true })
+              .catch(() => {});
           }
-        }).catch(err => console.warn('[VoiceRoom] Leave Firestore update error:', err));
+        }).catch(err => console.warn('[VoiceRoom] Leave Firestore cleanup error:', err));
       }
 
       this.activeRoom = null;
@@ -501,10 +565,19 @@
     /* --------------------------------------------------------------------- */
 
     initPeerJS() {
-      if (typeof window.Peer === 'undefined') return;
+      if (typeof window.Peer === 'undefined') {
+        // PeerJS not loaded yet — retry shortly.
+        console.warn('[VoiceRoom] PeerJS not loaded, retrying...');
+        setTimeout(() => this.initPeerJS(), 800);
+        return;
+      }
+      if (this.peer && !this.peer.destroyed) {
+        try { this.peer.destroy(); } catch (e) {}
+        this.peer = null;
+      }
 
       const user = this.getCurrentUser();
-      const peerId = 'nexa_vr_' + user.id.replace(/[^a-zA-Z0-9_]/g, '_');
+      const peerId = this.peerIdFor(user.id);
 
       const iceServers = [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -524,11 +597,10 @@
 
         this.peer.on('open', (id) => {
           console.log('[VoiceRoom] PeerJS connected with ID:', id);
-          // Call existing room participants
+          // Call existing room participants to build the mesh.
           this.participants.forEach(p => {
             if (p.id !== user.id) {
-              const targetPeerId = 'nexa_vr_' + p.id.replace(/[^a-zA-Z0-9_]/g, '_');
-              this.callPeer(targetPeerId);
+              this.callPeer(this.peerIdFor(p.id));
             }
           });
         });
@@ -538,9 +610,56 @@
             await this.initMicrophone();
           }
           call.answer(this.localStream);
+          if (!this.peerCalls.has(call.peer)) {
+            this.peerCalls.set(call.peer, call);
+          }
           call.on('stream', (remoteStream) => {
             this.playRemoteAudioStream(call.peer, remoteStream);
           });
+          call.on('close', () => {
+            this.peerCalls.delete(call.peer);
+            const audioEl = document.getElementById('audio_' + call.peer);
+            if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+          });
+        });
+
+        this.peer.on('error', (err) => {
+          console.warn('[VoiceRoom] PeerJS error:', err && err.type, err && err.message);
+          // If our stable id is taken (another tab/device), fall back to a unique id
+          // and re-call everyone so the mesh still forms.
+          if (err && err.type === 'unavailable-id') {
+            const fallbackId = peerId + '_' + Date.now();
+            try {
+              this.peer = new window.Peer(fallbackId, { debug: 1, config: { iceServers } });
+              this.peer.on('open', () => {
+                this.participants.forEach(p => {
+                  if (p.id !== user.id) this.callPeer(this.peerIdFor(p.id));
+                });
+              });
+              this.peer.on('call', async (call) => {
+                if (!this.localStream) await this.initMicrophone();
+                call.answer(this.localStream);
+                if (!this.peerCalls.has(call.peer)) this.peerCalls.set(call.peer, call);
+                call.on('stream', (remoteStream) => this.playRemoteAudioStream(call.peer, remoteStream));
+                call.on('close', () => {
+                  this.peerCalls.delete(call.peer);
+                  const audioEl = document.getElementById('audio_' + call.peer);
+                  if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+                });
+              });
+            } catch (e) { console.warn('[VoiceRoom] PeerJS fallback error:', e); }
+          } else if (err && (err.type === 'peer-unavailable' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error')) {
+            // Transient — try to reconnect if the peer is still around.
+            if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
+              try { this.peer.reconnect(); } catch (e) {}
+            }
+          }
+        });
+
+        this.peer.on('disconnected', () => {
+          if (this.peer && !this.peer.destroyed) {
+            try { this.peer.reconnect(); } catch (e) {}
+          }
         });
       } catch (err) {
         console.warn('[VoiceRoom] PeerJS init error:', err);
@@ -548,7 +667,7 @@
     }
 
     callPeer(targetPeerId) {
-      if (!this.peer || !this.localStream || this.peerCalls.has(targetPeerId)) return;
+      if (!this.peer || !this.peer.open || !this.localStream || this.peerCalls.has(targetPeerId)) return;
 
       try {
         const call = this.peer.call(targetPeerId, this.localStream);
@@ -556,6 +675,15 @@
           this.peerCalls.set(targetPeerId, call);
           call.on('stream', (remoteStream) => {
             this.playRemoteAudioStream(targetPeerId, remoteStream);
+          });
+          call.on('close', () => {
+            this.peerCalls.delete(targetPeerId);
+            const audioEl = document.getElementById('audio_' + targetPeerId);
+            if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+          });
+          call.on('error', (e) => {
+            console.warn('[VoiceRoom] Call error to', targetPeerId, e);
+            this.peerCalls.delete(targetPeerId);
           });
         }
       } catch (e) {
@@ -731,15 +859,22 @@
       this.playChime('tick');
 
       const user = this.getCurrentUser();
-      const cardMicStatus = document.querySelector(`#nexaVrCard_${user.id} .nexa-vr-card-mic-status`);
-      if (cardMicStatus) {
-        if (this.isMuted) {
-          cardMicStatus.classList.add('muted');
-          cardMicStatus.innerHTML = '🔇';
-        } else {
-          cardMicStatus.classList.remove('muted');
-          cardMicStatus.innerHTML = '🎙️';
+      const selfP = this.participants.get(user.id);
+      if (selfP) {
+        selfP.isMuted = this.isMuted;
+        // Reflect on our own card immediately.
+        const cardMicStatus = document.querySelector(`#nexaVrCard_${user.id} .nexa-vr-card-mic-status`);
+        if (cardMicStatus) {
+          if (this.isMuted) {
+            cardMicStatus.classList.add('muted');
+            cardMicStatus.innerHTML = '🔇';
+          } else {
+            cardMicStatus.classList.remove('muted');
+            cardMicStatus.innerHTML = '🎙️';
+          }
         }
+        // Sync mute state to Firestore (throttled) so cross-device clients see it.
+        this.syncMuteState();
       }
     }
 
@@ -774,6 +909,7 @@
         userId: user.id,
         handRaised: selfP.handRaised
       });
+      this.syncMuteState(); // also persists handRaised on our own doc
     }
 
     openInviteModal() {
@@ -996,44 +1132,130 @@
     syncRoomToFirestore() {
       if (!window.db || !this.activeRoom) return;
 
-      const participantsArr = Array.from(this.participants.values()).map(p => ({
-        id: p.id,
-        name: p.name,
-        avatar: p.avatar,
-        isHost: p.isHost,
-        isMuted: p.isMuted,
-        isSpeaking: p.isSpeaking,
-        handRaised: !!p.handRaised
-      }));
+      const user = this.getCurrentUser();
 
-      window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
-        id: this.activeRoom.id,
-        title: this.activeRoom.title,
-        hostId: this.activeRoom.hostId,
-        hostName: this.activeRoom.hostName,
-        participants: participantsArr,
-        updatedAt: Date.now()
-      }, { merge: true }).catch(err => console.warn('[VoiceRoom] Firestore sync error:', err));
+      // Host writes the room metadata once (merge) — NEVER the participants array,
+      // because each participant owns its own subcollection doc and overwriting
+      // the array here would clobber other clients (see AGENTS.md).
+      if (this.activeRoom.isHost) {
+        window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
+          id: this.activeRoom.id,
+          title: this.activeRoom.title,
+          hostId: this.activeRoom.hostId,
+          hostName: this.activeRoom.hostName,
+          startedAt: this.activeRoom.startTime,
+          updatedAt: Date.now()
+        }, { merge: true }).catch(err => console.warn('[VoiceRoom] Firestore room sync error:', err));
+      }
+
+      // Every client writes ONLY its own participant doc.
+      this.upsertOwnParticipantDoc();
+    }
+
+    // Stable PeerJS id for a given uid — kept consistent across clients so the
+    // mesh knows who to call.
+    peerIdFor(uid) {
+      return 'nexa_vr_' + String(uid).replace(/[^a-zA-Z0-9_]/g, '_');
+    }
+
+    upsertOwnParticipantDoc() {
+      if (!window.db || !this.activeRoom) return;
+      const user = this.getCurrentUser();
+      const selfP = this.participants.get(user.id);
+      if (!selfP) return;
+
+      window.db.collection('voice_rooms')
+        .doc(this.activeRoom.id)
+        .collection('participants')
+        .doc(user.id)
+        .set({
+          id: selfP.id,
+          name: selfP.name,
+          avatar: selfP.avatar,
+          isHost: selfP.isHost,
+          isMuted: selfP.isMuted,
+          isSpeaking: selfP.isSpeaking,
+          handRaised: !!selfP.handRaised,
+          peerId: this.peerIdFor(user.id),
+          joinedAt: Date.now(),
+          updatedAt: Date.now()
+        }, { merge: true })
+        .catch(err => console.warn('[VoiceRoom] Own participant doc write error:', err));
+    }
+
+    // Throttled mute/speaking sync so cross-device clients reflect state (~1.2s).
+    syncMuteState() {
+      if (!window.db || !this.activeRoom) return;
+      if (this.muteSyncTimer) clearTimeout(this.muteSyncTimer);
+      this.muteSyncTimer = setTimeout(() => {
+        this.upsertOwnParticipantDoc();
+        this.muteSyncTimer = null;
+      }, 1200);
     }
 
     subscribeToRoomFirestore() {
       if (!window.db || !this.activeRoom) return;
       if (this.roomFirestoreUnsub) this.roomFirestoreUnsub();
 
-      this.roomFirestoreUnsub = window.db.collection('voice_rooms').doc(this.activeRoom.id).onSnapshot(doc => {
-        if (!doc.exists) return;
-        const data = doc.data() || {};
-        if (Array.isArray(data.participants)) {
+      const user = this.getCurrentUser();
+
+      // Listen to the participants SUBCOLLECTION (not an array on the room doc).
+      // Each participant owns its own doc, so this works cross-device.
+      this.roomFirestoreUnsub = window.db.collection('voice_rooms')
+        .doc(this.activeRoom.id)
+        .collection('participants')
+        .onSnapshot(snap => {
+          if (!this.activeRoom) return;
           let updated = false;
-          data.participants.forEach(p => {
-            if (!this.participants.has(p.id)) {
-              this.participants.set(p.id, p);
+          snap.docChanges().forEach(change => {
+            const p = change.doc.data();
+            if (!p || !p.id) return;
+
+            if (change.type === 'removed') {
+              if (this.participants.has(p.id)) {
+                this.participants.delete(p.id);
+                // Tear down the peer connection to the leaving participant
+                const targetPeerId = this.peerIdFor(p.id);
+                if (this.peerCalls.has(targetPeerId)) {
+                  try { this.peerCalls.get(targetPeerId).close(); } catch (e) {}
+                  this.peerCalls.delete(targetPeerId);
+                }
+                const audioEl = document.getElementById('audio_' + targetPeerId);
+                if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+                updated = true;
+                if (p.id !== user.id) this.showToast(`🔴 ${p.name || 'User'} left`);
+              }
+              return;
+            }
+
+            // added / modified
+            const existed = this.participants.has(p.id);
+            const prev = existed ? this.participants.get(p.id) : null;
+            this.participants.set(p.id, {
+              id: p.id,
+              name: p.name,
+              avatar: p.avatar,
+              isHost: p.isHost,
+              isMuted: p.isMuted,
+              isSpeaking: p.isSpeaking,
+              handRaised: !!p.handRaised
+            });
+
+            // New participant that isn't us → build the mesh by calling them
+            if (!existed && p.id !== user.id && this.peer && this.localStream) {
+              const targetPeerId = this.peerIdFor(p.id);
+              this.callPeer(targetPeerId);
+            }
+
+            // Update speaking/mute ring on existing cards without full re-render
+            if (existed && (prev && (prev.isMuted !== p.isMuted || prev.isSpeaking !== p.isSpeaking || prev.handRaised !== p.handRaised))) {
+              updated = true;
+            } else if (!existed) {
               updated = true;
             }
           });
           if (updated) this.updateUI();
-        }
-      });
+        });
     }
 
     setupFirestoreListeners() {
