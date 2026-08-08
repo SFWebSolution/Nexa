@@ -186,6 +186,11 @@
             <div style="font-size: 11px; color: var(--text-3, #6b7a95); margin-top: 2px; margin-bottom: 4px;">
               Top active contributors this calendar week • Auto-resets Monday
             </div>
+            <div class="weekly-active-pill">
+              <span class="weekly-active-icon">⚡</span>
+              <span class="weekly-active-label">Weekly Active</span>
+              <span class="weekly-active-val" id="settingsWeeklyActiveUsers">0</span>
+            </div>
             <div class="leaderboard-grid" id="settingsLeaderboardGrid">
               <div class="leaderboard-card">
                 <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
@@ -769,16 +774,6 @@ function handleStoryResumeOnTyping() {
   clearTimeout(typingResumeTimer);
   typingResumeTimer = setTimeout(resumeStory, 800);
 }
-// Profile picture modal
-function openProfilePic(src) {
-  const modal = document.getElementById('profilePicModal');
-  const img = document.getElementById('modalProfileImg');
-  img.src = src;
-  modal.classList.add('active');
-}
-function closeProfilePicModal() {
-  document.getElementById('profilePicModal').classList.remove('active');
-}
 
 console.log('🚀 Nexa Messenger Starting...');
 
@@ -793,6 +788,8 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const db = firebase.firestore();
+window.db = db;
+window.auth = auth;
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -998,6 +995,7 @@ function loadCachedUsers() {
     const saved = localStorage.getItem("nexa_cached_users_" + currentUser.uid);
     if (saved) {
       allUsersData = JSON.parse(saved);
+      window.allUsersData = allUsersData;
       renderUsers();
     }
   } catch (e) {}
@@ -1089,7 +1087,12 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   currentUser = user;
+  window.currentUser = user;
   console.log("👤 User:", user.email);
+  // Re-initialize voice room Firestore invite listener now that the real uid is known
+  if (window.NexaVoiceRoom && typeof window.NexaVoiceRoom.setupFirestoreListeners === "function") {
+    window.NexaVoiceRoom.setupFirestoreListeners();
+  }
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
   loadLatestMsgState();
@@ -1103,6 +1106,7 @@ auth.onAuthStateChanged(async (user) => {
   if (!profileSetupRequired) {
     startUsersListener();
     startLeaderboardListeners();
+    initWeeklyAutoRefresh();
     loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
@@ -1326,6 +1330,7 @@ function handleLogout() {
 }
 
 let allUsersData = [];
+window.allUsersData = allUsersData;
 let unreadMessages = {};
 let mutedChats = {};
 let favoritedChats = {};
@@ -1334,6 +1339,7 @@ let deletedChats = {};
 let latestMsgTime = {};
 let latestMsgText = {};
 let userPresenceCache = {};
+window.userPresenceCache = userPresenceCache;
 let userStatus = "online";
 let presenceUnsubs = {};
 let userToDelete = null;
@@ -1415,7 +1421,6 @@ function startUsersListener() {
   db.collection("users").onSnapshot(snap => {
     allUsersData = [];
     const seenUids = new Set();
-
     snap.forEach(doc => {
       if (doc.id !== currentUser.uid) {
         const uid = doc.id;
@@ -1458,6 +1463,7 @@ function startUsersListener() {
     });
 
     saveCachedUsers();
+    window.allUsersData = allUsersData;
     renderUsers();
     renderWeeklyLeaderboard();
   });
@@ -1785,16 +1791,25 @@ function getWeekDateRange() {
   return `${monthStart} - ${monthEnd}`;
 }
 
+function normalizeTimestamp(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  const parsed = new Date(value).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 function startLeaderboardListeners() {
   if (!window.db) return;
-  const weekStart = getCurrentWeekStart();
 
   if (!leaderboardMsgUnsub) {
     leaderboardMsgUnsub = db.collection("chats").onSnapshot(snapshot => {
+      const weekStart = getCurrentWeekStart();
       const msgScores = {};
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-        if (data.from && data.createdAt && data.createdAt >= weekStart) {
+        const ts = normalizeTimestamp(data.createdAt);
+        if (data.from && ts && ts >= weekStart) {
           msgScores[data.from] = (msgScores[data.from] || 0) + 1;
         }
       });
@@ -1805,10 +1820,12 @@ function startLeaderboardListeners() {
 
   if (!leaderboardStoryUnsub) {
     leaderboardStoryUnsub = db.collection("status").onSnapshot(snapshot => {
+      const weekStart = getCurrentWeekStart();
       const storyScores = {};
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-        if (data.uid && data.createdAt && data.createdAt >= weekStart) {
+        const ts = normalizeTimestamp(data.createdAt);
+        if (data.uid && ts && ts >= weekStart) {
           storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
         }
       });
@@ -1816,6 +1833,27 @@ function startLeaderboardListeners() {
       renderWeeklyLeaderboard();
     }, err => console.error("Leaderboard stories listener error:", err));
   }
+}
+
+let currentWeekStart = null;
+
+function initWeeklyAutoRefresh() {
+  currentWeekStart = getCurrentWeekStart();
+  updateWeekIndicator();
+
+  setInterval(() => {
+    const now = getCurrentWeekStart();
+    if (now !== currentWeekStart) {
+      currentWeekStart = now;
+      updateWeekIndicator();
+      renderWeeklyLeaderboard();
+    }
+  }, 60000);
+}
+
+function updateWeekIndicator() {
+  const indicator = document.getElementById("settingsWeekIndicator");
+  if (indicator) indicator.textContent = getWeekDateRange();
 }
 
 function renderWeeklyLeaderboard() {
@@ -1846,6 +1884,8 @@ function renderWeeklyLeaderboard() {
         <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
       </div>
     `;
+    const weeklyCountEl = document.getElementById("settingsWeeklyActiveUsers");
+    if (weeklyCountEl) weeklyCountEl.textContent = "0";
     return;
   }
 
@@ -1854,8 +1894,9 @@ function renderWeeklyLeaderboard() {
     const stories = cachedStoryScores[u.uid] || 0;
     const p = userPresenceCache[u.uid] || {};
     const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const createdAt = normalizeTimestamp(u.createdAt);
     const isOnline = typeof isUserOnline === "function" ? isUserOnline(p) : ((Date.now() - lastSeen) < 35000);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
+    const isWeeklyActive = lastSeen >= weekStart || createdAt >= weekStart || msgs > 0 || stories > 0;
 
     const activeBonus = isWeeklyActive ? 5 : 0;
     const onlineBonus = isOnline ? 3 : 0;
@@ -1874,6 +1915,11 @@ function renderWeeklyLeaderboard() {
       score: totalScore
     };
   }).filter(u => !u.banned);
+
+  // Weekly active count: mirrors admin (weekly active AND not banned)
+  const weeklyActiveCount = userRankList.filter(u => u.isWeeklyActive).length;
+  const weeklyCountEl = document.getElementById("settingsWeeklyActiveUsers");
+  if (weeklyCountEl) weeklyCountEl.textContent = weeklyActiveCount;
 
   userRankList.sort((a, b) => b.score - a.score);
 
@@ -5879,18 +5925,22 @@ console.log("✨ All initialization complete! Nexa Messenger is ready.");
 function openProfilePic(src) {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
-  img.src = src;
+  if (!modal || !img) return;
+  img.src = src || '';
   modal.classList.add('active');
 }
 
 function closeProfilePicModal(event) {
-  if (event.target.id === 'profilePicModal') {
-    event.target.classList.remove('active');
+  const modal = document.getElementById('profilePicModal');
+  if (!modal) return;
+  // Close when called with no args (e.g. Escape key) or when the backdrop itself is clicked.
+  if (!event || event.target === modal) {
+    modal.classList.remove('active');
   }
 }
 
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content profile-pic-modal-content"><button class="profile-pic-close" onclick="closeProfilePicModal()" title="Close" aria-label="Close">✕</button><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
 
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">

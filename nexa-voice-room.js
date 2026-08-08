@@ -24,6 +24,7 @@
       this.timerInterval = null;
       this.vadInterval = null;
       this.roomFirestoreUnsub = null;
+      this.inviteFirestoreUnsub = null;
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -87,7 +88,7 @@
           name: u.displayName || u.name || (u.email ? u.email.split('@')[0] : 'Nexa User'),
           avatar: u.photo || u.photoURL || 'icon-192.png',
           email: u.email || '',
-          isOnline: u.online !== false
+          isOnline: this.isUserOnline(u.uid || u.id)
         }));
       }
 
@@ -103,7 +104,7 @@
                 name: u.displayName || u.name || (u.email ? u.email.split('@')[0] : 'Nexa User'),
                 avatar: u.photo || u.photoURL || 'icon-192.png',
                 email: u.email || '',
-                isOnline: true
+                isOnline: false
               }));
             }
           }
@@ -1015,10 +1016,16 @@
       if (!window.db) return;
 
       const user = this.getCurrentUser();
-      if (!user || !user.id) return;
+      if (!user || !user.id || user.id.startsWith('user_')) return;
 
-      // Listen for incoming voice chat invites for current user
-      window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
+      // Tear down any previous invite listener before subscribing anew
+      // (covers re-login / uid becoming available after init).
+      if (this.inviteFirestoreUnsub) {
+        try { this.inviteFirestoreUnsub(); } catch (e) {}
+        this.inviteFirestoreUnsub = null;
+      }
+
+      this.inviteFirestoreUnsub = window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
         if (doc.exists) {
           const data = doc.data() || {};
           if (data.status === 'pending' && data.room) {
