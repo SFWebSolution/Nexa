@@ -179,6 +179,21 @@
           </div>
 
           <div class="settings-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div class="settings-group-title" style="margin-bottom: 0;">🏆 Weekly Most Active Users</div>
+              <span class="week-indicator" id="settingsWeekIndicator">Mon-Sun</span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-3, #6b7a95); margin-top: 2px; margin-bottom: 4px;">
+              Top active contributors this calendar week • Auto-resets Monday
+            </div>
+            <div class="leaderboard-grid" id="settingsLeaderboardGrid">
+              <div class="leaderboard-card">
+                <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group">
             <div class="settings-group-title">🖼️ Global Chat Wallpaper</div>
             <div class="wallpaper-settings-card">
               <div class="wallpaper-preview-strip" id="settingsWallpaperPreview" onclick="openWallpaperModal('global')">
@@ -1087,6 +1102,7 @@ auth.onAuthStateChanged(async (user) => {
 
   if (!profileSetupRequired) {
     startUsersListener();
+    startLeaderboardListeners();
     loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
@@ -1443,6 +1459,7 @@ function startUsersListener() {
 
     saveCachedUsers();
     renderUsers();
+    renderWeeklyLeaderboard();
   });
 }
 
@@ -1737,6 +1754,167 @@ function renderStoriesTab() {
   }
 }
 
+/* =====================================================
+   WEEKLY MOST ACTIVE USERS (LEADERBOARD) - SETTINGS TAB
+   ===================================================== */
+let cachedMsgScores = {};
+let cachedStoryScores = {};
+let leaderboardMsgUnsub = null;
+let leaderboardStoryUnsub = null;
+
+function getMonday(d) {
+  d = new Date(d);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.setDate(diff));
+}
+
+function getCurrentWeekStart() {
+  const monday = getMonday(new Date());
+  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()).getTime();
+}
+
+function getWeekDateRange() {
+  const weekStart = getCurrentWeekStart();
+  const monday = new Date(weekStart);
+  const sunday = new Date(weekStart + 6 * 86400000);
+  
+  const monthStart = monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const monthEnd = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  
+  return `${monthStart} - ${monthEnd}`;
+}
+
+function startLeaderboardListeners() {
+  if (!window.db) return;
+  const weekStart = getCurrentWeekStart();
+
+  if (!leaderboardMsgUnsub) {
+    leaderboardMsgUnsub = db.collection("chats").onSnapshot(snapshot => {
+      const msgScores = {};
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.from && data.createdAt && data.createdAt >= weekStart) {
+          msgScores[data.from] = (msgScores[data.from] || 0) + 1;
+        }
+      });
+      cachedMsgScores = msgScores;
+      renderWeeklyLeaderboard();
+    }, err => console.error("Leaderboard chats listener error:", err));
+  }
+
+  if (!leaderboardStoryUnsub) {
+    leaderboardStoryUnsub = db.collection("status").onSnapshot(snapshot => {
+      const storyScores = {};
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.uid && data.createdAt && data.createdAt >= weekStart) {
+          storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
+        }
+      });
+      cachedStoryScores = storyScores;
+      renderWeeklyLeaderboard();
+    }, err => console.error("Leaderboard stories listener error:", err));
+  }
+}
+
+function renderWeeklyLeaderboard() {
+  const leaderboardGrid = document.getElementById("settingsLeaderboardGrid");
+  if (!leaderboardGrid) return;
+
+  const weekStart = getCurrentWeekStart();
+  const indicator = document.getElementById("settingsWeekIndicator");
+  if (indicator) indicator.textContent = getWeekDateRange();
+
+  let userList = [...(allUsersData || [])];
+  if (currentUser && !userList.some(u => u.uid === currentUser.uid)) {
+    const myPic = document.getElementById("myPic")?.src || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
+    const myName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : "You");
+    userList.push({
+      uid: currentUser.uid,
+      displayName: myName + " (You)",
+      photo: myPic,
+      email: currentUser.email || "",
+      banned: false,
+      lastSeen: Date.now()
+    });
+  }
+
+  if (!userList.length) {
+    leaderboardGrid.innerHTML = `
+      <div class="leaderboard-card" style="grid-column: 1 / -1;">
+        <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
+      </div>
+    `;
+    return;
+  }
+
+  const userRankList = userList.map(u => {
+    const msgs = cachedMsgScores[u.uid] || 0;
+    const stories = cachedStoryScores[u.uid] || 0;
+    const p = userPresenceCache[u.uid] || {};
+    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const isOnline = typeof isUserOnline === "function" ? isUserOnline(p) : ((Date.now() - lastSeen) < 35000);
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
+
+    const activeBonus = isWeeklyActive ? 5 : 0;
+    const onlineBonus = isOnline ? 3 : 0;
+    const totalScore = msgs + stories + activeBonus + onlineBonus;
+
+    return {
+      uid: u.uid,
+      displayName: u.displayName || u.name || "Nexa User",
+      photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
+      email: u.email || "",
+      banned: u.banned === true,
+      msgs: msgs,
+      stories: Math.floor(stories / 2),
+      isOnline: isOnline,
+      isWeeklyActive: isWeeklyActive,
+      score: totalScore
+    };
+  }).filter(u => !u.banned);
+
+  userRankList.sort((a, b) => b.score - a.score);
+
+  const topUsers = userRankList.slice(0, 5);
+  const maxScore = topUsers.length && topUsers[0].score > 0 ? topUsers[0].score : 1;
+
+  if (!topUsers.length || topUsers[0].score === 0) {
+    leaderboardGrid.innerHTML = `
+      <div class="leaderboard-card" style="grid-column: 1 / -1;">
+        <div style="color: var(--text-3, #6b7a95); font-size: 13px;">No user activity recorded this calendar week.</div>
+      </div>
+    `;
+    return;
+  }
+
+  leaderboardGrid.innerHTML = topUsers.map((u, idx) => {
+    const rank = idx + 1;
+    const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+    const rankClass = rank <= 3 ? `rank-${rank}` : "";
+    const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
+    const onlineTag = u.isOnline ? ` • <span style="color: #10d981; font-weight: 600;">🟢 Online</span>` : "";
+
+    return `
+      <div class="leaderboard-card ${rankClass}">
+        <div class="rank-badge">${rankBadge}</div>
+        <div class="leaderboard-info">
+          <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
+          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
+          <div class="activity-bar-bg">
+            <div class="activity-bar-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+        <div class="leaderboard-score">
+          <div class="score-val">${u.score}</div>
+          <div class="score-label">Points</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderSettingsTab() {
   loadNotificationSettings();
   const msgToggle = document.getElementById("tabNotifMessages");
@@ -1745,6 +1923,9 @@ function renderSettingsTab() {
   if (stToggle) stToggle.classList.toggle("active", notificationSettings.stories);
   const clToggle = document.getElementById("tabNotifCalls");
   if (clToggle) clToggle.classList.toggle("active", notificationSettings.calls);
+
+  renderWeeklyLeaderboard();
+  startLeaderboardListeners();
 
   const grid = document.getElementById("settingsThemeGrid");
   if (!grid) return;
