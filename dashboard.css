@@ -4373,20 +4373,27 @@ input[type="range"] {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ╔─ ROUND PROFILE AVATARS EVERYWHERE ─╗ */
-.my-pic, 
-.user-avatar, 
-.chat-avatar, 
-.story-avatar, 
-.story-feed-avatar, 
-.profile-large-avatar, 
-.story-user-av, 
-.analytics-user-av, 
+.my-pic,
+.user-avatar,
+.chat-avatar,
+.story-avatar,
+.story-feed-avatar,
+.profile-large-avatar,
+.story-user-av,
+.analytics-user-av,
 .profile-avatar-preview-wrap img,
 .story-avatar-wrap img,
 .story-ring-inner img,
 .chat-peer .chat-avatar-wrap img {
   border-radius: 50% !important;
   object-fit: cover !important;
+}
+
+/* Affordance: clickable profile-picture avatars open the viewer */
+.my-pic,
+.user-avatar,
+.chat-peer .chat-avatar {
+  cursor: zoom-in;
 }
 
 /* ╔─ PWA INSTALL MODAL POPUP ─╗ */

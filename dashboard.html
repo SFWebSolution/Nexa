@@ -280,7 +280,7 @@
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
         <div class="chat-avatar-wrap">
-          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
+          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar" title="View profile picture" onclick="event.stopPropagation(); openProfilePic(this.src)">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
         <div class="chat-peer-info">
@@ -1547,7 +1547,7 @@ function renderUsers() {
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
-          <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <img src="${photo}" class="user-avatar" title="View profile picture" onclick="event.stopPropagation(); openProfilePic(this.src)" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
           <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
         </div>
         <div class="user-info">
@@ -4797,7 +4797,8 @@ function openUserProfile() {
     alert("Select a user first");
     return;
   }
-  showNotifToast(`👤 ${selectedUser.displayName || 'User'}`, "info");
+  const photo = selectedUser.photo || "https://i.imgur.com/HeIi0wU.png";
+  openProfilePic(photo);
 }
 
 /* =========================================================================
