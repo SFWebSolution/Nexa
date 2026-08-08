@@ -666,7 +666,9 @@
     <div class="call-viewport" id="callViewport">
       <!-- REMOTE VIDEO STREAM -->
       <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
-      
+      <!-- REMOTE AUDIO STREAM (voice calls) -->
+      <audio id="remoteAudio" autoplay playsinline></audio>
+
       <!-- LOCAL PIP VIDEO STREAM -->
       <div class="local-video-container" id="localVideoContainer">
         <video id="localVideo" class="local-video" autoplay playsinline muted></video>
@@ -4083,7 +4085,15 @@ function initPeerJS() {
 
   nexaPeer.on('call', (incomingMediaCall) => {
     console.log('📞 Incoming PeerJS media call received');
-    activeCall = incomingMediaCall;
+    // If we are the callee and have already prepared a local stream, answer immediately.
+    // Otherwise store it so answerCall() can answer once the stream is ready.
+    if (callState === 'active' && localStream && callDirection === 'incoming') {
+      activeCall = incomingMediaCall;
+      incomingMediaCall.answer(localStream);
+      setupCallStreamHandlers(incomingMediaCall);
+    } else {
+      activeCall = incomingMediaCall;
+    }
   });
 
   nexaPeer.on('error', (err) => {
@@ -4336,9 +4346,14 @@ function listenCallStatus(callDocId) {
     if (data.status === "failed" && callState === "ringing") {
       showNotifToast("Call failed. Please try again.", "error");
       cleanupCall();
+      unsub();
+      return;
     }
-    cleanupCall();
-    unsub();
+    // For any other terminal status we don't recognise, clean up once.
+    if (callState !== "idle") {
+      cleanupCall();
+      unsub();
+    }
   });
 }
 
@@ -4435,14 +4450,10 @@ async function answerCall() {
   if (activeCall) {
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
-  } else {
-    // Wait for PeerJS call to arrive
-    nexaPeer.on('call', (mediaCall) => {
-      activeCall = mediaCall;
-      mediaCall.answer(localStream);
-      setupCallStreamHandlers(mediaCall);
-    });
   }
+  // If the call hasn't arrived yet, the global nexaPeer.on('call') handler
+  // (registered in initPeerJS) will answer automatically because callState
+  // is now 'active' and localStream is ready. No extra handler needed.
 
   // Listen for status changes
   listenCallStatus(incomingCallData.id);
@@ -4512,6 +4523,16 @@ function setupCallStreamHandlers(mediaCall) {
       remoteVid.classList.add("active");
       // Hide profile card, show video
       document.getElementById("callProfileCard").style.display = "none";
+    } else {
+      // Voice call – attach to a dedicated <audio> element and force playback
+      const remoteAud = document.getElementById("remoteAudio");
+      if (remoteAud) {
+        remoteAud.srcObject = stream;
+        remoteAud.muted = false;
+        remoteAud.volume = 1;
+        const p = remoteAud.play();
+        if (p && typeof p.then === 'function') p.catch(e => console.warn("Remote audio autoplay:", e));
+      }
     }
 
     document.getElementById("callStatusLabel").textContent = "In call";
@@ -4674,7 +4695,9 @@ async function flipCamera() {
 function toggleCallSpeaker() {
   isSpeakerOn = !isSpeakerOn;
   const remoteVid = document.getElementById("remoteVideo");
+  const remoteAud = document.getElementById("remoteAudio");
   if (remoteVid) remoteVid.muted = !isSpeakerOn;
+  if (remoteAud) remoteAud.muted = !isSpeakerOn;
 
   const btn = document.getElementById("callSpeakerBtn");
   btn.classList.toggle("active", isSpeakerOn);
@@ -4731,6 +4754,8 @@ function cleanupCall() {
   document.getElementById("localVideoContainer").classList.remove("active");
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
+  const remoteAud = document.getElementById("remoteAudio");
+  if (remoteAud) { remoteAud.srcObject = null; remoteAud.muted = false; }
 
   callState = 'idle';
   callDirection = null;
@@ -5927,7 +5952,10 @@ function openProfilePic(src) {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
   if (!modal || !img) return;
-  img.src = src || '';
+  const fallback = 'https://i.imgur.com/HeIi0wU.png';
+  const finalSrc = src || fallback;
+  img.onerror = function () { if (this.src !== fallback) { this.src = fallback; } else { this.removeAttribute('src'); } };
+  img.src = finalSrc;
   modal.classList.add('active');
 }
 
@@ -5941,7 +5969,7 @@ function closeProfilePicModal(event) {
 }
 
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content profile-pic-modal-content"><button class="profile-pic-close" onclick="closeProfilePicModal()" title="Close" aria-label="Close">✕</button><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content profile-pic-modal-content"><button class="profile-pic-close" onclick="closeProfilePicModal()" title="Close" aria-label="Close">✕</button><img id="modalProfileImg" src="" alt="Profile Picture" onerror="if(this.src!=='https://i.imgur.com/HeIi0wU.png'){this.src='https://i.imgur.com/HeIi0wU.png';}"></div></div>
 
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">
