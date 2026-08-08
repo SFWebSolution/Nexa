@@ -180,18 +180,17 @@
 
           <div class="settings-group">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-              <div class="settings-group-title" style="margin-bottom: 0;">🏆 Weekly Most Active Users</div>
-              <span class="week-indicator" id="settingsWeekIndicator">Mon-Sun</span>
+              <div>
+                <div class="settings-group-title" style="margin-bottom: 2px;">🏆 Weekly Most Active Users</div>
+                <div style="font-size: 11px; color: var(--text-3, #6b7a95);">
+                  Top active contributors <span class="week-indicator" id="settingsWeekIndicator">Mon-Sun</span> • Auto-resets Monday
+                </div>
+              </div>
+              <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-weight: 700; cursor: pointer; border-radius: 8px; font-size: 12px;">
+                🔄 Reload Weekly Stats
+              </button>
             </div>
-            <div style="font-size: 11px; color: var(--text-3, #6b7a95); margin-top: 2px; margin-bottom: 4px;">
-              Top active contributors this calendar week • Auto-resets Monday
-            </div>
-            <div class="weekly-active-pill">
-              <span class="weekly-active-icon">⚡</span>
-              <span class="weekly-active-label">Weekly Active</span>
-              <span class="weekly-active-val" id="settingsWeeklyActiveUsers">0</span>
-            </div>
-            <div class="leaderboard-grid" id="settingsLeaderboardGrid">
+            <div class="leaderboard-grid" id="settingsLeaderboardGrid" style="margin-top: 8px;">
               <div class="leaderboard-card">
                 <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
               </div>
@@ -280,7 +279,7 @@
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
         <div class="chat-avatar-wrap">
-          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar" title="View profile picture" onclick="event.stopPropagation(); openProfilePic(this.src)">
+          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
         <div class="chat-peer-info">
@@ -666,9 +665,7 @@
     <div class="call-viewport" id="callViewport">
       <!-- REMOTE VIDEO STREAM -->
       <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
-      <!-- REMOTE AUDIO STREAM (voice calls) -->
-      <audio id="remoteAudio" autoplay playsinline></audio>
-
+      
       <!-- LOCAL PIP VIDEO STREAM -->
       <div class="local-video-container" id="localVideoContainer">
         <video id="localVideo" class="local-video" autoplay playsinline muted></video>
@@ -776,6 +773,16 @@ function handleStoryResumeOnTyping() {
   clearTimeout(typingResumeTimer);
   typingResumeTimer = setTimeout(resumeStory, 800);
 }
+// Profile picture modal
+function openProfilePic(src) {
+  const modal = document.getElementById('profilePicModal');
+  const img = document.getElementById('modalProfileImg');
+  img.src = src;
+  modal.classList.add('active');
+}
+function closeProfilePicModal() {
+  document.getElementById('profilePicModal').classList.remove('active');
+}
 
 console.log('🚀 Nexa Messenger Starting...');
 
@@ -790,8 +797,6 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-window.db = db;
-window.auth = auth;
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -997,7 +1002,6 @@ function loadCachedUsers() {
     const saved = localStorage.getItem("nexa_cached_users_" + currentUser.uid);
     if (saved) {
       allUsersData = JSON.parse(saved);
-      window.allUsersData = allUsersData;
       renderUsers();
     }
   } catch (e) {}
@@ -1089,12 +1093,7 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   currentUser = user;
-  window.currentUser = user;
   console.log("👤 User:", user.email);
-  // Re-initialize voice room Firestore invite listener now that the real uid is known
-  if (window.NexaVoiceRoom && typeof window.NexaVoiceRoom.setupFirestoreListeners === "function") {
-    window.NexaVoiceRoom.setupFirestoreListeners();
-  }
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
   loadLatestMsgState();
@@ -1108,7 +1107,6 @@ auth.onAuthStateChanged(async (user) => {
   if (!profileSetupRequired) {
     startUsersListener();
     startLeaderboardListeners();
-    initWeeklyAutoRefresh();
     loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
@@ -1332,7 +1330,6 @@ function handleLogout() {
 }
 
 let allUsersData = [];
-window.allUsersData = allUsersData;
 let unreadMessages = {};
 let mutedChats = {};
 let favoritedChats = {};
@@ -1341,7 +1338,6 @@ let deletedChats = {};
 let latestMsgTime = {};
 let latestMsgText = {};
 let userPresenceCache = {};
-window.userPresenceCache = userPresenceCache;
 let userStatus = "online";
 let presenceUnsubs = {};
 let userToDelete = null;
@@ -1423,6 +1419,7 @@ function startUsersListener() {
   db.collection("users").onSnapshot(snap => {
     allUsersData = [];
     const seenUids = new Set();
+
     snap.forEach(doc => {
       if (doc.id !== currentUser.uid) {
         const uid = doc.id;
@@ -1465,7 +1462,6 @@ function startUsersListener() {
     });
 
     saveCachedUsers();
-    window.allUsersData = allUsersData;
     renderUsers();
     renderWeeklyLeaderboard();
   });
@@ -1549,7 +1545,7 @@ function renderUsers() {
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
-          <img src="${photo}" class="user-avatar" title="View profile picture" onclick="event.stopPropagation(); openProfilePic(this.src)" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
           <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
         </div>
         <div class="user-info">
@@ -1764,11 +1760,33 @@ function renderStoriesTab() {
 
 /* =====================================================
    WEEKLY MOST ACTIVE USERS (LEADERBOARD) - SETTINGS TAB
+   EXACT MIRROR OF ADMIN.HTML LEADERBOARD
    ===================================================== */
+let adminUsers = [];
+let adminPresenceData = {};
 let cachedMsgScores = {};
 let cachedStoryScores = {};
+let leaderboardUsersUnsub = null;
+let leaderboardPresenceUnsub = null;
 let leaderboardMsgUnsub = null;
 let leaderboardStoryUnsub = null;
+
+function normalizeTimestamp(value) {
+  if (!value) return Date.now();
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (typeof value === "number") return value;
+  const parsed = new Date(value).getTime();
+  return isNaN(parsed) ? Date.now() : parsed;
+}
+
+function checkUserOnline(u) {
+  const uid = typeof u === "string" ? u : u.uid;
+  const p = adminPresenceData[uid] || userPresenceCache[uid];
+  if (!p) return false;
+  if (p.online === false || p.status === "offline") return false;
+  const lastSeen = p.lastSeen || 0;
+  return (Date.now() - lastSeen) < 35000;
+}
 
 function getMonday(d) {
   d = new Date(d);
@@ -1793,25 +1811,77 @@ function getWeekDateRange() {
   return `${monthStart} - ${monthEnd}`;
 }
 
-function normalizeTimestamp(value) {
-  if (!value) return 0;
-  if (typeof value === "number") return value;
-  if (typeof value.toDate === "function") return value.toDate().getTime();
-  const parsed = new Date(value).getTime();
-  return isNaN(parsed) ? 0 : parsed;
+function reloadWeeklyStats() {
+  const btn = document.getElementById("reloadWeeklyBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Reloading...";
+  }
+
+  if (leaderboardUsersUnsub) { leaderboardUsersUnsub(); leaderboardUsersUnsub = null; }
+  if (leaderboardPresenceUnsub) { leaderboardPresenceUnsub(); leaderboardPresenceUnsub = null; }
+  if (leaderboardMsgUnsub) { leaderboardMsgUnsub(); leaderboardMsgUnsub = null; }
+  if (leaderboardStoryUnsub) { leaderboardStoryUnsub(); leaderboardStoryUnsub = null; }
+
+  startLeaderboardListeners();
+
+  setTimeout(() => {
+    renderWeeklyLeaderboard();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = "🔄 Reload Weekly Stats";
+    }
+  }, 400);
 }
 
 function startLeaderboardListeners() {
   if (!window.db) return;
+  const weekStart = getCurrentWeekStart();
 
+  // 1. Listen to ALL users in system (exact same as admin.html)
+  if (!leaderboardUsersUnsub) {
+    leaderboardUsersUnsub = db.collection("users").onSnapshot(snapshot => {
+      adminUsers = snapshot.docs.map(doc => {
+        const data = doc.data();
+        let displayName = null;
+        if (data.displayName && data.displayName.trim() && data.displayName !== "User") {
+          displayName = data.displayName;
+        } else if (data.name && data.name.trim()) {
+          displayName = data.name;
+        } else {
+          displayName = data.email ? data.email.split('@')[0] : "Nexa User";
+        }
+
+        return {
+          uid: doc.id,
+          ...data,
+          displayName: displayName,
+          photo: data.photoUrl || data.photo || "https://i.imgur.com/HeIi0wU.png",
+          createdAt: normalizeTimestamp(data.createdAt)
+        };
+      });
+      renderWeeklyLeaderboard();
+    }, err => console.error("Leaderboard users listener error:", err));
+  }
+
+  // 2. Listen to ALL presence docs in system (exact same as admin.html)
+  if (!leaderboardPresenceUnsub) {
+    leaderboardPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
+      adminPresenceData = {};
+      snapshot.docs.forEach(doc => {
+        adminPresenceData[doc.id] = doc.data();
+      });
+      renderWeeklyLeaderboard();
+    }, err => console.error("Leaderboard presence listener error:", err));
+  }
+
+  // 3. Listen to ALL chats since weekStart (exact same as admin.html)
   if (!leaderboardMsgUnsub) {
     leaderboardMsgUnsub = db.collection("chats").onSnapshot(snapshot => {
-      const weekStart = getCurrentWeekStart();
       const msgScores = {};
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-        const ts = normalizeTimestamp(data.createdAt);
-        if (data.from && ts && ts >= weekStart) {
+        if (data.from && data.createdAt && data.createdAt >= weekStart) {
           msgScores[data.from] = (msgScores[data.from] || 0) + 1;
         }
       });
@@ -1820,14 +1890,13 @@ function startLeaderboardListeners() {
     }, err => console.error("Leaderboard chats listener error:", err));
   }
 
+  // 4. Listen to ALL stories since weekStart (exact same as admin.html)
   if (!leaderboardStoryUnsub) {
     leaderboardStoryUnsub = db.collection("status").onSnapshot(snapshot => {
-      const weekStart = getCurrentWeekStart();
       const storyScores = {};
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-        const ts = normalizeTimestamp(data.createdAt);
-        if (data.uid && ts && ts >= weekStart) {
+        if (data.uid && data.createdAt && data.createdAt >= weekStart) {
           storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
         }
       });
@@ -1835,27 +1904,6 @@ function startLeaderboardListeners() {
       renderWeeklyLeaderboard();
     }, err => console.error("Leaderboard stories listener error:", err));
   }
-}
-
-let currentWeekStart = null;
-
-function initWeeklyAutoRefresh() {
-  currentWeekStart = getCurrentWeekStart();
-  updateWeekIndicator();
-
-  setInterval(() => {
-    const now = getCurrentWeekStart();
-    if (now !== currentWeekStart) {
-      currentWeekStart = now;
-      updateWeekIndicator();
-      renderWeeklyLeaderboard();
-    }
-  }, 60000);
-}
-
-function updateWeekIndicator() {
-  const indicator = document.getElementById("settingsWeekIndicator");
-  if (indicator) indicator.textContent = getWeekDateRange();
 }
 
 function renderWeeklyLeaderboard() {
@@ -1866,39 +1914,23 @@ function renderWeeklyLeaderboard() {
   const indicator = document.getElementById("settingsWeekIndicator");
   if (indicator) indicator.textContent = getWeekDateRange();
 
-  let userList = [...(allUsersData || [])];
-  if (currentUser && !userList.some(u => u.uid === currentUser.uid)) {
-    const myPic = document.getElementById("myPic")?.src || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
-    const myName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : "You");
-    userList.push({
-      uid: currentUser.uid,
-      displayName: myName + " (You)",
-      photo: myPic,
-      email: currentUser.email || "",
-      banned: false,
-      lastSeen: Date.now()
-    });
-  }
-
-  if (!userList.length) {
+  if (!adminUsers || !adminUsers.length) {
     leaderboardGrid.innerHTML = `
       <div class="leaderboard-card" style="grid-column: 1 / -1;">
         <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
       </div>
     `;
-    const weeklyCountEl = document.getElementById("settingsWeeklyActiveUsers");
-    if (weeklyCountEl) weeklyCountEl.textContent = "0";
     return;
   }
 
-  const userRankList = userList.map(u => {
+  // Exact same user rank mapping as admin.html
+  const userRankList = adminUsers.map(u => {
     const msgs = cachedMsgScores[u.uid] || 0;
     const stories = cachedStoryScores[u.uid] || 0;
-    const p = userPresenceCache[u.uid] || {};
+    const p = adminPresenceData[u.uid] || {};
     const lastSeen = p.lastSeen || u.lastSeen || 0;
-    const createdAt = normalizeTimestamp(u.createdAt);
-    const isOnline = typeof isUserOnline === "function" ? isUserOnline(p) : ((Date.now() - lastSeen) < 35000);
-    const isWeeklyActive = lastSeen >= weekStart || createdAt >= weekStart || msgs > 0 || stories > 0;
+    const isOnline = checkUserOnline(u);
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
     const activeBonus = isWeeklyActive ? 5 : 0;
     const onlineBonus = isOnline ? 3 : 0;
@@ -1917,11 +1949,6 @@ function renderWeeklyLeaderboard() {
       score: totalScore
     };
   }).filter(u => !u.banned);
-
-  // Weekly active count: mirrors admin (weekly active AND not banned)
-  const weeklyActiveCount = userRankList.filter(u => u.isWeeklyActive).length;
-  const weeklyCountEl = document.getElementById("settingsWeeklyActiveUsers");
-  if (weeklyCountEl) weeklyCountEl.textContent = weeklyActiveCount;
 
   userRankList.sort((a, b) => b.score - a.score);
 
@@ -4026,6 +4053,16 @@ const MAX_RETRY_ATTEMPTS = 3;  // max PeerJS reconnect attempts
 let callTimeoutTimer = null;
 let vibrationInterval = null;
 
+const NEXA_ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: 'stun:relay.metered.ca:80' }
+];
+
 // ── Initialize PeerJS (called once on login) ──
 function initPeerJS() {
   if (!currentUser) return;
@@ -4059,7 +4096,7 @@ function initPeerJS() {
     try { nexaPeer.reconnect(); return; } catch (e) {}
   }
 
-  const sessionPeerId = 'nexa_' + currentUser.uid + '_' + Math.floor(1000 + Math.random() * 9000);
+  const sessionPeerId = 'nexa_user_' + currentUser.uid;
 
   if (nexaPeer && !nexaPeer.destroyed) {
     try { nexaPeer.destroy(); } catch (e) {}
@@ -4068,13 +4105,7 @@ function initPeerJS() {
   nexaPeer = new Peer(sessionPeerId, {
     debug: 0,
     config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
-      ]
+      iceServers: NEXA_ICE_SERVERS
     }
   });
 
@@ -4084,25 +4115,28 @@ function initPeerJS() {
   });
 
   nexaPeer.on('call', (incomingMediaCall) => {
-    console.log('📞 Incoming PeerJS media call received');
-    // If we are the callee and have already prepared a local stream, answer immediately.
-    // Otherwise store it so answerCall() can answer once the stream is ready.
-    if (callState === 'active' && localStream && callDirection === 'incoming') {
-      activeCall = incomingMediaCall;
+    console.log('📞 Incoming PeerJS media call received from:', incomingMediaCall.peer);
+    activeCall = incomingMediaCall;
+    if (callState === 'active' && localStream) {
       incomingMediaCall.answer(localStream);
       setupCallStreamHandlers(incomingMediaCall);
-    } else {
-      activeCall = incomingMediaCall;
     }
   });
 
   nexaPeer.on('error', (err) => {
     console.warn('⚠️ PeerJS error:', err.type, err.message);
     if (err.type === 'unavailable-id') {
-      const fallbackId = 'nexa_' + currentUser.uid + '_' + Date.now();
-      nexaPeer = new Peer(fallbackId, { debug: 0 });
+      const fallbackId = 'nexa_user_' + currentUser.uid + '_' + Date.now();
+      nexaPeer = new Peer(fallbackId, { debug: 0, config: { iceServers: NEXA_ICE_SERVERS } });
       nexaPeer.on('open', (id) => {
         db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
+      });
+      nexaPeer.on('call', (incomingMediaCall) => {
+        activeCall = incomingMediaCall;
+        if (callState === 'active' && localStream) {
+          incomingMediaCall.answer(localStream);
+          setupCallStreamHandlers(incomingMediaCall);
+        }
       });
     }
   });
@@ -4346,14 +4380,9 @@ function listenCallStatus(callDocId) {
     if (data.status === "failed" && callState === "ringing") {
       showNotifToast("Call failed. Please try again.", "error");
       cleanupCall();
-      unsub();
-      return;
     }
-    // For any other terminal status we don't recognise, clean up once.
-    if (callState !== "idle") {
-      cleanupCall();
-      unsub();
-    }
+    cleanupCall();
+    unsub();
   });
 }
 
@@ -4450,10 +4479,14 @@ async function answerCall() {
   if (activeCall) {
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
+  } else {
+    // Wait for PeerJS call to arrive
+    nexaPeer.on('call', (mediaCall) => {
+      activeCall = mediaCall;
+      mediaCall.answer(localStream);
+      setupCallStreamHandlers(mediaCall);
+    });
   }
-  // If the call hasn't arrived yet, the global nexaPeer.on('call') handler
-  // (registered in initPeerJS) will answer automatically because callState
-  // is now 'active' and localStream is ready. No extra handler needed.
 
   // Listen for status changes
   listenCallStatus(incomingCallData.id);
@@ -4514,29 +4547,38 @@ async function endCall() {
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
   mediaCall.on('stream', (stream) => {
-    console.log('📞 Remote stream received');
+    console.log('📞 Remote stream received:', stream);
     remoteStream = stream;
 
-    if (callType === 'video') {
-      const remoteVid = document.getElementById("remoteVideo");
+    const remoteVid = document.getElementById("remoteVideo");
+    if (remoteVid) {
       remoteVid.srcObject = stream;
-      remoteVid.classList.add("active");
-      // Hide profile card, show video
-      document.getElementById("callProfileCard").style.display = "none";
-    } else {
-      // Voice call – attach to a dedicated <audio> element and force playback
-      const remoteAud = document.getElementById("remoteAudio");
-      if (remoteAud) {
-        remoteAud.srcObject = stream;
-        remoteAud.muted = false;
-        remoteAud.volume = 1;
-        const p = remoteAud.play();
-        if (p && typeof p.then === 'function') p.catch(e => console.warn("Remote audio autoplay:", e));
-      }
+      remoteVid.muted = !isSpeakerOn;
+      remoteVid.volume = 1.0;
+      remoteVid.play().catch(err => console.warn('📞 Remote video play warning:', err));
     }
 
+    if (callType === 'video') {
+      if (remoteVid) remoteVid.classList.add("active");
+      document.getElementById("callProfileCard").style.display = "none";
+    } else {
+      if (remoteVid) remoteVid.classList.remove("active");
+      document.getElementById("callProfileCard").style.display = "flex";
+    }
+
+    document.getElementById("callConnectingSpinner").classList.add("hidden");
     document.getElementById("callStatusLabel").textContent = "In call";
   });
+
+  if (mediaCall.peerConnection) {
+    mediaCall.peerConnection.oniceconnectionstatechange = () => {
+      console.log('📞 ICE Connection State:', mediaCall.peerConnection.iceConnectionState);
+      if (mediaCall.peerConnection.iceConnectionState === 'failed') {
+        console.warn('⚠️ ICE connection failed, attempting restart...');
+        try { mediaCall.peerConnection.restartIce(); } catch (e) {}
+      }
+    };
+  }
 
   mediaCall.on('close', () => {
     console.log('📞 Call stream closed');
@@ -4695,12 +4737,13 @@ async function flipCamera() {
 function toggleCallSpeaker() {
   isSpeakerOn = !isSpeakerOn;
   const remoteVid = document.getElementById("remoteVideo");
-  const remoteAud = document.getElementById("remoteAudio");
-  if (remoteVid) remoteVid.muted = !isSpeakerOn;
-  if (remoteAud) remoteAud.muted = !isSpeakerOn;
+  if (remoteVid) {
+    remoteVid.muted = !isSpeakerOn;
+    remoteVid.volume = isSpeakerOn ? 1.0 : 0.0;
+  }
 
   const btn = document.getElementById("callSpeakerBtn");
-  btn.classList.toggle("active", isSpeakerOn);
+  if (btn) btn.classList.toggle("active", isSpeakerOn);
   showNotifToast(isSpeakerOn ? "🔊 Speaker on" : "🔇 Speaker off", "info");
 }
 
@@ -4754,8 +4797,6 @@ function cleanupCall() {
   document.getElementById("localVideoContainer").classList.remove("active");
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
-  const remoteAud = document.getElementById("remoteAudio");
-  if (remoteAud) { remoteAud.srcObject = null; remoteAud.muted = false; }
 
   callState = 'idle';
   callDirection = null;
@@ -4822,8 +4863,7 @@ function openUserProfile() {
     alert("Select a user first");
     return;
   }
-  const photo = selectedUser.photo || "https://i.imgur.com/HeIi0wU.png";
-  openProfilePic(photo);
+  showNotifToast(`👤 ${selectedUser.displayName || 'User'}`, "info");
 }
 
 /* =========================================================================
@@ -5951,25 +5991,18 @@ console.log("✨ All initialization complete! Nexa Messenger is ready.");
 function openProfilePic(src) {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
-  if (!modal || !img) return;
-  const fallback = 'https://i.imgur.com/HeIi0wU.png';
-  const finalSrc = src || fallback;
-  img.onerror = function () { if (this.src !== fallback) { this.src = fallback; } else { this.removeAttribute('src'); } };
-  img.src = finalSrc;
+  img.src = src;
   modal.classList.add('active');
 }
 
 function closeProfilePicModal(event) {
-  const modal = document.getElementById('profilePicModal');
-  if (!modal) return;
-  // Close when called with no args (e.g. Escape key) or when the backdrop itself is clicked.
-  if (!event || event.target === modal) {
-    modal.classList.remove('active');
+  if (event.target.id === 'profilePicModal') {
+    event.target.classList.remove('active');
   }
 }
 
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content profile-pic-modal-content"><button class="profile-pic-close" onclick="closeProfilePicModal()" title="Close" aria-label="Close">✕</button><img id="modalProfileImg" src="" alt="Profile Picture" onerror="if(this.src!=='https://i.imgur.com/HeIi0wU.png'){this.src='https://i.imgur.com/HeIi0wU.png';}"></div></div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
 
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">
