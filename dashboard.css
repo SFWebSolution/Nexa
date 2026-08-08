@@ -5700,7 +5700,7 @@ input[type="range"] {
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-md);
   border-radius: 20px;
-  max-width: 400px;
+  max-width: 380px;
   width: 100%;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
@@ -5728,6 +5728,35 @@ input[type="range"] {
 .profile-pic-modal-title::before {
   content: '👤';
   font-size: 16px;
+}
+
+.profile-pic-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-pic-modal-back {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-1);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.profile-pic-modal-back:hover {
+  background: rgba(79, 143, 255, 0.3);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: scale(1.1);
 }
 
 .profile-pic-modal-close {
@@ -5759,15 +5788,16 @@ input[type="range"] {
   justify-content: center;
   padding: 16px;
   background: #000;
+  min-height: 200px;
 }
 
 .profile-pic-modal-body img {
   max-width: 100%;
-  max-height: 300px;
+  max-height: 280px;
   width: auto;
   height: auto;
   border-radius: 12px;
-  object-fit: cover;
+  object-fit: contain;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -5777,7 +5807,7 @@ input[type="range"] {
   }
   
   .profile-pic-modal-body img {
-    max-height: 250px;
+    max-height: 220px;
   }
 }
 

@@ -4330,32 +4330,63 @@ function setupCallStreamHandlers(mediaCall) {
   if (mediaCall.peerConnection) {
     const pc = mediaCall.peerConnection;
     
+    // Update UI when ICE connection state changes
+    pc.oniceconnectionstatechange = () => {
+      console.log('📞 ICE connection state:', pc.iceConnectionState);
+      const statusLabel = document.getElementById("callStatusLabel");
+      if (pc.iceConnectionState === 'checking') {
+        statusLabel.textContent = "Connecting...";
+        document.getElementById("callConnectingSpinner").classList.remove("hidden");
+      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        statusLabel.textContent = "Connected";
+        document.getElementById("callConnectingSpinner").classList.add("hidden");
+        // Apply HD video settings
+        applyHDVideo(pc);
+      } else if (pc.iceConnectionState === 'failed') {
+        statusLabel.textContent = "Connection failed";
+        showNotifToast("Call connection failed. Please try again.", "error");
+      } else if (pc.iceConnectionState === 'disconnected') {
+        statusLabel.textContent = "Reconnecting...";
+      }
+    };
+    
     // Set HD video constraints on peer connection
-    const setHDVideo = () => {
-      pc.getSenders().forEach(sender => {
+    const applyHDVideo = (peerConn) => {
+      peerConn.getSenders().forEach(sender => {
         if (sender.track && sender.track.kind === 'video') {
-          sender.setParameters({
-            ...sender.getParameters(),
-            encodings: [{
+          try {
+            const params = sender.getParameters();
+            params.encodings = [{
               rid: 'hd',
               active: true,
               maxBitrate: 2500000, // 2.5 Mbps for HD
-              scalabilityMode: 'L1T3'
-            }]
-          }).catch(e => console.log('Video HD encoding not supported:', e.message));
+              scalabilityMode: 'L1T3',
+              scaleResolutionDownBy: 1.0
+            }];
+            sender.setParameters(params);
+            console.log('📞 HD video settings applied');
+          } catch (e) {
+            console.log('📞 Video HD encoding not supported, using defaults:', e.message);
+          }
+        }
+        // Also apply HD settings to audio
+        if (sender.track && sender.track.kind === 'audio') {
+          try {
+            const params = sender.getParameters();
+            params.encodings = [{
+              active: true,
+              maxBitrate: 128000 // 128 kbps for HD audio
+            }];
+            sender.setParameters(params);
+          } catch (e) {
+            console.log('📞 Audio HD encoding not supported:', e.message);
+          }
         }
       });
     };
     
     // Apply HD settings when connection is established
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        setHDVideo();
-      }
-    };
-    
-    // Also try immediately in case already connected
-    setTimeout(setHDVideo, 500);
+    setTimeout(() => applyHDVideo(pc), 500);
   }
   
   mediaCall.on('stream', (stream) => {
@@ -5911,7 +5942,10 @@ function closeProfilePicModal() {
   <div class="modal-content profile-pic-modal-content" onclick="event.stopPropagation()">
     <div class="profile-pic-modal-header">
       <span class="profile-pic-modal-title" id="profilePicModalTitle">Profile Picture</span>
-      <button class="profile-pic-modal-close" onclick="closeProfilePicModal()">✕</button>
+      <div class="profile-pic-modal-actions">
+        <button class="profile-pic-modal-back" onclick="closeProfilePicModal()" title="Close">←</button>
+        <button class="profile-pic-modal-close" onclick="closeProfilePicModal()" title="Close">✕</button>
+      </div>
     </div>
     <div class="profile-pic-modal-body">
       <img id="modalProfileImg" src="" alt="Profile Picture">
