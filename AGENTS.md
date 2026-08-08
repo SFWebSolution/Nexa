@@ -25,9 +25,42 @@
 - Remote audio is played in hidden `<audio id="audio_<peerId">` elements with explicit `.play()` (autoplay can be blocked otherwise).
 - Speaking/mute state is synced to Firestore (throttled ~1.2s) so cross-device clients reflect rings; `BroadcastChannel` only covers same-browser tabs.
 
+## Presence / online status
+- Online dots + chat-header "last seen" are driven by a SINGLE shared
+  `db.collection("presence").onSnapshot` listener (`startSharedPresenceListener`)
+  that feeds `userPresenceCache`. Do NOT re-introduce per-user
+  `presence/{uid}` doc listeners — one per contact exploded Firestore read
+  counts and is what broke presence at scale / hit the Spark-plan quota.
+- `startLeaderboardListeners()` also listens to `presence` and writes into the
+  same `userPresenceCache`, so both paths stay consistent.
+- `updateOnline()` marks the user online whenever the app is open (not gated on
+  `document.visibilityState === "visible"`), because mobile backgrounding
+  flips visibility constantly and caused users to appear offline. Offline is
+  only set on explicit `pagehide`/`beforeunload`.
+- `listenPresence()` (chat header) no longer opens its own listener — it just
+  refreshes from the shared cache.
+
+## Audio autoplay / "can't hear anything"
+- Browsers block autoplay + suspend `AudioContext` until a user gesture and on
+  backgrounding. `resumeAllAudio()` (in dashboard.html) re-triggers `.play()`
+  on `#remoteAudio`, `#remoteVideo`, all `audio[id^="audio_"]` (voice room),
+  and resumes the voice room's `audioCtx`. It is wired to window `focus`,
+  `visibilitychange`, and one-shot `touchstart`/`click` so audio resumes as
+  soon as the user opens/returns to the app.
+
+## Firestore rules + secrets
+- `firestore.rules` now exists and is wired into `firebase.json` (`firestore.rules`).
+  Deploy with `firebase deploy --only firestore:rules`. Rules allow auth-only
+  cross-device reads/writes for users, presence, chats, calls,
+  voice_rooms + participants subcollection, voice_invites, status, typing,
+  and disappearingSettings.
+- `.gitignore` excludes `serviceAccountKey.json` (and variants), `.env`, etc.
+  A `serviceAccountKey.json` was previously committed; rotate that key.
+
 ## Gotchas
 - `firebase.js` and the inline config in `dashboard.html`/`admin.html` duplicate the Firebase config — keep them in sync.
 - Firestore security rules must allow the `voice_rooms` / `voice_rooms/{id}/participants` / `voice_invites` / `calls` collections for this to work cross-device.
+- `dashboard.html` uses CRLF line endings; preserve them when editing or the whole file shows as changed in git diff.
 
 ## Call engine gotchas (dashboard.html, ~line 4034 "VOICE & VIDEO CALLING ENGINE")
 - Voice calls play remote audio through `<audio id="remoteAudio" autoplay playsinline>` (NOT `#remoteVideo`, which is `display:none` during voice calls). Video calls use `<video id="remoteVideo">`.

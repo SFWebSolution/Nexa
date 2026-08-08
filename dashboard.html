@@ -1419,8 +1419,71 @@ function updateUserOnlineDot(uid, pdata) {
   if (dot) dot.classList.toggle("online", online);
 }
 
+// ── Shared presence collection listener ─────────────────────────────
+// One listener for the whole `presence` collection feeds userPresenceCache
+// and refreshes every online dot + the open chat header. This replaces the
+// old per-user listeners (one per contact) which exploded Firestore read
+// counts and is the #1 cause of presence failing cross-device.
+let sharedPresenceUnsub = null;
+let sharedPresenceTimer = null;
+function startSharedPresenceListener() {
+  if (!window.db) return;
+  if (sharedPresenceUnsub) return; // only ever one
+
+  sharedPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      const uid = change.doc.id;
+      const pdata = change.doc.data() || {};
+
+      if (change.type === "removed") {
+        delete userPresenceCache[uid];
+      } else {
+        userPresenceCache[uid] = pdata;
+      }
+      updateUserOnlineDot(uid, pdata);
+    });
+
+    // Keep the open chat header in sync (online / last seen).
+    if (selectedUser) {
+      updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+    }
+    renderUsers();
+  }, err => {
+    console.warn("Shared presence listener error:", err);
+    // If the listener died (e.g. transient), try to re-arm it shortly so
+    // online status recovers instead of staying stale forever.
+    if (!sharedPresenceTimer) {
+      sharedPresenceTimer = setTimeout(() => {
+        sharedPresenceTimer = null;
+        if (sharedPresenceUnsub) { try { sharedPresenceUnsub(); } catch (e) {} sharedPresenceUnsub = null; }
+        startSharedPresenceListener();
+      }, 5000);
+    }
+  });
+
+  // Re-evaluate "still online?" every 10s based on lastSeen timeouts,
+  // since a user that closed the app may not have written an offline doc.
+  if (!sharedPresenceTimer) {
+    sharedPresenceTimer = setInterval(() => {
+      if (allUsersData && allUsersData.length) {
+        allUsersData.forEach(u => updateUserOnlineDot(u.uid, userPresenceCache[u.uid]));
+      }
+      if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+    }, 10000);
+  }
+}
+
 function startUsersListener() {
   loadCachedUsers();
+
+  // ── Single shared presence listener ──────────────────────────────
+  // We listen to the ENTIRE `presence` collection ONCE (not once per user)
+  // and fan the updates out into userPresenceCache. This is what makes
+  // online dots work cross-device without opening N listeners (which
+  // burned Firestore read quota and broke presence at scale).
+  // startLeaderboardListeners() also listens to `presence`; both feed the
+  // same cache, so this keeps online state correct everywhere.
+  startSharedPresenceListener();
 
   db.collection("users").onSnapshot(snap => {
     allUsersData = [];
@@ -1448,28 +1511,19 @@ function startUsersListener() {
           photo: d.photoUrl || d.photo || "https://i.imgur.com/HeIi0wU.png"
         });
 
-        // Subscribe to this user's presence exactly once, ever.
-        if (!presenceUnsubs[uid]) {
-          presenceUnsubs[uid] = db.collection("presence").doc(uid).onSnapshot(pdoc => {
-            const pdata = pdoc.data() || {};
-            userPresenceCache[uid] = pdata;
-            updateUserOnlineDot(uid, pdata);
-          });
-        }
-      }
-    });
-
-    // Clean up presence listeners for users who no longer exist.
-    Object.keys(presenceUnsubs).forEach(uid => {
-      if (!seenUids.has(uid)) {
-        presenceUnsubs[uid]();
-        delete presenceUnsubs[uid];
+        // Refresh this user's online dot from the already-populated cache.
+        updateUserOnlineDot(uid, userPresenceCache[uid]);
       }
     });
 
     saveCachedUsers();
     renderUsers();
     renderWeeklyLeaderboard();
+  }, err => {
+    console.error("Users listener error:", err);
+    // On quota/permission errors the list still renders from cache so the
+    // app stays usable instead of showing a blank contact list.
+    renderUsers();
   });
 }
 
@@ -1875,7 +1929,11 @@ function startLeaderboardListeners() {
     leaderboardPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
       adminPresenceData = {};
       snapshot.docs.forEach(doc => {
-        adminPresenceData[doc.id] = doc.data();
+        const data = doc.data();
+        adminPresenceData[doc.id] = data;
+        // Feed the shared presence cache so online dots / chat header stay
+        // correct even if startSharedPresenceListener hasn't been started yet.
+        userPresenceCache[doc.id] = data;
       });
       renderWeeklyLeaderboard();
     }, err => console.error("Leaderboard presence listener error:", err));
@@ -2269,13 +2327,13 @@ function updateChatHeaderPresence(data) {
 }
 
 function listenPresence() {
+  // The shared collection listener (startSharedPresenceListener) already
+  // keeps userPresenceCache + the chat header in sync for every user, so we
+  // don't open a redundant per-user doc listener here — that would just add
+  // another Firestore read. Just refresh the header immediately from cache.
   if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
   if (!selectedUser) return;
-  unsubChatPresence = db.collection("presence").doc(selectedUser.uid).onSnapshot(doc => {
-    const data = doc.data() || {};
-    userPresenceCache[selectedUser.uid] = data;
-    updateChatHeaderPresence(data);
-  });
+  updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
 }
 
 function formatLastSeen(ts) {
@@ -2327,43 +2385,40 @@ function loadUnreadCounts() {
 
 async function updateOnline(on) {
   if (!currentUser) return;
-  const isOnlineState = on && document.visibilityState === "visible";
+  // Count as online whenever the app is open, even if the tab is briefly
+  // in the background (mobile switches visibility a lot). We only go
+  // truly offline on explicit unload/pagehide.
+  const isOnlineState = on !== false;
   userStatus = isOnlineState ? "online" : "offline";
+  const presenceData = {
+    online: isOnlineState,
+    status: isOnlineState ? "online" : "offline",
+    lastSeen: Date.now(),
+    uid: currentUser.uid
+  };
+  // Keep our own cache in sync locally so our own UI/dot stay correct
+  // even before the Firestore write round-trips.
+  userPresenceCache[currentUser.uid] = presenceData;
   try {
-    await db.collection("presence").doc(currentUser.uid).set(
-      { online: isOnlineState, status: isOnlineState ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
-      { merge: true }
-    );
+    await db.collection("presence").doc(currentUser.uid).set(presenceData, { merge: true });
   } catch (err) {
     console.error("Error updating presence:", err);
   }
 }
 
 function setupHeartbeat() {
-  // Update heartbeat every 10 seconds while active & tab visible
+  // Update heartbeat every 10 seconds while the app is open. We keep
+  // writing online (not gated on visibility) so mobile users that get
+  // backgrounded for a moment don't instantly appear offline.
   setInterval(() => {
-    if (currentUser && document.visibilityState === "visible") {
-      updateOnline(true);
-    }
-  }, 10000);
-
-  // Periodic ticker every 10 seconds to re-evaluate active presence timeouts
-  setInterval(() => {
-    if (allUsersData && allUsersData.length) {
-      allUsersData.forEach(user => {
-        updateUserOnlineDot(user.uid, userPresenceCache[user.uid]);
-      });
-    }
-    if (selectedUser) {
-      updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
-    }
+    if (currentUser) updateOnline(true);
   }, 10000);
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      updateOnline(false);
-    } else {
+    if (document.visibilityState === "visible") {
+      // Coming back to the app → re-mark online and resume any audio.
       updateOnline(true);
+      resumeAllAudio();
     }
   });
 
@@ -2374,7 +2429,7 @@ function setupHeartbeat() {
 
   function resetInactivity() {
     clearTimeout(inactivityTimer);
-    if (userStatus === "away" && document.visibilityState === "visible") updateOnline(true);
+    if (userStatus === "away") updateOnline(true);
     inactivityTimer = setTimeout(async () => {
       if (!currentUser) return;
       userStatus = "away";
@@ -4203,6 +4258,12 @@ function listenForIncomingCalls() {
           }
         }
       });
+    }, err => {
+      // Transient errors (quota/network) would otherwise silently kill the
+      // incoming-call listener forever, so re-arm it after a short delay.
+      console.warn("Incoming-call listener error:", err);
+      if (callSignalUnsub) { try { callSignalUnsub(); } catch (e) {} callSignalUnsub = null; }
+      setTimeout(() => { if (currentUser && !callSignalUnsub) listenForIncomingCalls(); }, 5000);
     });
 }
 
@@ -4572,6 +4633,50 @@ async function endCall() {
 
   cleanupCall(true); // keep UI briefly to show duration
 }
+
+// ── Resume all remote audio (call + voice room) ─────────────────────
+// Browsers suspend autoplay audio / AudioContext until a user gesture, and
+// re-suspend them when the tab is backgrounded. On returning to the app we
+// must explicitly resume AudioContexts and re-trigger .play() on every
+// remote audio element, otherwise the user "can't hear anything" even
+// though the call is connected. This is the fix for audio going silent on
+// app open / focus.
+function resumeAllAudio() {
+  try {
+    // 1:1 call remote audio (voice) + remote video audio (video call)
+    ['remoteAudio', 'remoteVideo'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.srcObject && el.paused) {
+        el.play().catch(() => {});
+      }
+    });
+
+    // Voice room remote peers
+    document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
+      if (el.srcObject && el.paused) el.play().catch(() => {});
+    });
+
+    // Resume any suspended AudioContexts (voice room DSP + analyser).
+    const vr = window.NexaVoiceRoom;
+    if (vr && vr.audioCtx && vr.audioCtx.state === 'suspended') {
+      vr.audioCtx.resume().catch(() => {});
+    }
+  } catch (e) {
+    console.warn('resumeAllAudio notice:', e);
+  }
+}
+
+// Re-mark online + resume audio whenever the window regains focus, since
+// mobile browsers drop these state aggressively. Kept independent of
+// setupHeartbeat so it runs even before the heartbeat is initialised.
+window.addEventListener('focus', () => {
+  if (typeof updateOnline === 'function' && window.currentUser) updateOnline(true);
+  if (typeof resumeAllAudio === 'function') resumeAllAudio();
+});
+// On platforms without a reliable focus event (iOS), a touchstart/click
+// unblocks audio autoplay the first time the user interacts with the app.
+window.addEventListener('touchstart', () => resumeAllAudio(), { once: true, passive: true });
+window.addEventListener('click', () => resumeAllAudio(), { once: true, passive: true });
 
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
@@ -6142,4 +6247,4 @@ console.log("✨ All initialization complete! Nexa Messenger is ready.");
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->
 <script src="nexa-voice-room.js"></script>
 </body>
-</html>
+</html>

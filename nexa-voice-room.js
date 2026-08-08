@@ -702,7 +702,16 @@
       }
       audioEl.srcObject = stream;
       audioEl.muted = this.isSpeakerMuted;
+      // Explicit play() — autoplay is blocked until a user gesture, so we
+      // also rely on the global focus/touch listeners to re-trigger audio.
       audioEl.play().catch(err => console.warn('[VoiceRoom] Remote audio play notice:', err));
+
+      // The Web Audio DSP AudioContext may be suspended (e.g. after the tab
+      // was backgrounded). Resume it so the analyser / gain graph keeps
+      // running and we don't end up with a silent stream.
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
     }
 
     async initMicrophone() {
@@ -1255,6 +1264,15 @@
             }
           });
           if (updated) this.updateUI();
+        }, err => {
+          // Re-arm on transient errors so the mesh survives quota blips /
+          // network drops instead of going permanently deaf.
+          console.warn('[VoiceRoom] Participants listener error:', err);
+          if (this.roomFirestoreUnsub) {
+            try { this.roomFirestoreUnsub(); } catch (e) {}
+            this.roomFirestoreUnsub = null;
+          }
+          setTimeout(() => { if (this.activeRoom) this.subscribeToRoomFirestore(); }, 5000);
         });
     }
 
