@@ -2793,6 +2793,57 @@ input[type="range"] {
   display: flex;
 }
 
+/* PROFILE PICTURE VIEWER MODAL */
+.profile-pic-content {
+  position: relative;
+  background: transparent;
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  max-width: 90vw;
+  max-height: 85vh;
+  padding: 0;
+  overflow: visible;
+  animation: scaleIn 0.25s var(--spring);
+}
+
+.profile-pic-content img#modalProfileImg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 20px;
+  background: #0b0f17;
+}
+
+.profile-pic-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(20, 26, 36, 0.95);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.profile-pic-close:hover {
+  background: var(--danger, #ef4444);
+  transform: scale(1.08);
+}
+
 .modal {
   background: rgba(18, 24, 32, 0.97);
   backdrop-filter: blur(24px);
