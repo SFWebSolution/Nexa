@@ -120,7 +120,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v3';
+const CACHE_NAME = 'nexa-v4-perf';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -129,6 +129,10 @@ const ASSETS_TO_CACHE = [
   '/dashboard.html',
   '/styles.css',
   '/dashboard.css',
+  '/nexa-voice-room.css',
+  '/nexa-voice-room.js',
+  '/firebase.js',
+  '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
 ];
@@ -155,4 +159,35 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-console.log("✅ Nexa Firebase Messaging Service Worker ready");
+// Stale-While-Revalidate fetch strategy for ultra-fast asset loading
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+
+  // Serve static UI assets with Stale-While-Revalidate
+  if (
+    url.origin === self.location.origin ||
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com') ||
+    url.hostname.includes('unpkg.com') ||
+    url.hostname.includes('jsdelivr.net')
+  ) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) => {
+        return cache.match(req).then((cachedResponse) => {
+          const fetchPromise = fetch(req).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(req, networkResponse.clone());
+            }
+            return networkResponse;
+          }).catch(() => cachedResponse);
+
+          return cachedResponse || fetchPromise;
+        });
+      })
+    );
+  }
+});
+
+console.log("✅ Nexa High-Performance Service Worker ready");

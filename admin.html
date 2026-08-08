@@ -12,6 +12,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
+
   <style>
 /* =====================================================
    NEXA ADMIN DASHBOARD — PREMIUM EDITION
@@ -1702,13 +1703,11 @@ function renderLeaderboard() {
     const p = presenceData[u.uid] || {};
     const lastSeen = p.lastSeen || u.lastSeen || 0;
     const isOnline = checkUserOnline(u);
-    const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
-    const onlineTimePoints = Math.round(weeklyOnlineMinutes * 2);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
     const activeBonus = isWeeklyActive ? 5 : 0;
     const onlineBonus = isOnline ? 3 : 0;
-    const totalScore = msgs + stories + activeBonus + onlineBonus + onlineTimePoints;
+    const totalScore = msgs + stories + activeBonus + onlineBonus;
 
     return {
       uid: u.uid,
@@ -1718,7 +1717,6 @@ function renderLeaderboard() {
       banned: u.banned === true,
       msgs: msgs,
       stories: Math.floor(stories / 2),
-      onlineMinutes: weeklyOnlineMinutes,
       isOnline: isOnline,
       isWeeklyActive: isWeeklyActive,
       score: totalScore
@@ -1728,6 +1726,7 @@ function renderLeaderboard() {
   userRankList.sort((a, b) => b.score - a.score);
 
   const topUsers = userRankList.slice(0, 5);
+  const maxScore = topUsers.length && topUsers[0].score > 0 ? topUsers[0].score : 1;
 
   if (!topUsers.length || topUsers[0].score === 0) {
     leaderboardGrid.innerHTML = `
@@ -1742,6 +1741,7 @@ function renderLeaderboard() {
     const rank = idx + 1;
     const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
     const rankClass = rank <= 3 ? `rank-${rank}` : "";
+    const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
     const onlineTag = u.isOnline ? ` • <span style="color: var(--online);">🟢 Online</span>` : "";
 
     return `
@@ -1750,10 +1750,13 @@ function renderLeaderboard() {
         <div class="leaderboard-info">
           <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
           <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
+          <div class="activity-bar-bg">
+            <div class="activity-bar-fill" style="width: ${pct}%;"></div>
+          </div>
         </div>
         <div class="leaderboard-score">
           <div class="score-val">${u.score}</div>
-          <div class="score-label">pts</div>
+          <div class="score-label">Points</div>
         </div>
       </div>
     `;
@@ -1763,7 +1766,6 @@ function renderLeaderboard() {
 /* =====================================================
    TIMESTAMP HELPER
    ===================================================== */
-
 function normalizeTimestamp(value) {
   if (!value) return Date.now();
   if (typeof value.toDate === "function") return value.toDate().getTime();
@@ -2339,5 +2341,6 @@ function log(text, type = "info") {
   }
 }
 </script>
+
 </body>
 </html>

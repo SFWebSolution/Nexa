@@ -29,6 +29,7 @@
   <script>if (typeof Peer === 'undefined') { document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>'); }</script>
   <script src="https://unpkg.com/lucide@latest"></script>
 <link rel="stylesheet" href="dashboard.css">
+<link rel="stylesheet" href="nexa-voice-room.css">
 </head>
 
 <body>
@@ -83,7 +84,7 @@
   <div class="sidebar" id="sidebar">
     <div class="top">
       <div class="top-user-area">
-        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="View profile picture" onclick="viewMyProfilePic()">
+        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Profile picture" onclick="openProfilePic(this.src)">
         <div class="top-info">
           <div class="top-name" id="myName">Loading…</div>
           <div class="top-subtext">Online</div>
@@ -92,6 +93,7 @@
       <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
       <div class="sidebar-tab-switcher">
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
+        <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
         <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
@@ -102,6 +104,12 @@
     <div class="tab-panes-container">
       <!-- 1. CHATS TAB -->
       <div class="tab-pane active" id="tabPaneChats">
+        <div class="voice-chat-start-strip" style="padding: 10px 14px 2px 14px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 12px; font-weight: 700; color: var(--text-3, #8b949e); text-transform: uppercase; letter-spacing: 0.5px;">Voice Rooms</span>
+          <button class="start-voice-chat-btn" style="background: linear-gradient(135deg, rgba(37, 211, 102, 0.2), rgba(0, 240, 255, 0.2)); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.4); font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; transition: all 0.2s ease;">
+            <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start Voice Chat
+          </button>
+        </div>
         <div class="search-wrap">
           <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
         </div>
@@ -118,7 +126,7 @@
         </div>
         <div class="my-story-card" onclick="openMyStoryOrAdd()">
           <div class="story-avatar-wrap">
-            <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar" onclick="event.stopPropagation(); viewMyProfilePic()">
+            <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar">
             <div class="story-plus-badge">+</div>
           </div>
           <div class="story-card-info">
@@ -171,17 +179,15 @@
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">🏆 Weekly Leaderboard</div>
-            <div class="leaderboard-preview-card" onclick="openWeeklyLeaderboard()">
-              <div class="leaderboard-preview-header">
-                <span class="leaderboard-preview-title">Top Active Users</span>
-                <span class="leaderboard-preview-week">This Week</span>
-              </div>
-              <div class="leaderboard-preview-list" id="leaderboardPreviewList">
-                <div class="leaderboard-preview-loading">Loading...</div>
-              </div>
-              <div class="leaderboard-preview-footer">
-                <span>Tap to view full leaderboard →</span>
+            <div class="settings-group-title">🖼️ Global Chat Wallpaper</div>
+            <div class="wallpaper-settings-card">
+              <div class="wallpaper-preview-strip" id="settingsWallpaperPreview" onclick="openWallpaperModal('global')">
+                <div class="wp-preview-thumb" id="settingsWpThumb"></div>
+                <div class="wp-preview-info">
+                  <div class="wp-preview-title" id="settingsWpTitle">Default Theme Background</div>
+                  <div class="wp-preview-sub" id="settingsWpSub">Applies to all chats unless overridden</div>
+                </div>
+                <button class="wp-change-btn">Change</button>
               </div>
             </div>
           </div>
@@ -211,11 +217,11 @@
         </div>
         <div class="profile-tab-content">
           <div class="profile-avatar-editor">
-            <div class="profile-avatar-preview-wrap" onclick="viewMyProfilePic()">
+            <div class="profile-avatar-preview-wrap" onclick="triggerProfilePhotoUpload()">
               <img src="https://i.imgur.com/HeIi0wU.png" id="profileTabPic" class="profile-large-avatar">
-              <div class="avatar-edit-overlay">👁️</div>
+              <div class="avatar-edit-overlay">📷</div>
             </div>
-            <div class="profile-avatar-hint">Tap to view photo • <a href="#" onclick="event.preventDefault(); triggerProfilePhotoUpload()" style="color: var(--primary);">Change photo</a></div>
+            <div class="profile-avatar-hint">Tap photo to change profile picture</div>
           </div>
 
           <div class="profile-field-group">
@@ -244,13 +250,17 @@
 
   <!-- CHAT AREA (Right Column on Desktop, Active Fullscreen View on Mobile) -->
   <div class="chat" id="chatArea">
+    <div class="chat-wallpaper-layer" id="chatWallpaperLayer">
+      <div class="wallpaper-img" id="chatWallpaperImg"></div>
+      <div class="wallpaper-overlay" id="chatWallpaperOverlay"></div>
+    </div>
     <div class="stories-bar" id="storiesBar" style="display: none;"></div>
 
     <div class="chat-header">
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
         <div class="chat-avatar-wrap">
-          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar" onclick="event.stopPropagation(); viewSelectedUserProfilePic()">
+          <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
         <div class="chat-peer-info">
@@ -482,6 +492,22 @@
     <div class="theme-grid" id="themeGrid"></div>
   </div>
   <div class="info-section">
+    <div class="info-sec-title">🖼️ Chat Background Wallpaper</div>
+    <div class="wallpaper-info-card">
+      <div class="wp-info-preview-box" id="infoWpPreviewBox" onclick="openWallpaperModal('current')">
+        <div class="wp-info-thumb" id="infoWpThumb"></div>
+        <div class="wp-info-details">
+          <div class="wp-info-title" id="infoWpTitle">Using Global / Default Wallpaper</div>
+          <div class="wp-info-sub" id="infoWpSub">Tap to customize background for this chat</div>
+        </div>
+      </div>
+      <div class="wp-info-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+        <button class="wp-btn-sm primary" onclick="openWallpaperModal('current')">✏️ Customize Background</button>
+        <button class="wp-btn-sm secondary" id="infoWpResetBtn" onclick="resetCurrentChatWallpaper()" style="display: none;">↩️ Reset to Default</button>
+      </div>
+    </div>
+  </div>
+  <div class="info-section">
     <div class="info-sec-title">⏱️ Disappearing Messages</div>
     <div style="padding: 6px 0;">
       <div style="font-size: 12px; color: var(--text-3); margin-bottom: 8px; line-height: 1.4;">
@@ -581,22 +607,6 @@
   </div>
 </div>
 
-<!-- WEEKLY LEADERBOARD MODAL -->
-<div class="leaderboard-modal-overlay" id="leaderboardModal" onclick="closeLeaderboardModal(event)">
-  <div class="leaderboard-modal">
-    <div class="leaderboard-modal-header">
-      <div class="leaderboard-modal-title">
-        🏆 Weekly Leaderboard
-        <span class="leaderboard-preview-week">This Week</span>
-      </div>
-      <button class="leaderboard-modal-close" onclick="closeLeaderboardModal()">✕</button>
-    </div>
-    <div class="leaderboard-modal-body" id="leaderboardModalBody">
-      <div class="leaderboard-preview-loading">Loading...</div>
-    </div>
-  </div>
-</div>
-
 <!-- CONTEXT MENU -->
 <div class="ctx-menu" id="ctxMenu"></div>
 
@@ -627,11 +637,8 @@
   <div id="callConnectingSpinner" class="spinner hidden"></div>
     <!-- TOP HEADER -->
     <div class="call-top-bar">
-      <button class="call-icon-btn call-end-btn" onclick="endCall()" title="End call"><i data-lucide="phone-off"></i></button>
-      <div class="call-info-center">
-        <div class="call-peer-info-mini" id="callPeerNameMini">User</div>
-        <div class="call-security-badge"><i data-lucide="lock" style="width: 12px; height: 12px;"></i> Encrypted</div>
-      </div>
+      <button class="call-icon-btn" onclick="minimizeCallOverlay()" title="Minimize call"><i data-lucide="chevron-down"></i></button>
+      <div class="call-security-badge"><i data-lucide="lock" style="width: 12px; height: 12px;"></i> End-to-end encrypted</div>
       <button class="call-icon-btn" onclick="toggleCallSpeaker()" id="callSpeakerBtn" title="Speaker"><i data-lucide="volume-2"></i></button>
     </div>
 
@@ -647,7 +654,7 @@
 
       <!-- VOICE CALL / OUTGOING / INCOMING PROFILE CARD -->
       <div class="call-profile-card" id="callProfileCard">
-        <div class="call-avatar-wrap" id="callAvatarWrap" onclick="viewCallPeerProfile()">
+        <div class="call-avatar-wrap" id="callAvatarWrap">
           <div class="call-pulse-ring ring-1"></div>
           <div class="call-pulse-ring ring-2"></div>
           <div class="call-pulse-ring ring-3"></div>
@@ -786,232 +793,6 @@ function linkify(text) {
   return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
-// Get start of current week (Monday 00:00:00)
-function getCurrentWeekStart() {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(now.setDate(diff));
-  monday.setHours(0, 0, 0, 0);
-  return monday.getTime();
-}
-
-// Format online minutes to readable string
-function formatOnlineMinutes(minutes) {
-  if (!minutes || minutes < 1) return "";
-  if (minutes < 60) return `${Math.round(minutes)}m online`;
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return mins > 0 ? `${hours}h ${mins}m online` : `${hours}h online`;
-}
-
-// Open weekly leaderboard modal
-function openWeeklyLeaderboard() {
-  document.getElementById("leaderboardModal").classList.add("active");
-  loadLeaderboardData();
-}
-
-// Close leaderboard modal
-function closeLeaderboardModal(event) {
-  if (!event || event.target === document.getElementById("leaderboardModal")) {
-    document.getElementById("leaderboardModal").classList.remove("active");
-  }
-}
-
-// Load and display full leaderboard
-async function loadLeaderboardData() {
-  const body = document.getElementById("leaderboardModalBody");
-  body.innerHTML = '<div class="leaderboard-preview-loading">Loading...</div>';
-  
-  try {
-    const weekStart = getCurrentWeekStart();
-    
-    // Get all users
-    const usersSnap = await db.collection("users").get();
-    const users = [];
-    usersSnap.forEach(doc => {
-      const data = doc.data();
-      if (!data.banned) {
-        users.push({ uid: doc.id, ...data });
-      }
-    });
-    
-    // Get messages this week
-    const msgSnap = await db.collection("chats")
-      .where("createdAt", ">=", weekStart)
-      .get();
-    const msgCounts = {};
-    msgSnap.forEach(doc => {
-      const data = doc.data();
-      msgCounts[data.from] = (msgCounts[data.from] || 0) + 1;
-    });
-    
-    // Get stories this week
-    const storySnap = await db.collection("stories")
-      .where("createdAt", ">=", weekStart)
-      .get();
-    const storyCounts = {};
-    storySnap.forEach(doc => {
-      const data = doc.data();
-      const uid = data.uid || data.userId;
-      if (uid) storyCounts[uid] = (storyCounts[uid] || 0) + 1;
-    });
-    
-    // Get presence data for online time
-    const presenceSnap = await db.collection("presence").get();
-    const presenceData = {};
-    presenceSnap.forEach(doc => {
-      presenceData[doc.id] = doc.data();
-    });
-    
-    // Calculate scores (matching admin formula)
-    const userScores = users.map(u => {
-      const msgs = msgCounts[u.uid] || 0;
-      const stories = storyCounts[u.uid] || 0;
-      const p = presenceData[u.uid] || {};
-      const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
-      const lastSeen = p.lastSeen || u.lastSeen || 0;
-      const isOnline = (Date.now() - lastSeen) < 120000;
-      const onlineTimePoints = Math.round(weeklyOnlineMinutes * 2);
-      const isWeeklyActive = lastSeen >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
-      
-      const activeBonus = isWeeklyActive ? 5 : 0;
-      const onlineBonus = isOnline ? 3 : 0;
-      const score = msgs + stories + activeBonus + onlineBonus + onlineTimePoints;
-      
-      return {
-        uid: u.uid,
-        displayName: u.displayName || u.name || "Nexa User",
-        photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
-        msgs, stories, onlineMinutes: weeklyOnlineMinutes,
-        isOnline, score, isWeeklyActive
-      };
-    }).filter(u => u.isWeeklyActive);
-    
-    userScores.sort((a, b) => b.score - a.score);
-    
-    if (userScores.length === 0) {
-      body.innerHTML = '<div class="leaderboard-preview-empty">No activity this week yet. Be the first!</div>';
-      return;
-    }
-    
-    const topUsers = userScores.slice(0, 5);
-    let html = '';
-    topUsers.forEach((u, idx) => {
-      const rank = idx + 1;
-      const rankClass = rank <= 3 ? `rank-${rank}` : "";
-      const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-      const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢 Online</span>' : '';
-      
-      html += `
-        <div class="leaderboard-modal-item ${rankClass}">
-          <div class="leaderboard-modal-rank">${rankBadge}</div>
-          <div class="leaderboard-modal-info">
-            <div class="leaderboard-modal-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
-            <div class="leaderboard-modal-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
-          </div>
-          <div class="leaderboard-modal-score-wrap">
-            <div class="leaderboard-modal-score">${u.score}</div>
-            <div class="leaderboard-modal-score-label">pts</div>
-          </div>
-        </div>
-      `;
-    });
-    
-    body.innerHTML = html;
-  } catch (err) {
-    console.error("Error loading leaderboard:", err);
-    body.innerHTML = '<div class="leaderboard-preview-empty">Error loading leaderboard</div>';
-  }
-}
-
-// Load leaderboard preview (for settings tab)
-async function loadLeaderboardPreview() {
-  const container = document.getElementById("leaderboardPreviewList");
-  if (!container) return;
-  
-  try {
-    const weekStart = getCurrentWeekStart();
-    
-    const usersSnap = await db.collection("users").get();
-    const users = [];
-    usersSnap.forEach(doc => {
-      const data = doc.data();
-      if (!data.banned) users.push({ uid: doc.id, ...data });
-    });
-    
-    const msgSnap = await db.collection("chats").where("createdAt", ">=", weekStart).get();
-    const msgCounts = {};
-    msgSnap.forEach(doc => { msgCounts[doc.data().from] = (msgCounts[doc.data().from] || 0) + 1; });
-    
-    const storySnap = await db.collection("stories").where("createdAt", ">=", weekStart).get();
-    const storyCounts = {};
-    storySnap.forEach(doc => {
-      const data = doc.data();
-      const uid = data.uid || data.userId;
-      if (uid) storyCounts[uid] = (storyCounts[uid] || 0) + 1;
-    });
-    
-    const presenceSnap = await db.collection("presence").get();
-    const presenceData = {};
-    presenceSnap.forEach(doc => { presenceData[doc.id] = doc.data(); });
-    
-    const userScores = users.map(u => {
-      const msgs = msgCounts[u.uid] || 0;
-      const stories = storyCounts[u.uid] || 0;
-      const p = presenceData[u.uid] || {};
-      const weeklyOnlineMinutes = p.weeklyOnlineMinutes || 0;
-      const lastSeen = p.lastSeen || u.lastSeen || 0;
-      const isOnline = (Date.now() - lastSeen) < 120000;
-      const onlineTimePoints = Math.round(weeklyOnlineMinutes * 2);
-      const isWeeklyActive = lastSeen >= weekStart || msgs > 0 || stories > 0 || weeklyOnlineMinutes > 0;
-      
-      const activeBonus = isWeeklyActive ? 5 : 0;
-      const onlineBonus = isOnline ? 3 : 0;
-      const score = msgs + stories + activeBonus + onlineBonus + onlineTimePoints;
-      
-      return {
-        uid: u.uid,
-        displayName: u.displayName || u.name || "Nexa User",
-        photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
-        msgs, stories, onlineMinutes: weeklyOnlineMinutes,
-        isOnline, score, isWeeklyActive
-      };
-    }).filter(u => u.isWeeklyActive);
-    
-    userScores.sort((a, b) => b.score - a.score);
-    
-    if (userScores.length === 0) {
-      container.innerHTML = '<div class="leaderboard-preview-empty">No activity this week yet</div>';
-      return;
-    }
-    
-    const topUsers = userScores.slice(0, 5);
-    let html = '';
-    topUsers.forEach((u, idx) => {
-      const rank = idx + 1;
-      const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
-      const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
-      const onlineBadge = u.isOnline ? ' <span style="color: var(--online);">🟢 Online</span>' : '';
-      
-      html += `
-        <div class="leaderboard-preview-item">
-          <div class="leaderboard-preview-rank ${rankClass}">${rankBadge}</div>
-          <div class="leaderboard-preview-info">
-            <div class="leaderboard-preview-name">${escapeHtml(u.displayName)}${onlineBadge}</div>
-            <div class="leaderboard-preview-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
-          </div>
-          <div class="leaderboard-preview-score">${u.score} pts</div>
-        </div>
-      `;
-    });
-    
-    container.innerHTML = html;
-  } catch (err) {
-    console.error("Error loading leaderboard preview:", err);
-    container.innerHTML = '<div class="leaderboard-preview-empty">Unable to load</div>';
-  }
-}
 
 
 async function showProfileSetupModal() {
@@ -1743,7 +1524,7 @@ function renderUsers() {
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
-          <img src="${photo}" class="user-avatar" onclick="viewUserProfilePic('${user.uid}')" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
           <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
         </div>
         <div class="user-info">
@@ -1933,7 +1714,7 @@ function renderStoriesTab() {
 
     card.innerHTML = `
       <div class="story-feed-ring ${allSeen ? 'seen' : 'unseen'}">
-        <img src="${photo}" class="story-feed-avatar" onclick="viewUserProfilePic('${user.uid}')" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <img src="${photo}" class="story-feed-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
       </div>
       <div class="story-feed-info">
         <div class="story-feed-name">${name}</div>
@@ -1964,9 +1745,6 @@ function renderSettingsTab() {
   if (stToggle) stToggle.classList.toggle("active", notificationSettings.stories);
   const clToggle = document.getElementById("tabNotifCalls");
   if (clToggle) clToggle.classList.toggle("active", notificationSettings.calls);
-  
-  // Load leaderboard preview
-  loadLeaderboardPreview();
 
   const grid = document.getElementById("settingsThemeGrid");
   if (!grid) return;
@@ -2150,6 +1928,7 @@ async function changeDisappearingSetting(value) {
 
 function selectChat(user, el) {
   selectedUser = user;
+  applyCurrentWallpaper();
   if (deletedChats[user.uid]) {
     delete deletedChats[user.uid];
     saveDeletedChats();
@@ -2288,32 +2067,9 @@ async function updateOnline(on) {
   if (!currentUser) return;
   const isOnlineState = on && document.visibilityState === "visible";
   userStatus = isOnlineState ? "online" : "offline";
-  const now = Date.now();
-  
   try {
-    const presenceRef = db.collection("presence").doc(currentUser.uid);
-    const presenceDoc = await presenceRef.get().catch(() => null);
-    const existingData = presenceDoc?.exists ? presenceDoc.data() : {};
-    
-    // Calculate online time for this session
-    let weeklyOnlineMinutes = existingData.weeklyOnlineMinutes || 0;
-    const weekStart = getCurrentWeekStart();
-    if (existingData.weekStart !== weekStart) {
-      weeklyOnlineMinutes = 0;
-    }
-    if (isOnlineState) {
-      weeklyOnlineMinutes += (10 / 60); // Add 10 seconds worth of minutes
-    }
-    
-    await presenceRef.set(
-      { 
-        online: isOnlineState, 
-        status: isOnlineState ? "online" : "offline", 
-        lastSeen: now, 
-        uid: currentUser.uid,
-        weeklyOnlineMinutes: Math.round(weeklyOnlineMinutes * 100) / 100,
-        weekStart: weekStart
-      },
+    await db.collection("presence").doc(currentUser.uid).set(
+      { online: isOnlineState, status: isOnlineState ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
       { merge: true }
     );
   } catch (err) {
@@ -2622,6 +2378,11 @@ function renderMessageList() {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
     const fromMe = msg.from === currentUser.uid;
 
+    if (!fromMe && !msg.isViewOnce) {
+      if (msg.image) autoSaveMedia(msg.image, 'photo', msg.id);
+      if (msg.video) autoSaveMedia(msg.video, 'video', msg.id);
+    }
+
     const dateStr = new Date(msg.createdAt).toLocaleDateString();
     if (dateStr !== lastDate) {
       lastDate = dateStr;
@@ -2640,6 +2401,31 @@ function renderMessageList() {
       const metaEl = msgEl.querySelector(".msg-meta");
       if (metaEl) {
         metaEl.innerHTML = `<span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""} ${editLabel}`;
+      }
+
+      // In-place reactions update for instant visual feedback
+      let reactEl = msgEl.querySelector(".msg-reactions");
+      const newReactHTML = buildReactionsHTML(msg.id, msg.reactions);
+      if (reactEl) {
+        if (newReactHTML) {
+          const temp = document.createElement("div");
+          temp.innerHTML = newReactHTML;
+          reactEl.replaceWith(temp.firstElementChild);
+        } else {
+          reactEl.remove();
+        }
+      } else if (newReactHTML) {
+        const bubble = msgEl.querySelector(".bubble");
+        if (bubble) {
+          const temp = document.createElement("div");
+          temp.innerHTML = newReactHTML;
+          const newEl = temp.firstElementChild;
+          if (metaEl) {
+            bubble.insertBefore(newEl, metaEl);
+          } else {
+            bubble.appendChild(newEl);
+          }
+        }
       }
 
       // In-place view once update
@@ -2803,6 +2589,30 @@ function buildStoryReplyPreview(msg) {
   `;
 }
 
+function buildReactionsHTML(id, reactions) {
+  if (!reactions || !Object.keys(reactions).length) return "";
+  let html = '<div class="msg-reactions">';
+  for (const [emoji, users] of Object.entries(reactions)) {
+    if (!Array.isArray(users) || !users.length) continue;
+    const mine = currentUser && users.includes(currentUser.uid);
+    
+    const reactorNames = users.map(uId => {
+      if (currentUser && uId === currentUser.uid) return "You";
+      const found = (allUsersData || []).find(u => u.uid === uId);
+      return found ? (found.displayName || found.name || "User") : "User";
+    }).join(", ");
+
+    html += `<div class="reaction${mine ? ' me-reacted' : ''}" 
+                   title="${escapeHtml(reactorNames)}" 
+                   onclick="event.stopPropagation(); toggleReact('${id}', '${emoji}')">
+                <span class="reaction-emoji">${emoji}</span>
+                <span class="reaction-count">${users.length}</span>
+              </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
 function buildMessage(id, msg, fromMe) {
   const el = document.createElement("div");
   el.className = `msg ${fromMe ? "me" : "them"}`;
@@ -2867,9 +2677,6 @@ function buildMessage(id, msg, fromMe) {
              onclick="viewImg('${msg.image}')"
              loading="lazy"
              alt="shared image">
-        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${msg.image}', 'image')" title="Save image">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </button>
       </div>`;
     }
 
@@ -2879,35 +2686,11 @@ function buildMessage(id, msg, fromMe) {
           <source src="${msg.video}" type="video/mp4">
           Your browser does not support video playback.
         </video>
-        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${msg.video}', 'video')" title="Save video">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </button>
       </div>`;
     }
   }
 
-  if (msg.reactions && Object.keys(msg.reactions).length) {
-    inner += '<div class="msg-reactions">';
-    for (const [emoji, users] of Object.entries(msg.reactions)) {
-      if (!Array.isArray(users) || !users.length) continue;
-      const mine = currentUser && users.includes(currentUser.uid);
-      
-      const reactorNames = users.map(uId => {
-        if (currentUser && uId === currentUser.uid) return "You";
-        const found = allUsersData.find(u => u.uid === uId);
-        return found ? (found.displayName || found.name || "User") : "User";
-      }).join(", ");
-
-      inner += `<div class="reaction${mine ? ' me-reacted' : ''}" 
-                     data-emoji="${emoji}"
-                     title="${escapeHtml(reactorNames)}" 
-                     onclick="event.stopPropagation(); toggleReact('${id}', '${emoji}')">
-                  <span class="reaction-emoji">${emoji}</span>
-                  <span class="reaction-count">${users.length}</span>
-                </div>`;
-    }
-    inner += '</div>';
-  }
+  inner += buildReactionsHTML(id, msg.reactions);
 
 
   const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
@@ -3092,16 +2875,14 @@ async function toggleReact(msgId, emoji) {
     r[emoji].push(currentUser.uid);
   }
 
-  // Optimistic UI update - update immediately without full re-render
+  // Optimistic UI update across all internal message arrays
   msg.reactions = r;
-  
-  // Also update the message in _msgsA and _msgsB so it persists
   const msgInA = _msgsA.find(m => m.id === msgId);
-  const msgInB = _msgsB.find(m => m.id === msgId);
   if (msgInA) msgInA.reactions = r;
+  const msgInB = _msgsB.find(m => m.id === msgId);
   if (msgInB) msgInB.reactions = r;
-  
-  updateReactionUI(msgId, emoji, r);
+
+  renderMessageList();
 
   try {
     await db.collection("chats").doc(msgId).update({ reactions: r });
@@ -3121,70 +2902,53 @@ async function toggleReact(msgId, emoji) {
   }
 }
 
-// Update reaction UI immediately without re-rendering entire list
-function updateReactionUI(msgId, emoji, reactions) {
-  // Look for the bubble element inside the message (reactions are in the bubble)
-  const msgEl = document.querySelector(`[data-msg-id="${msgId}"]`);
-  if (!msgEl) return;
-
-  const bubble = msgEl.querySelector('.bubble');
-  if (!bubble) return;
-
-  // Find the reactions container inside the bubble
-  let container = bubble.querySelector('.msg-reactions');
-  
-  // Remove the specific reaction element if it exists
-  const existingReaction = bubble.querySelector(`.reaction[data-emoji="${emoji}"]`);
-  if (existingReaction) {
-    existingReaction.remove();
-  }
-
-  // If there are no reactions, remove the container
-  if (!reactions || Object.keys(reactions).length === 0) {
-    if (container) container.remove();
-    return;
-  }
-
-  // Create or update reactions container
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'msg-reactions';
-    // Insert before msg-meta inside the bubble
-    const msgMeta = bubble.querySelector('.msg-meta');
-    if (msgMeta) {
-      bubble.insertBefore(container, msgMeta);
-    } else {
-      bubble.appendChild(container);
-    }
-  }
-
-  // Build reaction elements for all reactions
-  let html = '';
-  for (const [reactEmoji, users] of Object.entries(reactions)) {
-    if (!Array.isArray(users) || !users.length) continue;
-    const mine = currentUser && users.includes(currentUser.uid);
-    
-    const reactorNames = users.map(uId => {
-      if (currentUser && uId === currentUser.uid) return "You";
-      const found = allUsersData.find(u => u.uid === uId);
-      return found ? (found.displayName || found.name || "User") : "User";
-    }).join(", ");
-
-    html += `<div class="reaction${mine ? ' me-reacted' : ''}" 
-                  data-emoji="${reactEmoji}"
-                  title="${escapeHtml(reactorNames)}" 
-                  onclick="event.stopPropagation(); toggleReact('${msgId}', '${reactEmoji}')">
-                <span class="reaction-emoji">${reactEmoji}</span>
-                <span class="reaction-count">${users.length}</span>
-              </div>`;
-  }
-  
-  container.innerHTML = html;
-}
-
 window.toggleReact = toggleReact;
 window.addQuickReact = addQuickReact;
 window.renderMessages = renderMessageList;
+
+/* =========================================================================
+   AUTO-SAVE MEDIA TO USER DEVICE (Photos & Videos)
+   ========================================================================= */
+function autoSaveMedia(mediaUrl, mediaType, msgId) {
+  if (!msgId || !mediaUrl) return;
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem("nexa_autosaved_media") || "{}");
+  } catch (e) {
+    saved = {};
+  }
+  if (saved[msgId]) return; // Already auto-saved to device
+
+  saved[msgId] = Date.now();
+  try {
+    localStorage.setItem("nexa_autosaved_media", JSON.stringify(saved));
+  } catch (e) {}
+
+  fetch(mediaUrl)
+    .then(res => res.blob())
+    .then(blob => {
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      const ext = mediaType === "video" ? "mp4" : "png";
+      a.download = `nexa_${mediaType}_${Date.now()}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      showNotifToast(`💾 Auto-saved ${mediaType} to device`, "success");
+    })
+    .catch(err => {
+      // Fallback direct link download
+      const a = document.createElement("a");
+      a.href = mediaUrl;
+      a.target = "_blank";
+      a.download = `nexa_${mediaType}_${Date.now()}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+}
 
 
 
@@ -3474,18 +3238,6 @@ function viewImg(url) {
   window.open(url, "_blank");
 }
 
-// Download image or video
-function downloadMedia(url, type) {
-  const filename = type === 'image' ? 'nexa-image.jpg' : 'nexa-video.mp4';
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.target = '_blank';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
 /* =========================================================================
    CHAT INFO PANEL
    ========================================================================= */
@@ -3512,20 +3264,10 @@ function loadMediaGrid() {
     const el = document.createElement("div");
     el.className = "media-thumb";
     if (m.image) {
-      el.innerHTML = `
-        <img src="${m.image}" alt="media">
-        <button class="media-thumb-download" onclick="event.stopPropagation(); downloadMedia('${m.image}', 'image')" title="Save image">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </button>
-      `;
+      el.innerHTML = `<img src="${m.image}" alt="media">`;
       el.addEventListener("click", () => viewImg(m.image));
     } else if (m.video) {
-      el.innerHTML = `
-        <video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>
-        <button class="media-thumb-download" onclick="event.stopPropagation(); downloadMedia('${m.video}', 'video')" title="Save video">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </button>
-      `;
+      el.innerHTML = `<video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>`;
       el.addEventListener("click", () => window.open(m.video, "_blank"));
     }
     grid.appendChild(el);
@@ -3578,6 +3320,363 @@ function renderThemeGrid() {
     btn.onclick = () => { setTheme(key); renderThemeGrid(); };
     grid.appendChild(btn);
   });
+}
+
+/* =========================================================================
+   CUSTOM CHAT WALLPAPER SYSTEM
+   ========================================================================= */
+const WALLPAPER_PRESETS = [
+  { id: 'cosmic', title: 'Cosmic Aurora', url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1200&auto=format&fit=crop', blur: 2, dimming: 45, tint: 'dark' },
+  { id: 'cyberpunk', title: 'Neon Cyberpunk', url: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?q=80&w=1200&auto=format&fit=crop', blur: 3, dimming: 50, tint: 'dark' },
+  { id: 'forest', title: 'Misty Forest', url: 'https://images.unsplash.com/photo-1511497584788-876761c1298b?q=80&w=1200&auto=format&fit=crop', blur: 2, dimming: 45, tint: 'dark' },
+  { id: 'ocean', title: 'Midnight Ocean', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop', blur: 2, dimming: 40, tint: 'dark' },
+  { id: 'sunset', title: 'Sunset Glow', url: 'https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?q=80&w=1200&auto=format&fit=crop', blur: 3, dimming: 50, tint: 'dark' },
+  { id: 'minimal', title: 'Minimal Abstract', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop', blur: 1, dimming: 40, tint: 'dark' },
+  { id: 'pastel', title: 'Dreamy Cloud', url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=1200&auto=format&fit=crop', blur: 4, dimming: 45, tint: 'glass' },
+  { id: 'obsidian', title: 'Obsidian Mesh', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1200&auto=format&fit=crop', blur: 1, dimming: 35, tint: 'dark' }
+];
+
+let globalWallpaper = null; // { url, blur, dimming, tintMode }
+let perChatWallpapers = {}; // { [peerUid]: { url, blur, dimming, tintMode } }
+
+let wallpaperModalState = {
+  scope: 'current', // 'current' or 'global'
+  selectedUrl: '',
+  blur: 2,
+  dimming: 50,
+  tintMode: 'dark'
+};
+
+function applyCurrentWallpaper() {
+  const wallpaperLayer = document.getElementById("chatWallpaperLayer");
+  const wallpaperImg = document.getElementById("chatWallpaperImg");
+  const wallpaperOverlay = document.getElementById("chatWallpaperOverlay");
+  const chatArea = document.getElementById("chatArea");
+  
+  if (!chatArea || !wallpaperLayer) return;
+
+  let config = null;
+  let isPerChat = false;
+
+  if (selectedUser && perChatWallpapers[selectedUser.uid]) {
+    config = perChatWallpapers[selectedUser.uid];
+    isPerChat = true;
+  } else if (globalWallpaper) {
+    config = globalWallpaper;
+  }
+
+  if (config && config.url) {
+    chatArea.classList.add("has-custom-wallpaper");
+    wallpaperLayer.classList.add("active");
+    wallpaperImg.style.backgroundImage = `url("${config.url}")`;
+    
+    const blurPx = config.blur !== undefined ? config.blur : 2;
+    wallpaperImg.style.filter = `blur(${blurPx}px)`;
+
+    const dimmingPct = config.dimming !== undefined ? config.dimming : 50;
+    const alpha = (dimmingPct / 100).toFixed(2);
+    const tintMode = config.tintMode || 'dark';
+
+    if (tintMode === 'light') {
+      wallpaperOverlay.style.backgroundColor = `rgba(255, 255, 255, ${alpha})`;
+      wallpaperOverlay.style.backdropFilter = `none`;
+    } else if (tintMode === 'glass') {
+      wallpaperOverlay.style.backgroundColor = `rgba(15, 23, 42, ${Math.min(alpha, 0.45)})`;
+      wallpaperOverlay.style.backdropFilter = `blur(12px)`;
+    } else {
+      wallpaperOverlay.style.backgroundColor = `rgba(8, 12, 20, ${alpha})`;
+      wallpaperOverlay.style.backdropFilter = `none`;
+    }
+  } else {
+    chatArea.classList.remove("has-custom-wallpaper");
+    wallpaperLayer.classList.remove("active");
+    wallpaperImg.style.backgroundImage = "none";
+  }
+
+  updateWallpaperUIIndicators(isPerChat, config);
+}
+
+function updateWallpaperUIIndicators(isPerChat, config) {
+  // Update Settings Tab Card
+  const settingsThumb = document.getElementById("settingsWpThumb");
+  const settingsTitle = document.getElementById("settingsWpTitle");
+  const settingsSub = document.getElementById("settingsWpSub");
+  if (settingsThumb) {
+    if (globalWallpaper && globalWallpaper.url) {
+      settingsThumb.style.backgroundImage = `url("${globalWallpaper.url}")`;
+      settingsTitle.textContent = "Global Wallpaper Active";
+      settingsSub.textContent = `Blur: ${globalWallpaper.blur || 0}px • Darken: ${globalWallpaper.dimming || 50}%`;
+    } else {
+      settingsThumb.style.backgroundImage = "none";
+      settingsTitle.textContent = "Default Theme Background";
+      settingsSub.textContent = "Applies to all chats unless overridden";
+    }
+  }
+
+  // Update Chat Info Panel Card
+  const infoThumb = document.getElementById("infoWpThumb");
+  const infoTitle = document.getElementById("infoWpTitle");
+  const infoSub = document.getElementById("infoWpSub");
+  const infoResetBtn = document.getElementById("infoWpResetBtn");
+  
+  if (infoThumb) {
+    if (isPerChat && config && config.url) {
+      infoThumb.style.backgroundImage = `url("${config.url}")`;
+      infoTitle.textContent = "Custom Wallpaper (This Chat)";
+      infoSub.textContent = `Specific to ${selectedUser ? (selectedUser.displayName || 'this chat') : 'this chat'}`;
+      if (infoResetBtn) infoResetBtn.style.display = "inline-flex";
+    } else if (globalWallpaper && globalWallpaper.url) {
+      infoThumb.style.backgroundImage = `url("${globalWallpaper.url}")`;
+      infoTitle.textContent = "Using Global Wallpaper";
+      infoSub.textContent = "Inherited from global settings";
+      if (infoResetBtn) infoResetBtn.style.display = "none";
+    } else {
+      infoThumb.style.backgroundImage = "none";
+      infoTitle.textContent = "Default Theme Background";
+      infoSub.textContent = "No custom wallpaper applied";
+      if (infoResetBtn) infoResetBtn.style.display = "none";
+    }
+  }
+}
+
+function openWallpaperModal(scope = 'current') {
+  if (scope === 'current' && !selectedUser) {
+    if (typeof showNotifToast === 'function') showNotifToast("Please select a chat first to customize its wallpaper", "info");
+    else alert("Please select a chat first to customize its wallpaper");
+    return;
+  }
+  wallpaperModalState.scope = scope;
+  
+  let existing = null;
+  if (scope === 'current' && selectedUser) {
+    existing = perChatWallpapers[selectedUser.uid] || globalWallpaper;
+  } else {
+    existing = globalWallpaper;
+  }
+
+  if (existing) {
+    wallpaperModalState.selectedUrl = existing.url || '';
+    wallpaperModalState.blur = existing.blur !== undefined ? existing.blur : 2;
+    wallpaperModalState.dimming = existing.dimming !== undefined ? existing.dimming : 50;
+    wallpaperModalState.tintMode = existing.tintMode || 'dark';
+  } else {
+    wallpaperModalState.selectedUrl = '';
+    wallpaperModalState.blur = 2;
+    wallpaperModalState.dimming = 50;
+    wallpaperModalState.tintMode = 'dark';
+  }
+
+  renderWallpaperModalUI();
+  const modal = document.getElementById("wallpaperModal");
+  if (modal) modal.classList.add("active");
+}
+
+function closeWallpaperModal() {
+  const modal = document.getElementById("wallpaperModal");
+  if (modal) modal.classList.remove("active");
+}
+
+function switchWallpaperModalScope(scope) {
+  if (scope === 'current' && !selectedUser) {
+    if (typeof showNotifToast === 'function') showNotifToast("Select a chat first to apply wallpaper specifically to it", "info");
+    else alert("Select a chat first to apply wallpaper specifically to it");
+    return;
+  }
+  wallpaperModalState.scope = scope;
+  
+  let existing = (scope === 'current' && selectedUser) ? (perChatWallpapers[selectedUser.uid] || globalWallpaper) : globalWallpaper;
+  if (existing) {
+    wallpaperModalState.selectedUrl = existing.url || '';
+    wallpaperModalState.blur = existing.blur !== undefined ? existing.blur : 2;
+    wallpaperModalState.dimming = existing.dimming !== undefined ? existing.dimming : 50;
+    wallpaperModalState.tintMode = existing.tintMode || 'dark';
+  }
+
+  renderWallpaperModalUI();
+}
+
+function renderWallpaperModalUI() {
+  const tabCurrent = document.getElementById("wpScopeTabCurrent");
+  const tabGlobal = document.getElementById("wpScopeTabGlobal");
+  if (tabCurrent && tabGlobal) {
+    tabCurrent.classList.toggle("active", wallpaperModalState.scope === 'current');
+    tabGlobal.classList.toggle("active", wallpaperModalState.scope === 'global');
+    tabCurrent.textContent = selectedUser ? `🎯 Chat with ${selectedUser.displayName || 'User'}` : "🎯 This Chat Only";
+  }
+
+  const modalTitle = document.getElementById("wpModalTitle");
+  if (modalTitle) {
+    modalTitle.textContent = wallpaperModalState.scope === 'current' 
+      ? `🖼️ Custom Background for ${selectedUser ? selectedUser.displayName : 'Chat'}` 
+      : "🖼️ Global Background for All Chats";
+  }
+
+  const grid = document.getElementById("wpPresetsGrid");
+  if (grid) {
+    grid.innerHTML = "";
+    WALLPAPER_PRESETS.forEach(p => {
+      const card = document.createElement("div");
+      card.className = `wp-preset-card ${wallpaperModalState.selectedUrl === p.url ? 'active' : ''}`;
+      card.innerHTML = `
+        <div class="wp-preset-thumb" style="background-image: url('${p.url}')"></div>
+        <div class="wp-preset-title">${p.title}</div>
+      `;
+      card.onclick = () => selectPresetWallpaper(p);
+      grid.appendChild(card);
+    });
+  }
+
+  const dimSlider = document.getElementById("wpDimmingSlider");
+  const blurSlider = document.getElementById("wpBlurSlider");
+  const urlInput = document.getElementById("wallpaperUrlInput");
+  
+  if (dimSlider) dimSlider.value = wallpaperModalState.dimming;
+  if (blurSlider) blurSlider.value = wallpaperModalState.blur;
+  if (urlInput) urlInput.value = wallpaperModalState.selectedUrl.startsWith("data:") ? "" : wallpaperModalState.selectedUrl;
+
+  const dimDisplay = document.getElementById("wpDimmingValDisplay");
+  const blurDisplay = document.getElementById("wpBlurValDisplay");
+  if (dimDisplay) dimDisplay.textContent = `${wallpaperModalState.dimming}%`;
+  if (blurDisplay) blurDisplay.textContent = `${wallpaperModalState.blur}px`;
+
+  document.querySelectorAll(".wp-tint-pill").forEach(p => p.classList.remove("active"));
+  const activeTintPill = document.getElementById(`wpTint${wallpaperModalState.tintMode.charAt(0).toUpperCase() + wallpaperModalState.tintMode.slice(1)}`);
+  if (activeTintPill) activeTintPill.classList.add("active");
+
+  updateLivePreview();
+}
+
+function selectPresetWallpaper(preset) {
+  wallpaperModalState.selectedUrl = preset.url;
+  wallpaperModalState.blur = preset.blur;
+  wallpaperModalState.dimming = preset.dimming;
+  wallpaperModalState.tintMode = preset.tint;
+  renderWallpaperModalUI();
+}
+
+function updateWallpaperPreviewFromSliders() {
+  const dimSlider = document.getElementById("wpDimmingSlider");
+  const blurSlider = document.getElementById("wpBlurSlider");
+  if (dimSlider) {
+    wallpaperModalState.dimming = parseInt(dimSlider.value, 10);
+    const dimDisplay = document.getElementById("wpDimmingValDisplay");
+    if (dimDisplay) dimDisplay.textContent = `${wallpaperModalState.dimming}%`;
+  }
+  if (blurSlider) {
+    wallpaperModalState.blur = parseInt(blurSlider.value, 10);
+    const blurDisplay = document.getElementById("wpBlurValDisplay");
+    if (blurDisplay) blurDisplay.textContent = `${wallpaperModalState.blur}px`;
+  }
+  updateLivePreview();
+}
+
+function setWallpaperTintMode(mode) {
+  wallpaperModalState.tintMode = mode;
+  document.querySelectorAll(".wp-tint-pill").forEach(p => p.classList.remove("active"));
+  const pill = document.getElementById(`wpTint${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
+  if (pill) pill.classList.add("active");
+  updateLivePreview();
+}
+
+function handleWallpaperUrlInput(val) {
+  wallpaperModalState.selectedUrl = val.trim();
+  updateLivePreview();
+}
+
+function triggerWallpaperFileUpload() {
+  const fileInput = document.getElementById("wallpaperFileInput");
+  if (fileInput) fileInput.click();
+}
+
+function handleWallpaperFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    if (typeof showNotifToast === 'function') showNotifToast("Image size must be less than 5MB", "error");
+    else alert("Image size must be less than 5MB");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    wallpaperModalState.selectedUrl = evt.target.result;
+    renderWallpaperModalUI();
+    if (typeof showNotifToast === 'function') showNotifToast("Custom image loaded", "success");
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateLivePreview() {
+  const previewImg = document.getElementById("wpLivePreviewImg");
+  const previewOverlay = document.getElementById("wpLivePreviewOverlay");
+  if (!previewImg || !previewOverlay) return;
+
+  if (wallpaperModalState.selectedUrl) {
+    previewImg.style.backgroundImage = `url("${wallpaperModalState.selectedUrl}")`;
+    previewImg.style.filter = `blur(${wallpaperModalState.blur}px)`;
+
+    const alpha = (wallpaperModalState.dimming / 100).toFixed(2);
+    if (wallpaperModalState.tintMode === 'light') {
+      previewOverlay.style.backgroundColor = `rgba(255, 255, 255, ${alpha})`;
+      previewOverlay.style.backdropFilter = `none`;
+    } else if (wallpaperModalState.tintMode === 'glass') {
+      previewOverlay.style.backgroundColor = `rgba(15, 23, 42, ${Math.min(alpha, 0.45)})`;
+      previewOverlay.style.backdropFilter = `blur(12px)`;
+    } else {
+      previewOverlay.style.backgroundColor = `rgba(8, 12, 20, ${alpha})`;
+      previewOverlay.style.backdropFilter = `none`;
+    }
+  } else {
+    previewImg.style.backgroundImage = "none";
+    previewOverlay.style.backgroundColor = "rgba(8, 12, 20, 0.85)";
+  }
+}
+
+function saveWallpaperFromModal() {
+  if (!wallpaperModalState.selectedUrl) {
+    if (typeof showNotifToast === 'function') showNotifToast("Please select or upload an image first", "info");
+    else alert("Please select or upload an image first");
+    return;
+  }
+
+  const config = {
+    url: wallpaperModalState.selectedUrl,
+    blur: wallpaperModalState.blur,
+    dimming: wallpaperModalState.dimming,
+    tintMode: wallpaperModalState.tintMode
+  };
+
+  if (wallpaperModalState.scope === 'current' && selectedUser) {
+    perChatWallpapers[selectedUser.uid] = config;
+    if (typeof showNotifToast === 'function') showNotifToast(`Wallpaper updated for chat with ${selectedUser.displayName}`, "success");
+  } else {
+    globalWallpaper = config;
+    if (typeof showNotifToast === 'function') showNotifToast("Global chat wallpaper saved for all chats", "success");
+  }
+
+  savePrefs();
+  applyCurrentWallpaper();
+  closeWallpaperModal();
+}
+
+function removeActiveWallpaper() {
+  if (wallpaperModalState.scope === 'current' && selectedUser) {
+    delete perChatWallpapers[selectedUser.uid];
+    if (typeof showNotifToast === 'function') showNotifToast(`Custom wallpaper removed for ${selectedUser.displayName}`, "info");
+  } else {
+    globalWallpaper = null;
+    if (typeof showNotifToast === 'function') showNotifToast("Global chat wallpaper removed", "info");
+  }
+  savePrefs();
+  applyCurrentWallpaper();
+  closeWallpaperModal();
+}
+
+function resetCurrentChatWallpaper() {
+  if (!selectedUser) return;
+  delete perChatWallpapers[selectedUser.uid];
+  savePrefs();
+  applyCurrentWallpaper();
+  if (typeof showNotifToast === 'function') showNotifToast("Reset chat background to default", "info");
 }
 
 /* =========================================================================
@@ -3662,6 +3761,13 @@ function listenIncoming() {
           showNotifToast(`${name}: You have received a new message`, 'info');
         }
       }
+
+      // Auto-save incoming photo or video automatically to user device
+      if (!msg.isViewOnce) {
+        if (msg.image) autoSaveMedia(msg.image, 'photo', change.doc.id);
+        if (msg.video) autoSaveMedia(msg.video, 'video', change.doc.id);
+      }
+
       db.collection("chats").doc(change.doc.id).update({ status: "delivered" });
       renderUsers();
     });
@@ -3681,7 +3787,6 @@ let callState = 'idle';         // 'idle' | 'ringing' | 'active' | 'ended'
 let callStartTime = null;
 let callTimerInterval = null;
 let callSignalUnsub = null;
-let callStatusUnsub = null;
 let incomingCallData = null;
 let isMicMuted = false;
 let isCameraOff = false;
@@ -3720,26 +3825,6 @@ function initPeerJS() {
     return;
   }
 
-  // Reusable function to set up all PeerJS event handlers
-  function setupPeerEventHandlers(peer) {
-    peer.on('open', (id) => {
-      console.log('📞 PeerJS connected with ID:', id);
-      db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
-    });
-
-    peer.on('call', (incomingMediaCall) => {
-      console.log('📞 Incoming PeerJS media call received');
-      activeCall = incomingMediaCall;
-    });
-
-    peer.on('disconnected', () => {
-      console.log('📞 PeerJS disconnected, reconnecting...');
-      if (peer && !peer.destroyed) {
-        try { peer.reconnect(); } catch (e) {}
-      }
-    });
-  }
-
   if (nexaPeer && !nexaPeer.destroyed && nexaPeer.disconnected) {
     console.log('📞 PeerJS disconnected, attempting reconnect...');
     try { nexaPeer.reconnect(); return; } catch (e) {}
@@ -3752,52 +3837,43 @@ function initPeerJS() {
   }
 
   nexaPeer = new Peer(sessionPeerId, {
-    debug: 1,
+    debug: 0,
     config: {
       iceServers: [
-        // STUN servers for fast local connections
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19305' },
-        { urls: 'stun:stun3.l.google.com:3478' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:stun01.sipphone.com:3478' },
-        { urls: 'stun:stun.ekiga.net:3478' },
-        // TURN server for NAT traversal (free tier)
-        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-      ],
-      iceCandidatePoolSize: 10
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
     }
   });
 
-  // Set up all event handlers
-  setupPeerEventHandlers(nexaPeer);
+  nexaPeer.on('open', (id) => {
+    console.log('📞 PeerJS connected with ID:', id);
+    db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
+  });
+
+  nexaPeer.on('call', (incomingMediaCall) => {
+    console.log('📞 Incoming PeerJS media call received');
+    activeCall = incomingMediaCall;
+  });
 
   nexaPeer.on('error', (err) => {
     console.warn('⚠️ PeerJS error:', err.type, err.message);
-    
-    // Handle unavailable ID - recreate with new ID
     if (err.type === 'unavailable-id') {
       const fallbackId = 'nexa_' + currentUser.uid + '_' + Date.now();
-      console.log('📞 Creating new Peer with fallback ID:', fallbackId);
-      nexaPeer = new Peer(fallbackId, {
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
-          ],
-          iceCandidatePoolSize: 10
-        }
+      nexaPeer = new Peer(fallbackId, { debug: 0 });
+      nexaPeer.on('open', (id) => {
+        db.collection("users").doc(currentUser.uid).set({ peerId: id }, { merge: true });
       });
-      setupPeerEventHandlers(nexaPeer);
     }
-    
-    // Handle browser not supported
-    if (err.type === 'browser-incompatible') {
-      showNotifToast("Your browser doesn't support video calls", "error");
+  });
+
+  nexaPeer.on('disconnected', () => {
+    console.log('📞 PeerJS disconnected, reconnecting...');
+    if (nexaPeer && !nexaPeer.destroyed) {
+      try { nexaPeer.reconnect(); } catch (e) {}
     }
   });
 
@@ -3809,21 +3885,17 @@ async function ensurePeerConnected() {
   if (nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected) return true;
 
   initPeerJS();
-  
-  // Wait for Peer to be ready (faster polling)
+
   let attempts = 0;
-  const maxAttempts = 30; // 3 seconds max wait (was 10 seconds)
-  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < maxAttempts) {
-    await new Promise(r => setTimeout(r, 100)); // Faster polling (100ms vs 200ms)
+  while ((!nexaPeer || nexaPeer.destroyed || !nexaPeer.open || nexaPeer.disconnected) && attempts < MAX_RETRY_ATTEMPTS) {
+    if (nexaPeer && nexaPeer.disconnected && !nexaPeer.destroyed) {
+      try { nexaPeer.reconnect(); } catch (e) {}
+    }
+    await new Promise(r => setTimeout(r, 100));
     attempts++;
   }
-  
-  if (nexaPeer && nexaPeer.open) {
-    console.log('📞 PeerJS ready with ID:', nexaPeer.id);
-    return true;
-  }
-  
-  return false;
+
+  return Boolean(nexaPeer && !nexaPeer.destroyed && nexaPeer.open && !nexaPeer.disconnected);
 }
 
 // ── Firestore Signaling: Listen for incoming calls ──
@@ -3831,41 +3903,24 @@ function listenForIncomingCalls() {
   if (!currentUser) return;
   if (callSignalUnsub) callSignalUnsub();
 
-  // Listen for all calls to this user (no status filter for reliability)
   callSignalUnsub = db.collection("calls")
     .where("to", "==", currentUser.uid)
+    .where("status", "==", "ringing")
     .onSnapshot(snap => {
       snap.docChanges().forEach(change => {
-        const data = change.doc.data();
-        
-        // New incoming call
-        if (change.type === "added" && data.status === "ringing" && callState === "idle") {
-          incomingCallData = { id: change.doc.id, ...data };
-          showIncomingCallUI(incomingCallData);
-          return;
-        }
-        
-        // Call ended/cancelled/declined by caller
-        if (change.type === "modified" && 
-            (data.status === "ended" || data.status === "declined" || data.status === "missed")) {
-          if (callDirection === "incoming" && (callState === "ringing" || callState === "active")) {
-            console.log('📞 Incoming call ended/cancelled by caller');
-            stopRingtone();
-            if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
-            if (navigator.vibrate) navigator.vibrate(0);
-            cleanupCall();
+        if (change.type === "added" || change.type === "modified") {
+          const data = change.doc.data();
+          if (data.status === "ringing" && callState === "idle") {
+            incomingCallData = { id: change.doc.id, ...data };
+            showIncomingCallUI(incomingCallData);
           }
-          return;
         }
-        
-        // Document removed from Firestore (caller ended call before we answered)
-        if (change.type === "removed") {
-          if (callDirection === "incoming" && callState === "ringing") {
-            console.log('📞 Incoming call removed (caller cancelled)');
-            stopRingtone();
-            if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
-            if (navigator.vibrate) navigator.vibrate(0);
-            cleanupCall();
+        if (change.type === "modified") {
+          const data = change.doc.data();
+          if (data.status === "ended" || data.status === "declined" || data.status === "missed") {
+            if (callState === "ringing" && callDirection === "incoming") {
+              cleanupCall();
+            }
           }
         }
       });
@@ -3883,6 +3938,12 @@ async function startCall(type) {
    if (callState !== 'idle') { showNotifToast("Already in a call", "warning"); return; }
    if (callTimeoutTimer) clearTimeout(callTimeoutTimer);
 
+  const peerReady = await ensurePeerConnected();
+  if (!peerReady) {
+    showNotifToast("Connecting call network... Please try again", "warning");
+    return;
+  }
+
   callType = type;  // 'voice' or 'video'
   callDirection = 'outgoing';
   callState = 'ringing';
@@ -3893,7 +3954,6 @@ async function startCall(type) {
   // Set up call UI
   document.getElementById("callPeerAvatar").src = peerPhoto;
   document.getElementById("callPeerName").textContent = peerName;
-  document.getElementById("callPeerNameMini").textContent = peerName;
   document.getElementById("callStatusLabel").textContent = type === 'video' ? "Nexa Video Call" : "Nexa Voice Call";
   document.getElementById("callTimerDisplay").style.display = "none";
   document.getElementById("callProfileCard").style.display = "flex";
@@ -3910,29 +3970,13 @@ async function startCall(type) {
   // Play outgoing ringtone (samsung)
   playRingtone('outgoing');
 
-  // Get local media stream (HD quality)
+  // Get local media stream
   try {
     const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 48000,
-        channelCount: 2,
-        volume: 1.0
-      },
-      video: type === 'video' ? {
-        facingMode: currentFacingMode,
-        width: { ideal: 1920, min: 1280 },
-        height: { ideal: 1080, min: 720 },
-        frameRate: { ideal: 30, min: 24 },
-        bitrate: { ideal: 2500000 },
-        codec: 'vp9',
-        highFramerate: true
-      } : false
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    console.log('📞 Local stream obtained:', localStream.getTracks());
 
     // Show local video PiP if video call
     if (type === 'video') {
@@ -3945,29 +3989,6 @@ async function startCall(type) {
     showNotifToast("Cannot access " + (type === 'video' ? "camera" : "microphone") + ": " + err.message, "error");
     cleanupCall();
     return;
-  }
-
-  // Check peer connection (should be ready from pre-init)
-  const peerReady = await ensurePeerConnected();
-  if (!peerReady) {
-    showNotifToast("Connecting call network... Please try again", "warning");
-    cleanupCall();
-    return;
-  }
-
-  // Get recipient's peer ID
-  let recipientPeerId = selectedUser.peerId;
-  
-  // If no peer ID, try to get from Firestore
-  if (!recipientPeerId) {
-    try {
-      const userDoc = await db.collection("users").doc(selectedUser.uid).get();
-      if (userDoc.exists) {
-        recipientPeerId = userDoc.data().peerId;
-      }
-    } catch (err) {
-      console.error("Error getting recipient peer ID:", err);
-    }
   }
 
   // Write call signal to Firestore
@@ -3984,7 +4005,7 @@ async function startCall(type) {
       createdAt: Date.now()
     });
 
-    incomingCallData = { id: callDocId, recipientPeerId: recipientPeerId };
+    incomingCallData = { id: callDocId };
 
     // Send FCM push for incoming call
     sendPushNotification(
@@ -4016,62 +4037,45 @@ async function startCall(type) {
 
 // ── Listen for call status changes ──
 function listenCallStatus(callDocId) {
-  // Clean up previous listener if exists
-  if (callStatusUnsub) {
-    callStatusUnsub();
-    callStatusUnsub = null;
-  }
-  
-  callStatusUnsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
-    // Don't process if call is no longer relevant
-    if (!doc.exists || callState === 'idle') return;
-    
+  const unsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
+    if (!doc.exists) return;
     const data = doc.data();
 
-    // If still ringing, keep listening (for incoming calls)
-    if (data.status === "ringing" && callState === "ringing") {
+    // If still ringing, keep listening
+    if (data.status === "ringing") {
       return;
     }
 
-    // Call answered by callee
+
+
+    // Call answered – handle both caller and callee sides
     if (data.status === "answered") {
-      // Caller side – initiate PeerJS call NOW (callee is ready to receive)
+      // Caller side – initiate PeerJS call
       if (callDirection === "outgoing" && callState === "ringing") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
         callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connecting...";
-        document.getElementById("callConnectingSpinner").classList.remove("hidden");
-        
-        // Get recipient's peer ID from the answered signal
-        const recipientPeerId = data.receiverPeerId || incomingCallData?.recipientPeerId;
-        
-        if (recipientPeerId && localStream && nexaPeer) {
-          console.log('📞 Callee answered! Initiating PeerJS call to:', recipientPeerId);
-          activeCall = nexaPeer.call(recipientPeerId, localStream);
-          setupCallStreamHandlers(activeCall);
-        } else {
-          console.error('📞 Missing recipientPeerId, localStream, or nexaPeer');
-          showNotifToast("Connection failed", "error");
-          cleanupCall();
-        }
-        return;
-      }
-      
-      // Callee side – UI update (call was answered by this user)
-      // Note: callState is already "active" at this point because answerCall() set it
-      if (callDirection === "incoming" && callState === "active") {
-        stopRingtone();
-        clearTimeout(callTimeoutTimer);
         document.getElementById("callStatusLabel").textContent = "Connected";
         document.getElementById("callConnectingSpinner").classList.add("hidden");
-        document.getElementById("callTimerDisplay").style.display = "block";
-        document.getElementById("callTimerDisplay").textContent = "00:00";
+        const recipientPeerId = data.receiverPeerId;
+        if (recipientPeerId && localStream) {
+          activeCall = nexaPeer.call(recipientPeerId, localStream);
+          setupCallStreamHandlers(activeCall);
+        }
+        startCallTimer();
+        return;
+      }
+      // Callee side – UI update only
+      if (callDirection === "incoming" && callState === "ringing") {
+        stopRingtone();
+        clearTimeout(callTimeoutTimer);
+        callState = "active";
+        document.getElementById("callStatusLabel").textContent = "Connected";
+        document.getElementById("callConnectingSpinner").classList.add("hidden");
         startCallTimer();
         return;
       }
     }
-    
     // Outgoing call declined
     if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
       stopRingtone();
@@ -4079,15 +4083,14 @@ function listenCallStatus(callDocId) {
       showNotifToast("Call declined", "info");
       logCallToChat('declined', callType, 0);
       cleanupCall();
+      unsub();
       return;
     }
 
     // Call missed (no answer within timeout)
     if (data.status === "missed") {
-      if (callState === "ringing") {
-        logCallToChat('missed', callType, 0);
-      }
       cleanupCall();
+      unsub();
       return;
     }
 
@@ -4098,15 +4101,17 @@ function listenCallStatus(callDocId) {
         logCallToChat('completed', callType, duration);
       }
       cleanupCall();
+      unsub();
       return;
     }
 
     // Call failed (e.g., PeerJS error)
-    if (data.status === "failed") {
+    if (data.status === "failed" && callState === "ringing") {
       showNotifToast("Call failed. Please try again.", "error");
       cleanupCall();
-      return;
     }
+    cleanupCall();
+    unsub();
   });
 }
 
@@ -4122,7 +4127,6 @@ function showIncomingCallUI(data) {
 
   document.getElementById("callPeerAvatar").src = peerPhoto;
   document.getElementById("callPeerName").textContent = peerName;
-  document.getElementById("callPeerNameMini").textContent = peerName;
   document.getElementById("callStatusLabel").textContent = data.type === 'video' ? "Nexa Video Call" : "Nexa Voice Call";
   document.getElementById("callTimerDisplay").style.display = "none";
   document.getElementById("callProfileCard").style.display = "flex";
@@ -4167,34 +4171,16 @@ async function answerCall() {
   // Switch to active controls
   document.getElementById("activeCallControls").style.display = "flex";
   document.getElementById("incomingCallControls").style.display = "none";
-  document.getElementById("callStatusLabel").textContent = "Connecting...";
-  document.getElementById("callConnectingSpinner").classList.remove("hidden");
+  document.getElementById("callStatusLabel").textContent = "Connecting…";
 
-  // Get local media (HD quality)
+  // Get local media
   try {
     const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 48000,
-        channelCount: 2,
-        volume: 1.0
-      },
-      video: callType === 'video' ? {
-        facingMode: currentFacingMode,
-        width: { ideal: 1920, min: 1280 },
-        height: { ideal: 1080, min: 720 },
-        frameRate: { ideal: 30, min: 24 },
-        bitrate: { ideal: 2500000 },
-        codec: 'vp9',
-        highFramerate: true
-      } : false
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    console.log('📞 Local stream obtained:', localStream.getTracks());
 
-    // Show local video if video call
     if (callType === 'video') {
       const localVid = document.getElementById("localVideo");
       localVid.srcObject = localStream;
@@ -4202,15 +4188,7 @@ async function answerCall() {
     }
   } catch (err) {
     console.error("❌ Media access error on answer:", err);
-    showNotifToast("Cannot access " + (callType === 'video' ? "camera" : "microphone") + ": " + err.message, "error");
-    rejectCall();
-    return;
-  }
-
-  // Ensure PeerJS is connected
-  const peerReady = await ensurePeerConnected();
-  if (!peerReady) {
-    showNotifToast("Connection error. Try again.", "error");
+    showNotifToast("Cannot access " + (callType === 'video' ? "camera" : "microphone"), "error");
     rejectCall();
     return;
   }
@@ -4222,55 +4200,26 @@ async function answerCall() {
       receiverPeerId: nexaPeer.id,
       answeredAt: Date.now()
     });
-    console.log('📞 Updated Firestore to answered');
   } catch (err) {
     console.error("Error updating call status:", err);
   }
 
   // Answer the PeerJS call if it already came in
   if (activeCall) {
-    console.log('📞 Answering existing PeerJS call');
     activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
   } else {
-    console.log('📞 No PeerJS call yet, setting up listener...');
-    
-    // Set up a timeout to wait for the PeerJS call
-    const callWaitTimeout = setTimeout(() => {
-      if (callState === 'active' && !activeCall) {
-        console.warn('📞 No PeerJS call received within timeout');
-        showNotifToast("Connection failed. Please try again.", "error");
-        // Update Firestore and cleanup
-        if (incomingCallData && incomingCallData.id) {
-          db.collection("calls").doc(incomingCallData.id).update({
-            status: "failed",
-            failedAt: Date.now()
-          }).catch(() => {});
-        }
-        cleanupCall();
-      }
-    }, 15000); // 15 seconds timeout
-    
-    // Store timeout for cleanup
-    window.callWaitTimeout = callWaitTimeout;
-    
-    // Handler for incoming PeerJS call
-    const callHandler = (mediaCall) => {
-      clearTimeout(callWaitTimeout);
-      console.log('📞 Incoming PeerJS call received and answered');
+    // Wait for PeerJS call to arrive
+    nexaPeer.on('call', (mediaCall) => {
       activeCall = mediaCall;
       mediaCall.answer(localStream);
       setupCallStreamHandlers(mediaCall);
-      // Remove this handler after it's called
-      nexaPeer.removeListener('call', callHandler);
-    };
-    
-    // Wait for PeerJS call to arrive
-    nexaPeer.on('call', callHandler);
+    });
   }
 
   // Listen for status changes
   listenCallStatus(incomingCallData.id);
+  startCallTimer();
 }
 
 // ── Reject Incoming Call ──
@@ -4321,128 +4270,24 @@ async function endCall() {
     logCallToChat('cancelled', callType, 0);
   }
 
-  cleanupCall();
+  cleanupCall(true); // keep UI briefly to show duration
 }
 
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
-  // Apply HD quality settings to peer connection
-  if (mediaCall.peerConnection) {
-    const pc = mediaCall.peerConnection;
-    
-    // Update UI when ICE connection state changes
-    pc.oniceconnectionstatechange = () => {
-      console.log('📞 ICE connection state:', pc.iceConnectionState);
-      const statusLabel = document.getElementById("callStatusLabel");
-      if (pc.iceConnectionState === 'checking') {
-        statusLabel.textContent = "Connecting...";
-        document.getElementById("callConnectingSpinner").classList.remove("hidden");
-      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        statusLabel.textContent = "Connected";
-        document.getElementById("callConnectingSpinner").classList.add("hidden");
-        // Apply HD video settings
-        applyHDVideo(pc);
-      } else if (pc.iceConnectionState === 'failed') {
-        statusLabel.textContent = "Connection failed";
-        showNotifToast("Call connection failed. Please try again.", "error");
-      } else if (pc.iceConnectionState === 'disconnected') {
-        statusLabel.textContent = "Reconnecting...";
-      }
-    };
-    
-    // Set HD video constraints on peer connection
-    const applyHDVideo = (peerConn) => {
-      peerConn.getSenders().forEach(sender => {
-        if (sender.track && sender.track.kind === 'video') {
-          try {
-            const params = sender.getParameters();
-            params.encodings = [{
-              rid: 'hd',
-              active: true,
-              maxBitrate: 2500000, // 2.5 Mbps for HD
-              scalabilityMode: 'L1T3',
-              scaleResolutionDownBy: 1.0
-            }];
-            sender.setParameters(params);
-            console.log('📞 HD video settings applied');
-          } catch (e) {
-            console.log('📞 Video HD encoding not supported, using defaults:', e.message);
-          }
-        }
-        // Also apply HD settings to audio
-        if (sender.track && sender.track.kind === 'audio') {
-          try {
-            const params = sender.getParameters();
-            params.encodings = [{
-              active: true,
-              maxBitrate: 128000 // 128 kbps for HD audio
-            }];
-            sender.setParameters(params);
-          } catch (e) {
-            console.log('📞 Audio HD encoding not supported:', e.message);
-          }
-        }
-      });
-    };
-    
-    // Apply HD settings when connection is established
-    setTimeout(() => applyHDVideo(pc), 500);
-  }
-  
   mediaCall.on('stream', (stream) => {
-    console.log('📞 Remote stream received', stream.getTracks());
+    console.log('📞 Remote stream received');
     remoteStream = stream;
 
-    // Get stream info
-    const audioTracks = stream.getAudioTracks();
-    const videoTracks = stream.getVideoTracks();
-    console.log('📞 Remote audio tracks:', audioTracks.length);
-    console.log('📞 Remote video tracks:', videoTracks.length);
-
-    // Handle video for video calls
-    if (callType === 'video' && videoTracks.length > 0) {
+    if (callType === 'video') {
       const remoteVid = document.getElementById("remoteVideo");
       remoteVid.srcObject = stream;
       remoteVid.classList.add("active");
       // Hide profile card, show video
       document.getElementById("callProfileCard").style.display = "none";
-      
-      // Ensure remote video plays at full quality
-      remoteVid.play().catch(() => {});
     }
 
-    // Handle audio - always play remote audio
-    // Create a separate audio-only stream for audio playback
-    if (audioTracks.length > 0) {
-      const audioStream = new MediaStream(audioTracks);
-      let remoteAudio = document.getElementById("remoteAudio");
-      if (!remoteAudio) {
-        remoteAudio = document.createElement("audio");
-        remoteAudio.id = "remoteAudio";
-        remoteAudio.style.display = "none";
-        document.body.appendChild(remoteAudio);
-      }
-      remoteAudio.srcObject = audioStream;
-      
-      // Try to play
-      remoteAudio.play().then(() => {
-        console.log('📞 Remote audio playing');
-        document.getElementById("callStatusLabel").textContent = "In call";
-      }).catch(e => {
-        console.warn("Remote audio play failed (autoplay blocked):", e);
-        // Enable on user interaction
-        const enableAudio = () => {
-          remoteAudio.play().then(() => {
-            document.getElementById("callStatusLabel").textContent = "In call";
-          }).catch(() => {});
-          document.removeEventListener('click', enableAudio);
-        };
-        document.addEventListener('click', enableAudio, { once: true });
-      });
-    } else {
-      // No audio tracks - still update UI for video calls without audio
-      document.getElementById("callStatusLabel").textContent = "In call";
-    }
+    document.getElementById("callStatusLabel").textContent = "In call";
   });
 
   mediaCall.on('close', () => {
@@ -4456,7 +4301,7 @@ function setupCallStreamHandlers(mediaCall) {
 
   mediaCall.on('error', (err) => {
     console.error('📞 Call error:', err);
-    showNotifToast("Call connection error: " + err.message, "error");
+    showNotifToast("Call connection error", "error");
     document.getElementById("callConnectingSpinner").classList.add("hidden");
     cleanupCall();
   });
@@ -4541,13 +4386,7 @@ function toggleVideoCamera() {
 async function addVideoTrack() {
   try {
     const videoStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: currentFacingMode,
-        width: { ideal: 1920, min: 1280 },
-        height: { ideal: 1080, min: 720 },
-        frameRate: { ideal: 30, min: 24 },
-        bitrate: { ideal: 2500000 }
-      }
+      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     const videoTrack = videoStream.getVideoTracks()[0];
     localStream.addTrack(videoTrack);
@@ -4580,13 +4419,7 @@ async function flipCamera() {
 
   try {
     const newStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: currentFacingMode,
-        width: { ideal: 1920, min: 1280 },
-        height: { ideal: 1080, min: 720 },
-        frameRate: { ideal: 30, min: 24 },
-        bitrate: { ideal: 2500000 }
-      }
+      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     const newTrack = newStream.getVideoTracks()[0];
 
@@ -4613,14 +4446,7 @@ async function flipCamera() {
 
 function toggleCallSpeaker() {
   isSpeakerOn = !isSpeakerOn;
-  const remoteAudio = document.getElementById("remoteAudio");
   const remoteVid = document.getElementById("remoteVideo");
-  
-  // Toggle audio mute
-  if (remoteAudio) {
-    remoteAudio.muted = !isSpeakerOn;
-  }
-  // Also toggle video mute for video calls
   if (remoteVid) remoteVid.muted = !isSpeakerOn;
 
   const btn = document.getElementById("callSpeakerBtn");
@@ -4653,16 +4479,9 @@ function maximizeCallOverlay() {
 function cleanupCall() {
   stopRingtone();
   clearTimeout(callTimeoutTimer);
-  clearTimeout(window.callWaitTimeout);
   clearInterval(callTimerInterval);
   if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
   if (navigator.vibrate) navigator.vibrate(0);
-
-  // Unsubscribe from Firestore listeners
-  if (callStatusUnsub) {
-    callStatusUnsub();
-    callStatusUnsub = null;
-  }
 
   // Close PeerJS call
   if (activeCall) {
@@ -4678,13 +4497,6 @@ function cleanupCall() {
 
   remoteStream = null;
 
-  // Clean up remote audio element
-  const remoteAudio = document.getElementById("remoteAudio");
-  if (remoteAudio) {
-    remoteAudio.pause();
-    remoteAudio.srcObject = null;
-  }
-
   // Reset UI
   document.getElementById("callOverlay").classList.remove("active");
   document.getElementById("floatingCallBar").classList.remove("active");
@@ -4692,12 +4504,6 @@ function cleanupCall() {
   document.getElementById("localVideoContainer").classList.remove("active");
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
-  document.getElementById("callConnectingSpinner").classList.add("hidden");
-  
-  // Reset call controls visibility
-  document.getElementById("activeCallControls").style.display = "none";
-  document.getElementById("incomingCallControls").style.display = "none";
-  document.getElementById("callTimerDisplay").style.display = "none";
 
   callState = 'idle';
   callDirection = null;
@@ -4705,7 +4511,6 @@ function cleanupCall() {
   incomingCallData = null;
   isMicMuted = false;
   isCameraOff = false;
-  isSpeakerOn = false;
 }
 
 // ── Log Call to Chat ──
@@ -5864,7 +5669,9 @@ function savePrefs() {
     theme: currentTheme,
     muted: mutedChats,
     favorited: favoritedChats,
-    blocked: blockedUsers
+    blocked: blockedUsers,
+    globalWallpaper: globalWallpaper,
+    perChatWallpapers: perChatWallpapers
   };
   localStorage.setItem("nexaPrefs", JSON.stringify(prefs));
 }
@@ -5876,7 +5683,10 @@ function loadPrefs() {
     mutedChats = prefs.muted || {};
     favoritedChats = prefs.favorited || {};
     blockedUsers = prefs.blocked || {};
+    globalWallpaper = prefs.globalWallpaper || null;
+    perChatWallpapers = prefs.perChatWallpapers || {};
     setTheme(currentTheme);
+    applyCurrentWallpaper();
   } catch (e) {}
 }
 
@@ -5885,72 +5695,114 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
-function openProfilePic(src, title = 'Profile Picture') {
+function openProfilePic(src) {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
-  const titleEl = document.getElementById('profilePicModalTitle');
   img.src = src;
-  titleEl.textContent = title;
   modal.classList.add('active');
 }
 
-function viewMyProfilePic() {
-  const myPhoto = document.getElementById('myPic').src || "https://i.imgur.com/HeIi0wU.png";
-  const myName = document.getElementById('myName').textContent || 'Your Profile';
-  openProfilePic(myPhoto, myName + "'s Profile");
-}
-
-function viewUserProfilePic(uid) {
-  const user = findUserByUid(uid);
-  if (user) {
-    const photo = user.photo || user.photoUrl || "https://i.imgur.com/HeIi0wU.png";
-    const name = user.displayName || user.name || 'User';
-    openProfilePic(photo, name + "'s Profile");
+function closeProfilePicModal(event) {
+  if (event.target.id === 'profilePicModal') {
+    event.target.classList.remove('active');
   }
-}
-
-function viewSelectedUserProfilePic() {
-  if (selectedUser) {
-    const photo = selectedUser.photo || selectedUser.photoUrl || document.getElementById('chatPic').src || "https://i.imgur.com/HeIi0wU.png";
-    const name = selectedUser.displayName || selectedUser.name || 'User';
-    openProfilePic(photo, name + "'s Profile");
-  }
-}
-
-function viewCallPeerProfile() {
-  const photo = document.getElementById('callPeerAvatar').src || "https://i.imgur.com/HeIi0wU.png";
-  const name = document.getElementById('callPeerName').textContent || 'User';
-  openProfilePic(photo, name + "'s Profile");
-}
-
-function findUserByUid(uid) {
-  if (selectedUser && selectedUser.uid === uid) return selectedUser;
-  if (window.userCache && window.userCache[uid]) return window.userCache[uid];
-  const userItems = document.querySelectorAll('.user-item');
-  for (const item of userItems) {
-    if (item.dataset.uid === uid && item._userData) return item._userData;
-  }
-  return null;
-}
-
-function closeProfilePicModal() {
-  document.getElementById('profilePicModal').classList.remove('active');
 }
 
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
-  <div class="modal-content profile-pic-modal-content" onclick="event.stopPropagation()">
-    <div class="profile-pic-modal-header">
-      <span class="profile-pic-modal-title" id="profilePicModalTitle">Profile Picture</span>
-      <div class="profile-pic-modal-actions">
-        <button class="profile-pic-modal-back" onclick="closeProfilePicModal()" title="Close">←</button>
-        <button class="profile-pic-modal-close" onclick="closeProfilePicModal()" title="Close">✕</button>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+
+<!-- WALLPAPER EDITOR MODAL -->
+<div class="wallpaper-modal-overlay" id="wallpaperModal">
+  <div class="wallpaper-modal">
+    <div class="wallpaper-modal-header">
+      <div class="wp-modal-title-wrap">
+        <div class="wallpaper-modal-title" id="wpModalTitle">🖼️ Customize Chat Background</div>
+        <div class="wallpaper-modal-sub" id="wpModalSub">Select or upload a wallpaper image and adjust lighting for crisp reading</div>
+      </div>
+      <button class="wallpaper-modal-close" onclick="closeWallpaperModal()">✕</button>
+    </div>
+
+    <div class="wallpaper-modal-body">
+      <!-- SCOPE SWITCHER -->
+      <div class="wp-scope-tabs">
+        <button class="wp-scope-tab active" id="wpScopeTabCurrent" onclick="switchWallpaperModalScope('current')">🎯 This Chat Only</button>
+        <button class="wp-scope-tab" id="wpScopeTabGlobal" onclick="switchWallpaperModalScope('global')">🌐 All Chats (Global)</button>
+      </div>
+
+      <!-- LIVE PREVIEW BOX -->
+      <div class="wp-live-preview-container">
+        <div class="wp-live-preview-bg" id="wpLivePreviewBg">
+          <div class="wp-live-preview-img" id="wpLivePreviewImg"></div>
+          <div class="wp-live-preview-overlay" id="wpLivePreviewOverlay"></div>
+          <div class="wp-live-bubbles">
+            <div class="wp-bubble them">
+              <span>Hey! How does this wallpaper look? 😊</span>
+              <span class="wp-bubble-time">10:42 AM</span>
+            </div>
+            <div class="wp-bubble me">
+              <span>It rhymes perfectly! Very legible and crisp. ✨</span>
+              <span class="wp-bubble-time">10:43 AM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRESETS GALLERY -->
+      <div class="wp-section-label">✨ Curated Aesthetic Wallpapers</div>
+      <div class="wp-presets-grid" id="wpPresetsGrid">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- CUSTOM UPLOAD & URL -->
+      <div class="wp-section-label">📁 Custom Image</div>
+      <div class="wp-custom-source-row">
+        <button class="wp-upload-btn" onclick="triggerWallpaperFileUpload()">
+          <i data-lucide="image" style="width: 16px; height: 16px;"></i> Upload Photo
+        </button>
+        <input type="file" id="wallpaperFileInput" accept="image/*" style="display: none;" onchange="handleWallpaperFileUpload(event)">
+        <span style="font-size: 12px; color: var(--text-3);">OR</span>
+        <input type="text" id="wallpaperUrlInput" class="wp-url-input" placeholder="Paste direct image URL (https://…)" oninput="handleWallpaperUrlInput(this.value)">
+      </div>
+
+      <!-- SLIDERS: DIMMING, BLUR, TINT -->
+      <div class="wp-sliders-section">
+        <div class="wp-slider-group">
+          <div class="wp-slider-label">
+            <span>🌓 Darken / Lighten Overlay</span>
+            <span id="wpDimmingValDisplay">50%</span>
+          </div>
+          <input type="range" id="wpDimmingSlider" min="0" max="90" value="50" oninput="updateWallpaperPreviewFromSliders()">
+        </div>
+
+        <div class="wp-slider-group">
+          <div class="wp-slider-label">
+            <span>💧 Background Blur</span>
+            <span id="wpBlurValDisplay">2px</span>
+          </div>
+          <input type="range" id="wpBlurSlider" min="0" max="20" value="2" oninput="updateWallpaperPreviewFromSliders()">
+        </div>
+
+        <div class="wp-slider-group">
+          <div class="wp-slider-label">🎨 Overlay Tint Mode</div>
+          <div class="wp-tint-pills">
+            <button class="wp-tint-pill active" id="wpTintDark" onclick="setWallpaperTintMode('dark')">🌙 Dark</button>
+            <button class="wp-tint-pill" id="wpTintGlass" onclick="setWallpaperTintMode('glass')">🧊 Glass Frost</button>
+            <button class="wp-tint-pill" id="wpTintLight" onclick="setWallpaperTintMode('light')">☀️ Light</button>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="profile-pic-modal-body">
-      <img id="modalProfileImg" src="" alt="Profile Picture">
+
+    <div class="wallpaper-modal-footer">
+      <button class="wp-modal-btn danger" onclick="removeActiveWallpaper()">🗑️ Remove Wallpaper</button>
+      <div style="flex: 1;"></div>
+      <button class="wp-modal-btn secondary" onclick="closeWallpaperModal()">Cancel</button>
+      <button class="wp-modal-btn primary" onclick="saveWallpaperFromModal()">Save Wallpaper</button>
     </div>
   </div>
 </div>
+
+<!-- Nexa WhatsApp Multi-User Voice Chat System -->
+<script src="nexa-voice-room.js"></script>
 </body>
 </html>

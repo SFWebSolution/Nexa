@@ -1,0 +1,875 @@
+/* ==========================================================================
+   NEXA MULTI-USER WHATSAPP-STYLE VOICE CHAT (VOICE ROOM) SYSTEM
+   Version: 5.1 Ultra Premium (Pixel-Perfect Responsive Layout)
+   Features: Glassmorphism UI, Minimized Floating Bar, Participant Grid,
+             Speaking Visualizer Wave Rings, Invite Modal & Controls
+   ========================================================================== */
+
+:root {
+  --vr-bg: rgba(13, 17, 23, 0.92);
+  --vr-card-bg: rgba(22, 27, 34, 0.85);
+  --vr-glass-border: rgba(255, 255, 255, 0.12);
+  --vr-primary: #00f0ff;
+  --vr-whatsapp-green: #25d366;
+  --vr-accent-cyan: #00d2ff;
+  --vr-accent-purple: #7000ff;
+  --vr-danger: #ff4757;
+  --vr-text-main: #f0f6fc;
+  --vr-text-muted: #8b949e;
+  --vr-glow-green: rgba(37, 211, 102, 0.45);
+  --vr-glow-cyan: rgba(0, 240, 255, 0.45);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1. FLOATING MINIMIZED VOICE CHAT BAR (App-Wide Floating Bar)               */
+/* -------------------------------------------------------------------------- */
+.nexa-vr-mini-bar {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 99990;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--vr-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--vr-glass-border);
+  border-left: 4px solid var(--vr-whatsapp-green);
+  border-radius: 40px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px var(--vr-glow-green);
+  color: var(--vr-text-main);
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: nexaVrSlideDown 0.4s ease-out;
+  user-select: none;
+}
+
+.nexa-vr-mini-bar:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: rgba(37, 211, 102, 0.6);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6), 0 0 25px var(--vr-glow-green);
+}
+
+.nexa-vr-mini-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--vr-whatsapp-green);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.nexa-vr-live-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--vr-whatsapp-green);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--vr-whatsapp-green);
+  animation: nexaVrPulseDot 1.4s infinite ease-in-out;
+}
+
+.nexa-vr-mini-avatars {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.nexa-vr-mini-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #0d1117;
+  object-fit: cover;
+  margin-left: -8px;
+  background: #21262d;
+}
+
+.nexa-vr-mini-avatar:first-child {
+  margin-left: 0;
+}
+
+.nexa-vr-mini-title {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nexa-vr-mini-speaker {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 14px;
+  margin-left: 4px;
+}
+
+.nexa-vr-mini-speaker-bar {
+  width: 3px;
+  height: 100%;
+  background: var(--vr-whatsapp-green);
+  border-radius: 2px;
+  animation: nexaVrWaveBar 1.2s infinite ease-in-out alternate;
+}
+
+.nexa-vr-mini-speaker-bar:nth-child(2) { animation-delay: 0.2s; }
+.nexa-vr-mini-speaker-bar:nth-child(3) { animation-delay: 0.4s; }
+
+.nexa-vr-mini-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.nexa-vr-mini-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--vr-text-main);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nexa-vr-mini-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.nexa-vr-mini-btn.danger {
+  background: rgba(255, 71, 87, 0.2);
+  color: var(--vr-danger);
+}
+
+.nexa-vr-mini-btn.danger:hover {
+  background: var(--vr-danger);
+  color: #fff;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 2. EXPANDED WHATSAPP VOICE ROOM DRAWER / OVERLAY                           */
+/* -------------------------------------------------------------------------- */
+.nexa-vr-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
+  background: rgba(10, 14, 20, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.nexa-vr-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nexa-vr-container {
+  width: 100%;
+  max-width: 880px;
+  height: 90vh;
+  max-height: 720px;
+  background: rgba(18, 24, 33, 0.96);
+  border: 1px solid var(--vr-glass-border);
+  border-radius: 28px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(37, 211, 102, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transform: scale(0.94);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.nexa-vr-overlay.active .nexa-vr-container {
+  transform: scale(1);
+}
+
+/* Header */
+.nexa-vr-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  box-sizing: border-box;
+}
+
+.nexa-vr-header-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.nexa-vr-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.2), rgba(0, 240, 255, 0.2));
+  border: 1px solid rgba(37, 211, 102, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.nexa-vr-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--vr-text-main);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nexa-vr-status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(37, 211, 102, 0.15);
+  color: var(--vr-whatsapp-green);
+  border: 1px solid rgba(37, 211, 102, 0.3);
+}
+
+.nexa-vr-subtitle {
+  font-size: 13px;
+  color: var(--vr-text-muted);
+  margin-top: 2px;
+}
+
+.nexa-vr-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nexa-vr-hdr-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--vr-text-main);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.nexa-vr-hdr-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.nexa-vr-hdr-btn.invite-btn {
+  background: linear-gradient(135deg, #25d366, #128c7e);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
+}
+
+.nexa-vr-hdr-btn.invite-btn:hover {
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.5);
+  transform: translateY(-2px);
+}
+
+.nexa-vr-hdr-btn.close-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+/* Main Active Speaking Stage & Participant Grid */
+.nexa-vr-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+}
+
+.nexa-vr-body::-webkit-scrollbar {
+  width: 6px;
+}
+.nexa-vr-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+/* Active Speaker Stage (WhatsApp Large Avatar) */
+.nexa-vr-active-stage {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: radial-gradient(circle at center, rgba(37, 211, 102, 0.08) 0%, transparent 70%);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.nexa-vr-avatar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.nexa-vr-avatar-ring {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 3px solid var(--vr-whatsapp-green);
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.nexa-vr-avatar-wrap[data-speaking="true"] .nexa-vr-avatar-ring {
+  opacity: 1;
+  animation: nexaVrPulseRing 1.5s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+.nexa-vr-main-avatar {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+  position: relative;
+  z-index: 2;
+  background: #21262d;
+}
+
+.nexa-vr-speaker-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vr-text-main);
+  margin-top: 4px;
+}
+
+.nexa-vr-speaker-status {
+  font-size: 13px;
+  color: var(--vr-whatsapp-green);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Dynamic Participant Grid */
+.nexa-vr-grid-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+
+.nexa-vr-grid-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vr-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.nexa-vr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+}
+
+.nexa-vr-card {
+  background: var(--vr-card-bg);
+  border: 1px solid var(--vr-glass-border);
+  border-radius: 18px;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.nexa-vr-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.nexa-vr-card-avatar-wrap {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nexa-vr-card-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: #21262d;
+}
+
+.nexa-vr-card-ring {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--vr-whatsapp-green);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nexa-vr-card[data-speaking="true"] .nexa-vr-card-ring {
+  opacity: 1;
+  animation: nexaVrPulseRingSmall 1.4s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+.nexa-vr-card[data-speaking="true"] .nexa-vr-card-avatar {
+  border-color: var(--vr-whatsapp-green);
+}
+
+.nexa-vr-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vr-text-main);
+  max-width: 95px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.nexa-vr-card-role {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--vr-whatsapp-green);
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.nexa-vr-card-mic-status {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.nexa-vr-card-mic-status.muted {
+  background: rgba(255, 71, 87, 0.85);
+  color: #fff;
+  border-color: var(--vr-danger);
+}
+
+.nexa-vr-card-hand {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  font-size: 18px;
+  animation: nexaVrHandWave 1s infinite alternate ease-in-out;
+}
+
+/* Waveform Visualizer Canvas / Bar */
+.nexa-vr-wave-visualizer {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.nexa-vr-vbar {
+  width: 4px;
+  height: 8px;
+  background: linear-gradient(to top, var(--vr-whatsapp-green), var(--vr-primary));
+  border-radius: 4px;
+  transition: height 0.1s ease;
+}
+
+/* Footer Control Bar (WhatsApp Glass Pill Footer) */
+.nexa-vr-footer {
+  flex-shrink: 0;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(13, 17, 23, 0.98);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+.nexa-vr-ctrl-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--vr-text-main);
+  font-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.nexa-vr-ctrl-btn:hover {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.nexa-vr-ctrl-btn.active-mic {
+  background: linear-gradient(135deg, #25d366, #128c7e);
+  border-color: rgba(37, 211, 102, 0.6);
+  box-shadow: 0 4px 18px rgba(37, 211, 102, 0.4);
+}
+
+.nexa-vr-ctrl-btn.muted-mic {
+  background: linear-gradient(135deg, #ff4757, #ff6b81);
+  border-color: rgba(255, 71, 87, 0.6);
+  box-shadow: 0 4px 18px rgba(255, 71, 87, 0.4);
+}
+
+.nexa-vr-ctrl-btn.end-call {
+  width: 58px;
+  height: 50px;
+  border-radius: 25px;
+  background: linear-gradient(135deg, #ff4757, #d63031);
+  color: #fff;
+  border: none;
+  box-shadow: 0 6px 20px rgba(255, 71, 87, 0.5);
+}
+
+.nexa-vr-ctrl-btn.end-call:hover {
+  background: linear-gradient(135deg, #ff6b81, #ff4757);
+  box-shadow: 0 8px 25px rgba(255, 71, 87, 0.7);
+  transform: scale(1.08);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 3. INVITE MODAL                                                            */
+/* -------------------------------------------------------------------------- */
+.nexa-vr-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 100000;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s ease;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.nexa-vr-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nexa-vr-modal-card {
+  width: 100%;
+  max-width: 440px;
+  background: #161b22;
+  border: 1px solid var(--vr-glass-border);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  box-sizing: border-box;
+}
+
+.nexa-vr-modal-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.nexa-vr-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--vr-text-main);
+  margin: 0;
+}
+
+.nexa-vr-search-box {
+  width: 100%;
+  padding: 12px 16px;
+  background: #0d1117;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: #fff;
+  font-size: 14px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+.nexa-vr-search-box:focus {
+  outline: none;
+  border-color: var(--vr-whatsapp-green);
+  box-shadow: 0 0 10px rgba(37, 211, 102, 0.3);
+}
+
+.nexa-vr-user-list {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nexa-vr-user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.nexa-vr-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nexa-vr-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.nexa-vr-user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vr-text-main);
+}
+
+.nexa-vr-inv-btn {
+  background: rgba(37, 211, 102, 0.2);
+  color: var(--vr-whatsapp-green);
+  border: 1px solid rgba(37, 211, 102, 0.4);
+  padding: 6px 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nexa-vr-inv-btn:hover {
+  background: var(--vr-whatsapp-green);
+  color: #fff;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 4. INCOMING VOICE CHAT BANNER                                               */
+/* -------------------------------------------------------------------------- */
+.nexa-vr-incoming-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100px);
+  z-index: 100005;
+  width: 92%;
+  max-width: 420px;
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--vr-whatsapp-green);
+  border-radius: 20px;
+  padding: 16px 20px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(37, 211, 102, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.nexa-vr-incoming-toast.active {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.nexa-vr-inc-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nexa-vr-inc-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--vr-whatsapp-green);
+  object-fit: cover;
+}
+
+.nexa-vr-inc-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vr-text-main);
+}
+
+.nexa-vr-inc-sub {
+  font-size: 12px;
+  color: var(--vr-text-muted);
+}
+
+.nexa-vr-inc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nexa-vr-inc-btn {
+  padding: 8px 16px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.nexa-vr-inc-btn.join {
+  background: linear-gradient(135deg, #25d366, #128c7e);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
+}
+
+.nexa-vr-inc-btn.decline {
+  background: rgba(255, 71, 87, 0.2);
+  color: var(--vr-danger);
+}
+
+/* -------------------------------------------------------------------------- */
+/* KEYFRAME ANIMATIONS                                                         */
+/* -------------------------------------------------------------------------- */
+@keyframes nexaVrSlideDown {
+  from { transform: translateY(-30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes nexaVrPulseDot {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes nexaVrWaveBar {
+  0% { height: 4px; }
+  100% { height: 14px; }
+}
+
+@keyframes nexaVrPulseRing {
+  0% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7); }
+  70% { transform: scale(1.2); opacity: 0; box-shadow: 0 0 0 20px rgba(37, 211, 102, 0); }
+  100% { transform: scale(1.2); opacity: 0; box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
+}
+
+@keyframes nexaVrPulseRingSmall {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  70% { transform: scale(1.15); opacity: 0; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+@keyframes nexaVrHandWave {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(20deg); }
+}
+
+/* Responsive Mobile Adjustments */
+@media (max-width: 600px) {
+  .nexa-vr-overlay {
+    padding: 10px;
+  }
+  .nexa-vr-container {
+    height: 96vh;
+    border-radius: 20px;
+  }
+  .nexa-vr-mini-bar {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    justify-content: space-between;
+  }
+  .nexa-vr-mini-title {
+    display: none;
+  }
+  .nexa-vr-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .nexa-vr-hdr-btn span {
+    display: none;
+  }
+}
