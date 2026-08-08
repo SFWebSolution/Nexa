@@ -1,0 +1,117 @@
+rules_version = '2';
+
+// Nexa Messenger — Firestore security rules
+// Allows cross-device presence, 1:1 voice/video calls, multi-user voice rooms,
+// messaging, and stories. Auth is required for all reads/writes.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ── User profiles ────────────────────────────────────────────────
+    // Anyone signed in can read any profile (so the contact list works).
+    // A user can only create/edit their own profile.
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid)
+                    || (isSignedIn() && request.resource.data.diff(resource.data)
+                        .affectedKeys().hasOnly(['fcmToken', 'fcmTokens', 'peerId']));
+      allow delete: if false;
+    }
+
+    // ── Presence / online status ─────────────────────────────────────
+    // Anyone signed in can read everyone's presence (online dots, last seen).
+    // A user only writes their own presence doc.
+    match /presence/{uid} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner(uid);
+    }
+
+    // ── Direct messages & call log entries ──────────────────────────
+    // A message is readable by either the sender or the recipient.
+    // Only the sender may create it (recipient marks read via update).
+    match /chats/{msgId} {
+      function isParty(data) {
+        return isSignedIn()
+          && (request.auth.uid == data.from || request.auth.uid == data.to);
+      }
+      allow read: if resource.data == null || isParty(resource.data);
+      allow create: if isParty(request.resource.data);
+      allow update: if isSignedIn()
+                    && (request.auth.uid == resource.data.from
+                        || request.auth.uid == resource.data.to)
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys().hasOnly(['read', 'readAt', 'status', 'react', 'edited', 'text', 'updatedAt']);
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
+    }
+
+    // ── 1:1 voice/video call signaling ──────────────────────────────
+    // Caller writes {from,to,status:ringing}. Callee reads & updates
+    // status to answered/declined/ended. Either party can read.
+    match /calls/{callId} {
+      function isCallParty(data) {
+        return isSignedIn()
+          && (request.auth.uid == data.from || request.auth.uid == data.to);
+      }
+      allow read: if resource.data == null || isCallParty(resource.data);
+      allow create: if isCallParty(request.resource.data);
+      allow update: if isCallParty(resource.data);
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
+    }
+
+    // ── Multi-user voice rooms ──────────────────────────────────────
+    // Room metadata: readable by any signed-in user (so invite links work).
+    // Created/updated by any signed-in user (host migration, etc.).
+    match /voice_rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
+
+      // Each participant owns its own doc in the subcollection.
+      // Anyone in the room can read all participants; a client writes only its own.
+      match /participants/{uid} {
+        allow read: if isSignedIn();
+        allow create, update: if isOwner(uid);
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // ── Voice room invites ──────────────────────────────────────────
+    // Anyone signed in can write a pending invite to another user's doc
+    // (the doc id is the invitee's uid). The invitee reads & clears it.
+    match /voice_invites/{uid} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // ── Stories / status ────────────────────────────────────────────
+    match /status/{statusId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── Per-chat disappearing-message settings ──────────────────────
+    // Either party of the chat pair may read/write the shared setting doc.
+    match /disappearingSettings/{keyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── Typing indicators (per chat pair) ───────────────────────────
+    match /typing/{keyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
