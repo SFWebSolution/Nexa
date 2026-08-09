@@ -986,8 +986,16 @@
         return;
       }
 
+      // Online users first (stable: preserves existing order within each group)
+      const onlineFirst = (a, b) => {
+        const ao = this.isUserOnline(a.id) ? 0 : 1;
+        const bo = this.isUserOnline(b.id) ? 0 : 1;
+        return ao - bo;
+      };
+
       listContainer.innerHTML = actualUsers
         .filter(u => u.id !== currentUser.id) // exclude self
+        .sort(onlineFirst)
         .map(u => {
           const online = this.isUserOnline(u.id);
           return `
