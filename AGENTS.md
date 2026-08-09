@@ -215,6 +215,23 @@
   to `pointerup`/`pointercancel`/`pointerleave` ON THE BUTTON ONLY, with
   `touch-action:none` + `user-select:none` to stop the browser stealing the
   long press. Do NOT re-introduce global mouseup/touchend stop listeners.
+- CRITICAL: `#voicePanel` is a FULL-SCREEN OVERLAY (`position:fixed;
+  inset:0; z-index:9999`) that is shown DURING recording (live timer).
+  Because it covers the record button, the `pointerup` release lands on the
+  OVERLAY, not the button — so a stop listener bound only to the button
+  never fires, `stopRec()` never runs, `recordingBlob` stays null, and
+  `sendVoice()` silently returns at `if (!recordingBlob) return`. This was
+  the "I'm sending, it is not sending" bug. Fix: `startRec()` also binds
+  `pointerup`/`pointercancel` on `#voicePanel` (`onOverlayRecEnd`) while
+  recording, and `stopRec()`/`cancelVoice()` remove them. The overlay
+  handler ignores clicks on `.vbtn-del`/`.vbtn-send` so Discard/Send keep
+  their own behavior. Keep this overlay-listener binding or sending breaks.
+- `sendVoice()` no longer silently returns on a missing blob. If recording
+  is still active when Send is tapped, it calls `stopRec()` and waits (up
+  to 1.5s) for the async `stop` event to produce the blob, then proceeds.
+  If there's still no blob it shows a `showNotifToast` error instead of
+  doing nothing. Upload/DB failures also surface via `showNotifToast`
+  (previously used `alert`, which blocked the UI).
 - `mediaRecorder.start(250)` is called WITH a 250ms timeslice so
   `dataavailable` fires periodically and partial audio is preserved if the
   recorder is interrupted (backgrounding, OS grabbing the mic). The old
@@ -227,6 +244,9 @@
   user waits before sending.
 - An `error` handler on MediaRecorder finalizes whatever was captured
   (calls `stop()`) so backgrounding doesn't silently discard the clip.
+- `cancelVoice()` now tears down an in-flight recorder/mic if Discard is
+  tapped mid-recording (previously it only reset state, leaving the mic
+  capturing in the background).
 
 ## Auto-login gotchas (login.html)
 - Auto-login relies on Firebase `onAuthStateChanged` restoring a
