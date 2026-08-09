@@ -804,6 +804,26 @@ firebase.initializeApp({
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// Expose core globals on `window` so the voice room (nexa-voice-room.js,
+// a separate <script>) and other modules can read the live Firestore handle
+// and the in-memory caches. Top-level const/let/function do NOT attach to
+// window automatically, which is why presence listeners guarded on
+// `window.db` were silently no-oping and the voice room couldn't see
+// online users / the user list.
+window.db = db;
+window.auth = auth;
+
+// Live getters for the caches the voice room + presence UI read. These are
+// declared later in the file (let/const), and some get reassigned, so a
+// one-time assignment would freeze a stale reference. Getters always return
+// the current value.
+Object.defineProperties(window, {
+  currentUser: { get() { return currentUser; }, configurable: true },
+  allUsersData: { get() { return allUsersData; }, configurable: true },
+  userPresenceCache: { get() { return userPresenceCache; }, configurable: true },
+  isUserOnline: { get() { return isUserOnline; }, configurable: true }
+});
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/[&<>"']/g, c => ({
