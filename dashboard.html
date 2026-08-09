@@ -3552,12 +3552,18 @@ const recordBtn = document.getElementById("recordBtn");
 const voicePanel = document.getElementById("voicePanel");
 const voiceTimerEl = document.getElementById("voiceTimer");
 
-// Press-and-hold wiring. We deliberately do NOT use global mouseup/touchend
-// listeners (the old approach) — those fired on ANY release anywhere on the
-// page and silently cut recordings short (the "stops at 30s" symptom on
-// mobile when a stray touchend/gesture fired). Instead we bind the stop
-// signal to pointer events ON the button itself + pointercancel (which the
-// browser fires when the touch is interrupted by a gesture/notification).
+// Press-and-hold wiring. We deliberately do NOT use always-on global
+// mouseup/touchend listeners (the old approach) — those fired on ANY release
+// anywhere on the page even when not recording, and silently cut recordings
+// short (the "stops at 30s" symptom on mobile). Instead the stop signal is
+// bound to:
+//   (a) the record button itself (for the press-and-hold release), AND
+//   (b) the voice panel overlay — because once recording starts the overlay
+//       is shown full-screen ON TOP of the button, so the pointerup/pointercancel
+//       lands on the overlay, not the button. Without (b) stopRec() never
+//       fires, recordingBlob stays null, and Send does nothing.
+// Listeners on the overlay are attached only while recording (see startRec)
+// and removed on stop, so they can't leak / fire when idle.
 function onRecStart(e) { e.preventDefault(); startRec(); }
 function onRecEnd(e) { if (e) e.preventDefault(); stopRec(); }
 
@@ -3574,6 +3580,16 @@ recordBtn.style.touchAction = "none";
 recordBtn.style.userSelect = "none";
 recordBtn.style.webkitUserSelect = "none";
 recordBtn.style.webkitTouchCallout = "none";
+
+// Stop handlers bound to the overlay while recording (see startRec/stopRec).
+// They are declared here so stopRec can remove them.
+function onOverlayRecEnd(e) {
+  // Don't intercept clicks on the Discard/Send buttons — those have their
+  // own handlers and shouldn't also trigger stopRec (stopRec is idempotent
+  // via the isRecording guard, but stopping the click would break the button).
+  if (e.target && (e.target.closest('.vbtn-del') || e.target.closest('.vbtn-send'))) return;
+  stopRec();
+}
 
 async function startRec() {
   if (isRecording || !selectedUser) {
@@ -3622,6 +3638,11 @@ async function startRec() {
     recStart = Date.now();
     recordBtn.classList.add("active");
     voicePanel.classList.add("active");
+    // The overlay now covers the button, so bind the stop signal on the
+    // overlay too (pointerup/pointercancel). Bound only while recording and
+    // removed in stopRec so they can't fire when idle.
+    voicePanel.addEventListener("pointerup", onOverlayRecEnd);
+    voicePanel.addEventListener("pointercancel", onOverlayRecEnd);
     recTimer = setInterval(() => {
       const s = Math.floor((Date.now() - recStart) / 1000);
       voiceTimerEl.textContent = `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -3637,6 +3658,11 @@ async function startRec() {
 function stopRec() {
   if (!isRecording || recFinalizing) return;
   recFinalizing = true;
+  // Remove the overlay stop-listeners now that recording is ending, so a
+  // later tap on the overlay (e.g. to interact with Send/Discard) doesn't
+  // re-enter stopRec. Safe even if they were never attached.
+  voicePanel.removeEventListener("pointerup", onOverlayRecEnd);
+  voicePanel.removeEventListener("pointercancel", onOverlayRecEnd);
   if (mediaRecorder && mediaRecorder.state === "recording") {
     try { mediaRecorder.requestData(); } catch (_) {} // flush the last chunk
     try { mediaRecorder.stop(); } catch (_) {}
@@ -3649,7 +3675,26 @@ function stopRec() {
 }
 
 async function sendVoice() {
-  if (!recordingBlob || !selectedUser) return;
+  // If recording is somehow still active when Send is tapped, finalize it
+  // first so we actually have a blob to send.
+  if (isRecording) {
+    stopRec();
+    // The blob is produced asynchronously in the MediaRecorder 'stop' event;
+    // wait a tick for it to land before proceeding.
+    let waited = 0;
+    while (!recordingBlob && waited < 1500) {
+      await new Promise(r => setTimeout(r, 50));
+      waited += 50;
+    }
+  }
+  if (!recordingBlob) {
+    showNotifToast("No recording to send — hold the mic button to record first.", "error");
+    return;
+  }
+  if (!selectedUser) {
+    showNotifToast("Select a user first.", "error");
+    return;
+  }
   const btn = document.getElementById("vSendBtn");
   btn.disabled = true;
   btn.textContent = "Uploading…";
@@ -3661,15 +3706,30 @@ async function sendVoice() {
       cancelVoice();
       const senderName = document.getElementById('myName').textContent || 'Nexa User';
       sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
+    } else {
+      showNotifToast("Upload failed — please try again.", "error");
     }
   } catch (e) {
-    alert("Failed: " + e.message);
+    console.error("sendVoice error:", e);
+    showNotifToast("Failed to send voice note: " + (e.message || e), "error");
   }
   btn.disabled = false;
   btn.textContent = "✓ Send";
 }
 
 function cancelVoice() {
+  // If still recording, tear down the recorder/mic so it doesn't keep
+  // capturing in the background after the user discarded.
+  if (isRecording) {
+    voicePanel.removeEventListener("pointerup", onOverlayRecEnd);
+    voicePanel.removeEventListener("pointercancel", onOverlayRecEnd);
+    if (mediaRecorder && mediaRecorder.state === "recording") { try { mediaRecorder.stop(); } catch (_) {} }
+    if (recStream) { recStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} }); recStream = null; }
+    if (recTimer) { clearInterval(recTimer); recTimer = null; }
+    isRecording = false;
+    recFinalizing = false;
+    recordBtn.classList.remove("active");
+  }
   recordingBlob = null;
   audioChunks = [];
   voicePanel.classList.remove("active");
