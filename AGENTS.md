@@ -177,6 +177,21 @@
 
 ## Voice Room gotchas (nexa-voice-room.js)
 - Stable peer id per user: `peerIdFor(uid)` returns `nexa_vr_<sanitized uid>`. Keep this consistent across all clients.
+- **PeerJS answer-before-handlers race (the #1 "can't hear each other" bug):**
+  in `peer.on('call')`, `attachCallHandlers()` MUST be called BEFORE `call.answer()`.
+  PeerJS can emit the `stream` event (carrying the caller's remote audio) synchronously
+  during/immediately after `answer()`. If `call.on('stream', ...)` is wired AFTER
+  `answer()` (the old order), the event fires into zero listeners and the answerer
+  never plays the caller's audio → asymmetric "B can't hear A". Same fix applies to
+  the 1:1 call engine in `dashboard.html`: `setupCallStreamHandlers(mediaCall)` must
+  run before `mediaCall.answer()` in BOTH the global `nexaPeer.on('call')` handler AND
+  `answerCall()` (incl. the one-time `oneTimeCallHandler`).
+- **Mesh double-call guard:** in a 2-way mesh, both an outgoing and an incoming
+  MediaConnection can exist for the same peer and share one `peerCalls` slot + one
+  `audio_<peerId>` element. `attachCallHandlers`'s `close`/`error` handlers must check
+  `this.peerCalls.get(targetPeerId) === call` before deleting the slot / removing the
+  audio element — otherwise an orphaned redundant connection closing mid-call kills the
+  audio element the still-live connection is using.
 - `subscribeToRoomFirestore()` listens to the `voice_rooms/{roomId}/participants` SUBCOLLECTION (docChanges), not an array on the room doc. On a new participant it calls `callPeer(peerIdFor(id))` to build the mesh.
 - `upsertOwnParticipantDoc()` writes ONLY this client's own doc (merge). `syncMuteState()` is the throttled (~1.2s) version used by toggleMic/raiseHand.
 - **Access control (invite-only):** rooms are invite-only. `startRoom`/`createRoom`

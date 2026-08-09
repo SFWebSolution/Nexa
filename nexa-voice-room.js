@@ -705,11 +705,17 @@
         });
 
         this.peer.on('call', async (call) => {
+          // CRITICAL: attach the 'stream'/'close'/'error' handlers BEFORE
+          // calling answer(). PeerJS can fire the 'stream' event (with the
+          // caller's remote audio) synchronously during/immediately after
+          // answer() — if attachCallHandlers runs after answer(), that
+          // stream event is emitted to ZERO listeners and the answerer never
+          // hears the caller ("can't hear each other in the voice room").
+          this.attachCallHandlers(call, call.peer, 'incoming');
           if (!this.localStream) {
             await this.initMicrophone();
           }
           call.answer(this.localStream);
-          this.attachCallHandlers(call, call.peer, 'incoming');
         });
 
         this.peer.on('error', (err) => {
@@ -726,9 +732,10 @@
                 });
               });
               this.peer.on('call', async (call) => {
+                // Attach handlers BEFORE answer() — see primary handler above.
+                this.attachCallHandlers(call, call.peer, 'incoming');
                 if (!this.localStream) await this.initMicrophone();
                 call.answer(this.localStream);
-                this.attachCallHandlers(call, call.peer, 'incoming');
               });
             } catch (e) { console.warn('[VoiceRoom] PeerJS fallback error:', e); }
           } else if (err && (err.type === 'peer-unavailable' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error')) {
@@ -795,9 +802,17 @@
         this.playRemoteAudioStream(targetPeerId, remoteStream);
       });
       call.on('close', () => {
-        this.peerCalls.delete(targetPeerId);
-        const audioEl = document.getElementById('audio_' + targetPeerId);
-        if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+        // Only tear down if THIS call is still the active one for the peer.
+        // In a mesh, both an outgoing and an incoming MediaConnection can
+        // exist for the same peer; they share the same peerCalls slot + audio
+        // element. If an orphaned/redundant connection closes, we must NOT
+        // delete the slot or remove the audio element that the still-live
+        // connection is using — doing so kills audio mid-call.
+        if (this.peerCalls.get(targetPeerId) === call) {
+          this.peerCalls.delete(targetPeerId);
+          const audioEl = document.getElementById('audio_' + targetPeerId);
+          if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+        }
         // If the call dropped while the room is still active and the peer is
         // still a participant, try to rebuild that leg of the mesh once. This
         // recovers from transient ICE restarts / network blips that otherwise
@@ -806,9 +821,12 @@
       });
       call.on('error', (e) => {
         console.warn('[VoiceRoom] Call error', direction, targetPeerId, e && e.type, e && e.message);
-        this.peerCalls.delete(targetPeerId);
-        const audioEl = document.getElementById('audio_' + targetPeerId);
-        if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e2) {} }
+        // Same guard: only tear down if this call is still the active one.
+        if (this.peerCalls.get(targetPeerId) === call) {
+          this.peerCalls.delete(targetPeerId);
+          const audioEl = document.getElementById('audio_' + targetPeerId);
+          if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e2) {} }
+        }
         // ICE failures / network errors → attempt a single reconnect.
         if (this.activeRoom) this.retryCallPeer(targetPeerId, direction + ' error');
       });
