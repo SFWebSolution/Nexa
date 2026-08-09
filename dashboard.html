@@ -1424,11 +1424,20 @@ function confirmDeleteChat() {
   showNotifToast("Chat removed from user list", "info");
 }
 
-const PRESENCE_TIMEOUT_MS = 35000;
+// How long since the last heartbeat before a user is considered offline.
+// Kept generous (90s) so mobile backgrounding/throttling (browsers slow
+// setInterval to ~1/min in backgrounded tabs) doesn't instantly flip a
+// user offline while they're still "in the app". WhatsApp uses a similar
+// grace window.
+const PRESENCE_TIMEOUT_MS = 90000;
 
 function isUserOnline(pdata) {
   if (!pdata) return false;
-  if (pdata.online === false || pdata.status === "offline") return false;
+  // Online is driven by heartbeat freshness, NOT the `online`/`status`
+  // flags. Those flags are unreliable on mobile: iOS/Android fire
+  // pagehide/beforeunload on tab-switch/screen-lock, which writes
+  // online:false even though the user just backgrounded for a moment.
+  // A fresh lastSeen with online:false is that flicker → still online.
   const lastSeen = pdata.lastSeen || 0;
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
@@ -2330,16 +2339,12 @@ function updateChatHeaderPresence(data) {
   if (!selectedUser) return;
   data = data || userPresenceCache[selectedUser.uid] || {};
   const online = isUserOnline(data);
-  const status = data.status || (online ? "online" : "offline");
   const lastSeen = data.lastSeen || 0;
   const el = document.getElementById("status");
   const dot = document.getElementById("chatStatusDot");
-  if (online && status === "online") {
+  if (online) {
     if (el) { el.textContent = "🟢 online"; el.className = "online-status"; }
     if (dot) dot.classList.add("online");
-  } else if (online && status === "away") {
-    if (el) { el.textContent = "🟡 away"; el.className = ""; }
-    if (dot) dot.classList.remove("online");
   } else {
     if (el) { el.textContent = `⚪ last seen ${formatLastSeen(lastSeen)}`; el.className = ""; }
     if (dot) dot.classList.remove("online");
@@ -2405,9 +2410,9 @@ function loadUnreadCounts() {
 
 async function updateOnline(on) {
   if (!currentUser) return;
-  // Count as online whenever the app is open, even if the tab is briefly
-  // in the background (mobile switches visibility a lot). We only go
-  // truly offline on explicit unload/pagehide.
+  // Online is driven by heartbeat freshness (see isUserOnline). We always
+  // write a fresh lastSeen while the app is open; when the app is closed we
+  // write a final offline stamp so other clients converge on "last seen".
   const isOnlineState = on !== false;
   userStatus = isOnlineState ? "online" : "offline";
   const presenceData = {
@@ -2423,6 +2428,28 @@ async function updateOnline(on) {
     await db.collection("presence").doc(currentUser.uid).set(presenceData, { merge: true });
   } catch (err) {
     console.error("Error updating presence:", err);
+  }
+}
+
+// Best-effort final presence stamp on unload. On mobile the page is often
+// evicted before the async Firestore set() above resolves, so the offline
+// write never lands and other clients see a stale "online". sendBeacon fires
+// a Firestore REST write that completes even as the tab is tearing down.
+function writeOfflineBeacon() {
+  if (!currentUser) return;
+  const lastSeen = Date.now();
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/mel-odix/databases/(default)/documents/presence/${currentUser.uid}?updateMask.fieldPaths=online&updateMask.fieldPaths=status&updateMask.fieldPaths=lastSeen`;
+    const body = JSON.stringify({
+      fields: {
+        online: { booleanValue: false },
+        status: { stringValue: "offline" },
+        lastSeen: { integerValue: String(lastSeen) }
+      }
+    });
+    navigator.sendBeacon(url, body);
+  } catch (e) {
+    // Fallback: the async path in updateOnline(false) may still land.
   }
 }
 
@@ -2442,14 +2469,18 @@ function setupHeartbeat() {
     }
   });
 
-  window.addEventListener("beforeunload", () => updateOnline(false));
-  window.addEventListener("pagehide", () => updateOnline(false));
+  window.addEventListener("beforeunload", () => { updateOnline(false); writeOfflineBeacon(); });
+  window.addEventListener("pagehide", () => { updateOnline(false); writeOfflineBeacon(); });
 
   let inactivityTimer = null;
 
   function resetInactivity() {
     clearTimeout(inactivityTimer);
     if (userStatus === "away") updateOnline(true);
+    // After 3min of no interaction, mark "away" but KEEP writing a fresh
+    // lastSeen so the user still shows online to others while the app is
+    // open in front of them (WhatsApp keeps you online while the app is
+    // foregrounded, only going to "last seen" when truly closed).
     inactivityTimer = setTimeout(async () => {
       if (!currentUser) return;
       userStatus = "away";

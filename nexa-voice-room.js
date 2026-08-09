@@ -950,13 +950,15 @@
       if (typeof window.isUserOnline === 'function' && window.userPresenceCache && window.userPresenceCache[uid]) {
         return !!window.isUserOnline(window.userPresenceCache[uid]);
       }
-      // 2. Direct presence cache inspection
+      // 2. Direct presence cache inspection (fallback if window.isUserOnline
+      //    isn't wired yet). Uses the same 90s grace window as dashboard.html
+      //    so mobile backgrounding/throttling doesn't flicker users offline.
       if (window.userPresenceCache && window.userPresenceCache[uid]) {
         const pdata = window.userPresenceCache[uid];
-        if (pdata.state === 'online') return true;
-        if (pdata.last_seen) {
-          const lastSeen = pdata.last_seen.toDate ? pdata.last_seen.toDate().getTime() : (typeof pdata.last_seen === 'number' ? pdata.last_seen : 0);
-          return (Date.now() - lastSeen) < 35000;
+        const raw = pdata.lastSeen != null ? pdata.lastSeen : pdata.last_seen;
+        if (raw != null) {
+          const lastSeen = raw.toDate ? raw.toDate().getTime() : (typeof raw === 'number' ? raw : Number(raw) || 0);
+          return (Date.now() - lastSeen) < 90000;
         }
       }
       // 3. Fallback to user object property
