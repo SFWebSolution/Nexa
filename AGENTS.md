@@ -95,6 +95,21 @@
   {...})` block with live getters for the reassigned caches (`allUsersData` is
   reassigned on every users snapshot, so a one-time assignment would freeze a
   stale reference — getters are required). Do NOT remove this block.
+- **NEVER put `isUserOnline` in the `Object.defineProperties` block (app-breaking).**
+  `isUserOnline` is a top-level `function` declaration, which already creates a
+  NON-configurable property on `window` via hoisting. `Object.defineProperties`
+  is atomic, so trying to redefine it throws
+  `TypeError: Cannot redefine property: isUserOnline`. That uncaught throw
+  halts the ENTIRE inline init script before `auth.onAuthStateChanged` is
+  registered → the dashboard never redirects to login when signed out and never
+  initializes when signed in → app stuck on "Loading…" / "Loading users…"
+  forever. `isUserOnline` is already reachable as `window.isUserOnline` (the
+  voice room reads it via `typeof window.isUserOnline === 'function'`); it does
+  not need a getter. Only `let`-backed caches (`currentUser`, `allUsersData`,
+  `userPresenceCache`) go in the defineProperties block, and each getter must be
+  TDZ-safe (`try { return x; } catch (_) { return <default>; }`) so an early
+  read before the `let` executes can't throw a Temporal Dead Zone error and halt
+  init the same way.
 
 ## Call engine gotchas (dashboard.html, ~line 4034 "VOICE & VIDEO CALLING ENGINE")
 - Voice calls play remote audio through `<audio id="remoteAudio" autoplay playsinline>` (NOT `#remoteVideo`, which is `display:none` during voice calls). Video calls use `<video id="remoteVideo">`.
