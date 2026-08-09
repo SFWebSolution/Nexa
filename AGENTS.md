@@ -61,6 +61,19 @@
 - `firebase.js` and the inline config in `dashboard.html`/`admin.html` duplicate the Firebase config — keep them in sync.
 - Firestore security rules must allow the `voice_rooms` / `voice_rooms/{id}/participants` / `voice_invites` / `calls` collections for this to work cross-device.
 - `dashboard.html` uses CRLF line endings; preserve them when editing or the whole file shows as changed in git diff.
+- **`window.*` exposure (critical for presence + voice room):** `dashboard.html`
+  declares `db`, `auth`, `currentUser`, `allUsersData`, `userPresenceCache`,
+  `isUserOnline` with top-level `const`/`let`/`function`. In a browser these do
+  NOT become `window` properties (only `var` does). `nexa-voice-room.js` is a
+  separate `<script>` and can ONLY reach these via `window.*`, and
+  `startSharedPresenceListener()`/`startLeaderboardListeners()` guard on
+  `if (!window.db) return;`. Without explicit exposure both presence listeners
+  silently no-op (no online dots / last seen) and the voice room invite can't
+  see who's online. The fix lives right after `const db = firebase.firestore();`:
+  `window.db = db; window.auth = auth;` plus an `Object.defineProperties(window,
+  {...})` block with live getters for the reassigned caches (`allUsersData` is
+  reassigned on every users snapshot, so a one-time assignment would freeze a
+  stale reference — getters are required). Do NOT remove this block.
 
 ## Call engine gotchas (dashboard.html, ~line 4034 "VOICE & VIDEO CALLING ENGINE")
 - Voice calls play remote audio through `<audio id="remoteAudio" autoplay playsinline>` (NOT `#remoteVideo`, which is `display:none` during voice calls). Video calls use `<video id="remoteVideo">`.
