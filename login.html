@@ -203,6 +203,7 @@
 
     .error { color: #ff5252; text-shadow: 0 0 8px rgba(255, 82, 82, 0.2); }
     .success { color: #00e676; text-shadow: 0 0 8px rgba(0, 230, 118, 0.2); }
+    .info { color: #8ab4f8; text-shadow: 0 0 8px rgba(138, 180, 248, 0.2); }
   </style>
 </head>
 
@@ -291,8 +292,32 @@ if (urlParams.get("banned") === "1") {
 }
 
 // AUTO-LOGIN LISTENER
+// Firebase restores a LOCAL-persisted session via onAuthStateChanged, but on
+// a cold start / slow network that can take several seconds. We show a
+// "Restoring session…" hint right away and run a 10s watchdog: if auth
+// hasn't resolved by then, we surface a clear message so the user isn't left
+// staring at a blank form — they can log in manually immediately.
 let isAutoLoggingIn = false;
+let autoLoginWatchdog = null;
+
+// Show an immediate, non-blocking hint that auto-login is in progress — but
+// only if we didn't arrive here via a banned/deleted redirect (those messages
+// are more important and were set just above).
+if (!urlParams.get("banned") && !urlParams.get("deleted")) {
+  showMsg("Restoring your session…", "info");
+}
+
+autoLoginWatchdog = setTimeout(() => {
+  // 10s elapsed with no auth resolution. Release the auto-login hint and tell
+  // the user they can log in manually now. The listener below still fires if
+  // auth resolves later, but the user is no longer blocked waiting.
+  if (!isAutoLoggingIn) {
+    showMsg("Session restore is taking longer than usual — sign in below if you'd like to continue.", "info");
+  }
+}, 10000);
+
 onAuthStateChanged(auth, async (user) => {
+  if (autoLoginWatchdog) { clearTimeout(autoLoginWatchdog); autoLoginWatchdog = null; }
   if (user && !isAutoLoggingIn) {
     isAutoLoggingIn = true;
     try {
@@ -309,6 +334,10 @@ onAuthStateChanged(auth, async (user) => {
       console.warn("Auto-login check issue:", e);
       window.location.replace("dashboard.html");
     }
+  } else if (!user) {
+    // No persisted session — clear the "Restoring session…" hint so the form
+    // looks ready to use.
+    showMsg("", "info");
   }
 });
 

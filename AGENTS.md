@@ -192,4 +192,49 @@
   `invitedUserIds` and the invite list re-renders so the "Invite" button
   reappears — the host can re-invite someone who left. Do NOT make
   `invitedUserIds` a persistent/lifetime set.
+- **Invite listener uid race (was the #1 invite bug):**
+  `setupFirestoreListeners()` is called once from the constructor at +1s.
+  At that point Firebase auth has often NOT restored from LOCAL persistence
+  yet, so `getCurrentUser()` returns a FAKE random id (`user_xxx`). The old
+  code subscribed to `voice_invites/user_xxx` — a doc nobody writes to — so
+  cross-device invites never arrived. Now the listener tracks the uid it
+  bound to (`inviteListenerUid`) and (a) refuses to subscribe to the fake
+  `user_*` id (scheduling a 1.5s re-check) and (b) re-subscribes when the
+  real uid lands. The dashboard publishes the real user to
+  `window.currentUser` in `onAuthStateChanged` and calls
+  `NexaVoiceRoom.bindInviteListener()` so the re-bind is deterministic. Do
+  NOT revert `window.currentUser` being set early, and do NOT go back to a
+  one-shot `setTimeout(setupFirestoreListeners, 1000)` with no uid check.
+
+## Voice note recording gotchas (dashboard.html, VOICE RECORDING section)
+- The mic record button is PRESS-AND-HOLD (WhatsApp-style). The old code
+  bound stop to GLOBAL `mouseup`/`touchend` listeners — those fired on ANY
+  release anywhere on the page and silently cut recordings short (the
+  "stops at ~30s on mobile" symptom, caused by stray touchends / browser
+  gestures / context-menu hijacks during a long press). Stop is now bound
+  to `pointerup`/`pointercancel`/`pointerleave` ON THE BUTTON ONLY, with
+  `touch-action:none` + `user-select:none` to stop the browser stealing the
+  long press. Do NOT re-introduce global mouseup/touchend stop listeners.
+- `mediaRecorder.start(250)` is called WITH a 250ms timeslice so
+  `dataavailable` fires periodically and partial audio is preserved if the
+  recorder is interrupted (backgrounding, OS grabbing the mic). The old
+  `start()` with no timeslice lost everything if it was cut mid-recording.
+- The `MediaRecorder` picks the best supported codec from
+  `audio/webm;codecs=opus` → `audio/webm` → `audio/ogg;codecs=opus` →
+  `audio/mp4`. `sendVoice` uses `recordingBlob.type` for the File so the
+  stored clip matches what was recorded. `recDuration` is captured at stop
+  time (not at send time) so the displayed duration is accurate even if the
+  user waits before sending.
+- An `error` handler on MediaRecorder finalizes whatever was captured
+  (calls `stop()`) so backgrounding doesn't silently discard the clip.
+
+## Auto-login gotchas (login.html)
+- Auto-login relies on Firebase `onAuthStateChanged` restoring a
+  LOCAL-persisted session, which on a cold start / slow network can take
+  several seconds. A 10s watchdog (`autoLoginWatchdog`) shows
+  "Restoring your session…" immediately, then after 10s with no resolution
+  tells the user they can sign in manually. The manual form is always
+  usable the whole time. Do NOT remove the watchdog or the immediate hint.
+- The immediate hint is suppressed on `?banned=1`/`?deleted=1` redirects so
+  it doesn't overwrite those more important messages.
 

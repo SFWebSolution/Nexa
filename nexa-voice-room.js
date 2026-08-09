@@ -59,6 +59,9 @@
       this.invitedUserIds = new Set();     // users we've invited in this session (for "Invited" UI state)
       this.currentInviteRoomId = null;     // room id of the invite currently shown, to dedupe double-show
       this.retriedPeers = new Set();       // peerIds we've already retried once (prevents call-close retry loops)
+      this.inviteListenerUid = null;       // uid the Firestore invite listener is currently bound to
+      this.inviteListenerUnsub = null;     // unsubscribe fn for the voice_invites listener
+      this.inviteRetryTimer = null;        // timer used to re-try binding the listener once the real uid arrives
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -1428,14 +1431,47 @@
         });
     }
 
-    setupFirestoreListeners() {
-      if (!window.db) return;
+    // Public hook for the host app to (re)bind the invite listener once the
+    // real Firebase uid becomes available. Called from dashboard.html after
+    // onAuthStateChanged sets window.currentUser. Safe to call repeatedly —
+    // it no-ops if already bound to the same uid.
+    bindInviteListener() {
+      this.setupFirestoreListeners();
+    }
 
+    setupFirestoreListeners() {
       const user = this.getCurrentUser();
-      if (!user || !user.id) return;
+
+      // If Firebase isn't ready yet OR we don't have a real uid yet, we can't
+      // safely bind the invite listener. Schedule a re-check so we bind as
+      // soon as both are available — instead of the old one-shot that bound to
+      // a fake uid and never recovered.
+      const dbReady = !!window.db;
+      const hasRealUid = !!(user && user.id && !/^user_[a-z0-9]+$/.test(user.id));
+
+      if (!dbReady || !hasRealUid) {
+        if (!this.inviteRetryTimer) {
+          this.inviteRetryTimer = setTimeout(() => {
+            this.inviteRetryTimer = null;
+            this.setupFirestoreListeners();
+          }, 1500);
+        }
+        return;
+      }
+
+      // Already listening to this uid — nothing to do.
+      if (this.inviteListenerUid === user.id && this.inviteListenerUnsub) return;
+
+      // Tear down any listener bound to a previous (possibly fake) id.
+      if (this.inviteListenerUnsub) {
+        try { this.inviteListenerUnsub(); } catch (e) {}
+        this.inviteListenerUnsub = null;
+      }
+
+      this.inviteListenerUid = user.id;
 
       // Listen for incoming voice chat invites for current user
-      window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
+      this.inviteListenerUnsub = window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
         if (doc.exists) {
           const data = doc.data() || {};
           if (data.status === 'pending' && data.room) {
