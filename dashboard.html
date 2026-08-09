@@ -4431,8 +4431,13 @@ function initPeerJS() {
     console.log('📞 Incoming PeerJS media call received from:', incomingMediaCall.peer);
     activeCall = incomingMediaCall;
     if (callState === 'active' && localStream) {
-      incomingMediaCall.answer(localStream);
+      // CRITICAL: wire up the 'stream'/'close' handlers BEFORE answer().
+      // PeerJS can fire the 'stream' event (with the caller's remote audio/
+      // video) synchronously during/immediately after answer() — if
+      // setupCallStreamHandlers runs after answer(), that stream event hits
+      // zero listeners and the callee never hears/sees the caller.
       setupCallStreamHandlers(incomingMediaCall);
+      incomingMediaCall.answer(localStream);
     }
   });
 
@@ -4447,8 +4452,9 @@ function initPeerJS() {
       nexaPeer.on('call', (incomingMediaCall) => {
         activeCall = incomingMediaCall;
         if (callState === 'active' && localStream) {
-          incomingMediaCall.answer(localStream);
+          // Attach handlers BEFORE answer() — see primary handler above.
           setupCallStreamHandlers(incomingMediaCall);
+          incomingMediaCall.answer(localStream);
         }
       });
     }
@@ -4802,9 +4808,12 @@ async function answerCall() {
   // callState==='active' && localStream, but during the brief window between
   // writing "answered" and the caller placing the PeerJS call we attach a
   // one-time listener so we don't leak permanent duplicate handlers.
+  // CRITICAL: setupCallStreamHandlers MUST run before answer() — PeerJS can
+  // emit the 'stream' event synchronously during answer(), and without the
+  // handler wired first the callee never receives the caller's audio/video.
   if (activeCall) {
-    activeCall.answer(localStream);
     setupCallStreamHandlers(activeCall);
+    activeCall.answer(localStream);
   } else {
     const waitTimeout = setTimeout(() => {
       console.warn('⚠️ Timed out waiting for PeerJS call to arrive');
@@ -4821,8 +4830,9 @@ async function answerCall() {
       }
       if (!activeCall) {
         activeCall = mediaCall;
-        mediaCall.answer(localStream);
+        // Attach stream handlers BEFORE answer() — see comment above.
         setupCallStreamHandlers(mediaCall);
+        mediaCall.answer(localStream);
       }
     };
     nexaPeer.on('call', oneTimeCallHandler);
