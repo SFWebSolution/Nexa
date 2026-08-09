@@ -37,8 +37,29 @@
   `document.visibilityState === "visible"`), because mobile backgrounding
   flips visibility constantly and caused users to appear offline. Offline is
   only set on explicit `pagehide`/`beforeunload`.
+- **WhatsApp-style online/last-seen (current behaviour):** online is driven by
+  heartbeat FRESHNESS, not the `online`/`status` flags. `isUserOnline(pdata)`
+  returns `(Date.now() - pdata.lastSeen) < PRESENCE_TIMEOUT_MS` (90s) and
+  intentionally does NOT early-return on `online===false`/`status==="offline"`,
+  because those flags flicker false on every mobile background/screen-lock
+  (`pagehide`/`beforeunload` fire on tab-switch, not just real close). A fresh
+  `lastSeen` with `online:false` is that flicker → still online. When the app
+  is truly closed, the heartbeat stops → `lastSeen` goes stale → after 90s the
+  user correctly shows "last seen Xm ago". The 90s grace window absorbs mobile
+  setInterval throttling (backgrounded tabs run ~1/min).
+- `writeOfflineBeacon()` fires a `navigator.sendBeacon` to the Firestore REST
+  API on `pagehide`/`beforeunload` so the final `lastSeen`/offline stamp lands
+  even when the mobile tab is evicted before the async `set()` resolves (the
+  async `updateOnline(false)` is also called as a fallback). This REST write
+  targets `projects/mel-odix/.../presence/{uid}` with an `updateMask` for the
+  three fields — keep the project id in sync with the Firebase config.
+- Do NOT lower `PRESENCE_TIMEOUT_MS` back to 35s or re-add the
+  `if (pdata.online === false) return false` short-circuit — both caused the
+  "can't see online / flickers offline" symptom on mobile.
 - `listenPresence()` (chat header) no longer opens its own listener — it just
-  refreshes from the shared cache.
+  refreshes from the shared cache. `updateChatHeaderPresence` shows "🟢 online"
+  when `isUserOnline` is true and "⚪ last seen {formatLastSeen}" otherwise
+  (staleness-driven, no "away" branch anymore).
 
 ## Audio autoplay / "can't hear anything"
 - Browsers block autoplay + suspend `AudioContext` until a user gesture and on
