@@ -8,6 +8,32 @@
 (function () {
   'use strict';
 
+  // WebRTC ICE servers. STUN alone CANNOT traverse symmetric NAT / CGNAT
+  // (mobile carriers, hotel WiFi, most home routers behind an ISP NAT), so a
+  // direct peer-to-peer UDP path often fails between two different devices →
+  // the call "answers" but media flows one way or not at all (the classic
+  // "I can hear them but they can't hear me" symptom). A TURN relay is the
+  // only reliable fallback: when direct ICE fails, the relay tunnels the
+  // audio through a public server so both sides always get each other.
+  //
+  // The TURN entries below use the public/shared OpenRelay test servers
+  // (metered.ca). They work for development and light traffic but are
+  // rate-limited and shared — for production reliability sign up for your
+  // own free Metered/Twilio/Xirsys TURN account and replace the
+  // username/credential here (and in dashboard.html NEXA_ICE_SERVERS).
+  const NEXA_VR_ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:4430', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+  ];
+
   class NexaVoiceRoomManager {
     constructor() {
       this.activeRoom = null; // { id, title, hostId, hostName, isHost, startTime }
@@ -32,6 +58,7 @@
       this.muteSyncTimer = null;
       this.invitedUserIds = new Set();     // users we've invited in this session (for "Invited" UI state)
       this.currentInviteRoomId = null;     // room id of the invite currently shown, to dedupe double-show
+      this.retriedPeers = new Set();       // peerIds we've already retried once (prevents call-close retry loops)
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -529,6 +556,12 @@
         this.roomFirestoreUnsub();
         this.roomFirestoreUnsub = null;
       }
+      // Reset per-room session state so a fresh join (or re-inviting someone
+      // who left) starts clean — otherwise stale "Invited" marks and retry
+      // guards persist across rooms.
+      if (this.invitedUserIds) this.invitedUserIds.clear();
+      if (this.retriedPeers) this.retriedPeers.clear();
+      this.currentInviteRoomId = null;
 
       // Remove ONLY our own participant doc (never overwrite the participants
       // array — that would clobber other users; see AGENTS.md).
@@ -595,15 +628,7 @@
       const user = this.getCurrentUser();
       const peerId = this.peerIdFor(user.id);
 
-      const iceServers = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'stun:relay.metered.ca:80' }
-      ];
+      const iceServers = NEXA_VR_ICE_SERVERS;
 
       try {
         this.peer = new window.Peer(peerId, {
@@ -626,17 +651,7 @@
             await this.initMicrophone();
           }
           call.answer(this.localStream);
-          if (!this.peerCalls.has(call.peer)) {
-            this.peerCalls.set(call.peer, call);
-          }
-          call.on('stream', (remoteStream) => {
-            this.playRemoteAudioStream(call.peer, remoteStream);
-          });
-          call.on('close', () => {
-            this.peerCalls.delete(call.peer);
-            const audioEl = document.getElementById('audio_' + call.peer);
-            if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
-          });
+          this.attachCallHandlers(call, call.peer, 'incoming');
         });
 
         this.peer.on('error', (err) => {
@@ -655,13 +670,7 @@
               this.peer.on('call', async (call) => {
                 if (!this.localStream) await this.initMicrophone();
                 call.answer(this.localStream);
-                if (!this.peerCalls.has(call.peer)) this.peerCalls.set(call.peer, call);
-                call.on('stream', (remoteStream) => this.playRemoteAudioStream(call.peer, remoteStream));
-                call.on('close', () => {
-                  this.peerCalls.delete(call.peer);
-                  const audioEl = document.getElementById('audio_' + call.peer);
-                  if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
-                });
+                this.attachCallHandlers(call, call.peer, 'incoming');
               });
             } catch (e) { console.warn('[VoiceRoom] PeerJS fallback error:', e); }
           } else if (err && (err.type === 'peer-unavailable' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error')) {
@@ -687,24 +696,64 @@
 
       try {
         const call = this.peer.call(targetPeerId, this.localStream);
-        if (call) {
-          this.peerCalls.set(targetPeerId, call);
-          call.on('stream', (remoteStream) => {
-            this.playRemoteAudioStream(targetPeerId, remoteStream);
-          });
-          call.on('close', () => {
-            this.peerCalls.delete(targetPeerId);
-            const audioEl = document.getElementById('audio_' + targetPeerId);
-            if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
-          });
-          call.on('error', (e) => {
-            console.warn('[VoiceRoom] Call error to', targetPeerId, e);
-            this.peerCalls.delete(targetPeerId);
-          });
-        }
+        if (call) this.attachCallHandlers(call, targetPeerId, 'outgoing');
       } catch (e) {
         console.warn('[VoiceRoom] Call peer error:', e);
       }
+    }
+
+    // Re-establish a peer connection that dropped or errored, but ONLY once
+    // per peer per session-segment (guarded by retriedPeers) so a permanently
+    // failing peer can't cause an infinite close→re-call loop. Reset when the
+    // peer leaves the room (see the 'removed' handler) or on a fresh join.
+    retryCallPeer(targetPeerId, reason) {
+      if (!this.activeRoom) return;
+      if (this.retriedPeers.has(targetPeerId)) return;
+      // Only retry if that peer is still a participant in the room.
+      const stillInRoom = Array.from(this.participants.values())
+        .some(p => this.peerIdFor(p.id) === targetPeerId);
+      if (!stillInRoom) return;
+      this.retriedPeers.add(targetPeerId);
+      console.warn('[VoiceRoom] Retrying call to', targetPeerId, '(', reason, ')');
+      // Clear any stale entry so callPeer's guard doesn't block the retry.
+      if (this.peerCalls.has(targetPeerId)) {
+        try { this.peerCalls.get(targetPeerId).close(); } catch (e) {}
+        this.peerCalls.delete(targetPeerId);
+      }
+      // Allow one re-retry later (reset the guard after a cooldown).
+      setTimeout(() => this.retriedPeers.delete(targetPeerId), 15000);
+      // Defer slightly so the torn-down connection fully closes first.
+      setTimeout(() => this.callPeer(targetPeerId), 800);
+    }
+
+    // Shared handler wiring for both outgoing (callPeer) and incoming
+    // (peer.on('call')) MediaConnections. Centralising this is important
+    // because the incoming-call path previously had NO 'error' handler, so an
+    // ICE failure on the answerer side silently killed that leg of the mesh
+    // → one-way audio with no attempt to recover.
+    attachCallHandlers(call, targetPeerId, direction) {
+      this.peerCalls.set(targetPeerId, call);
+      call.on('stream', (remoteStream) => {
+        this.playRemoteAudioStream(targetPeerId, remoteStream);
+      });
+      call.on('close', () => {
+        this.peerCalls.delete(targetPeerId);
+        const audioEl = document.getElementById('audio_' + targetPeerId);
+        if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+        // If the call dropped while the room is still active and the peer is
+        // still a participant, try to rebuild that leg of the mesh once. This
+        // recovers from transient ICE restarts / network blips that otherwise
+        // leave a one-direction audio hole.
+        if (this.activeRoom) this.retryCallPeer(targetPeerId, direction + ' close');
+      });
+      call.on('error', (e) => {
+        console.warn('[VoiceRoom] Call error', direction, targetPeerId, e && e.type, e && e.message);
+        this.peerCalls.delete(targetPeerId);
+        const audioEl = document.getElementById('audio_' + targetPeerId);
+        if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e2) {} }
+        // ICE failures / network errors → attempt a single reconnect.
+        if (this.activeRoom) this.retryCallPeer(targetPeerId, direction + ' error');
+      });
     }
 
     playRemoteAudioStream(peerId, stream) {
@@ -1325,8 +1374,17 @@
                 }
                 const audioEl = document.getElementById('audio_' + targetPeerId);
                 if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+                // Clear the "Invited" mark so the host can invite this person
+                // again after they leave (otherwise the button stays "Invited"
+                // forever and a re-invite is impossible).
+                if (this.invitedUserIds) this.invitedUserIds.delete(p.id);
+                this.retriedPeers?.delete(targetPeerId);
                 updated = true;
                 if (p.id !== user.id) this.showToast(`🔴 ${p.name || 'User'} left`);
+                // Refresh the invite list so the "Invite" button reappears.
+                if (document.getElementById('nexaVrInviteModal')?.classList.contains('active')) {
+                  this.renderUserInviteList();
+                }
               }
               return;
             }

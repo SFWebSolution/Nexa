@@ -91,6 +91,29 @@
   nexa-voice-room.js initMicrophone). Do NOT regress to bare
   `{ echoCancellation: true }`.
 
+## One-way / no audio across devices (TURN + ICE retry)
+- STUN-only ICE CANNOT traverse symmetric NAT / CGNAT (mobile carriers,
+  hotel WiFi, most home routers behind an ISP NAT). Two devices on different
+  networks then "answer" but media flows one way or not at all — the classic
+  "I hear them, they don't hear me". A TURN relay is the ONLY reliable fix:
+  when direct P2P ICE fails, the relay tunnels the audio through a public
+  server. Both `NEXA_ICE_SERVERS` (dashboard.html, 1:1 calls) and
+  `NEXA_VR_ICE_SERVERS` (nexa-voice-room.js, voice room) now include TURN
+  entries. They use the shared public OpenRelay (metered.ca) test
+  credentials `openrelayproject` / `openrelayproject` — rate-limited and
+  shared; for production sign up for your own free Metered/Twilio/Xirsys
+  TURN and replace in BOTH places.
+- The voice room mesh has TWO legs per pair (A→B and B→A are separate
+  MediaConnections). If one leg's ICE fails, you get one-way audio. The
+  incoming-call answer path (`peer.on('call')`) previously had NO
+  `call.on('error')` handler, so a failed leg silently died. All call legs
+  now go through `attachCallHandlers()` (stream/close/error) which calls
+  `retryCallPeer()` once on close/error while the peer is still a room
+  participant — recovering from transient ICE blips. `retriedPeers` Set
+  guards against close→re-call loops (resets after 15s and on peer leave).
+- Do NOT re-introduce bare `call.on('close') => delete` without the
+  `retryCallPeer` call, or one-way audio holes won't self-heal.
+
 
 ## Firestore rules + secrets
 - `firestore.rules` now exists and is wired into `firebase.json` (`firestore.rules`).
@@ -163,5 +186,10 @@
 - `sendInvite()` keeps the modal open (no `closeInviteModal()`) so the host
   can invite multiple people, and marks each invited user with an
   `invitedUserIds` Set → button flips to a disabled "✓ Invited" state.
-  `invitedUserIds` is in-session only (resets on reload).
+- The "Invited" mark is NOT permanent: when a participant LEAVES the room
+  (Firestore 'removed' in subscribeToRoomFirestore) or the host leaves
+  (`leaveRoom()` clears the set), the user is removed from
+  `invitedUserIds` and the invite list re-renders so the "Invite" button
+  reappears — the host can re-invite someone who left. Do NOT make
+  `invitedUserIds` a persistent/lifetime set.
 

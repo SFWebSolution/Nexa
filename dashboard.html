@@ -4203,7 +4203,14 @@ const NEXA_ICE_SERVERS = [
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:relay.metered.ca:80' }
+  // TURN relay: STUN alone cannot traverse symmetric NAT / CGNAT, so two
+  // devices on different networks often end up with one-way or no audio.
+  // The relay tunnels media when direct P2P ICE fails. Replace these shared
+  // OpenRelay test credentials with your own Metered/Twilio TURN for prod.
+  { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:4430', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
 ];
 
 // ── Initialize PeerJS (called once on login) ──
