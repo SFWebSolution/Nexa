@@ -68,6 +68,29 @@
   and resumes the voice room's `audioCtx`. It is wired to window `focus`,
   `visibilitychange`, and one-shot `touchstart`/`click` so audio resumes as
   soon as the user opens/returns to the app.
+- **Voice room root cause of "can't hear anyone":** `call.on('stream')` fires
+  asynchronously OUTSIDE the user-gesture context, so a bare
+  `audioEl.play().catch(()=>{})` silently swallows the autoplay rejection and
+  the element sits paused forever. `nexa-voice-room.js` now uses
+  `attemptAudioPlay()` (retries play() a few times, then parks the peer in
+  `pendingAudioPlays`) + `unlockPendingAudio()` wired to PERSISTENT
+  `click`/`touchstart`/`visibilitychange`/`focus` listeners that force-start
+  parked audio on the next gesture. The dashboard's one-shot `{once:true}`
+  listeners are NOT enough for the voice room because streams arrive after
+  the join gesture.
+
+## Echo in calls / voice room
+- The plain `echoCancellation:true` flag alone does NOT reliably engage
+  Chromium's hardware AEC pipeline — speaker output leaks back into the mic
+  and callers hear themselves (echo). All `getUserMedia` audio captures now
+  use a shared `NEXA_AUDIO_CONSTRAINTS` object (dashboard.html) / inline
+  `goog*` flags (nexa-voice-room.js) that include the legacy
+  `googEchoCancellation2` / `googNoiseSuppression` / `googAutoGainControl` /
+  `googHighpassFilter` constraints. Keep these on every audio capture site
+  (3 in dashboard.html: voice-msg recording, startCall, answerCall; 1 in
+  nexa-voice-room.js initMicrophone). Do NOT regress to bare
+  `{ echoCancellation: true }`.
+
 
 ## Firestore rules + secrets
 - `firestore.rules` now exists and is wired into `firebase.json` (`firestore.rules`).
@@ -126,4 +149,19 @@
 - `leaveRoom()` deletes ONLY the own participant doc, then migrates host to the next remaining participant (or deletes the room doc if empty). Never overwrite a participants array.
 - `initPeerJS()` retries if PeerJS isn't loaded yet, falls back to a unique id on `unavailable-id` error, and auto-reconnects on `disconnected`/transient errors. `callPeer` only fires when `this.peer.open`.
 - `?voiceroom=<roomId>` URL param auto-joins a room (waits for Firebase + user). `copyInviteLink()` generates these links.
+
+## Invite gotchas (nexa-voice-room.js)
+- An invite is delivered via TWO paths: BroadcastChannel `INVITE_USER`
+  (same-browser tabs, instant) AND Firestore `voice_invites/{inviteeUid}`
+  (cross-device). `showIncomingInvite()` dedupes by `roomId:timestamp` in
+  `currentInviteRoomId` so the recipient never sees two stacked toasts. Do
+  NOT remove the dedupe guard.
+- On Join/Decline the invite doc is DELETED (not marked accepted/declined).
+  Leaving a stale 'accepted' doc causes cache-replay to re-fire the listener;
+  deleting keeps a future re-invite a clean 'pending' write. Firestore rules
+  allow `delete` on `voice_invites/{uid}` for any signed-in user.
+- `sendInvite()` keeps the modal open (no `closeInviteModal()`) so the host
+  can invite multiple people, and marks each invited user with an
+  `invitedUserIds` Set → button flips to a disabled "✓ Invited" state.
+  `invitedUserIds` is in-session only (resets on reload).
 

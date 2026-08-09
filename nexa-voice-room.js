@@ -21,6 +21,8 @@
       this.isMuted = false;
       this.isSpeakerMuted = false;
       this.isMinimized = false;
+      this.audioUnlocked = false;   // set true after the first user gesture so remote .play() isn't blocked by autoplay policy
+      this.pendingAudioPlays = new Map(); // peerId -> retry handle, for streams awaiting a gesture unlock
       this.timerInterval = null;
       this.vadInterval = null;
       this.roomFirestoreUnsub = null;
@@ -28,6 +30,8 @@
       this.ownParticipantUnsub = null;
       this.pendingMuteSync = null;
       this.muteSyncTimer = null;
+      this.invitedUserIds = new Set();     // users we've invited in this session (for "Invited" UI state)
+      this.currentInviteRoomId = null;     // room id of the invite currently shown, to dedupe double-show
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -353,6 +357,18 @@
         e.stopPropagation();
         this.leaveRoom();
       });
+
+      // Autoplay unlock: remote stream .play() is rejected until a user
+      // gesture, and streams can arrive after the join click. These persistent
+      // listeners force-start any parked remote audio on the next interaction
+      // so participants can actually hear each other.
+      const unlock = () => { if (this.activeRoom) this.unlockPendingAudio(); };
+      window.addEventListener('click', unlock);
+      window.addEventListener('touchstart', unlock, { passive: true });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.activeRoom) this.unlockPendingAudio();
+      });
+      window.addEventListener('focus', unlock);
 
       // Trigger buttons integration for Nexa app UI
       document.addEventListener('click', (e) => {
@@ -702,9 +718,16 @@
       }
       audioEl.srcObject = stream;
       audioEl.muted = this.isSpeakerMuted;
-      // Explicit play() — autoplay is blocked until a user gesture, so we
-      // also rely on the global focus/touch listeners to re-trigger audio.
-      audioEl.play().catch(err => console.warn('[VoiceRoom] Remote audio play notice:', err));
+
+      // Browsers block HTMLMediaElement.play() until a user gesture, and the
+      // `call.on('stream')` callback arrives asynchronously OUTSIDE that
+      // gesture context. A bare `.play().catch(()=>{})` here silently swallows
+      // the autoplay rejection and the element sits paused forever — which is
+      // the "I can't hear anyone in the voice room" bug. So we attempt play()
+      // and, if rejected, retry on a short interval (covers the brief window
+      // after a gesture where some browsers still queue) and also defer the
+      // real start to the next user gesture via unlockPendingAudio().
+      this.attemptAudioPlay(audioEl, peerId);
 
       // The Web Audio DSP AudioContext may be suspended (e.g. after the tab
       // was backgrounded). Resume it so the analyser / gain graph keeps
@@ -714,6 +737,52 @@
       }
     }
 
+    // Try to play one remote audio element, retrying briefly on autoplay
+    // rejection. Keeps a per-peer handle in pendingAudioPlays so the next
+    // user gesture can force-start it via unlockPendingAudio().
+    attemptAudioPlay(audioEl, peerId) {
+      if (!audioEl) return;
+      // Clear any previous retry timer for this peer.
+      if (this.pendingAudioPlays.has(peerId)) {
+        clearTimeout(this.pendingAudioPlays.get(peerId));
+      }
+
+      const tryPlay = (attempt) => {
+        if (!audioEl.srcObject || !document.body.contains(audioEl)) return;
+        audioEl.play().then(() => {
+          this.audioUnlocked = true;
+          this.pendingAudioPlays.delete(peerId);
+        }).catch(() => {
+          // Retry a few times (covers the post-gesture queue window), then
+          // park it for the next gesture unlock.
+          if (attempt < 5) {
+            const handle = setTimeout(() => tryPlay(attempt + 1), 400);
+            this.pendingAudioPlays.set(peerId, handle);
+          } else {
+            this.pendingAudioPlays.set(peerId, -1); // sentinel: waiting for gesture
+          }
+        });
+      };
+      tryPlay(0);
+    }
+
+    // Called from a user gesture (click/touch) to force-start any remote
+    // audio elements that are still parked waiting on the autoplay unlock.
+    unlockPendingAudio() {
+      this.audioUnlocked = true;
+      // Resume our DSP context too.
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
+      document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
+        if (el.srcObject && el.paused) {
+          el.play().catch(() => {});
+        }
+      });
+      this.pendingAudioPlays.clear();
+    }
+
+
     async initMicrophone() {
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -721,6 +790,16 @@
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
+            // Legacy goog* constraints actually engage Chromium's hardware
+            // AEC / noise-suppression / high-pass pipeline — without them the
+            // speaker output leaks back into the mic and participants hear an
+            // echo of each other. The plain `echoCancellation:true` flag alone
+            // is not reliably honoured.
+            googEchoCancellation: true,
+            googEchoCancellation2: true,
+            googNoiseSuppression: true,
+            googAutoGainControl: true,
+            googHighpassFilter: true,
             sampleRate: 48000
           },
           video: false
@@ -1015,9 +1094,9 @@
                   </div>
                 </div>
               </div>
-              <button class="nexa-vr-inv-btn" onclick="NexaVoiceRoom.sendInvite('${u.id}', '${this.escapeHTML(u.name)}')">
-                Invite
-              </button>
+              ${this.invitedUserIds.has(u.id)
+                ? `<button class="nexa-vr-inv-btn invited" disabled>✓ Invited</button>`
+                : `<button class="nexa-vr-inv-btn" onclick="NexaVoiceRoom.sendInvite('${u.id}', '${this.escapeHTML(u.name)}')">Invite</button>`}
             </div>
           `;
         }).join('');
@@ -1041,10 +1120,12 @@
         timestamp: Date.now()
       };
 
-      // 1. Broadcast to local channel
+      // 1. Broadcast to local channel (same-browser tabs only)
       this.broadcast('INVITE_USER', payload);
 
-      // 2. Persist to Firestore voice_invites collection for real cross-device push notification
+      // 2. Persist to Firestore voice_invites collection for real
+      //    cross-device push notification. Doc id = target user's uid so the
+      //    recipient's single listener on voice_invites/{ownUid} catches it.
       if (window.db) {
         window.db.collection('voice_invites').doc(userId).set({
           ...payload,
@@ -1052,8 +1133,11 @@
         }).catch(err => console.warn('[VoiceRoom] Firestore invite write error:', err));
       }
 
+      // Mark this user as invited in-session so the list shows "Invited ✓"
+      // and prevents spamming repeated invites to the same person.
+      this.invitedUserIds.add(userId);
+      this.renderUserInviteList();
       this.showToast(`📩 Voice Chat invite sent to ${userName}`);
-      this.closeInviteModal();
     }
 
     /* --------------------------------------------------------------------- */
@@ -1385,42 +1469,61 @@
       const subEl = document.getElementById('nexaVrIncSub');
       const avatarEl = document.getElementById('nexaVrIncAvatar');
 
-      if (toast && payload.room) {
-        titleEl.textContent = `🎙️ ${payload.room.title}`;
-        subEl.textContent = `${payload.inviter.name} invited you to Voice Chat`;
-        avatarEl.src = payload.inviter.avatar || 'icon-192.png';
+      if (!toast || !payload || !payload.room) return;
 
-        toast.classList.add('active');
-        this.playChime('ring');
+      // Dedupe: the same invite can arrive via BOTH the BroadcastChannel
+      // (same-browser tab) AND the Firestore listener (cross-device). Without
+      // this guard the recipient sees two stacked toasts / two sets of buttons
+      // and joining from one leaves the other dangling. Key on room id +
+      // timestamp; ignore repeats while one is already showing.
+      const inviteKey = payload.room.id + ':' + (payload.timestamp || 0);
+      if (this.currentInviteRoomId === inviteKey) return;
+      this.currentInviteRoomId = inviteKey;
 
-        const joinBtn = document.getElementById('nexaVrIncJoinBtn');
-        const declineBtn = document.getElementById('nexaVrIncDeclineBtn');
+      titleEl.textContent = `🎙️ ${payload.room.title}`;
+      subEl.textContent = `${payload.inviter.name} invited you to Voice Chat`;
+      avatarEl.src = payload.inviter.avatar || 'icon-192.png';
 
-        const handleJoin = () => {
-          toast.classList.remove('active');
-          if (window.db && payload.targetUserId) {
-            window.db.collection('voice_invites').doc(payload.targetUserId).update({ status: 'accepted' }).catch(() => {});
-          }
-          this.joinRoom(payload.room);
-          cleanup();
-        };
+      toast.classList.add('active');
+      this.playChime('ring');
 
-        const handleDecline = () => {
-          toast.classList.remove('active');
-          if (window.db && payload.targetUserId) {
-            window.db.collection('voice_invites').doc(payload.targetUserId).update({ status: 'declined' }).catch(() => {});
-          }
-          cleanup();
-        };
+      const joinBtn = document.getElementById('nexaVrIncJoinBtn');
+      const declineBtn = document.getElementById('nexaVrIncDeclineBtn');
 
-        const cleanup = () => {
-          joinBtn.removeEventListener('click', handleJoin);
-          declineBtn.removeEventListener('click', handleDecline);
-        };
+      const handleJoin = () => {
+        toast.classList.remove('active');
+        // Delete the invite doc (rather than leaving a stale 'accepted' doc
+        // that could re-trigger on cache replay) so a fresh invite later is a
+        // clean 'pending' write.
+        if (window.db && payload.targetUserId) {
+          window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
+        }
+        this.joinRoom(payload.room);
+        this.currentInviteRoomId = null;
+        cleanup();
+      };
 
-        joinBtn.addEventListener('click', handleJoin);
-        declineBtn.addEventListener('click', handleDecline);
-      }
+      const handleDecline = () => {
+        toast.classList.remove('active');
+        if (window.db && payload.targetUserId) {
+          window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
+        }
+        this.currentInviteRoomId = null;
+        cleanup();
+      };
+
+      const cleanup = () => {
+        joinBtn.removeEventListener('click', handleJoin);
+        declineBtn.removeEventListener('click', handleDecline);
+      };
+
+      // Ensure we never stack duplicate listeners from a prior invite.
+      joinBtn.replaceWith(joinBtn.cloneNode(true));
+      declineBtn.replaceWith(declineBtn.cloneNode(true));
+      const freshJoin = document.getElementById('nexaVrIncJoinBtn');
+      const freshDecline = document.getElementById('nexaVrIncDeclineBtn');
+      freshJoin.addEventListener('click', handleJoin);
+      freshDecline.addEventListener('click', handleDecline);
     }
 
     /* --------------------------------------------------------------------- */

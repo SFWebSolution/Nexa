@@ -3550,7 +3550,7 @@ async function startRec(e) {
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true }
+      audio: NEXA_AUDIO_CONSTRAINTS
     });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
@@ -4172,6 +4172,24 @@ let isMicMuted = false;
 let isCameraOff = false;
 let isSpeakerOn = true;
 let currentFacingMode = 'user';
+
+// Strong acoustic-echo-cancellation audio constraints. The standard
+// `echoCancellation:true` flag alone does NOT always engage Chrome's full
+// hardware AEC pipeline — the legacy `goog*` constraints below are what
+// actually switch on the echo canceller / noise suppressor / high-pass
+// filter in Chromium's media pipeline. Without them, speaker output leaks
+// back into the mic and callers hear themselves (echo). All getUserMedia
+// audio captures in this file use this object.
+const NEXA_AUDIO_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  googEchoCancellation: true,
+  googEchoCancellation2: true,
+  googNoiseSuppression: true,
+  googAutoGainControl: true,
+  googHighpassFilter: true
+};
 let callLogged = false;            // guards against double call-log entries
 const CALL_TIMEOUT_MS = 45000;  // 45 seconds ring timeout
 const MAX_RETRY_ATTEMPTS = 3;  // max PeerJS reconnect attempts
@@ -4375,7 +4393,7 @@ async function startCall(type) {
   // Get local media stream
   try {
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: NEXA_AUDIO_CONSTRAINTS,
       video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -4581,7 +4599,7 @@ async function answerCall() {
   // Get local media
   try {
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: NEXA_AUDIO_CONSTRAINTS,
       video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
