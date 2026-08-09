@@ -814,14 +814,25 @@ window.db = db;
 window.auth = auth;
 
 // Live getters for the caches the voice room + presence UI read. These are
-// declared later in the file (let/const), and some get reassigned, so a
-// one-time assignment would freeze a stale reference. Getters always return
-// the current value.
+// declared later with `let`, so a one-time assignment would freeze a stale
+// reference (allUsersData is reassigned on every users snapshot). Getters
+// always return the current value.
+// NOTE: `isUserOnline` is intentionally NOT listed here — it is a top-level
+// `function` declaration, which already attaches to `window` via hoisting.
+// Redefining it via Object.defineProperties throws "Cannot redefine
+// property: isUserOnline" (function-declaration globals are non-configurable
+// in this engine), and because Object.defineProperties is atomic, that throw
+// would also skip defining the other three AND halt the whole init script
+// (the app then never registers onAuthStateChanged → no login redirect →
+// stuck on "Loading…").
+// The getters are TDZ-safe: if anything reads window.allUsersData /
+// window.userPresenceCache BEFORE the `let` at line ~1359 executes, a bare
+// `return allUsersData` would throw a Temporal Dead Zone ReferenceError that
+// halts init. The try/catch returns a safe default instead.
 Object.defineProperties(window, {
-  currentUser: { get() { return currentUser; }, configurable: true },
-  allUsersData: { get() { return allUsersData; }, configurable: true },
-  userPresenceCache: { get() { return userPresenceCache; }, configurable: true },
-  isUserOnline: { get() { return isUserOnline; }, configurable: true }
+  currentUser: { get() { try { return currentUser; } catch (_) { return null; } }, configurable: true },
+  allUsersData: { get() { try { return allUsersData; } catch (_) { return []; } }, configurable: true },
+  userPresenceCache: { get() { try { return userPresenceCache; } catch (_) { return {}; } }, configurable: true }
 });
 
 function escapeHtml(str) {
