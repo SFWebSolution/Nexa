@@ -128,6 +128,16 @@
 - `firebase.js` and the inline config in `dashboard.html`/`admin.html` duplicate the Firebase config — keep them in sync.
 - Firestore security rules must allow the `voice_rooms` / `voice_rooms/{id}/participants` / `voice_invites` / `calls` collections for this to work cross-device.
 - `dashboard.html` uses CRLF line endings; preserve them when editing or the whole file shows as changed in git diff.
+- **Reply quote persistence:** when replying to a message, `extras.replySnapshot`
+  (`{id, from, fromName, text, hasImage, hasVideo, hasAudio}`) is stored on the
+  outgoing message at SEND time, in addition to `extras.replyTo` (the id). The
+  render side (`createBubble`) prefers `msg.replySnapshot` and only falls back to
+  `allMessages.find(m => m.id === msg.replyTo)` for legacy replies with no
+  snapshot. The snapshot is what makes the quote render on the recipient's side
+  and after a reload — without it the quote vanished because the original message
+  wasn't guaranteed to be in the locally-loaded `allMessages` (race between the
+  two onSnapshot listeners, or recipient loading the reply before the original).
+  Keep the snapshot self-contained; do NOT store only an id.
 - **`window.*` exposure (critical for presence + voice room):** `dashboard.html`
   declares `db`, `auth`, `currentUser`, `allUsersData`, `userPresenceCache`,
   `isUserOnline` with top-level `const`/`let`/`function`. In a browser these do
@@ -169,9 +179,26 @@
 - Stable peer id per user: `peerIdFor(uid)` returns `nexa_vr_<sanitized uid>`. Keep this consistent across all clients.
 - `subscribeToRoomFirestore()` listens to the `voice_rooms/{roomId}/participants` SUBCOLLECTION (docChanges), not an array on the room doc. On a new participant it calls `callPeer(peerIdFor(id))` to build the mesh.
 - `upsertOwnParticipantDoc()` writes ONLY this client's own doc (merge). `syncMuteState()` is the throttled (~1.2s) version used by toggleMic/raiseHand.
-- `leaveRoom()` deletes ONLY the own participant doc, then migrates host to the next remaining participant (or deletes the room doc if empty). Never overwrite a participants array.
+- **Access control (invite-only):** rooms are invite-only. `startRoom`/`createRoom`
+  seeds the room doc with `invitedUids: [hostId]`; `sendInvite` grants access by
+  adding the target uid to `invitedUids` via `arrayUnion` (idempotent); `joinRoom`
+  is async and calls `canJoinRoom(roomId, uid)` which reads the room doc's
+  `invitedUids` — the host is always allowed, anyone not on the list is refused
+  with "🚫 You need an invite from the host to join this Voice Chat." The invite
+  LINK alone does NOT grant access; the host must invite the person first (which
+  also sends the push toast). Multiple rooms coexist independently.
+- **Host close destroys the room for everyone:** when the HOST calls `leaveRoom()`,
+  it does NOT migrate the host. It batch-deletes ALL participant docs then deletes
+  the `voice_rooms/{id}` doc, and broadcasts `ROOM_CLOSED`. Non-host participants
+  are kicked two ways: (1) the `voice_rooms/{id}` doc `onSnapshot` listener
+  (set up in `subscribeToRoomFirestore`, stored in `this.roomDocUnsub`) sees the
+  deletion and auto-`leaveRoom()`s with "📞 The host ended the Voice Chat." — this
+  is the cross-device signal; (2) same-browser tabs get the `ROOM_CLOSED`
+  BroadcastChannel (handled in `setupChannelListeners`). `this.roomDocUnsub` is
+  torn down in `cleanupCall()`/`leaveRoom()` alongside `roomFirestoreUnsub`.
+  A NON-host leaving only deletes their OWN participant doc (no room deletion).
 - `initPeerJS()` retries if PeerJS isn't loaded yet, falls back to a unique id on `unavailable-id` error, and auto-reconnects on `disconnected`/transient errors. `callPeer` only fires when `this.peer.open`.
-- `?voiceroom=<roomId>` URL param auto-joins a room (waits for Firebase + user). `copyInviteLink()` generates these links.
+- `?voiceroom=<roomId>` URL param auto-joins a room (waits for Firebase + user) — but `joinRoom` still enforces the `canJoinRoom` access check, so an uninvited user following the link is refused. `copyInviteLink()` notes that only invited users can join.
 
 ## Invite gotchas (nexa-voice-room.js)
 - An invite is delivered via TWO paths: BroadcastChannel `INVITE_USER`

@@ -3023,10 +3023,28 @@ function buildMessage(id, msg, fromMe) {
 
   // Handle regular reply
   if (msg.replyTo) {
-    const replied = allMessages.find(m => m.id === msg.replyTo);
-    if (replied) {
-      const rAuthor = replied.from === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-      inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(replied.text) || "(attachment)"}</div></div>`;
+    // Prefer the SELF-CONTAINED snapshot stored on the message at send time —
+    // it always renders on both sides and after reload. Fall back to looking
+    // up the original in allMessages for legacy reply messages that have no
+    // snapshot (so existing conversations still show their quotes).
+    let rAuthor = "", rText = "";
+    if (msg.replySnapshot) {
+      rAuthor = msg.replySnapshot.from === currentUser.uid
+        ? "You"
+        : escapeHtml(msg.replySnapshot.fromName || selectedUser?.displayName || "User");
+      rText = escapeHtml(msg.replySnapshot.text)
+        || (msg.replySnapshot.hasImage ? "📷 Photo"
+          : msg.replySnapshot.hasVideo ? "🎥 Video"
+          : msg.replySnapshot.hasAudio ? "🎤 Voice note"
+          : "(attachment)");
+      inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+    } else {
+      const replied = allMessages.find(m => m.id === msg.replyTo);
+      if (replied) {
+        rAuthor = replied.from === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
+        rText = escapeHtml(replied.text) || "(attachment)";
+        inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+      }
     }
   }
 
@@ -3475,7 +3493,29 @@ async function sendMessage() {
   toggleActionButtons();
 
   const extras = { text };
-  if (messageRepliedTo) { extras.replyTo = messageRepliedTo.id; }
+  if (messageRepliedTo) {
+    extras.replyTo = messageRepliedTo.id;
+    // Store a SELF-CONTAINED snapshot of the message being replied to so the
+    // reply quote can render on BOTH sides (sender + recipient) AND after a
+    // reload, WITHOUT depending on the original message still being present
+    // in the locally-loaded allMessages array. The old code only stored
+    // replyTo (an id) and did allMessages.find(m => m.id === replyTo) at
+    // render time — that lookup failed whenever the original wasn't loaded
+    // (race between the two onSnapshot listeners, or the recipient loading
+    // the reply before the original), so the quote showed on the sender's
+    // side but vanished on the recipient's side / after re-entering the chat.
+    extras.replySnapshot = {
+      id: messageRepliedTo.id,
+      from: messageRepliedTo.from,
+      fromName: messageRepliedTo.from === currentUser.uid
+        ? (currentUser.displayName || 'You')
+        : (selectedUser?.displayName || 'User'),
+      text: messageRepliedTo.text || '',
+      hasImage: !!messageRepliedTo.image,
+      hasVideo: !!messageRepliedTo.video,
+      hasAudio: !!messageRepliedTo.audio
+    };
+  }
   const tempMsgObj = baseMsg(extras);
   tempMsgObj.id = "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
