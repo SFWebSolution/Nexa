@@ -113,6 +113,9 @@
         <div class="search-wrap">
           <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
         </div>
+        <div class="active-now-bar" id="activeNowBar" style="display:none;">
+          <div class="active-now-items" id="activeNowItems"></div>
+        </div>
         <div class="users" id="users">
           <div class="no-users">Loading users…</div>
         </div>
@@ -1580,6 +1583,45 @@ function startUsersListener() {
 
 let lastRenderedUserOrder = "";
 
+// ── "Active Now" online bar ────────────────────────────────────────
+// Facebook-style horizontal row of ROUND avatars with green dots showing
+// ONLY users currently online (heartbeat-fresh, via isUserOnline). Clicking
+// an avatar opens that chat. Hidden entirely when nobody is online.
+function renderActiveNowBar() {
+  const bar = document.getElementById("activeNowBar");
+  const items = document.getElementById("activeNowItems");
+  if (!bar || !items) return;
+  if (!currentUser || !allUsersData || !allUsersData.length) { bar.style.display = "none"; return; }
+
+  const online = allUsersData
+    .filter(u => u.uid !== currentUser.uid && !blockedUsers[u.uid] && !deletedChats[u.uid])
+    .filter(u => isUserOnline(userPresenceCache[u.uid]))
+    .sort((a, b) => (userPresenceCache[b.uid]?.lastSeen || 0) - (userPresenceCache[a.uid]?.lastSeen || 0));
+
+  if (!online.length) { bar.style.display = "none"; return; }
+  bar.style.display = "";
+
+  items.innerHTML = online.map(u => {
+    const name = escapeHtml(u.displayName || "User");
+    const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
+    return `
+      <div class="active-now-item" data-uid="${u.uid}" title="${name}">
+        <div class="active-now-avatar-wrap">
+          <img src="${photo}" class="active-now-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <div class="active-now-dot"></div>
+        </div>
+        <div class="active-now-name">${name}</div>
+      </div>`;
+  }).join("");
+
+  items.querySelectorAll(".active-now-item").forEach(el => {
+    el.onclick = () => {
+      const u = allUsersData.find(x => x.uid === el.dataset.uid);
+      if (u) selectChat(u);
+    };
+  });
+}
+
 function renderUsers() {
   const box = document.getElementById("users");
   if (!box) return;
@@ -1744,6 +1786,8 @@ function renderUsers() {
       box.insertBefore(el, currentChild || null);
     }
   });
+
+  renderActiveNowBar();
 }
 
 let searchUsersTimer = null;

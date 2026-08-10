@@ -67,7 +67,15 @@
   `if (pdata.online === false) return false` short-circuit — both caused the
   "can't see online / flickers offline" symptom on mobile.
 - `listenPresence()` (chat header) no longer opens its own listener — it just
-  refreshes from the shared cache. `updateChatHeaderPresence` shows "🟢 online"
+  refreshes from the shared cache.
+- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` (dashboard.html,
+  ~line 1586) draws a horizontal row of round avatars + green dots showing ONLY
+  currently-online users. It filters `userPresenceCache` via `isUserOnline()`
+  (heartbeat freshness, NOT the unreliable `online` flag), is hidden entirely
+  when no one is online, and is re-called at the end of `renderUsers()`.
+  HTML container `#activeNowBar` sits between the search input and users list
+  (~line 116); CSS lives in dashboard.css under `.active-now-*`. Clicking an
+  avatar reuses `selectChat(uid)` to open that user's chat. `updateChatHeaderPresence` shows "🟢 online"
   when `isUserOnline` is true and "⚪ last seen {formatLastSeen}" otherwise
   (staleness-driven, no "away" branch anymore).
 
@@ -203,6 +211,7 @@
   audio element — otherwise an orphaned redundant connection closing mid-call kills the
   audio element the still-live connection is using.
 - `subscribeToRoomFirestore()` listens to the `voice_rooms/{roomId}/participants` SUBCOLLECTION (docChanges), not an array on the room doc. On a new participant it calls `callPeer(peerIdFor(id))` to build the mesh.
+- **Audio mesh uses a tie-breaker, NOT a full bidirectional call graph.** Every peer only INITIATES calls to participants whose uid sorts strictly greater than its own (`shouldInitiateCallTo(theirUid)` = `myUid < theirUid`), and ANSWERS all incoming calls. This yields exactly ONE bidirectional MediaConnection per pair (a single PeerJS call carries audio both ways: caller's stream → answerer, answerer's stream → caller via `call.answer(stream)`). Do NOT revert to "every peer calls every other peer" — that creates two redundant connections per pair both keyed under the same `peerCalls[peerId]` slot; when PeerJS prunes one, the shared `audio_<peerId>` element is torn down while the survivor has already fired its `stream` event, so that pair goes permanently deaf → the "only two people can hear each other in a 3+ room" bug. `retryCallPeer` is also gated by the tie-breaker (only the initiator retries) so a reconnect never recreates the redundant second leg.
 - `upsertOwnParticipantDoc()` writes ONLY this client's own doc (merge). `syncMuteState()` is the throttled (~1.2s) version used by toggleMic/raiseHand.
 - **Access control (invite-only):** rooms are invite-only. `startRoom`/`createRoom`
   seeds the room doc with `invitedUids: [hostId]`; `sendInvite` grants access by

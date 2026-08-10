@@ -696,9 +696,11 @@
 
         this.peer.on('open', (id) => {
           console.log('[VoiceRoom] PeerJS connected with ID:', id);
-          // Call existing room participants to build the mesh.
+          // Call existing room participants to build the mesh — but only those
+          // we're responsible for initiating (tie-breaker), so each pair gets
+          // exactly one bidirectional connection.
           this.participants.forEach(p => {
-            if (p.id !== user.id) {
+            if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) {
               this.callPeer(this.peerIdFor(p.id));
             }
           });
@@ -728,7 +730,7 @@
               this.peer = new window.Peer(fallbackId, { debug: 1, config: { iceServers } });
               this.peer.on('open', () => {
                 this.participants.forEach(p => {
-                  if (p.id !== user.id) this.callPeer(this.peerIdFor(p.id));
+                  if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) this.callPeer(this.peerIdFor(p.id));
                 });
               });
               this.peer.on('call', async (call) => {
@@ -775,9 +777,13 @@
       if (!this.activeRoom) return;
       if (this.retriedPeers.has(targetPeerId)) return;
       // Only retry if that peer is still a participant in the room.
-      const stillInRoom = Array.from(this.participants.values())
-        .some(p => this.peerIdFor(p.id) === targetPeerId);
-      if (!stillInRoom) return;
+      const participant = Array.from(this.participants.values())
+        .find(p => this.peerIdFor(p.id) === targetPeerId);
+      if (!participant) return;
+      // Only the initiating side of the tie-breaker retries; the other side
+      // just answers, so a retry here would recreate the redundant
+      // second connection that caused the partial-mesh audio bug.
+      if (!this.shouldInitiateCallTo(participant.id)) return;
       this.retriedPeers.add(targetPeerId);
       console.warn('[VoiceRoom] Retrying call to', targetPeerId, '(', reason, ')');
       // Clear any stale entry so callPeer's guard doesn't block the retry.
@@ -1411,6 +1417,26 @@
       return 'nexa_vr_' + String(uid).replace(/[^a-zA-Z0-9_]/g, '_');
     }
 
+    // Tie-breaker for the audio mesh. To avoid the "only two people can hear
+    // each other in a 3+ room" bug, every peer must NOT blindly call every
+    // other peer — that creates TWO redundant MediaConnections per pair
+    // (A→B and B→A) both keyed under the same peerCalls slot, and when PeerJS
+    // prunes one of them the shared audio element is torn down while the
+    // surviving connection has already fired its 'stream' event, so that pair
+    // goes permanently deaf.
+    //
+    // Instead, exactly ONE side initiates each pair: the peer whose uid sorts
+    // strictly less than the other's. The other side just answers. A single
+    // PeerJS MediaConnection carries audio BOTH ways (caller's stream →
+    // answerer, answerer's stream → caller via call.answer(stream)), so one
+    // bidirectional connection per pair is all that's needed. This scales the
+    // mesh to N participants with no redundancy and no prune race.
+    shouldInitiateCallTo(theirUid) {
+      const myUid = this.getCurrentUser().id;
+      if (!myUid || !theirUid || myUid === theirUid) return false;
+      return String(myUid) < String(theirUid);
+    }
+
     upsertOwnParticipantDoc() {
       if (!window.db || !this.activeRoom) return;
       const user = this.getCurrentUser();
@@ -1503,8 +1529,10 @@
               handRaised: !!p.handRaised
             });
 
-            // New participant that isn't us → build the mesh by calling them
-            if (!existed && p.id !== user.id && this.peer && this.localStream) {
+            // New participant that isn't us → build the mesh by calling them,
+            // but only on the initiating side of the tie-breaker so each pair
+            // has exactly one bidirectional connection.
+            if (!existed && p.id !== user.id && this.peer && this.localStream && this.shouldInitiateCallTo(p.id)) {
               const targetPeerId = this.peerIdFor(p.id);
               this.callPeer(targetPeerId);
             }
