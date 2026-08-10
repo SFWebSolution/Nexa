@@ -1034,6 +1034,82 @@ select:focus-visible {
   color: var(--primary);
 }
 
+/* ── "Active Now" online bar (Facebook-style round avatars + green dots) ── */
+.active-now-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--border-dk);
+  background: rgba(10, 15, 22, 0.35);
+  flex-shrink: 0;
+}
+
+.active-now-items {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+}
+.active-now-items::-webkit-scrollbar { display: none; }
+
+.active-now-item {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 2px;
+  transition: transform var(--tf);
+}
+.active-now-item:hover { transform: scale(1.08); }
+
+.active-now-avatar-wrap {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.active-now-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--bg-1);
+  background: var(--bg-3);
+  display: block;
+}
+
+.active-now-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--online);
+  border: 2.5px solid var(--bg-1);
+  box-shadow: 0 0 8px rgba(16, 217, 129, 0.6);
+}
+
+.active-now-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: center;
+  width: 56px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* CHAT CONTAINER */
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -3445,6 +3521,15 @@ input[type="range"] {
   .pwa-btn {
     padding: 7px 12px;
     font-size: 11px;
+  }
+  .active-now-avatar-wrap,
+  .active-now-avatar {
+    width: 42px;
+    height: 42px;
+  }
+  .active-now-name {
+    width: 48px;
+    font-size: 9px;
   }
 }
 

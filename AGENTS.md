@@ -67,7 +67,15 @@
   `if (pdata.online === false) return false` short-circuit — both caused the
   "can't see online / flickers offline" symptom on mobile.
 - `listenPresence()` (chat header) no longer opens its own listener — it just
-  refreshes from the shared cache. `updateChatHeaderPresence` shows "🟢 online"
+  refreshes from the shared cache.
+- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` (dashboard.html,
+  ~line 1586) draws a horizontal row of round avatars + green dots showing ONLY
+  currently-online users. It filters `userPresenceCache` via `isUserOnline()`
+  (heartbeat freshness, NOT the unreliable `online` flag), is hidden entirely
+  when no one is online, and is re-called at the end of `renderUsers()`.
+  HTML container `#activeNowBar` sits between the search input and users list
+  (~line 116); CSS lives in dashboard.css under `.active-now-*`. Clicking an
+  avatar reuses `selectChat(uid)` to open that user's chat. `updateChatHeaderPresence` shows "🟢 online"
   when `isUserOnline` is true and "⚪ last seen {formatLastSeen}" otherwise
   (staleness-driven, no "away" branch anymore).
 
