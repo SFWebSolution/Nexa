@@ -5301,33 +5301,45 @@ let storyCurrentDuration = 0;
 
 function startStatusListener() {
   const DAY_MS = 24 * 60 * 60 * 1000;
+  // Convert a story's expiry to a ms epoch. New stories carry an `expireAt`
+  // Firestore Timestamp; legacy docs use `createdAt` (ms) + 24h.
+  const storyExpiryMs = (s) => {
+    if (s.expireAt && typeof s.expireAt.toMillis === "function") {
+      try { return s.expireAt.toMillis(); } catch (e) {}
+    }
+    // Firestore Timestamp may arrive as { _seconds, _nanoseconds } over the
+    // compat SDK in some builds.
+    if (s.expireAt && typeof s.expireAt._seconds === "number") {
+      return s.expireAt._seconds * 1000 + Math.floor((s.expireAt._nanoseconds || 0) / 1e6);
+    }
+    if (typeof s.createdAt === "number") return s.createdAt + DAY_MS;
+    return -Infinity; // no usable timestamp → treat as already expired
+  };
+
   db.collection("status").onSnapshot(snap => {
     userStatuses = {};
     const now = Date.now();
-    // Stories must truly disappear after 24h, not just be hidden. We can only
-    // delete our OWN expired docs (Firestore rules: owner-only delete), so
-    // every client cleans up its own expired stories here. Other users' expired
-    // stories are hidden from this view by the 24h filter below; their owners
-    // delete them when they next open the app.
-    const ownExpired = [];
+    // Any signed-in client may delete a story once it is past expiry (the
+    // Firestore rules allow this), so every open app garbage-collects ALL
+    // expired stories — they truly disappear 24h after posting regardless of
+    // who posted them.
+    const expired = [];
     snap.forEach(doc => {
       const s = doc.data();
       const uid = s.uid;
-      const age = typeof s.createdAt === "number" ? now - s.createdAt : Infinity;
-      if (uid === currentUser?.uid && age >= DAY_MS) {
-        ownExpired.push(doc.ref);
-        return; // don't render expired own story
+      const expiresAt = storyExpiryMs(s);
+      if (expiresAt <= now) {
+        expired.push(doc.ref);
+        return; // don't render an expired story
       }
-      if (age < DAY_MS) {
-        if (!userStatuses[uid]) userStatuses[uid] = [];
-        userStatuses[uid].push({ id: doc.id, ...s });
-      }
+      if (!userStatuses[uid]) userStatuses[uid] = [];
+      userStatuses[uid].push({ id: doc.id, ...s });
     });
-    // Best-effort batch delete of own expired stories (max 500 per batch).
-    if (ownExpired.length) {
+    // Best-effort batch delete of expired stories (Firestore caps 500/batch).
+    if (expired.length) {
       let batch = db.batch();
       let n = 0;
-      ownExpired.forEach(ref => {
+      expired.forEach(ref => {
         batch.delete(ref);
         if (++n === 450) { batch.commit().catch(() => {}); batch = db.batch(); n = 0; }
       });
@@ -5927,6 +5939,7 @@ async function reshareStory() {
         name: ownerName
       },
       createdAt: Date.now(),
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
@@ -6263,6 +6276,9 @@ async function shareStatus() {
       uid: currentUser.uid,
       type: statusTab,
       createdAt: Date.now(),
+      // Auto-expire this story 24h after posting. Used by Firestore rules to
+      // allow anyone to delete it once expired, and by the listener to GC it.
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
