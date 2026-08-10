@@ -92,10 +92,32 @@ service cloud.firestore {
     }
 
     // ── Stories / status ────────────────────────────────────────────
+    // Stories auto-expire 24h after posting. Each doc carries an `expireAt`
+    // Firestore Timestamp (posted time + 24h); legacy docs use `createdAt`
+    // (ms epoch) + 24h. Anyone signed in may DELETE a story once it is past
+    // its expiry, so any open client garbage-collects expired stories — they
+    // truly disappear after 24h regardless of who posted them. The owner may
+    // always delete/update their own story. Non-owners may only update the
+    // views/likes/reshares arrays (view/like/reshare recording).
+    function storyExpired(data) {
+      return (data.expireAt is timestamp && request.time > data.expireAt)
+          || (data.createdAt is int && request.time.toMillis() > data.createdAt + 86400000);
+    }
     match /status/{statusId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt is int
+        && (request.resource.data.expireAt == null
+            || (request.resource.data.expireAt is timestamp
+                && request.resource.data.expireAt > request.time));
+      allow update: if isSignedIn() && (
+        resource.data.uid == request.auth.uid
+        || request.resource.data.affectedKeys().hasOnly(['views','likes','reshares'])
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.uid == request.auth.uid || storyExpired(resource.data)
+      );
     }
 
     // ── Per-chat disappearing-message settings ──────────────────────

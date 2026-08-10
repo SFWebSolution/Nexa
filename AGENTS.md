@@ -25,6 +25,16 @@
 - Remote audio is played in hidden `<audio id="audio_<peerId">` elements with explicit `.play()` (autoplay can be blocked otherwise).
 - Speaking/mute state is synced to Firestore (throttled ~1.2s) so cross-device clients reflect rings; `BroadcastChannel` only covers same-browser tabs.
 
+## Stories / status (`status` collection)
+- Stories live in the Firestore `status` collection (doc id auto, fields: `uid`, `type`, `createdAt` (ms epoch), `expireAt` (Firestore Timestamp = createdAt + 24h), `url`/`text`/`musicData`, `views`, `likes`, `reshares`).
+- **Stories auto-expire 24h after posting and are actually DELETED, not just hidden.** Every open client's `startStatusListener()` garbage-collects ALL expired stories on each snapshot (any signed-in user may delete a story past its `expireAt`, per the Firestore rule). New stories are stamped with `expireAt = firebase.firestore.Timestamp.fromMillis(createdAt + 24h)`. Legacy docs without `expireAt` are expired via `createdAt + 24h`. A story with no usable timestamp is treated as already expired (deleted). Don't re-introduce a "never delete, only hide" listener — that left `status` growing forever and inflated Firestore reads (same quota failure mode as the old per-user presence listeners).
+- **Firestore rules (`firestore.rules`, `match /status/{statusId}`)** are what make cross-user deletion safe: `allow delete` = owner anytime OR `storyExpired(resource.data)` (past `expireAt`, or legacy `createdAt + 24h`); `allow update` = owner anytime OR non-owner touching ONLY `views`/`likes`/`reshares` (`affectedKeys().hasOnly`); `allow create` = own uid + `createdAt is int` + `expireAt` is a future Timestamp (optional). **The old rule was owner-only update, which silently broke view/like/reshare recording on others' stories — that's now fixed.** Rules must be DEPLOYED to take effect: `firebase deploy --only firestore:rules` (project `mel-odix`; create a local `.firebaserc` with `{projects:{default:"mel-odix"}}` — it's gitignored).
+- The weekly-leaderboard story listener (`startLeaderboardListeners`) also reads `status` and counts docs with `createdAt >= weekStart`.
+
+## Chat list ordering (`renderUsers`)
+- The user list is sorted primarily by **last-chat time** (`latestMsgTime[uid]`, descending) — "those you chatted last" on top. Favorites / online / name are only tiebreakers among contacts with the same (or no) last-chat time. Don't put favorites or a "has message" tier ABOVE recency — that buries recently-chatted contacts under old favorites.
+- `latestMsgTime` is persisted to `localStorage` (`nexa_latest_msg_time`) and restored on app open for instant ordering, then refreshed from Firestore (`loadInitialChatTimestamps`).
+
 ## Presence / online status
 - Online dots + chat-header "last seen" are driven by a SINGLE shared
   `db.collection("presence").onSnapshot` listener (`startSharedPresenceListener`)
