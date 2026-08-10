@@ -25,6 +25,16 @@
 - Remote audio is played in hidden `<audio id="audio_<peerId">` elements with explicit `.play()` (autoplay can be blocked otherwise).
 - Speaking/mute state is synced to Firestore (throttled ~1.2s) so cross-device clients reflect rings; `BroadcastChannel` only covers same-browser tabs.
 
+## Stories / status (`status` collection)
+- Stories live in the Firestore `status` collection (doc id auto, fields: `uid`, `type`, `createdAt` (ms epoch), `url`/`text`/`musicData`, `views`, `likes`, `reshares`).
+- **24h expiry is enforced client-side in `startStatusListener()`**: docs with `createdAt` older than 24h are NOT shown. In addition, each client **deletes its OWN expired status docs** on every snapshot (Firestore rules only allow the owner to delete — `resource.data.uid == request.auth.uid`), so stories actually disappear rather than just being hidden. Other users' expired stories are hidden from this client until their owners clean them up. Don't re-introduce a "never delete, only hide" listener — that left the `status` collection growing forever and inflated Firestore reads (same quota failure mode as the old per-user presence listeners).
+- Guard `createdAt` with `typeof === 'number'`; missing/invalid `createdAt` is treated as already-expired (age = Infinity) so it's dropped, not kept.
+- The weekly-leaderboard story listener (`startLeaderboardListeners`) also reads `status` and counts docs with `createdAt >= weekStart`.
+
+## Chat list ordering (`renderUsers`)
+- The user list is sorted primarily by **last-chat time** (`latestMsgTime[uid]`, descending) — "those you chatted last" on top. Favorites / online / name are only tiebreakers among contacts with the same (or no) last-chat time. Don't put favorites or a "has message" tier ABOVE recency — that buries recently-chatted contacts under old favorites.
+- `latestMsgTime` is persisted to `localStorage` (`nexa_latest_msg_time`) and restored on app open for instant ordering, then refreshed from Firestore (`loadInitialChatTimestamps`).
+
 ## Presence / online status
 - Online dots + chat-header "last seen" are driven by a SINGLE shared
   `db.collection("presence").onSnapshot` listener (`startSharedPresenceListener`)

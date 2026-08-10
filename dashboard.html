@@ -1607,9 +1607,13 @@ function renderUsers() {
   list.sort((a, b) => {
     const mA = userMetrics.get(a.uid);
     const mB = userMetrics.get(b.uid);
-    if (mA.fav !== mB.fav) return mB.fav - mA.fav;
-    if (mA.hasMsg !== mB.hasMsg) return mB.hasMsg - mA.hasMsg;
+    // Primary order: who you chatted with LAST (most recent on top). This is
+    // the user's requested behaviour — "arranged based on those you chatted
+    // last" — so recency must dominate over favorites/online/name.
     if (mA.time !== mB.time) return mB.time - mA.time;
+    // Below this point both contacts have the same (or no) last-chat time:
+    // favorites rise, then online, then alphabetical.
+    if (mA.fav !== mB.fav) return mB.fav - mA.fav;
     if (mA.online !== mB.online) return mB.online - mA.online;
     return mA.name.localeCompare(mB.name);
   });
@@ -5296,17 +5300,39 @@ let viewingStoryUid = null;
 let storyCurrentDuration = 0;
 
 function startStatusListener() {
+  const DAY_MS = 24 * 60 * 60 * 1000;
   db.collection("status").onSnapshot(snap => {
     userStatuses = {};
+    const now = Date.now();
+    // Stories must truly disappear after 24h, not just be hidden. We can only
+    // delete our OWN expired docs (Firestore rules: owner-only delete), so
+    // every client cleans up its own expired stories here. Other users' expired
+    // stories are hidden from this view by the 24h filter below; their owners
+    // delete them when they next open the app.
+    const ownExpired = [];
     snap.forEach(doc => {
       const s = doc.data();
       const uid = s.uid;
-      const now = Date.now();
-      if (now - s.createdAt < 24 * 60 * 60 * 1000) {
+      const age = typeof s.createdAt === "number" ? now - s.createdAt : Infinity;
+      if (uid === currentUser?.uid && age >= DAY_MS) {
+        ownExpired.push(doc.ref);
+        return; // don't render expired own story
+      }
+      if (age < DAY_MS) {
         if (!userStatuses[uid]) userStatuses[uid] = [];
         userStatuses[uid].push({ id: doc.id, ...s });
       }
     });
+    // Best-effort batch delete of own expired stories (max 500 per batch).
+    if (ownExpired.length) {
+      let batch = db.batch();
+      let n = 0;
+      ownExpired.forEach(ref => {
+        batch.delete(ref);
+        if (++n === 450) { batch.commit().catch(() => {}); batch = db.batch(); n = 0; }
+      });
+      if (n) batch.commit().catch(() => {});
+    }
     renderStoriesBar();
     renderUsers();
   });
