@@ -8,32 +8,6 @@
 (function () {
   'use strict';
 
-  // WebRTC ICE servers. STUN alone CANNOT traverse symmetric NAT / CGNAT
-  // (mobile carriers, hotel WiFi, most home routers behind an ISP NAT), so a
-  // direct peer-to-peer UDP path often fails between two different devices →
-  // the call "answers" but media flows one way or not at all (the classic
-  // "I can hear them but they can't hear me" symptom). A TURN relay is the
-  // only reliable fallback: when direct ICE fails, the relay tunnels the
-  // audio through a public server so both sides always get each other.
-  //
-  // The TURN entries below use the public/shared OpenRelay test servers
-  // (metered.ca). They work for development and light traffic but are
-  // rate-limited and shared — for production reliability sign up for your
-  // own free Metered/Twilio/Xirsys TURN account and replace the
-  // username/credential here (and in dashboard.html NEXA_ICE_SERVERS).
-  const NEXA_VR_ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:4430', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-  ];
-
   class NexaVoiceRoomManager {
     constructor() {
       this.activeRoom = null; // { id, title, hostId, hostName, isHost, startTime }
@@ -47,23 +21,9 @@
       this.isMuted = false;
       this.isSpeakerMuted = false;
       this.isMinimized = false;
-      this.audioUnlocked = false;   // set true after the first user gesture so remote .play() isn't blocked by autoplay policy
-      this.pendingAudioPlays = new Map(); // peerId -> retry handle, for streams awaiting a gesture unlock
       this.timerInterval = null;
       this.vadInterval = null;
       this.roomFirestoreUnsub = null;
-      this.participantDocUnsub = null;
-      this.ownParticipantUnsub = null;
-      this.pendingMuteSync = null;
-      this.muteSyncTimer = null;
-      this.invitedUserIds = new Set();     // users we've invited in this session (for "Invited" UI state)
-      this.currentInviteRoomId = null;     // room id of the invite currently shown, to dedupe double-show
-      this.retriedPeers = new Set();       // peerIds we've already retried once (prevents call-close retry loops)
-      this.inviteListenerUid = null;       // uid the Firestore invite listener is currently bound to
-      this.inviteListenerUnsub = null;     // unsubscribe fn for the voice_invites listener
-      this.inviteRetryTimer = null;        // timer used to re-try binding the listener once the real uid arrives
-      this.roomDocUnsub = null;            // unsubscribe fn for the voice_rooms/{id} doc listener (host-close detection)
-      this.accessCheckUnderway = false;    // guards joinRoom against re-entry during the async access check
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -83,46 +43,9 @@
       this.injectUIComponents();
       this.attachEventListeners();
       this.setupChannelListeners();
-
+      
       // Delay Firestore listener setup slightly to ensure Firebase is fully loaded
       setTimeout(() => this.setupFirestoreListeners(), 1000);
-
-      // Auto-join a room when arriving via a ?voiceroom= link.
-      this.checkPendingRoomLink();
-    }
-
-    checkPendingRoomLink() {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const roomId = params.get('voiceroom');
-        if (!roomId) return;
-        // Wait until Firebase + the current user are available, then join.
-        const tryJoin = (attempts) => {
-          if (this.activeRoom) return;
-          if (window.db && this.getCurrentUser()) {
-            // Fetch the room doc so we can preserve title/host info.
-            window.db.collection('voice_rooms').doc(roomId).get().then(doc => {
-              if (doc.exists) {
-                const d = doc.data() || {};
-                this.joinRoom({
-                  id: roomId,
-                  title: d.title || 'Voice Room',
-                  hostId: d.hostId,
-                  hostName: d.hostName || 'Host',
-                  startTime: d.startedAt || Date.now()
-                });
-              } else {
-                this.showToast('🎙️ That voice chat link is no longer active');
-              }
-            }).catch(() => {});
-          } else if (attempts < 20) {
-            setTimeout(() => tryJoin(attempts + 1), 500);
-          }
-        };
-        tryJoin(0);
-      } catch (e) {
-        console.warn('[VoiceRoom] Pending room link error:', e);
-      }
     }
 
     getCurrentUser() {
@@ -390,18 +313,6 @@
         this.leaveRoom();
       });
 
-      // Autoplay unlock: remote stream .play() is rejected until a user
-      // gesture, and streams can arrive after the join click. These persistent
-      // listeners force-start any parked remote audio on the next interaction
-      // so participants can actually hear each other.
-      const unlock = () => { if (this.activeRoom) this.unlockPendingAudio(); };
-      window.addEventListener('click', unlock);
-      window.addEventListener('touchstart', unlock, { passive: true });
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && this.activeRoom) this.unlockPendingAudio();
-      });
-      window.addEventListener('focus', unlock);
-
       // Trigger buttons integration for Nexa app UI
       document.addEventListener('click', (e) => {
         const btn = e.target.closest('.start-voice-chat-btn, [data-action="voice-chat"]');
@@ -469,48 +380,10 @@
       this.showToast(`🎙️ Voice Chat started: "${title}"`);
     }
 
-    // Invite-only access check. Returns true if `uid` is allowed to join the
-    // room: the host is always allowed, and anyone in the room doc's
-    // invitedUids list is allowed. Everyone else is refused. This is what
-    // makes the room "based on who the host invited" — a bare ?voiceroom=
-    // link or a guessed room id does NOT grant access.
-    async canJoinRoom(roomId, uid) {
-      if (!roomId || !uid || !window.db) return false;
-      try {
-        const doc = await window.db.collection('voice_rooms').doc(roomId).get();
-        if (!doc.exists) return false;
-        const d = doc.data() || {};
-        if (d.hostId === uid) return true;             // host always allowed
-        const invited = Array.isArray(d.invitedUids) ? d.invitedUids : [];
-        return invited.indexOf(uid) !== -1;
-      } catch (e) {
-        console.warn('[VoiceRoom] access check error:', e);
-        return false;
-      }
-    }
-
     async joinRoom(roomData) {
       if (!roomData || !roomData.id) return;
-      if (this.accessCheckUnderway) return;
-      if (this.activeRoom && this.activeRoom.id === roomData.id) return; // already in this room
 
       const user = this.getCurrentUser();
-      if (!user || !user.id) return;
-
-      // Invite-only gate: refuse anyone the host hasn't invited (host is always
-      // allowed). This runs for BOTH the invite-accept path and the
-      // ?voiceroom= link path, so neither can bypass the host's invite list.
-      const isHost = roomData.hostId === user.id;
-      if (!isHost) {
-        this.accessCheckUnderway = true;
-        const allowed = await this.canJoinRoom(roomData.id, user.id);
-        this.accessCheckUnderway = false;
-        if (!allowed) {
-          this.showToast('🚫 You need an invite from the host to join this Voice Chat.');
-          return;
-        }
-      }
-
       this.activeRoom = {
         id: roomData.id,
         title: roomData.title || 'Voice Room',
@@ -554,23 +427,21 @@
       if (!this.activeRoom) return;
 
       const user = this.getCurrentUser();
-      const roomId = this.activeRoom.id;
-      const wasHost = this.activeRoom.isHost;
       this.playChime('leave');
 
       // Broadcast leave
       this.broadcast('USER_LEFT', {
-        roomId: roomId,
+        roomId: this.activeRoom.id,
         userId: user.id
       });
 
       // Clean up peer connections
       if (this.peerCalls) {
-        this.peerCalls.forEach(call => { try { call.close(); } catch (e) {} });
+        this.peerCalls.forEach(call => call.close());
         this.peerCalls.clear();
       }
       if (this.peer) {
-        try { this.peer.destroy(); } catch (e) {}
+        this.peer.destroy();
         this.peer = null;
       }
 
@@ -594,66 +465,24 @@
       }
       if (this.timerInterval) clearInterval(this.timerInterval);
       if (this.vadInterval) clearInterval(this.vadInterval);
-      if (this.muteSyncTimer) { clearTimeout(this.muteSyncTimer); this.muteSyncTimer = null; }
       if (this.roomFirestoreUnsub) {
         this.roomFirestoreUnsub();
         this.roomFirestoreUnsub = null;
       }
-      if (this.roomDocUnsub) {
-        this.roomDocUnsub();
-        this.roomDocUnsub = null;
-      }
-      // Reset per-room session state so a fresh join (or re-inviting someone
-      // who left) starts clean — otherwise stale "Invited" marks and retry
-      // guards persist across rooms.
-      if (this.invitedUserIds) this.invitedUserIds.clear();
-      if (this.retriedPeers) this.retriedPeers.clear();
-      this.currentInviteRoomId = null;
 
-      // Remove ONLY our own participant doc (never overwrite the participants
-      // array — that would clobber other users; see AGENTS.md).
-      if (window.db) {
-        const myDocRef = window.db.collection('voice_rooms')
-          .doc(roomId)
-          .collection('participants')
-          .doc(user.id);
-
-        if (wasHost) {
-          // HOST CLOSES THE ROOM → the room ends for EVERYONE. Delete the room
-          // doc and every participant doc, then broadcast ROOM_CLOSED so other
-          // same-browser tabs tear down. Each remaining participant's room-doc
-          // listener (see subscribeToRoomFirestore) will also fire on the
-          // deletion and auto-leave with a "host ended the chat" toast. We do
-          // NOT migrate host to the next participant — the host owns the room's
-          // lifetime, so when they leave, the room is gone.
-          const roomRef = window.db.collection('voice_rooms').doc(roomId);
-          myDocRef.delete()
-            .then(() => roomRef.collection('participants').get())
-            .then(snap => {
-              const batch = window.db.batch();
-              snap.docs.forEach(d => batch.delete(d.ref));
-              batch.delete(roomRef);
-              return batch.commit();
-            })
-            .then(() => {
-              this.broadcast('ROOM_CLOSED', { roomId });
-            })
-            .catch(err => console.warn('[VoiceRoom] Host close cleanup error:', err));
-        } else {
-          // Non-host leaving: just remove our own participant doc. The room
-          // continues for everyone else.
-          myDocRef.delete().then(() => {
-            return window.db.collection('voice_rooms')
-              .doc(roomId)
-              .collection('participants')
-              .get();
-          }).then(snap => {
-            if (snap.empty) {
-              // Everyone else already left → delete the now-empty room doc.
-              window.db.collection('voice_rooms').doc(roomId).delete().catch(() => {});
+      // Remove self from Firestore room
+      if (window.db && this.activeRoom) {
+        window.db.collection('voice_rooms').doc(this.activeRoom.id).get().then(doc => {
+          if (doc.exists) {
+            const data = doc.data() || {};
+            const updated = (data.participants || []).filter(p => p.id !== user.id);
+            if (updated.length === 0) {
+              doc.ref.delete();
+            } else {
+              doc.ref.update({ participants: updated });
             }
-          }).catch(err => console.warn('[VoiceRoom] Leave Firestore cleanup error:', err));
-        }
+          }
+        }).catch(err => console.warn('[VoiceRoom] Leave Firestore update error:', err));
       }
 
       this.activeRoom = null;
@@ -672,21 +501,20 @@
     /* --------------------------------------------------------------------- */
 
     initPeerJS() {
-      if (typeof window.Peer === 'undefined') {
-        // PeerJS not loaded yet — retry shortly.
-        console.warn('[VoiceRoom] PeerJS not loaded, retrying...');
-        setTimeout(() => this.initPeerJS(), 800);
-        return;
-      }
-      if (this.peer && !this.peer.destroyed) {
-        try { this.peer.destroy(); } catch (e) {}
-        this.peer = null;
-      }
+      if (typeof window.Peer === 'undefined') return;
 
       const user = this.getCurrentUser();
-      const peerId = this.peerIdFor(user.id);
+      const peerId = 'nexa_vr_' + user.id.replace(/[^a-zA-Z0-9_]/g, '_');
 
-      const iceServers = NEXA_VR_ICE_SERVERS;
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        { urls: 'stun:relay.metered.ca:80' }
+      ];
 
       try {
         this.peer = new window.Peer(peerId, {
@@ -696,62 +524,23 @@
 
         this.peer.on('open', (id) => {
           console.log('[VoiceRoom] PeerJS connected with ID:', id);
-          // Call existing room participants to build the mesh — but only those
-          // we're responsible for initiating (tie-breaker), so each pair gets
-          // exactly one bidirectional connection.
+          // Call existing room participants
           this.participants.forEach(p => {
-            if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) {
-              this.callPeer(this.peerIdFor(p.id));
+            if (p.id !== user.id) {
+              const targetPeerId = 'nexa_vr_' + p.id.replace(/[^a-zA-Z0-9_]/g, '_');
+              this.callPeer(targetPeerId);
             }
           });
         });
 
         this.peer.on('call', async (call) => {
-          // CRITICAL: attach the 'stream'/'close'/'error' handlers BEFORE
-          // calling answer(). PeerJS can fire the 'stream' event (with the
-          // caller's remote audio) synchronously during/immediately after
-          // answer() — if attachCallHandlers runs after answer(), that
-          // stream event is emitted to ZERO listeners and the answerer never
-          // hears the caller ("can't hear each other in the voice room").
-          this.attachCallHandlers(call, call.peer, 'incoming');
           if (!this.localStream) {
             await this.initMicrophone();
           }
           call.answer(this.localStream);
-        });
-
-        this.peer.on('error', (err) => {
-          console.warn('[VoiceRoom] PeerJS error:', err && err.type, err && err.message);
-          // If our stable id is taken (another tab/device), fall back to a unique id
-          // and re-call everyone so the mesh still forms.
-          if (err && err.type === 'unavailable-id') {
-            const fallbackId = peerId + '_' + Date.now();
-            try {
-              this.peer = new window.Peer(fallbackId, { debug: 1, config: { iceServers } });
-              this.peer.on('open', () => {
-                this.participants.forEach(p => {
-                  if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) this.callPeer(this.peerIdFor(p.id));
-                });
-              });
-              this.peer.on('call', async (call) => {
-                // Attach handlers BEFORE answer() — see primary handler above.
-                this.attachCallHandlers(call, call.peer, 'incoming');
-                if (!this.localStream) await this.initMicrophone();
-                call.answer(this.localStream);
-              });
-            } catch (e) { console.warn('[VoiceRoom] PeerJS fallback error:', e); }
-          } else if (err && (err.type === 'peer-unavailable' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error')) {
-            // Transient — try to reconnect if the peer is still around.
-            if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
-              try { this.peer.reconnect(); } catch (e) {}
-            }
-          }
-        });
-
-        this.peer.on('disconnected', () => {
-          if (this.peer && !this.peer.destroyed) {
-            try { this.peer.reconnect(); } catch (e) {}
-          }
+          call.on('stream', (remoteStream) => {
+            this.playRemoteAudioStream(call.peer, remoteStream);
+          });
         });
       } catch (err) {
         console.warn('[VoiceRoom] PeerJS init error:', err);
@@ -759,83 +548,19 @@
     }
 
     callPeer(targetPeerId) {
-      if (!this.peer || !this.peer.open || !this.localStream || this.peerCalls.has(targetPeerId)) return;
+      if (!this.peer || !this.localStream || this.peerCalls.has(targetPeerId)) return;
 
       try {
         const call = this.peer.call(targetPeerId, this.localStream);
-        if (call) this.attachCallHandlers(call, targetPeerId, 'outgoing');
+        if (call) {
+          this.peerCalls.set(targetPeerId, call);
+          call.on('stream', (remoteStream) => {
+            this.playRemoteAudioStream(targetPeerId, remoteStream);
+          });
+        }
       } catch (e) {
         console.warn('[VoiceRoom] Call peer error:', e);
       }
-    }
-
-    // Re-establish a peer connection that dropped or errored, but ONLY once
-    // per peer per session-segment (guarded by retriedPeers) so a permanently
-    // failing peer can't cause an infinite close→re-call loop. Reset when the
-    // peer leaves the room (see the 'removed' handler) or on a fresh join.
-    retryCallPeer(targetPeerId, reason) {
-      if (!this.activeRoom) return;
-      if (this.retriedPeers.has(targetPeerId)) return;
-      // Only retry if that peer is still a participant in the room.
-      const participant = Array.from(this.participants.values())
-        .find(p => this.peerIdFor(p.id) === targetPeerId);
-      if (!participant) return;
-      // Only the initiating side of the tie-breaker retries; the other side
-      // just answers, so a retry here would recreate the redundant
-      // second connection that caused the partial-mesh audio bug.
-      if (!this.shouldInitiateCallTo(participant.id)) return;
-      this.retriedPeers.add(targetPeerId);
-      console.warn('[VoiceRoom] Retrying call to', targetPeerId, '(', reason, ')');
-      // Clear any stale entry so callPeer's guard doesn't block the retry.
-      if (this.peerCalls.has(targetPeerId)) {
-        try { this.peerCalls.get(targetPeerId).close(); } catch (e) {}
-        this.peerCalls.delete(targetPeerId);
-      }
-      // Allow one re-retry later (reset the guard after a cooldown).
-      setTimeout(() => this.retriedPeers.delete(targetPeerId), 15000);
-      // Defer slightly so the torn-down connection fully closes first.
-      setTimeout(() => this.callPeer(targetPeerId), 800);
-    }
-
-    // Shared handler wiring for both outgoing (callPeer) and incoming
-    // (peer.on('call')) MediaConnections. Centralising this is important
-    // because the incoming-call path previously had NO 'error' handler, so an
-    // ICE failure on the answerer side silently killed that leg of the mesh
-    // → one-way audio with no attempt to recover.
-    attachCallHandlers(call, targetPeerId, direction) {
-      this.peerCalls.set(targetPeerId, call);
-      call.on('stream', (remoteStream) => {
-        this.playRemoteAudioStream(targetPeerId, remoteStream);
-      });
-      call.on('close', () => {
-        // Only tear down if THIS call is still the active one for the peer.
-        // In a mesh, both an outgoing and an incoming MediaConnection can
-        // exist for the same peer; they share the same peerCalls slot + audio
-        // element. If an orphaned/redundant connection closes, we must NOT
-        // delete the slot or remove the audio element that the still-live
-        // connection is using — doing so kills audio mid-call.
-        if (this.peerCalls.get(targetPeerId) === call) {
-          this.peerCalls.delete(targetPeerId);
-          const audioEl = document.getElementById('audio_' + targetPeerId);
-          if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
-        }
-        // If the call dropped while the room is still active and the peer is
-        // still a participant, try to rebuild that leg of the mesh once. This
-        // recovers from transient ICE restarts / network blips that otherwise
-        // leave a one-direction audio hole.
-        if (this.activeRoom) this.retryCallPeer(targetPeerId, direction + ' close');
-      });
-      call.on('error', (e) => {
-        console.warn('[VoiceRoom] Call error', direction, targetPeerId, e && e.type, e && e.message);
-        // Same guard: only tear down if this call is still the active one.
-        if (this.peerCalls.get(targetPeerId) === call) {
-          this.peerCalls.delete(targetPeerId);
-          const audioEl = document.getElementById('audio_' + targetPeerId);
-          if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e2) {} }
-        }
-        // ICE failures / network errors → attempt a single reconnect.
-        if (this.activeRoom) this.retryCallPeer(targetPeerId, direction + ' error');
-      });
     }
 
     playRemoteAudioStream(peerId, stream) {
@@ -849,70 +574,8 @@
       }
       audioEl.srcObject = stream;
       audioEl.muted = this.isSpeakerMuted;
-
-      // Browsers block HTMLMediaElement.play() until a user gesture, and the
-      // `call.on('stream')` callback arrives asynchronously OUTSIDE that
-      // gesture context. A bare `.play().catch(()=>{})` here silently swallows
-      // the autoplay rejection and the element sits paused forever — which is
-      // the "I can't hear anyone in the voice room" bug. So we attempt play()
-      // and, if rejected, retry on a short interval (covers the brief window
-      // after a gesture where some browsers still queue) and also defer the
-      // real start to the next user gesture via unlockPendingAudio().
-      this.attemptAudioPlay(audioEl, peerId);
-
-      // The Web Audio DSP AudioContext may be suspended (e.g. after the tab
-      // was backgrounded). Resume it so the analyser / gain graph keeps
-      // running and we don't end up with a silent stream.
-      if (this.audioCtx && this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume().catch(() => {});
-      }
+      audioEl.play().catch(err => console.warn('[VoiceRoom] Remote audio play notice:', err));
     }
-
-    // Try to play one remote audio element, retrying briefly on autoplay
-    // rejection. Keeps a per-peer handle in pendingAudioPlays so the next
-    // user gesture can force-start it via unlockPendingAudio().
-    attemptAudioPlay(audioEl, peerId) {
-      if (!audioEl) return;
-      // Clear any previous retry timer for this peer.
-      if (this.pendingAudioPlays.has(peerId)) {
-        clearTimeout(this.pendingAudioPlays.get(peerId));
-      }
-
-      const tryPlay = (attempt) => {
-        if (!audioEl.srcObject || !document.body.contains(audioEl)) return;
-        audioEl.play().then(() => {
-          this.audioUnlocked = true;
-          this.pendingAudioPlays.delete(peerId);
-        }).catch(() => {
-          // Retry a few times (covers the post-gesture queue window), then
-          // park it for the next gesture unlock.
-          if (attempt < 5) {
-            const handle = setTimeout(() => tryPlay(attempt + 1), 400);
-            this.pendingAudioPlays.set(peerId, handle);
-          } else {
-            this.pendingAudioPlays.set(peerId, -1); // sentinel: waiting for gesture
-          }
-        });
-      };
-      tryPlay(0);
-    }
-
-    // Called from a user gesture (click/touch) to force-start any remote
-    // audio elements that are still parked waiting on the autoplay unlock.
-    unlockPendingAudio() {
-      this.audioUnlocked = true;
-      // Resume our DSP context too.
-      if (this.audioCtx && this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume().catch(() => {});
-      }
-      document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
-        if (el.srcObject && el.paused) {
-          el.play().catch(() => {});
-        }
-      });
-      this.pendingAudioPlays.clear();
-    }
-
 
     async initMicrophone() {
       try {
@@ -921,16 +584,6 @@
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-            // Legacy goog* constraints actually engage Chromium's hardware
-            // AEC / noise-suppression / high-pass pipeline — without them the
-            // speaker output leaks back into the mic and participants hear an
-            // echo of each other. The plain `echoCancellation:true` flag alone
-            // is not reliably honoured.
-            googEchoCancellation: true,
-            googEchoCancellation2: true,
-            googNoiseSuppression: true,
-            googAutoGainControl: true,
-            googHighpassFilter: true,
             sampleRate: 48000
           },
           video: false
@@ -1078,22 +731,15 @@
       this.playChime('tick');
 
       const user = this.getCurrentUser();
-      const selfP = this.participants.get(user.id);
-      if (selfP) {
-        selfP.isMuted = this.isMuted;
-        // Reflect on our own card immediately.
-        const cardMicStatus = document.querySelector(`#nexaVrCard_${user.id} .nexa-vr-card-mic-status`);
-        if (cardMicStatus) {
-          if (this.isMuted) {
-            cardMicStatus.classList.add('muted');
-            cardMicStatus.innerHTML = '🔇';
-          } else {
-            cardMicStatus.classList.remove('muted');
-            cardMicStatus.innerHTML = '🎙️';
-          }
+      const cardMicStatus = document.querySelector(`#nexaVrCard_${user.id} .nexa-vr-card-mic-status`);
+      if (cardMicStatus) {
+        if (this.isMuted) {
+          cardMicStatus.classList.add('muted');
+          cardMicStatus.innerHTML = '🔇';
+        } else {
+          cardMicStatus.classList.remove('muted');
+          cardMicStatus.innerHTML = '🎙️';
         }
-        // Sync mute state to Firestore (throttled) so cross-device clients see it.
-        this.syncMuteState();
       }
     }
 
@@ -1128,7 +774,6 @@
         userId: user.id,
         handRaised: selfP.handRaised
       });
-      this.syncMuteState(); // also persists handRaised on our own doc
     }
 
     openInviteModal() {
@@ -1148,11 +793,7 @@
       const link = `${window.location.origin}${window.location.pathname}?voiceroom=${roomId}`;
 
       navigator.clipboard.writeText(link).then(() => {
-        // Note: the link alone does NOT grant access — the room is invite-only.
-        // The recipient can only join if the host has invited them (which also
-        // sends a push notification). The link is a convenience for an invited
-        // user to open the room directly.
-        this.showToast('📋 Voice Chat link copied! (Only invited users can join.)');
+        this.showToast('📋 Voice Chat join link copied!');
       }).catch(() => {
         this.showToast('📋 Link copied to clipboard');
       });
@@ -1164,15 +805,13 @@
       if (typeof window.isUserOnline === 'function' && window.userPresenceCache && window.userPresenceCache[uid]) {
         return !!window.isUserOnline(window.userPresenceCache[uid]);
       }
-      // 2. Direct presence cache inspection (fallback if window.isUserOnline
-      //    isn't wired yet). Uses the same 90s grace window as dashboard.html
-      //    so mobile backgrounding/throttling doesn't flicker users offline.
+      // 2. Direct presence cache inspection
       if (window.userPresenceCache && window.userPresenceCache[uid]) {
         const pdata = window.userPresenceCache[uid];
-        const raw = pdata.lastSeen != null ? pdata.lastSeen : pdata.last_seen;
-        if (raw != null) {
-          const lastSeen = raw.toDate ? raw.toDate().getTime() : (typeof raw === 'number' ? raw : Number(raw) || 0);
-          return (Date.now() - lastSeen) < 90000;
+        if (pdata.state === 'online') return true;
+        if (pdata.last_seen) {
+          const lastSeen = pdata.last_seen.toDate ? pdata.last_seen.toDate().getTime() : (typeof pdata.last_seen === 'number' ? pdata.last_seen : 0);
+          return (Date.now() - lastSeen) < 35000;
         }
       }
       // 3. Fallback to user object property
@@ -1202,16 +841,8 @@
         return;
       }
 
-      // Online users first (stable: preserves existing order within each group)
-      const onlineFirst = (a, b) => {
-        const ao = this.isUserOnline(a.id) ? 0 : 1;
-        const bo = this.isUserOnline(b.id) ? 0 : 1;
-        return ao - bo;
-      };
-
       listContainer.innerHTML = actualUsers
         .filter(u => u.id !== currentUser.id) // exclude self
-        .sort(onlineFirst)
         .map(u => {
           const online = this.isUserOnline(u.id);
           return `
@@ -1229,9 +860,9 @@
                   </div>
                 </div>
               </div>
-              ${this.invitedUserIds.has(u.id)
-                ? `<button class="nexa-vr-inv-btn invited" disabled>✓ Invited</button>`
-                : `<button class="nexa-vr-inv-btn" onclick="NexaVoiceRoom.sendInvite('${u.id}', '${this.escapeHTML(u.name)}')">Invite</button>`}
+              <button class="nexa-vr-inv-btn" onclick="NexaVoiceRoom.sendInvite('${u.id}', '${this.escapeHTML(u.name)}')">
+                Invite
+              </button>
             </div>
           `;
         }).join('');
@@ -1255,40 +886,19 @@
         timestamp: Date.now()
       };
 
-      // 1. Broadcast to local channel (same-browser tabs only)
+      // 1. Broadcast to local channel
       this.broadcast('INVITE_USER', payload);
 
-      // 2. Persist to Firestore voice_invites collection for real
-      //    cross-device push notification. Doc id = target user's uid so the
-      //    recipient's single listener on voice_invites/{ownUid} catches it.
+      // 2. Persist to Firestore voice_invites collection for real cross-device push notification
       if (window.db) {
         window.db.collection('voice_invites').doc(userId).set({
           ...payload,
           status: 'pending'
         }).catch(err => console.warn('[VoiceRoom] Firestore invite write error:', err));
-
-        // 3. Grant the invited user ACCESS to the room by adding their uid to
-        //    the room doc's invitedUids list. joinRoom() checks this list, so
-        //    without this step the recipient's join would be refused even after
-        //    accepting the invite toast. arrayUnion is idempotent so repeat
-        //    invites don't duplicate the entry.
-        if (this.activeRoom) {
-          const fv = (window.firebase && window.firebase.firestore && window.firebase.firestore.FieldValue)
-            ? window.firebase.firestore.FieldValue : (window.firebase && window.firebase.FieldValue);
-          if (fv && fv.arrayUnion) {
-            window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
-              invitedUids: fv.arrayUnion(userId),
-              updatedAt: Date.now()
-            }, { merge: true }).catch(err => console.warn('[VoiceRoom] invitedUids grant error:', err));
-          }
-        }
       }
 
-      // Mark this user as invited in-session so the list shows "Invited ✓"
-      // and prevents spamming repeated invites to the same person.
-      this.invitedUserIds.add(userId);
-      this.renderUserInviteList();
       this.showToast(`📩 Voice Chat invite sent to ${userName}`);
+      this.closeInviteModal();
     }
 
     /* --------------------------------------------------------------------- */
@@ -1386,248 +996,54 @@
     syncRoomToFirestore() {
       if (!window.db || !this.activeRoom) return;
 
-      const user = this.getCurrentUser();
+      const participantsArr = Array.from(this.participants.values()).map(p => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        isHost: p.isHost,
+        isMuted: p.isMuted,
+        isSpeaking: p.isSpeaking,
+        handRaised: !!p.handRaised
+      }));
 
-      // Host writes the room metadata once (merge) — NEVER the participants array,
-      // because each participant owns its own subcollection doc and overwriting
-      // the array here would clobber other clients (see AGENTS.md).
-      if (this.activeRoom.isHost) {
-        window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
-          id: this.activeRoom.id,
-          title: this.activeRoom.title,
-          hostId: this.activeRoom.hostId,
-          hostName: this.activeRoom.hostName,
-          startedAt: this.activeRoom.startTime,
-          updatedAt: Date.now(),
-          // Invite-only access control: the list of uids the host has explicitly
-          // invited. The host is always implicitly allowed. joinRoom() refuses
-          // anyone not on this list, so a bare ?voiceroom= link or a guessed
-          // room id cannot let an uninvited user in.
-          invitedUids: [this.activeRoom.hostId]
-        }, { merge: true }).catch(err => console.warn('[VoiceRoom] Firestore room sync error:', err));
-      }
-
-      // Every client writes ONLY its own participant doc.
-      this.upsertOwnParticipantDoc();
-    }
-
-    // Stable PeerJS id for a given uid — kept consistent across clients so the
-    // mesh knows who to call.
-    peerIdFor(uid) {
-      return 'nexa_vr_' + String(uid).replace(/[^a-zA-Z0-9_]/g, '_');
-    }
-
-    // Tie-breaker for the audio mesh. To avoid the "only two people can hear
-    // each other in a 3+ room" bug, every peer must NOT blindly call every
-    // other peer — that creates TWO redundant MediaConnections per pair
-    // (A→B and B→A) both keyed under the same peerCalls slot, and when PeerJS
-    // prunes one of them the shared audio element is torn down while the
-    // surviving connection has already fired its 'stream' event, so that pair
-    // goes permanently deaf.
-    //
-    // Instead, exactly ONE side initiates each pair: the peer whose uid sorts
-    // strictly less than the other's. The other side just answers. A single
-    // PeerJS MediaConnection carries audio BOTH ways (caller's stream →
-    // answerer, answerer's stream → caller via call.answer(stream)), so one
-    // bidirectional connection per pair is all that's needed. This scales the
-    // mesh to N participants with no redundancy and no prune race.
-    shouldInitiateCallTo(theirUid) {
-      const myUid = this.getCurrentUser().id;
-      if (!myUid || !theirUid || myUid === theirUid) return false;
-      return String(myUid) < String(theirUid);
-    }
-
-    upsertOwnParticipantDoc() {
-      if (!window.db || !this.activeRoom) return;
-      const user = this.getCurrentUser();
-      const selfP = this.participants.get(user.id);
-      if (!selfP) return;
-
-      window.db.collection('voice_rooms')
-        .doc(this.activeRoom.id)
-        .collection('participants')
-        .doc(user.id)
-        .set({
-          id: selfP.id,
-          name: selfP.name,
-          avatar: selfP.avatar,
-          isHost: selfP.isHost,
-          isMuted: selfP.isMuted,
-          isSpeaking: selfP.isSpeaking,
-          handRaised: !!selfP.handRaised,
-          peerId: this.peerIdFor(user.id),
-          joinedAt: Date.now(),
-          updatedAt: Date.now()
-        }, { merge: true })
-        .catch(err => console.warn('[VoiceRoom] Own participant doc write error:', err));
-    }
-
-    // Throttled mute/speaking sync so cross-device clients reflect state (~1.2s).
-    syncMuteState() {
-      if (!window.db || !this.activeRoom) return;
-      if (this.muteSyncTimer) clearTimeout(this.muteSyncTimer);
-      this.muteSyncTimer = setTimeout(() => {
-        this.upsertOwnParticipantDoc();
-        this.muteSyncTimer = null;
-      }, 1200);
+      window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
+        id: this.activeRoom.id,
+        title: this.activeRoom.title,
+        hostId: this.activeRoom.hostId,
+        hostName: this.activeRoom.hostName,
+        participants: participantsArr,
+        updatedAt: Date.now()
+      }, { merge: true }).catch(err => console.warn('[VoiceRoom] Firestore sync error:', err));
     }
 
     subscribeToRoomFirestore() {
       if (!window.db || !this.activeRoom) return;
       if (this.roomFirestoreUnsub) this.roomFirestoreUnsub();
 
-      const user = this.getCurrentUser();
-
-      // Listen to the participants SUBCOLLECTION (not an array on the room doc).
-      // Each participant owns its own doc, so this works cross-device.
-      this.roomFirestoreUnsub = window.db.collection('voice_rooms')
-        .doc(this.activeRoom.id)
-        .collection('participants')
-        .onSnapshot(snap => {
-          if (!this.activeRoom) return;
+      this.roomFirestoreUnsub = window.db.collection('voice_rooms').doc(this.activeRoom.id).onSnapshot(doc => {
+        if (!doc.exists) return;
+        const data = doc.data() || {};
+        if (Array.isArray(data.participants)) {
           let updated = false;
-          snap.docChanges().forEach(change => {
-            const p = change.doc.data();
-            if (!p || !p.id) return;
-
-            if (change.type === 'removed') {
-              if (this.participants.has(p.id)) {
-                this.participants.delete(p.id);
-                // Tear down the peer connection to the leaving participant
-                const targetPeerId = this.peerIdFor(p.id);
-                if (this.peerCalls.has(targetPeerId)) {
-                  try { this.peerCalls.get(targetPeerId).close(); } catch (e) {}
-                  this.peerCalls.delete(targetPeerId);
-                }
-                const audioEl = document.getElementById('audio_' + targetPeerId);
-                if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
-                // Clear the "Invited" mark so the host can invite this person
-                // again after they leave (otherwise the button stays "Invited"
-                // forever and a re-invite is impossible).
-                if (this.invitedUserIds) this.invitedUserIds.delete(p.id);
-                this.retriedPeers?.delete(targetPeerId);
-                updated = true;
-                if (p.id !== user.id) this.showToast(`🔴 ${p.name || 'User'} left`);
-                // Refresh the invite list so the "Invite" button reappears.
-                if (document.getElementById('nexaVrInviteModal')?.classList.contains('active')) {
-                  this.renderUserInviteList();
-                }
-              }
-              return;
-            }
-
-            // added / modified
-            const existed = this.participants.has(p.id);
-            const prev = existed ? this.participants.get(p.id) : null;
-            this.participants.set(p.id, {
-              id: p.id,
-              name: p.name,
-              avatar: p.avatar,
-              isHost: p.isHost,
-              isMuted: p.isMuted,
-              isSpeaking: p.isSpeaking,
-              handRaised: !!p.handRaised
-            });
-
-            // New participant that isn't us → build the mesh by calling them,
-            // but only on the initiating side of the tie-breaker so each pair
-            // has exactly one bidirectional connection.
-            if (!existed && p.id !== user.id && this.peer && this.localStream && this.shouldInitiateCallTo(p.id)) {
-              const targetPeerId = this.peerIdFor(p.id);
-              this.callPeer(targetPeerId);
-            }
-
-            // Update speaking/mute ring on existing cards without full re-render
-            if (existed && (prev && (prev.isMuted !== p.isMuted || prev.isSpeaking !== p.isSpeaking || prev.handRaised !== p.handRaised))) {
-              updated = true;
-            } else if (!existed) {
+          data.participants.forEach(p => {
+            if (!this.participants.has(p.id)) {
+              this.participants.set(p.id, p);
               updated = true;
             }
           });
           if (updated) this.updateUI();
-        }, err => {
-          // Re-arm on transient errors so the mesh survives quota blips /
-          // network drops instead of going permanently deaf.
-          console.warn('[VoiceRoom] Participants listener error:', err);
-          if (this.roomFirestoreUnsub) {
-            try { this.roomFirestoreUnsub(); } catch (e) {}
-            this.roomFirestoreUnsub = null;
-          }
-          setTimeout(() => { if (this.activeRoom) this.subscribeToRoomFirestore(); }, 5000);
-        });
-
-      // Room-doc listener: detect when the HOST closes the room. When the host
-      // leaves they delete the voice_rooms/{id} doc (and all participant docs).
-      // Every remaining participant sees that deletion here and auto-leaves
-      // with a "host ended the chat" toast, instead of being stranded in a
-      // ghost room. This is the cross-device signal; same-browser tabs also get
-      // the ROOM_CLOSED broadcast. We also bail if the host participant doc
-      // disappears (host crashed/closed tab without a clean delete) so the room
-      // doesn't linger forever.
-      if (this.roomDocUnsub) { try { this.roomDocUnsub(); } catch (e) {} this.roomDocUnsub = null; }
-      this.roomDocUnsub = window.db.collection('voice_rooms')
-        .doc(this.activeRoom.id)
-        .onSnapshot(doc => {
-          if (!this.activeRoom) return;
-          if (!doc.exists) {
-            // Room was deleted by the host → leave.
-            const wasInRoom = this.activeRoom.id;
-            this.showToast('📞 The host ended the Voice Chat.');
-            this.leaveRoom();
-            return;
-          }
-          const d = doc.data() || {};
-          // If the host changed (shouldn't happen now that host-close deletes,
-          // but guard anyway) update our local host info so isHost stays right.
-          if (d.hostId && this.activeRoom.hostId !== d.hostId) {
-            this.activeRoom.hostId = d.hostId;
-            this.activeRoom.hostName = d.hostName || this.activeRoom.hostName;
-            this.activeRoom.isHost = (d.hostId === this.getCurrentUser()?.id);
-          }
-        }, err => console.warn('[VoiceRoom] Room doc listener error:', err));
-    }
-
-    // Public hook for the host app to (re)bind the invite listener once the
-    // real Firebase uid becomes available. Called from dashboard.html after
-    // onAuthStateChanged sets window.currentUser. Safe to call repeatedly —
-    // it no-ops if already bound to the same uid.
-    bindInviteListener() {
-      this.setupFirestoreListeners();
+        }
+      });
     }
 
     setupFirestoreListeners() {
+      if (!window.db) return;
+
       const user = this.getCurrentUser();
-
-      // If Firebase isn't ready yet OR we don't have a real uid yet, we can't
-      // safely bind the invite listener. Schedule a re-check so we bind as
-      // soon as both are available — instead of the old one-shot that bound to
-      // a fake uid and never recovered.
-      const dbReady = !!window.db;
-      const hasRealUid = !!(user && user.id && !/^user_[a-z0-9]+$/.test(user.id));
-
-      if (!dbReady || !hasRealUid) {
-        if (!this.inviteRetryTimer) {
-          this.inviteRetryTimer = setTimeout(() => {
-            this.inviteRetryTimer = null;
-            this.setupFirestoreListeners();
-          }, 1500);
-        }
-        return;
-      }
-
-      // Already listening to this uid — nothing to do.
-      if (this.inviteListenerUid === user.id && this.inviteListenerUnsub) return;
-
-      // Tear down any listener bound to a previous (possibly fake) id.
-      if (this.inviteListenerUnsub) {
-        try { this.inviteListenerUnsub(); } catch (e) {}
-        this.inviteListenerUnsub = null;
-      }
-
-      this.inviteListenerUid = user.id;
+      if (!user || !user.id) return;
 
       // Listen for incoming voice chat invites for current user
-      this.inviteListenerUnsub = window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
+      window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
         if (doc.exists) {
           const data = doc.data() || {};
           if (data.status === 'pending' && data.room) {
@@ -1681,16 +1097,6 @@
             }
             break;
 
-          case 'ROOM_CLOSED':
-            // Host ended the room (same-browser tab signal; cross-device clients
-            // get it via the voice_rooms doc deletion listener). Tear down
-            // immediately so we don't keep the mic/peer open in a dead room.
-            if (this.activeRoom && payload.roomId === this.activeRoom.id) {
-              this.showToast('📞 The host ended the Voice Chat.');
-              this.leaveRoom();
-            }
-            break;
-
           case 'SPEAKING_STATE':
             if (this.activeRoom && payload.userId) {
               const p = this.participants.get(payload.userId);
@@ -1729,61 +1135,42 @@
       const subEl = document.getElementById('nexaVrIncSub');
       const avatarEl = document.getElementById('nexaVrIncAvatar');
 
-      if (!toast || !payload || !payload.room) return;
+      if (toast && payload.room) {
+        titleEl.textContent = `🎙️ ${payload.room.title}`;
+        subEl.textContent = `${payload.inviter.name} invited you to Voice Chat`;
+        avatarEl.src = payload.inviter.avatar || 'icon-192.png';
 
-      // Dedupe: the same invite can arrive via BOTH the BroadcastChannel
-      // (same-browser tab) AND the Firestore listener (cross-device). Without
-      // this guard the recipient sees two stacked toasts / two sets of buttons
-      // and joining from one leaves the other dangling. Key on room id +
-      // timestamp; ignore repeats while one is already showing.
-      const inviteKey = payload.room.id + ':' + (payload.timestamp || 0);
-      if (this.currentInviteRoomId === inviteKey) return;
-      this.currentInviteRoomId = inviteKey;
+        toast.classList.add('active');
+        this.playChime('ring');
 
-      titleEl.textContent = `🎙️ ${payload.room.title}`;
-      subEl.textContent = `${payload.inviter.name} invited you to Voice Chat`;
-      avatarEl.src = payload.inviter.avatar || 'icon-192.png';
+        const joinBtn = document.getElementById('nexaVrIncJoinBtn');
+        const declineBtn = document.getElementById('nexaVrIncDeclineBtn');
 
-      toast.classList.add('active');
-      this.playChime('ring');
+        const handleJoin = () => {
+          toast.classList.remove('active');
+          if (window.db && payload.targetUserId) {
+            window.db.collection('voice_invites').doc(payload.targetUserId).update({ status: 'accepted' }).catch(() => {});
+          }
+          this.joinRoom(payload.room);
+          cleanup();
+        };
 
-      const joinBtn = document.getElementById('nexaVrIncJoinBtn');
-      const declineBtn = document.getElementById('nexaVrIncDeclineBtn');
+        const handleDecline = () => {
+          toast.classList.remove('active');
+          if (window.db && payload.targetUserId) {
+            window.db.collection('voice_invites').doc(payload.targetUserId).update({ status: 'declined' }).catch(() => {});
+          }
+          cleanup();
+        };
 
-      const handleJoin = () => {
-        toast.classList.remove('active');
-        // Delete the invite doc (rather than leaving a stale 'accepted' doc
-        // that could re-trigger on cache replay) so a fresh invite later is a
-        // clean 'pending' write.
-        if (window.db && payload.targetUserId) {
-          window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
-        }
-        this.joinRoom(payload.room);
-        this.currentInviteRoomId = null;
-        cleanup();
-      };
+        const cleanup = () => {
+          joinBtn.removeEventListener('click', handleJoin);
+          declineBtn.removeEventListener('click', handleDecline);
+        };
 
-      const handleDecline = () => {
-        toast.classList.remove('active');
-        if (window.db && payload.targetUserId) {
-          window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
-        }
-        this.currentInviteRoomId = null;
-        cleanup();
-      };
-
-      const cleanup = () => {
-        joinBtn.removeEventListener('click', handleJoin);
-        declineBtn.removeEventListener('click', handleDecline);
-      };
-
-      // Ensure we never stack duplicate listeners from a prior invite.
-      joinBtn.replaceWith(joinBtn.cloneNode(true));
-      declineBtn.replaceWith(declineBtn.cloneNode(true));
-      const freshJoin = document.getElementById('nexaVrIncJoinBtn');
-      const freshDecline = document.getElementById('nexaVrIncDeclineBtn');
-      freshJoin.addEventListener('click', handleJoin);
-      freshDecline.addEventListener('click', handleDecline);
+        joinBtn.addEventListener('click', handleJoin);
+        declineBtn.addEventListener('click', handleDecline);
+      }
     }
 
     /* --------------------------------------------------------------------- */

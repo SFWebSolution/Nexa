@@ -11,9 +11,9 @@
     body {
       margin: 0;
       font-family: var(--font-body);
-      background: radial-gradient(circle at top left, rgba(0, 240, 255, 0.15), transparent 40%),
-                  radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.12), transparent 40%),
-                  #070b19;
+      background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.15), transparent 45%),
+                  radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.12), transparent 45%),
+                  var(--bg-primary);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -26,20 +26,20 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: radial-gradient(rgba(0, 240, 255, 0.05) 1px, transparent 1px);
-      background-size: 24px 24px;
+      background: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 28px 28px;
       pointer-events: none;
     }
 
     .card {
       width: 100%;
       max-width: 440px;
-      background: rgba(13, 18, 41, 0.75);
+      background: var(--glass-bg);
       padding: 3rem 2.5rem;
       border-radius: var(--radius-xl);
-      border: 1px solid rgba(0, 240, 255, 0.2);
-      backdrop-filter: blur(20px);
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 240, 255, 0.1);
+      border: 1px solid var(--glass-border-strong);
+      backdrop-filter: blur(24px);
+      box-shadow: var(--shadow-xl), 0 0 40px rgba(99, 102, 241, 0.1);
       animation: slideInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 
@@ -51,10 +51,9 @@
       font-size: var(--text-3xl);
       font-weight: 800;
       letter-spacing: -1px;
-      background: linear-gradient(135deg, #ffffff, #00f0ff);
+      background: linear-gradient(135deg, #ffffff, var(--color-primary-light));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
     }
 
     .input-group {

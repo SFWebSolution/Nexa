@@ -113,9 +113,6 @@
         <div class="search-wrap">
           <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
         </div>
-        <div class="active-now-bar" id="activeNowBar" style="display:none;">
-          <div class="active-now-items" id="activeNowItems"></div>
-        </div>
         <div class="users" id="users">
           <div class="no-users">Loading users…</div>
         </div>
@@ -281,7 +278,7 @@
     <div class="chat-header">
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
       <div class="chat-peer" onclick="openUserProfile()">
-        <div class="chat-avatar-wrap" onclick="event.stopPropagation(); openProfilePic(document.getElementById('chatPic').src)">
+        <div class="chat-avatar-wrap">
           <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
           <div class="chat-status-dot" id="chatStatusDot"></div>
         </div>
@@ -635,8 +632,8 @@
 <!-- AUDIO RINGTONES FOR CALLS -->
 <audio id="ringtoneIncoming" src="iphone.mp3" loop preload="auto"></audio>
 <audio id="ringtoneOutgoing" src="samsung_galaxy_puddles.mp3" loop preload="auto"></audio>
-<!-- DEDICATED REMOTE AUDIO ELEMENT FOR VOICE CALLS (video calls use #remoteVideo) -->
-<audio id="remoteAudio" autoplay playsinline></audio>
+<!-- HIDDEN AUDIO ELEMENT FOR REMOTE VOICE CALL AUDIO (video element is display:none during voice calls and won't play audio) -->
+<audio id="remoteCallAudio" autoplay playsinline></audio>
 
 <!-- MINIMIZED FLOATING CALL BAR (WHATSAPP STYLE) -->
 <div class="floating-call-bar" id="floatingCallBar" onclick="maximizeCallOverlay()">
@@ -780,17 +777,13 @@ function handleStoryResumeOnTyping() {
 }
 // Profile picture modal
 function openProfilePic(src) {
-  if (!src) return;
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
   img.src = src;
   modal.classList.add('active');
 }
-function closeProfilePicModal(event) {
-  // Close when clicking the backdrop (not the image itself) or via the close button
-  if (!event || event.target.id === 'profilePicModal' || event.target.classList.contains('profile-pic-close')) {
-    document.getElementById('profilePicModal').classList.remove('active');
-  }
+function closeProfilePicModal() {
+  document.getElementById('profilePicModal').classList.remove('active');
 }
 
 console.log('🚀 Nexa Messenger Starting...');
@@ -806,37 +799,6 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-
-// Expose core globals on `window` so the voice room (nexa-voice-room.js,
-// a separate <script>) and other modules can read the live Firestore handle
-// and the in-memory caches. Top-level const/let/function do NOT attach to
-// window automatically, which is why presence listeners guarded on
-// `window.db` were silently no-oping and the voice room couldn't see
-// online users / the user list.
-window.db = db;
-window.auth = auth;
-
-// Live getters for the caches the voice room + presence UI read. These are
-// declared later with `let`, so a one-time assignment would freeze a stale
-// reference (allUsersData is reassigned on every users snapshot). Getters
-// always return the current value.
-// NOTE: `isUserOnline` is intentionally NOT listed here — it is a top-level
-// `function` declaration, which already attaches to `window` via hoisting.
-// Redefining it via Object.defineProperties throws "Cannot redefine
-// property: isUserOnline" (function-declaration globals are non-configurable
-// in this engine), and because Object.defineProperties is atomic, that throw
-// would also skip defining the other three AND halt the whole init script
-// (the app then never registers onAuthStateChanged → no login redirect →
-// stuck on "Loading…").
-// The getters are TDZ-safe: if anything reads window.allUsersData /
-// window.userPresenceCache BEFORE the `let` at line ~1359 executes, a bare
-// `return allUsersData` would throw a Temporal Dead Zone ReferenceError that
-// halts init. The try/catch returns a safe default instead.
-Object.defineProperties(window, {
-  currentUser: { get() { try { return currentUser; } catch (_) { return null; } }, configurable: true },
-  allUsersData: { get() { try { return allUsersData; } catch (_) { return []; } }, configurable: true },
-  userPresenceCache: { get() { try { return userPresenceCache; } catch (_) { return {}; } }, configurable: true }
-});
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -1133,17 +1095,6 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   currentUser = user;
-  // Publish the real Firebase user to a global so non-module code (the voice
-  // room manager, presence, etc.) can read the actual uid/displayName as soon
-  // as auth resolves — instead of falling back to a fake random uid before
-  // the module-scoped `currentUser` is visible to them.
-  window.currentUser = { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL };
-  // The voice room's Firestore invite listener may have bound to a fake uid
-  // before auth resolved — re-bind it now that the real uid is available so
-  // cross-device voice invites actually reach this user.
-  if (typeof NexaVoiceRoom !== 'undefined' && NexaVoiceRoom.bindInviteListener) {
-    try { NexaVoiceRoom.bindInviteListener(); } catch (e) { console.warn('Voice room invite re-bind:', e); }
-  }
   console.log("👤 User:", user.email);
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
@@ -1449,20 +1400,11 @@ function confirmDeleteChat() {
   showNotifToast("Chat removed from user list", "info");
 }
 
-// How long since the last heartbeat before a user is considered offline.
-// Kept generous (90s) so mobile backgrounding/throttling (browsers slow
-// setInterval to ~1/min in backgrounded tabs) doesn't instantly flip a
-// user offline while they're still "in the app". WhatsApp uses a similar
-// grace window.
-const PRESENCE_TIMEOUT_MS = 90000;
+const PRESENCE_TIMEOUT_MS = 35000;
 
 function isUserOnline(pdata) {
   if (!pdata) return false;
-  // Online is driven by heartbeat freshness, NOT the `online`/`status`
-  // flags. Those flags are unreliable on mobile: iOS/Android fire
-  // pagehide/beforeunload on tab-switch/screen-lock, which writes
-  // online:false even though the user just backgrounded for a moment.
-  // A fresh lastSeen with online:false is that flicker → still online.
+  if (pdata.online === false || pdata.status === "offline") return false;
   const lastSeen = pdata.lastSeen || 0;
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
@@ -1473,71 +1415,8 @@ function updateUserOnlineDot(uid, pdata) {
   if (dot) dot.classList.toggle("online", online);
 }
 
-// ── Shared presence collection listener ─────────────────────────────
-// One listener for the whole `presence` collection feeds userPresenceCache
-// and refreshes every online dot + the open chat header. This replaces the
-// old per-user listeners (one per contact) which exploded Firestore read
-// counts and is the #1 cause of presence failing cross-device.
-let sharedPresenceUnsub = null;
-let sharedPresenceTimer = null;
-function startSharedPresenceListener() {
-  if (!window.db) return;
-  if (sharedPresenceUnsub) return; // only ever one
-
-  sharedPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
-    snapshot.docChanges().forEach(change => {
-      const uid = change.doc.id;
-      const pdata = change.doc.data() || {};
-
-      if (change.type === "removed") {
-        delete userPresenceCache[uid];
-      } else {
-        userPresenceCache[uid] = pdata;
-      }
-      updateUserOnlineDot(uid, pdata);
-    });
-
-    // Keep the open chat header in sync (online / last seen).
-    if (selectedUser) {
-      updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
-    }
-    renderUsers();
-  }, err => {
-    console.warn("Shared presence listener error:", err);
-    // If the listener died (e.g. transient), try to re-arm it shortly so
-    // online status recovers instead of staying stale forever.
-    if (!sharedPresenceTimer) {
-      sharedPresenceTimer = setTimeout(() => {
-        sharedPresenceTimer = null;
-        if (sharedPresenceUnsub) { try { sharedPresenceUnsub(); } catch (e) {} sharedPresenceUnsub = null; }
-        startSharedPresenceListener();
-      }, 5000);
-    }
-  });
-
-  // Re-evaluate "still online?" every 10s based on lastSeen timeouts,
-  // since a user that closed the app may not have written an offline doc.
-  if (!sharedPresenceTimer) {
-    sharedPresenceTimer = setInterval(() => {
-      if (allUsersData && allUsersData.length) {
-        allUsersData.forEach(u => updateUserOnlineDot(u.uid, userPresenceCache[u.uid]));
-      }
-      if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
-    }, 10000);
-  }
-}
-
 function startUsersListener() {
   loadCachedUsers();
-
-  // ── Single shared presence listener ──────────────────────────────
-  // We listen to the ENTIRE `presence` collection ONCE (not once per user)
-  // and fan the updates out into userPresenceCache. This is what makes
-  // online dots work cross-device without opening N listeners (which
-  // burned Firestore read quota and broke presence at scale).
-  // startLeaderboardListeners() also listens to `presence`; both feed the
-  // same cache, so this keeps online state correct everywhere.
-  startSharedPresenceListener();
 
   db.collection("users").onSnapshot(snap => {
     allUsersData = [];
@@ -1565,62 +1444,32 @@ function startUsersListener() {
           photo: d.photoUrl || d.photo || "https://i.imgur.com/HeIi0wU.png"
         });
 
-        // Refresh this user's online dot from the already-populated cache.
-        updateUserOnlineDot(uid, userPresenceCache[uid]);
+        // Subscribe to this user's presence exactly once, ever.
+        if (!presenceUnsubs[uid]) {
+          presenceUnsubs[uid] = db.collection("presence").doc(uid).onSnapshot(pdoc => {
+            const pdata = pdoc.data() || {};
+            userPresenceCache[uid] = pdata;
+            updateUserOnlineDot(uid, pdata);
+          });
+        }
+      }
+    });
+
+    // Clean up presence listeners for users who no longer exist.
+    Object.keys(presenceUnsubs).forEach(uid => {
+      if (!seenUids.has(uid)) {
+        presenceUnsubs[uid]();
+        delete presenceUnsubs[uid];
       }
     });
 
     saveCachedUsers();
     renderUsers();
     renderWeeklyLeaderboard();
-  }, err => {
-    console.error("Users listener error:", err);
-    // On quota/permission errors the list still renders from cache so the
-    // app stays usable instead of showing a blank contact list.
-    renderUsers();
   });
 }
 
 let lastRenderedUserOrder = "";
-
-// ── "Active Now" online bar ────────────────────────────────────────
-// Facebook-style horizontal row of ROUND avatars with green dots showing
-// ONLY users currently online (heartbeat-fresh, via isUserOnline). Clicking
-// an avatar opens that chat. Hidden entirely when nobody is online.
-function renderActiveNowBar() {
-  const bar = document.getElementById("activeNowBar");
-  const items = document.getElementById("activeNowItems");
-  if (!bar || !items) return;
-  if (!currentUser || !allUsersData || !allUsersData.length) { bar.style.display = "none"; return; }
-
-  const online = allUsersData
-    .filter(u => u.uid !== currentUser.uid && !blockedUsers[u.uid] && !deletedChats[u.uid])
-    .filter(u => isUserOnline(userPresenceCache[u.uid]))
-    .sort((a, b) => (userPresenceCache[b.uid]?.lastSeen || 0) - (userPresenceCache[a.uid]?.lastSeen || 0));
-
-  if (!online.length) { bar.style.display = "none"; return; }
-  bar.style.display = "";
-
-  items.innerHTML = online.map(u => {
-    const name = escapeHtml(u.displayName || "User");
-    const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
-    return `
-      <div class="active-now-item" data-uid="${u.uid}" title="${name}">
-        <div class="active-now-avatar-wrap">
-          <img src="${photo}" class="active-now-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-          <div class="active-now-dot"></div>
-        </div>
-        <div class="active-now-name">${name}</div>
-      </div>`;
-  }).join("");
-
-  items.querySelectorAll(".active-now-item").forEach(el => {
-    el.onclick = () => {
-      const u = allUsersData.find(x => x.uid === el.dataset.uid);
-      if (u) selectChat(u);
-    };
-  });
-}
 
 function renderUsers() {
   const box = document.getElementById("users");
@@ -1649,13 +1498,9 @@ function renderUsers() {
   list.sort((a, b) => {
     const mA = userMetrics.get(a.uid);
     const mB = userMetrics.get(b.uid);
-    // Primary order: who you chatted with LAST (most recent on top). This is
-    // the user's requested behaviour — "arranged based on those you chatted
-    // last" — so recency must dominate over favorites/online/name.
-    if (mA.time !== mB.time) return mB.time - mA.time;
-    // Below this point both contacts have the same (or no) last-chat time:
-    // favorites rise, then online, then alphabetical.
     if (mA.fav !== mB.fav) return mB.fav - mA.fav;
+    if (mA.hasMsg !== mB.hasMsg) return mB.hasMsg - mA.hasMsg;
+    if (mA.time !== mB.time) return mB.time - mA.time;
     if (mA.online !== mB.online) return mB.online - mA.online;
     return mA.name.localeCompare(mB.name);
   });
@@ -1786,8 +1631,6 @@ function renderUsers() {
       box.insertBefore(el, currentChild || null);
     }
   });
-
-  renderActiveNowBar();
 }
 
 let searchUsersTimer = null;
@@ -2028,11 +1871,7 @@ function startLeaderboardListeners() {
     leaderboardPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
       adminPresenceData = {};
       snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        adminPresenceData[doc.id] = data;
-        // Feed the shared presence cache so online dots / chat header stay
-        // correct even if startSharedPresenceListener hasn't been started yet.
-        userPresenceCache[doc.id] = data;
+        adminPresenceData[doc.id] = doc.data();
       });
       renderWeeklyLeaderboard();
     }, err => console.error("Leaderboard presence listener error:", err));
@@ -2409,12 +2248,16 @@ function updateChatHeaderPresence(data) {
   if (!selectedUser) return;
   data = data || userPresenceCache[selectedUser.uid] || {};
   const online = isUserOnline(data);
+  const status = data.status || (online ? "online" : "offline");
   const lastSeen = data.lastSeen || 0;
   const el = document.getElementById("status");
   const dot = document.getElementById("chatStatusDot");
-  if (online) {
+  if (online && status === "online") {
     if (el) { el.textContent = "🟢 online"; el.className = "online-status"; }
     if (dot) dot.classList.add("online");
+  } else if (online && status === "away") {
+    if (el) { el.textContent = "🟡 away"; el.className = ""; }
+    if (dot) dot.classList.remove("online");
   } else {
     if (el) { el.textContent = `⚪ last seen ${formatLastSeen(lastSeen)}`; el.className = ""; }
     if (dot) dot.classList.remove("online");
@@ -2422,13 +2265,13 @@ function updateChatHeaderPresence(data) {
 }
 
 function listenPresence() {
-  // The shared collection listener (startSharedPresenceListener) already
-  // keeps userPresenceCache + the chat header in sync for every user, so we
-  // don't open a redundant per-user doc listener here — that would just add
-  // another Firestore read. Just refresh the header immediately from cache.
   if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
   if (!selectedUser) return;
-  updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+  unsubChatPresence = db.collection("presence").doc(selectedUser.uid).onSnapshot(doc => {
+    const data = doc.data() || {};
+    userPresenceCache[selectedUser.uid] = data;
+    updateChatHeaderPresence(data);
+  });
 }
 
 function formatLastSeen(ts) {
@@ -2480,77 +2323,54 @@ function loadUnreadCounts() {
 
 async function updateOnline(on) {
   if (!currentUser) return;
-  // Online is driven by heartbeat freshness (see isUserOnline). We always
-  // write a fresh lastSeen while the app is open; when the app is closed we
-  // write a final offline stamp so other clients converge on "last seen".
-  const isOnlineState = on !== false;
+  const isOnlineState = on && document.visibilityState === "visible";
   userStatus = isOnlineState ? "online" : "offline";
-  const presenceData = {
-    online: isOnlineState,
-    status: isOnlineState ? "online" : "offline",
-    lastSeen: Date.now(),
-    uid: currentUser.uid
-  };
-  // Keep our own cache in sync locally so our own UI/dot stay correct
-  // even before the Firestore write round-trips.
-  userPresenceCache[currentUser.uid] = presenceData;
   try {
-    await db.collection("presence").doc(currentUser.uid).set(presenceData, { merge: true });
+    await db.collection("presence").doc(currentUser.uid).set(
+      { online: isOnlineState, status: isOnlineState ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
+      { merge: true }
+    );
   } catch (err) {
     console.error("Error updating presence:", err);
   }
 }
 
-// Best-effort final presence stamp on unload. On mobile the page is often
-// evicted before the async Firestore set() above resolves, so the offline
-// write never lands and other clients see a stale "online". sendBeacon fires
-// a Firestore REST write that completes even as the tab is tearing down.
-function writeOfflineBeacon() {
-  if (!currentUser) return;
-  const lastSeen = Date.now();
-  try {
-    const url = `https://firestore.googleapis.com/v1/projects/mel-odix/databases/(default)/documents/presence/${currentUser.uid}?updateMask.fieldPaths=online&updateMask.fieldPaths=status&updateMask.fieldPaths=lastSeen`;
-    const body = JSON.stringify({
-      fields: {
-        online: { booleanValue: false },
-        status: { stringValue: "offline" },
-        lastSeen: { integerValue: String(lastSeen) }
-      }
-    });
-    navigator.sendBeacon(url, body);
-  } catch (e) {
-    // Fallback: the async path in updateOnline(false) may still land.
-  }
-}
-
 function setupHeartbeat() {
-  // Update heartbeat every 10 seconds while the app is open. We keep
-  // writing online (not gated on visibility) so mobile users that get
-  // backgrounded for a moment don't instantly appear offline.
+  // Update heartbeat every 10 seconds while active & tab visible
   setInterval(() => {
-    if (currentUser) updateOnline(true);
+    if (currentUser && document.visibilityState === "visible") {
+      updateOnline(true);
+    }
+  }, 10000);
+
+  // Periodic ticker every 10 seconds to re-evaluate active presence timeouts
+  setInterval(() => {
+    if (allUsersData && allUsersData.length) {
+      allUsersData.forEach(user => {
+        updateUserOnlineDot(user.uid, userPresenceCache[user.uid]);
+      });
+    }
+    if (selectedUser) {
+      updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+    }
   }, 10000);
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      // Coming back to the app → re-mark online and resume any audio.
+    if (document.visibilityState === "hidden") {
+      updateOnline(false);
+    } else {
       updateOnline(true);
-      resumeAllAudio();
     }
   });
 
-  window.addEventListener("beforeunload", () => { updateOnline(false); writeOfflineBeacon(); });
-  window.addEventListener("pagehide", () => { updateOnline(false); writeOfflineBeacon(); });
+  window.addEventListener("beforeunload", () => updateOnline(false));
+  window.addEventListener("pagehide", () => updateOnline(false));
 
   let inactivityTimer = null;
 
   function resetInactivity() {
     clearTimeout(inactivityTimer);
-    if (userStatus === "away") updateOnline(true);
-    // After 3min of no interaction, mark "away" but KEEP writing a fresh
-    // lastSeen so the user still shows online to others while the app is
-    // open in front of them (WhatsApp keeps you online while the app is
-    // foregrounded, only going to "last seen" when truly closed).
+    if (userStatus === "away" && document.visibilityState === "visible") updateOnline(true);
     inactivityTimer = setTimeout(async () => {
       if (!currentUser) return;
       userStatus = "away";
@@ -3071,28 +2891,10 @@ function buildMessage(id, msg, fromMe) {
 
   // Handle regular reply
   if (msg.replyTo) {
-    // Prefer the SELF-CONTAINED snapshot stored on the message at send time —
-    // it always renders on both sides and after reload. Fall back to looking
-    // up the original in allMessages for legacy reply messages that have no
-    // snapshot (so existing conversations still show their quotes).
-    let rAuthor = "", rText = "";
-    if (msg.replySnapshot) {
-      rAuthor = msg.replySnapshot.from === currentUser.uid
-        ? "You"
-        : escapeHtml(msg.replySnapshot.fromName || selectedUser?.displayName || "User");
-      rText = escapeHtml(msg.replySnapshot.text)
-        || (msg.replySnapshot.hasImage ? "📷 Photo"
-          : msg.replySnapshot.hasVideo ? "🎥 Video"
-          : msg.replySnapshot.hasAudio ? "🎤 Voice note"
-          : "(attachment)");
-      inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
-    } else {
-      const replied = allMessages.find(m => m.id === msg.replyTo);
-      if (replied) {
-        rAuthor = replied.from === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-        rText = escapeHtml(replied.text) || "(attachment)";
-        inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
-      }
+    const replied = allMessages.find(m => m.id === msg.replyTo);
+    if (replied) {
+      const rAuthor = replied.from === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
+      inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(replied.text) || "(attachment)"}</div></div>`;
     }
   }
 
@@ -3541,29 +3343,7 @@ async function sendMessage() {
   toggleActionButtons();
 
   const extras = { text };
-  if (messageRepliedTo) {
-    extras.replyTo = messageRepliedTo.id;
-    // Store a SELF-CONTAINED snapshot of the message being replied to so the
-    // reply quote can render on BOTH sides (sender + recipient) AND after a
-    // reload, WITHOUT depending on the original message still being present
-    // in the locally-loaded allMessages array. The old code only stored
-    // replyTo (an id) and did allMessages.find(m => m.id === replyTo) at
-    // render time — that lookup failed whenever the original wasn't loaded
-    // (race between the two onSnapshot listeners, or the recipient loading
-    // the reply before the original), so the quote showed on the sender's
-    // side but vanished on the recipient's side / after re-entering the chat.
-    extras.replySnapshot = {
-      id: messageRepliedTo.id,
-      from: messageRepliedTo.from,
-      fromName: messageRepliedTo.from === currentUser.uid
-        ? (currentUser.displayName || 'You')
-        : (selectedUser?.displayName || 'User'),
-      text: messageRepliedTo.text || '',
-      hasImage: !!messageRepliedTo.image,
-      hasVideo: !!messageRepliedTo.video,
-      hasAudio: !!messageRepliedTo.audio
-    };
-  }
+  if (messageRepliedTo) { extras.replyTo = messageRepliedTo.id; }
   const tempMsgObj = baseMsg(extras);
   tempMsgObj.id = "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
@@ -3624,200 +3404,88 @@ function baseMsg(extras = {}) {
 }
 
 /* =========================================================================
-   VOICE RECORDING — press-and-hold (WhatsApp-style), robust to interruption
+   VOICE RECORDING
    ========================================================================= */
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingBlob = null;
 let isRecording = false;
 let recStart = 0;
-let recDuration = 0;
 let recTimer = null;
-let recStream = null;
-let recFinalizing = false;
 
 const recordBtn = document.getElementById("recordBtn");
 const voicePanel = document.getElementById("voicePanel");
 const voiceTimerEl = document.getElementById("voiceTimer");
 
-// Press-and-hold wiring. We deliberately do NOT use always-on global
-// mouseup/touchend listeners (the old approach) — those fired on ANY release
-// anywhere on the page even when not recording, and silently cut recordings
-// short (the "stops at 30s" symptom on mobile). Instead the stop signal is
-// bound to:
-//   (a) the record button itself (for the press-and-hold release), AND
-//   (b) the voice panel overlay — because once recording starts the overlay
-//       is shown full-screen ON TOP of the button, so the pointerup/pointercancel
-//       lands on the overlay, not the button. Without (b) stopRec() never
-//       fires, recordingBlob stays null, and Send does nothing.
-// Listeners on the overlay are attached only while recording (see startRec)
-// and removed on stop, so they can't leak / fire when idle.
-function onRecStart(e) { e.preventDefault(); startRec(); }
-function onRecEnd(e) { if (e) e.preventDefault(); stopRec(); }
+recordBtn.addEventListener("mousedown", startRec);
+recordBtn.addEventListener("touchstart", e => { e.preventDefault(); startRec(e); });
+document.addEventListener("mouseup", stopRec);
+document.addEventListener("touchend", stopRec);
 
-recordBtn.addEventListener("pointerdown", onRecStart);
-recordBtn.addEventListener("pointerup", onRecEnd);
-recordBtn.addEventListener("pointercancel", onRecEnd);
-// pointerleave fires when the finger/mouse drifts off the button while held —
-// same as WhatsApp cancelling if you drag away. (Swipe-to-cancel could be
-// added later; for now we just stop + keep the recording for review.)
-recordBtn.addEventListener("pointerleave", (e) => { if (e.buttons > 0 || (e.pressure > 0 && e.pointerType === "touch")) onRecEnd(e); });
-// Block the browser from interpreting a long press as a text-selection /
-// context-menu gesture, which on mobile can hijack the touch and end it.
-recordBtn.style.touchAction = "none";
-recordBtn.style.userSelect = "none";
-recordBtn.style.webkitUserSelect = "none";
-recordBtn.style.webkitTouchCallout = "none";
-
-// Stop handlers bound to the overlay while recording (see startRec/stopRec).
-// They are declared here so stopRec can remove them.
-function onOverlayRecEnd(e) {
-  // Don't intercept clicks on the Discard/Send buttons — those have their
-  // own handlers and shouldn't also trigger stopRec (stopRec is idempotent
-  // via the isRecording guard, but stopping the click would break the button).
-  if (e.target && (e.target.closest('.vbtn-del') || e.target.closest('.vbtn-send'))) return;
-  stopRec();
-}
-
-async function startRec() {
+async function startRec(e) {
   if (isRecording || !selectedUser) {
     if (!selectedUser) alert("Select a user first");
     return;
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: NEXA_AUDIO_CONSTRAINTS });
-    recStream = stream;
-    // Pick the best available codec; default is fine if preferred unsupported.
-    let mime = "audio/webm";
-    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
-    for (const c of candidates) {
-      if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) { mime = c; break; }
-    }
-    mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true }
+    });
+    mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
-    recFinalizing = false;
-    recordingBlob = null;
-    mediaRecorder.addEventListener("dataavailable", e => { if (e.data && e.data.size > 0) audioChunks.push(e.data); });
-    mediaRecorder.addEventListener("error", (ev) => {
-      console.warn("MediaRecorder error:", ev.error);
-      // A recorder error (e.g. track ended by the OS on backgrounding) —
-      // finalize whatever we captured so the user doesn't lose the clip.
-      if (mediaRecorder && mediaRecorder.state === "recording") { try { mediaRecorder.stop(); } catch (_) {} }
-    });
+    mediaRecorder.addEventListener("dataavailable", e => audioChunks.push(e.data));
     mediaRecorder.addEventListener("stop", () => {
-      // Finalize from whatever chunks arrived. Because we start() with a
-      // timeslice, partial data is preserved even if recording was cut short.
-      if (audioChunks.length) {
-        recordingBlob = new Blob(audioChunks, { type: mime });
-      }
-      recDuration = Date.now() - recStart;
-      recFinalizing = false;
-      isRecording = false;
-      recordBtn.classList.remove("active");
-      if (recTimer) { clearInterval(recTimer); recTimer = null; }
-      // Show the review/send panel once a recording exists.
-      if (recordingBlob) voicePanel.classList.add("active");
+      recordingBlob = new Blob(audioChunks, { type: "audio/webm" });
     });
-    // Pass a timeslice (250ms) so dataavailable fires periodically. This means
-    // if the recorder is interrupted mid-recording we still have captured
-    // audio up to that point, instead of losing everything.
-    mediaRecorder.start(250);
+    mediaRecorder.start();
     isRecording = true;
     recStart = Date.now();
     recordBtn.classList.add("active");
     voicePanel.classList.add("active");
-    // The overlay now covers the button, so bind the stop signal on the
-    // overlay too (pointerup/pointercancel). Bound only while recording and
-    // removed in stopRec so they can't fire when idle.
-    voicePanel.addEventListener("pointerup", onOverlayRecEnd);
-    voicePanel.addEventListener("pointercancel", onOverlayRecEnd);
     recTimer = setInterval(() => {
       const s = Math.floor((Date.now() - recStart) / 1000);
       voiceTimerEl.textContent = `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
     }, 200);
   } catch (e) {
-    console.warn("Voice start error:", e);
     alert("Microphone access denied");
-    isRecording = false;
-    recordBtn.classList.remove("active");
   }
 }
 
 function stopRec() {
-  if (!isRecording || recFinalizing) return;
-  recFinalizing = true;
-  // Remove the overlay stop-listeners now that recording is ending, so a
-  // later tap on the overlay (e.g. to interact with Send/Discard) doesn't
-  // re-enter stopRec. Safe even if they were never attached.
-  voicePanel.removeEventListener("pointerup", onOverlayRecEnd);
-  voicePanel.removeEventListener("pointercancel", onOverlayRecEnd);
+  if (!isRecording) return;
   if (mediaRecorder && mediaRecorder.state === "recording") {
-    try { mediaRecorder.requestData(); } catch (_) {} // flush the last chunk
-    try { mediaRecorder.stop(); } catch (_) {}
+    mediaRecorder.stop();
+    if (mediaRecorder.stream) {
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    }
   }
-  if (recStream) {
-    recStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
-    recStream = null;
-  }
-  // isRecording is cleared in the 'stop' handler to keep state consistent.
+  isRecording = false;
+  recordBtn.classList.remove("active");
+  clearInterval(recTimer);
 }
 
 async function sendVoice() {
-  // If recording is somehow still active when Send is tapped, finalize it
-  // first so we actually have a blob to send.
-  if (isRecording) {
-    stopRec();
-    // The blob is produced asynchronously in the MediaRecorder 'stop' event;
-    // wait a tick for it to land before proceeding.
-    let waited = 0;
-    while (!recordingBlob && waited < 1500) {
-      await new Promise(r => setTimeout(r, 50));
-      waited += 50;
-    }
-  }
-  if (!recordingBlob) {
-    showNotifToast("No recording to send — hold the mic button to record first.", "error");
-    return;
-  }
-  if (!selectedUser) {
-    showNotifToast("Select a user first.", "error");
-    return;
-  }
+  if (!recordingBlob || !selectedUser) return;
   const btn = document.getElementById("vSendBtn");
   btn.disabled = true;
   btn.textContent = "Uploading…";
   try {
-    const f = new File([recordingBlob], "voice.webm", { type: recordingBlob.type || "audio/webm" });
+    const f = new File([recordingBlob], "voice.webm", { type: "audio/webm" });
     const url = await uploadFile(f);
     if (url) {
-      await db.collection("chats").add(baseMsg({ audio: url, duration: recDuration || (Date.now() - recStart) }));
+      await db.collection("chats").add(baseMsg({ audio: url, duration: Date.now() - recStart }));
       cancelVoice();
       const senderName = document.getElementById('myName').textContent || 'Nexa User';
       sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
-    } else {
-      showNotifToast("Upload failed — please try again.", "error");
     }
   } catch (e) {
-    console.error("sendVoice error:", e);
-    showNotifToast("Failed to send voice note: " + (e.message || e), "error");
+    alert("Failed: " + e.message);
   }
   btn.disabled = false;
   btn.textContent = "✓ Send";
 }
 
 function cancelVoice() {
-  // If still recording, tear down the recorder/mic so it doesn't keep
-  // capturing in the background after the user discarded.
-  if (isRecording) {
-    voicePanel.removeEventListener("pointerup", onOverlayRecEnd);
-    voicePanel.removeEventListener("pointercancel", onOverlayRecEnd);
-    if (mediaRecorder && mediaRecorder.state === "recording") { try { mediaRecorder.stop(); } catch (_) {} }
-    if (recStream) { recStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} }); recStream = null; }
-    if (recTimer) { clearInterval(recTimer); recTimer = null; }
-    isRecording = false;
-    recFinalizing = false;
-    recordBtn.classList.remove("active");
-  }
   recordingBlob = null;
   audioChunks = [];
   voicePanel.classList.remove("active");
@@ -4377,31 +4045,11 @@ let callState = 'idle';         // 'idle' | 'ringing' | 'active' | 'ended'
 let callStartTime = null;
 let callTimerInterval = null;
 let callSignalUnsub = null;
-let callStatusUnsub = null;
 let incomingCallData = null;
 let isMicMuted = false;
 let isCameraOff = false;
 let isSpeakerOn = true;
 let currentFacingMode = 'user';
-
-// Strong acoustic-echo-cancellation audio constraints. The standard
-// `echoCancellation:true` flag alone does NOT always engage Chrome's full
-// hardware AEC pipeline — the legacy `goog*` constraints below are what
-// actually switch on the echo canceller / noise suppressor / high-pass
-// filter in Chromium's media pipeline. Without them, speaker output leaks
-// back into the mic and callers hear themselves (echo). All getUserMedia
-// audio captures in this file use this object.
-const NEXA_AUDIO_CONSTRAINTS = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-  googEchoCancellation: true,
-  googEchoCancellation2: true,
-  googNoiseSuppression: true,
-  googAutoGainControl: true,
-  googHighpassFilter: true
-};
-let callLogged = false;            // guards against double call-log entries
 const CALL_TIMEOUT_MS = 45000;  // 45 seconds ring timeout
 const MAX_RETRY_ATTEMPTS = 3;  // max PeerJS reconnect attempts
 let callTimeoutTimer = null;
@@ -4414,14 +4062,7 @@ const NEXA_ICE_SERVERS = [
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  // TURN relay: STUN alone cannot traverse symmetric NAT / CGNAT, so two
-  // devices on different networks often end up with one-way or no audio.
-  // The relay tunnels media when direct P2P ICE fails. Replace these shared
-  // OpenRelay test credentials with your own Metered/Twilio TURN for prod.
-  { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:4430', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+  { urls: 'stun:relay.metered.ca:80' }
 ];
 
 // ── Initialize PeerJS (called once on login) ──
@@ -4479,13 +4120,8 @@ function initPeerJS() {
     console.log('📞 Incoming PeerJS media call received from:', incomingMediaCall.peer);
     activeCall = incomingMediaCall;
     if (callState === 'active' && localStream) {
-      // CRITICAL: wire up the 'stream'/'close' handlers BEFORE answer().
-      // PeerJS can fire the 'stream' event (with the caller's remote audio/
-      // video) synchronously during/immediately after answer() — if
-      // setupCallStreamHandlers runs after answer(), that stream event hits
-      // zero listeners and the callee never hears/sees the caller.
-      setupCallStreamHandlers(incomingMediaCall);
       incomingMediaCall.answer(localStream);
+      setupCallStreamHandlers(incomingMediaCall);
     }
   });
 
@@ -4500,9 +4136,8 @@ function initPeerJS() {
       nexaPeer.on('call', (incomingMediaCall) => {
         activeCall = incomingMediaCall;
         if (callState === 'active' && localStream) {
-          // Attach handlers BEFORE answer() — see primary handler above.
-          setupCallStreamHandlers(incomingMediaCall);
           incomingMediaCall.answer(localStream);
+          setupCallStreamHandlers(incomingMediaCall);
         }
       });
     }
@@ -4562,12 +4197,6 @@ function listenForIncomingCalls() {
           }
         }
       });
-    }, err => {
-      // Transient errors (quota/network) would otherwise silently kill the
-      // incoming-call listener forever, so re-arm it after a short delay.
-      console.warn("Incoming-call listener error:", err);
-      if (callSignalUnsub) { try { callSignalUnsub(); } catch (e) {} callSignalUnsub = null; }
-      setTimeout(() => { if (currentUser && !callSignalUnsub) listenForIncomingCalls(); }, 5000);
     });
 }
 
@@ -4617,7 +4246,7 @@ async function startCall(type) {
   // Get local media stream
   try {
     const constraints = {
-      audio: NEXA_AUDIO_CONSTRAINTS,
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -4681,8 +4310,7 @@ async function startCall(type) {
 
 // ── Listen for call status changes ──
 function listenCallStatus(callDocId) {
-  if (callStatusUnsub) { callStatusUnsub(); callStatusUnsub = null; }
-  callStatusUnsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
+  const unsub = db.collection("calls").doc(callDocId).onSnapshot(doc => {
     if (!doc.exists) return;
     const data = doc.data();
 
@@ -4691,9 +4319,9 @@ function listenCallStatus(callDocId) {
       return;
     }
 
-    // Call answered – handle both caller and callee sides
+    // Call answered – handle caller side only (callee already handled in answerCall)
     if (data.status === "answered") {
-      // Caller side – initiate PeerJS call
+      // Caller side – initiate PeerJS call to the callee
       if (callDirection === "outgoing" && callState === "ringing") {
         stopRingtone();
         clearTimeout(callTimeoutTimer);
@@ -4706,34 +4334,30 @@ function listenCallStatus(callDocId) {
           setupCallStreamHandlers(activeCall);
         }
         startCallTimer();
-        return;
       }
-      // Callee side – UI update only
-      if (callDirection === "incoming" && callState === "ringing") {
-        stopRingtone();
-        clearTimeout(callTimeoutTimer);
-        callState = "active";
-        document.getElementById("callStatusLabel").textContent = "Connected";
-        document.getElementById("callConnectingSpinner").classList.add("hidden");
-        startCallTimer();
-        return;
-      }
+      // If callState is already 'active' (callee side), just ignore - call is working
+      return;
     }
 
     // Outgoing call declined
-    if (data.status === "declined" && callState === "ringing" && callDirection === "outgoing") {
-      stopRingtone();
-      clearTimeout(callTimeoutTimer);
-      showNotifToast("Call declined", "info");
-      logCallOnce('declined', callType, 0);
-      cleanupCall();
+    if (data.status === "declined") {
+      if (callState === "ringing" && callDirection === "outgoing") {
+        stopRingtone();
+        clearTimeout(callTimeoutTimer);
+        showNotifToast("Call declined", "info");
+        logCallToChat('declined', callType, 0);
+        cleanupCall();
+      }
+      unsub();
       return;
     }
 
     // Call missed (no answer within timeout)
     if (data.status === "missed") {
-      if (callDirection === "outgoing") logCallOnce('missed', callType, 0);
-      cleanupCall();
+      if (callState !== "active") {
+        cleanupCall();
+      }
+      unsub();
       return;
     }
 
@@ -4741,25 +4365,25 @@ function listenCallStatus(callDocId) {
     if (data.status === "ended") {
       const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
       if (callState === "active") {
-        logCallOnce('completed', callType, duration);
+        logCallToChat('completed', callType, duration);
       }
       cleanupCall();
+      unsub();
       return;
     }
 
     // Call failed (e.g., PeerJS error)
-    if (data.status === "failed" && callState === "ringing") {
-      showNotifToast("Call failed. Please try again.", "error");
+    if (data.status === "failed") {
+      if (callState === "ringing") {
+        showNotifToast("Call failed. Please try again.", "error");
+      }
       cleanupCall();
+      unsub();
+      return;
     }
-  });
-}
 
-// ── Log a call outcome exactly once per call session ──
-function logCallOnce(result, type, durationSec) {
-  if (callLogged) return;
-  callLogged = true;
-  logCallToChat(result, type, durationSec);
+    // Unknown status – just keep listening, do NOT cleanupCall
+  });
 }
 
 // ── Show Incoming Call UI ──
@@ -4813,8 +4437,7 @@ async function answerCall() {
   if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
   if (navigator.vibrate) navigator.vibrate(0);
 
-  callState = 'active';
-
+  // Keep callState as 'ringing' until Firestore update and PeerJS media exchange complete
   // Switch to active controls
   document.getElementById("activeCallControls").style.display = "flex";
   document.getElementById("incomingCallControls").style.display = "none";
@@ -4823,7 +4446,7 @@ async function answerCall() {
   // Get local media
   try {
     const constraints = {
-      audio: NEXA_AUDIO_CONSTRAINTS,
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -4840,7 +4463,24 @@ async function answerCall() {
     return;
   }
 
-  // Update Firestore signal to "answered"
+  // Now set state to active AFTER media is acquired
+  callState = 'active';
+
+  // Answer the PeerJS call if it already came in
+  if (activeCall) {
+    activeCall.answer(localStream);
+    setupCallStreamHandlers(activeCall);
+  } else {
+    // Wait for PeerJS call to arrive
+    nexaPeer.on('call', (mediaCall) => {
+      activeCall = mediaCall;
+      mediaCall.answer(localStream);
+      setupCallStreamHandlers(mediaCall);
+    });
+  }
+
+  // Update Firestore signal to "answered" AFTER answering PeerJS call
+  // This way the caller gets receiverPeerId and initiates nexaPeer.call()
   try {
     await db.collection("calls").doc(incomingCallData.id).update({
       status: "answered",
@@ -4851,44 +4491,11 @@ async function answerCall() {
     console.error("Error updating call status:", err);
   }
 
-  // Answer the PeerJS call if it already came in; otherwise wait for it once.
-  // The global nexaPeer.on('call') handler in initPeerJS() also answers when
-  // callState==='active' && localStream, but during the brief window between
-  // writing "answered" and the caller placing the PeerJS call we attach a
-  // one-time listener so we don't leak permanent duplicate handlers.
-  // CRITICAL: setupCallStreamHandlers MUST run before answer() — PeerJS can
-  // emit the 'stream' event synchronously during answer(), and without the
-  // handler wired first the callee never receives the caller's audio/video.
-  if (activeCall) {
-    setupCallStreamHandlers(activeCall);
-    activeCall.answer(localStream);
-  } else {
-    const waitTimeout = setTimeout(() => {
-      console.warn('⚠️ Timed out waiting for PeerJS call to arrive');
-    }, 20000);
-    let answered = false;
-    const oneTimeCallHandler = (mediaCall) => {
-      if (answered) return;
-      answered = true;
-      clearTimeout(waitTimeout);
-      // Best-effort removal; PeerJS may not expose .off, so the `answered` flag
-      // also prevents double-handling.
-      if (typeof nexaPeer.off === 'function') {
-        try { nexaPeer.off('call', oneTimeCallHandler); } catch (e) {}
-      }
-      if (!activeCall) {
-        activeCall = mediaCall;
-        // Attach stream handlers BEFORE answer() — see comment above.
-        setupCallStreamHandlers(mediaCall);
-        mediaCall.answer(localStream);
-      }
-    };
-    nexaPeer.on('call', oneTimeCallHandler);
-  }
-
-  // Listen for status changes
+  // Listen for further status changes (ended, etc.)
   listenCallStatus(incomingCallData.id);
   startCallTimer();
+  document.getElementById("callStatusLabel").textContent = "Connected";
+  document.getElementById("callConnectingSpinner").classList.add("hidden");
 }
 
 // ── Reject Incoming Call ──
@@ -4934,57 +4541,13 @@ async function endCall() {
   }
 
   if (callState === 'active' && duration > 0) {
-    logCallOnce('completed', callType, duration);
+    logCallToChat('completed', callType, duration);
   } else if (callState === 'ringing' && callDirection === 'outgoing') {
-    logCallOnce('cancelled', callType, 0);
+    logCallToChat('cancelled', callType, 0);
   }
 
   cleanupCall(true); // keep UI briefly to show duration
 }
-
-// ── Resume all remote audio (call + voice room) ─────────────────────
-// Browsers suspend autoplay audio / AudioContext until a user gesture, and
-// re-suspend them when the tab is backgrounded. On returning to the app we
-// must explicitly resume AudioContexts and re-trigger .play() on every
-// remote audio element, otherwise the user "can't hear anything" even
-// though the call is connected. This is the fix for audio going silent on
-// app open / focus.
-function resumeAllAudio() {
-  try {
-    // 1:1 call remote audio (voice) + remote video audio (video call)
-    ['remoteAudio', 'remoteVideo'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el && el.srcObject && el.paused) {
-        el.play().catch(() => {});
-      }
-    });
-
-    // Voice room remote peers
-    document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
-      if (el.srcObject && el.paused) el.play().catch(() => {});
-    });
-
-    // Resume any suspended AudioContexts (voice room DSP + analyser).
-    const vr = window.NexaVoiceRoom;
-    if (vr && vr.audioCtx && vr.audioCtx.state === 'suspended') {
-      vr.audioCtx.resume().catch(() => {});
-    }
-  } catch (e) {
-    console.warn('resumeAllAudio notice:', e);
-  }
-}
-
-// Re-mark online + resume audio whenever the window regains focus, since
-// mobile browsers drop these state aggressively. Kept independent of
-// setupHeartbeat so it runs even before the heartbeat is initialised.
-window.addEventListener('focus', () => {
-  if (typeof updateOnline === 'function' && window.currentUser) updateOnline(true);
-  if (typeof resumeAllAudio === 'function') resumeAllAudio();
-});
-// On platforms without a reliable focus event (iOS), a touchstart/click
-// unblocks audio autoplay the first time the user interacts with the app.
-window.addEventListener('touchstart', () => resumeAllAudio(), { once: true, passive: true });
-window.addEventListener('click', () => resumeAllAudio(), { once: true, passive: true });
 
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
@@ -4992,29 +4555,29 @@ function setupCallStreamHandlers(mediaCall) {
     console.log('📞 Remote stream received:', stream);
     remoteStream = stream;
 
-    const remoteVid = document.getElementById("remoteVideo");
-    const remoteAud = document.getElementById("remoteAudio");
+    // Always pipe remote audio through the dedicated <audio> element
+    // The <video id="remoteVideo"> is display:none during voice calls
+    // and browsers won't play audio from a hidden video element
+    const remoteAudio = document.getElementById("remoteCallAudio");
+    if (remoteAudio) {
+      remoteAudio.srcObject = stream;
+      remoteAudio.muted = !isSpeakerOn;
+      remoteAudio.volume = 1.0;
+      remoteAudio.play().catch(err => console.warn('📞 Remote audio play warning:', err));
+    }
 
+    const remoteVid = document.getElementById("remoteVideo");
     if (callType === 'video') {
-      // VIDEO: play remote audio + video through #remoteVideo
-      if (remoteAud) { remoteAud.pause(); remoteAud.srcObject = null; }
+      // For video calls: show remote video and pipe stream to video element too
       if (remoteVid) {
         remoteVid.srcObject = stream;
-        remoteVid.muted = false;          // video element must be unmuted to play remote audio
-        remoteVid.volume = isSpeakerOn ? 1.0 : 0.0;
-        remoteVid.play().catch(err => console.warn('📞 Remote video play warning:', err));
+        remoteVid.muted = true; // audio comes from remoteCallAudio, avoid echo
         remoteVid.classList.add("active");
+        remoteVid.play().catch(err => console.warn('📞 Remote video play warning:', err));
       }
       document.getElementById("callProfileCard").style.display = "none";
     } else {
-      // VOICE: play remote audio through dedicated #remoteAudio (NOT #remoteVideo)
-      if (remoteVid) { remoteVid.classList.remove("active"); remoteVid.srcObject = null; }
-      if (remoteAud) {
-        remoteAud.srcObject = stream;
-        remoteAud.muted = !isSpeakerOn;
-        remoteAud.volume = isSpeakerOn ? 1.0 : 0.0;
-        remoteAud.play().catch(err => console.warn('📞 Remote audio play warning:', err));
-      }
+      // For voice calls: hide video, show profile card
       if (remoteVid) remoteVid.classList.remove("active");
       document.getElementById("callProfileCard").style.display = "flex";
     }
@@ -5024,6 +4587,18 @@ function setupCallStreamHandlers(mediaCall) {
   });
 
   if (mediaCall.peerConnection) {
+    mediaCall.peerConnection.ontrack = (event) => {
+      console.log('📞 Dynamic remote track added:', event.track.kind);
+      if (event.streams && event.streams[0]) {
+        remoteStream = event.streams[0];
+        const remoteVid = document.getElementById("remoteVideo");
+        if (remoteVid) {
+          remoteVid.srcObject = remoteStream;
+          remoteVid.play().catch(() => {});
+        }
+      }
+    };
+
     mediaCall.peerConnection.oniceconnectionstatechange = () => {
       console.log('📞 ICE Connection State:', mediaCall.peerConnection.iceConnectionState);
       if (mediaCall.peerConnection.iceConnectionState === 'failed') {
@@ -5037,7 +4612,7 @@ function setupCallStreamHandlers(mediaCall) {
     console.log('📞 Call stream closed');
     if (callState === 'active') {
       const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
-      logCallOnce('completed', callType, duration);
+      logCallToChat('completed', callType, duration);
       cleanupCall();
     }
   });
@@ -5190,14 +4765,9 @@ async function flipCamera() {
 function toggleCallSpeaker() {
   isSpeakerOn = !isSpeakerOn;
   const remoteVid = document.getElementById("remoteVideo");
-  const remoteAud = document.getElementById("remoteAudio");
   if (remoteVid) {
     remoteVid.muted = !isSpeakerOn;
     remoteVid.volume = isSpeakerOn ? 1.0 : 0.0;
-  }
-  if (remoteAud) {
-    remoteAud.muted = !isSpeakerOn;
-    remoteAud.volume = isSpeakerOn ? 1.0 : 0.0;
   }
 
   const btn = document.getElementById("callSpeakerBtn");
@@ -5234,9 +4804,6 @@ function cleanupCall() {
   if (vibrationInterval) { clearInterval(vibrationInterval); vibrationInterval = null; }
   if (navigator.vibrate) navigator.vibrate(0);
 
-  // Stop listening to this call's status doc
-  if (callStatusUnsub) { try { callStatusUnsub(); } catch (e) {} callStatusUnsub = null; }
-
   // Close PeerJS call
   if (activeCall) {
     try { activeCall.close(); } catch (e) {}
@@ -5258,8 +4825,6 @@ function cleanupCall() {
   document.getElementById("localVideoContainer").classList.remove("active");
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("localVideo").srcObject = null;
-  const remoteAud = document.getElementById("remoteAudio");
-  if (remoteAud) { try { remoteAud.pause(); } catch (e) {} remoteAud.srcObject = null; }
 
   callState = 'idle';
   callDirection = null;
@@ -5267,7 +4832,6 @@ function cleanupCall() {
   incomingCallData = null;
   isMicMuted = false;
   isCameraOff = false;
-  callLogged = false;
 }
 
 // ── Log Call to Chat ──
@@ -5324,11 +4888,10 @@ function openCallModal(type) {
 
 function openUserProfile() {
   if (!selectedUser) {
-    showNotifToast("Select a user first", "info");
+    alert("Select a user first");
     return;
   }
-  const photo = selectedUser.photo || "https://i.imgur.com/HeIi0wU.png";
-  openProfilePic(photo);
+  showNotifToast(`👤 ${selectedUser.displayName || 'User'}`, "info");
 }
 
 /* =========================================================================
@@ -5344,51 +4907,17 @@ let viewingStoryUid = null;
 let storyCurrentDuration = 0;
 
 function startStatusListener() {
-  const DAY_MS = 24 * 60 * 60 * 1000;
-  // Convert a story's expiry to a ms epoch. New stories carry an `expireAt`
-  // Firestore Timestamp; legacy docs use `createdAt` (ms) + 24h.
-  const storyExpiryMs = (s) => {
-    if (s.expireAt && typeof s.expireAt.toMillis === "function") {
-      try { return s.expireAt.toMillis(); } catch (e) {}
-    }
-    // Firestore Timestamp may arrive as { _seconds, _nanoseconds } over the
-    // compat SDK in some builds.
-    if (s.expireAt && typeof s.expireAt._seconds === "number") {
-      return s.expireAt._seconds * 1000 + Math.floor((s.expireAt._nanoseconds || 0) / 1e6);
-    }
-    if (typeof s.createdAt === "number") return s.createdAt + DAY_MS;
-    return -Infinity; // no usable timestamp → treat as already expired
-  };
-
   db.collection("status").onSnapshot(snap => {
     userStatuses = {};
-    const now = Date.now();
-    // Any signed-in client may delete a story once it is past expiry (the
-    // Firestore rules allow this), so every open app garbage-collects ALL
-    // expired stories — they truly disappear 24h after posting regardless of
-    // who posted them.
-    const expired = [];
     snap.forEach(doc => {
       const s = doc.data();
       const uid = s.uid;
-      const expiresAt = storyExpiryMs(s);
-      if (expiresAt <= now) {
-        expired.push(doc.ref);
-        return; // don't render an expired story
+      const now = Date.now();
+      if (now - s.createdAt < 24 * 60 * 60 * 1000) {
+        if (!userStatuses[uid]) userStatuses[uid] = [];
+        userStatuses[uid].push({ id: doc.id, ...s });
       }
-      if (!userStatuses[uid]) userStatuses[uid] = [];
-      userStatuses[uid].push({ id: doc.id, ...s });
     });
-    // Best-effort batch delete of expired stories (Firestore caps 500/batch).
-    if (expired.length) {
-      let batch = db.batch();
-      let n = 0;
-      expired.forEach(ref => {
-        batch.delete(ref);
-        if (++n === 450) { batch.commit().catch(() => {}); batch = db.batch(); n = 0; }
-      });
-      if (n) batch.commit().catch(() => {});
-    }
     renderStoriesBar();
     renderUsers();
   });
@@ -5983,7 +5512,6 @@ async function reshareStory() {
         name: ownerName
       },
       createdAt: Date.now(),
-      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
@@ -6320,9 +5848,6 @@ async function shareStatus() {
       uid: currentUser.uid,
       type: statusTab,
       createdAt: Date.now(),
-      // Auto-expire this story 24h after posting. Used by Firestore rules to
-      // allow anyone to delete it once expired, and by the listener to GC it.
-      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
@@ -6491,13 +6016,21 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
+function openProfilePic(src) {
+  const modal = document.getElementById('profilePicModal');
+  const img = document.getElementById('modalProfileImg');
+  img.src = src;
+  modal.classList.add('active');
+}
+
+function closeProfilePicModal(event) {
+  if (event.target.id === 'profilePicModal') {
+    event.target.classList.remove('active');
+  }
+}
+
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
-  <div class="modal-content profile-pic-content">
-    <button class="profile-pic-close" onclick="closeProfilePicModal(event)" title="Close" aria-label="Close">✕</button>
-    <img id="modalProfileImg" src="" alt="Profile Picture">
-  </div>
-</div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
 
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">

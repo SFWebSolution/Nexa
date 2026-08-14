@@ -17,68 +17,68 @@
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ╔─ PRIMARY PALETTE ─╗ */
-  --primary: #4f8fff;
-  --primary-dk: #2b5fd6;
-  --primary-lt: #7ca8ff;
-  --primary-glow: rgba(79, 143, 255, 0.4);
-  --primary-soft: rgba(79, 143, 255, 0.08);
+  /* ╔─ PRIMARY PALETTE (INDIGO & VIOLET) ─╗ */
+  --primary: #6366f1;
+  --primary-dk: #4f46e5;
+  --primary-lt: #818cf8;
+  --primary-glow: rgba(99, 102, 241, 0.35);
+  --primary-soft: rgba(99, 102, 241, 0.1);
   
   /* ╔─ ACCENT COLORS ─╗ */
-  --cyan: #00d9ff;
-  --cyan-soft: rgba(0, 217, 255, 0.1);
-  --online: #10d981;
-  --online-soft: rgba(16, 217, 129, 0.15);
-  --danger: #ff3860;
-  --danger-soft: rgba(255, 56, 96, 0.1);
+  --cyan: #38bdf8;
+  --cyan-soft: rgba(56, 189, 248, 0.1);
+  --online: #10b981;
+  --online-soft: rgba(16, 185, 129, 0.15);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.12);
   
-  /* ╔─ SURFACE PALETTE ─╗ */
-  --bg-0: #080c14;
-  --bg-1: #0d1219;
-  --bg-2: #121820;
-  --bg-3: #17202e;
-  --bg-4: #1c2738;
-  --bg-5: #243040;
+  /* ╔─ SURFACE PALETTE (DARK OBSIDIAN SLATE) ─╗ */
+  --bg-0: #090d16;
+  --bg-1: #0f172a;
+  --bg-2: #151d30;
+  --bg-3: #1e293b;
+  --bg-4: #283548;
+  --bg-5: #334155;
   
   /* ╔─ TEXT HIERARCHY ─╗ */
   --text-0: #ffffff;
-  --text-1: #e5e9f0;
-  --text-2: #a8b5cc;
-  --text-3: #6b7a95;
+  --text-1: #f1f5f9;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
   
   /* ╔─ BORDER & DIVIDER ─╗ */
-  --border-dk: rgba(79, 143, 255, 0.07);
-  --border-md: rgba(79, 143, 255, 0.14);
-  --border-lt: rgba(79, 143, 255, 0.24);
+  --border-dk: rgba(255, 255, 255, 0.06);
+  --border-md: rgba(255, 255, 255, 0.12);
+  --border-lt: rgba(255, 255, 255, 0.18);
   
   /* ╔─ ELEVATION SYSTEM ─╗ */
-  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
-  --glow-primary: 0 0 24px rgba(79, 143, 255, 0.4);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.7);
+  --glow-primary: 0 0 24px rgba(99, 102, 241, 0.35);
   
   /* ╔─ ANIMATION CURVES ─╗ */
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-sharp: cubic-bezier(0.4, 0, 0.4, 1);
-  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   --spring-loose: cubic-bezier(0.215, 0.61, 0.355, 1);
   
   /* ╔─ TIMING ─╗ */
   --duration-xs: 120ms;
   --duration-sm: 180ms;
-  --duration-md: 300ms;
-  --duration-lg: 450ms;
+  --duration-md: 250ms;
+  --duration-lg: 400ms;
   
   /* ╔─ SPACING & RADIUS ─╗ */
   --radius-xs: 6px;
   --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 20px;
-  --radius-xl: 24px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
   
   /* ╔─ TRANSITIONS ─╗ */
   --t: var(--duration-md);
@@ -1032,82 +1032,6 @@ select:focus-visible {
 
 .story-item.add-story .story-name {
   color: var(--primary);
-}
-
-/* ── "Active Now" online bar (Facebook-style round avatars + green dots) ── */
-.active-now-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px 10px;
-  border-bottom: 1px solid var(--border-dk);
-  background: rgba(10, 15, 22, 0.35);
-  flex-shrink: 0;
-}
-
-.active-now-items {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: visible;
-  width: 100%;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  scroll-behavior: smooth;
-}
-.active-now-items::-webkit-scrollbar { display: none; }
-
-.active-now-item {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  padding: 2px;
-  transition: transform var(--tf);
-}
-.active-now-item:hover { transform: scale(1.08); }
-
-.active-now-avatar-wrap {
-  position: relative;
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-}
-
-.active-now-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid var(--bg-1);
-  background: var(--bg-3);
-  display: block;
-}
-
-.active-now-dot {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--online);
-  border: 2.5px solid var(--bg-1);
-  box-shadow: 0 0 8px rgba(16, 217, 129, 0.6);
-}
-
-.active-now-name {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-2);
-  text-align: center;
-  width: 56px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -2869,57 +2793,6 @@ input[type="range"] {
   display: flex;
 }
 
-/* PROFILE PICTURE VIEWER MODAL */
-.profile-pic-content {
-  position: relative;
-  background: transparent;
-  border: none;
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-  max-width: 90vw;
-  max-height: 85vh;
-  padding: 0;
-  overflow: visible;
-  animation: scaleIn 0.25s var(--spring);
-}
-
-.profile-pic-content img#modalProfileImg {
-  display: block;
-  width: auto;
-  height: auto;
-  max-width: 90vw;
-  max-height: 85vh;
-  object-fit: contain;
-  border-radius: 20px;
-  background: #0b0f17;
-}
-
-.profile-pic-close {
-  position: absolute;
-  top: -14px;
-  right: -14px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(20, 26, 36, 0.95);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 5;
-  transition: all 0.2s ease;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-}
-
-.profile-pic-close:hover {
-  background: var(--danger, #ef4444);
-  transform: scale(1.08);
-}
-
 .modal {
   background: rgba(18, 24, 32, 0.97);
   backdrop-filter: blur(24px);
@@ -3521,15 +3394,6 @@ input[type="range"] {
   .pwa-btn {
     padding: 7px 12px;
     font-size: 11px;
-  }
-  .active-now-avatar-wrap,
-  .active-now-avatar {
-    width: 42px;
-    height: 42px;
-  }
-  .active-now-name {
-    width: 48px;
-    font-size: 9px;
   }
 }
 
