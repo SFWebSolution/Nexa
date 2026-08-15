@@ -9,7 +9,7 @@
   --vr-bg: rgba(15, 23, 42, 0.95);
   --vr-card-bg: rgba(30, 41, 59, 0.85);
   --vr-glass-border: rgba(255, 255, 255, 0.1);
-  --vr-primary: #6366f1;
+  --vr-primary: #2b8fff;
   --vr-whatsapp-green: #10b981;
   --vr-accent-cyan: #38bdf8;
   --vr-accent-purple: #8b5cf6;
@@ -194,7 +194,7 @@
   background: rgba(18, 24, 33, 0.96);
   border: 1px solid var(--vr-glass-border);
   border-radius: 28px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(37, 211, 102, 0.15);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -230,7 +230,7 @@
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(37, 211, 102, 0.2), rgba(0, 240, 255, 0.2));
+  background: rgba(37, 211, 102, 0.12);
   border: 1px solid rgba(37, 211, 102, 0.4);
   display: flex;
   align-items: center;
@@ -673,7 +673,7 @@
 .nexa-vr-search-box:focus {
   outline: none;
   border-color: var(--vr-whatsapp-green);
-  box-shadow: 0 0 10px rgba(37, 211, 102, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .nexa-vr-user-list {
@@ -746,7 +746,7 @@
   border: 1px solid var(--vr-whatsapp-green);
   border-radius: 20px;
   padding: 16px 20px;
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(37, 211, 102, 0.3);
+  box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -833,7 +833,7 @@
 
 @keyframes nexaVrPulseRing {
   0% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7); }
-  70% { transform: scale(1.2); opacity: 0; box-shadow: 0 0 0 20px rgba(37, 211, 102, 0); }
+  70% { transform: scale(1.2); opacity: 0; box-shadow: var(--shadow-sm); }
   100% { transform: scale(1.2); opacity: 0; box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
 }
 

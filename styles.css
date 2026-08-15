@@ -10,9 +10,9 @@
 
 :root {
   /* PRIMARY ACCENTS - Indigo & Electric Violet */
-  --color-primary: #6366f1;
-  --color-primary-light: #818cf8;
-  --color-primary-dark: #4f46e5;
+  --color-primary: #2b8fff;
+  --color-primary-light: #5aa6f5;
+  --color-primary-dark: #1a6fe0;
   --color-secondary: #8b5cf6;
   --color-tertiary: #3b82f6;
   --color-accent: #ec4899;
@@ -43,7 +43,7 @@
   --glass-bg-hover: rgba(30, 41, 59, 0.85);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-strong: rgba(255, 255, 255, 0.16);
-  --glass-border-accent: rgba(99, 102, 241, 0.35);
+  --glass-border-accent: rgba(43, 143, 255, 0.35);
   
   /* ELEVATED SHADOWS & AMBIENT GLOWS */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -51,11 +51,11 @@
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
   --shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6);
   
-  --glow-sm: 0 0 12px rgba(99, 102, 241, 0.25);
-  --glow-md: 0 0 24px rgba(99, 102, 241, 0.4);
-  --glow-lg: 0 0 40px rgba(99, 102, 241, 0.55);
-  --glow-purple: 0 0 24px rgba(139, 92, 246, 0.35);
-  --glow-pink: 0 0 24px rgba(236, 72, 153, 0.35);
+  --glow-sm: 0 0 0 0 transparent;
+  --glow-md: 0 0 0 0 transparent;
+  --glow-lg: 0 0 0 0 transparent;
+  --glow-purple: 0 0 0 0 transparent;
+  --glow-pink: 0 0 0 0 transparent;
   
   /* SPACING SCALE */
   --spacing-xs: 0.25rem;
@@ -128,7 +128,7 @@ body {
 }
 
 ::selection {
-  background-color: rgba(99, 102, 241, 0.3);
+  background-color: rgba(43, 143, 255, 0.3);
   color: #ffffff;
 }
 
@@ -208,7 +208,7 @@ a:hover {
 }
 
 .btn:focus-visible {
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary {
@@ -253,7 +253,7 @@ a:hover {
 
 .btn-danger:hover {
   background: #dc2626;
-  box-shadow: var(--shadow-md), 0 0 16px rgba(239, 68, 68, 0.4);
+  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 
@@ -328,7 +328,7 @@ textarea:focus,
 select:focus {
   background: var(--bg-tertiary);
   border-color: var(--color-primary-light);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 textarea {
@@ -459,7 +459,7 @@ label {
 
 .status-online {
   background: var(--color-success);
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  box-shadow: var(--shadow-sm);
 }
 
 .status-away { background: var(--color-warning); }
