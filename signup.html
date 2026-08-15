@@ -11,8 +11,8 @@
     body {
       margin: 0;
       font-family: var(--font-body);
-      background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.15), transparent 45%),
-                  radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.12), transparent 45%),
+      background: radial-gradient(circle at 20% 20%, rgba(43, 143, 255, 0.15), transparent 45%),
+                  radial-gradient(circle at 80% 80%, rgba(43, 143, 255, 0.12), transparent 45%),
                   var(--bg-primary);
       display: flex;
       justify-content: center;
@@ -39,7 +39,7 @@
       border-radius: var(--radius-xl);
       border: 1px solid var(--glass-border-strong);
       backdrop-filter: blur(24px);
-      box-shadow: var(--shadow-xl), 0 0 40px rgba(99, 102, 241, 0.1);
+      box-shadow: var(--shadow-sm);
       animation: slideInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 
@@ -51,9 +51,6 @@
       font-size: var(--text-3xl);
       font-weight: 800;
       letter-spacing: -1px;
-      background: linear-gradient(135deg, #ffffff, var(--color-primary-light));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
     }
 
     .input-group {
@@ -85,8 +82,8 @@
     }
 
     .password-toggle-btn:hover {
-      color: #00f0ff;
-      background: rgba(0, 240, 255, 0.1);
+      color: var(--color-primary);
+      background: var(--color-primary-soft);
       transform: translateY(-50%);
       box-shadow: none;
     }
@@ -123,7 +120,7 @@
     input:focus {
       border-color: var(--color-primary);
       background: rgba(10, 14, 39, 0.8);
-      box-shadow: 0 0 20px rgba(0, 240, 255, 0.25), inset 0 0 8px rgba(0, 240, 255, 0.1);
+      box-shadow: var(--shadow-sm);
       transform: translateY(-1px);
     }
 
@@ -146,12 +143,12 @@
       letter-spacing: 1px;
       cursor: pointer;
       transition: all var(--transition-base);
-      box-shadow: 0 6px 20px rgba(0, 240, 255, 0.3);
+      box-shadow: var(--shadow-sm);
     }
 
     button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.5);
+      box-shadow: var(--shadow-md);
     }
 
     button:active {
@@ -172,7 +169,7 @@
     }
 
     .login-link a:hover {
-      text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+      text-shadow: none;
     }
 
     .msg {
@@ -183,8 +180,8 @@
       min-height: 20px;
     }
 
-    .error { color: #ff5252; text-shadow: 0 0 8px rgba(255, 82, 82, 0.2); }
-    .success { color: #00e676; text-shadow: 0 0 8px rgba(0, 230, 118, 0.2); }
+    .error { color: #ff5252; text-shadow: none; }
+    .success { color: #00e676; text-shadow: none; }
   </style>
 </head>
 
@@ -381,8 +378,8 @@ function showPopup(text) {
   popup.style.top = "20px";
   popup.style.left = "50%";
   popup.style.transform = "translateX(-50%)";
-  popup.style.background = "#00f0ff";
-  popup.style.color = "#000";
+  popup.style.background = "#1a2230";
+  popup.style.color = "#ffffff";
   popup.style.padding = "12px 20px";
   popup.style.borderRadius = "10px";
   popup.style.fontWeight = "bold";
