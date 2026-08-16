@@ -233,6 +233,7 @@
   A NON-host leaving only deletes their OWN participant doc (no room deletion).
 - `initPeerJS()` retries if PeerJS isn't loaded yet, falls back to a unique id on `unavailable-id` error, and auto-reconnects on `disconnected`/transient errors. `callPeer` only fires when `this.peer.open`.
 - `?voiceroom=<roomId>` URL param auto-joins a room (waits for Firebase + user) — but `joinRoom` still enforces the `canJoinRoom` access check, so an uninvited user following the link is refused. `copyInviteLink()` notes that only invited users can join.
+- **In-room text chat:** `subscribeToRoomChat()` listens to the `voice_rooms/{roomId}/messages` subcollection (`orderBy('createdAt')`, `limitToLast(100)`). `sendRoomMessage()` adds a doc `{uid, name, avatar, text, createdAt: Date.now()}`. The chat panel markup lives inside the voice room overlay body (`#nexaVrChatMessages` / `#nexaVrChatInput`). `roomChatUnsub` is cleared in `leaveRoom()` alongside `roomFirestoreUnsub`. Firestore rules allow any signed-in user to read, only the sender to create/delete their own message.
 
 ## Invite gotchas (nexa-voice-room.js)
 - An invite is delivered via TWO paths: BroadcastChannel `INVITE_USER`

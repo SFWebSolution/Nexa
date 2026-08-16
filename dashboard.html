@@ -110,6 +110,12 @@
             <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start Voice Chat
           </button>
         </div>
+        <div class="active-now-bar" id="activeNowBar" aria-label="Active now">
+          <div class="active-now-label">Active Now</div>
+          <div class="active-now-scroller" id="activeNowScroller">
+            <div class="active-now-empty">No friends online right now</div>
+          </div>
+        </div>
         <div class="search-wrap">
           <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
         </div>
@@ -800,6 +806,13 @@ firebase.initializeApp({
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// Expose globals for external modules (nexa-voice-room.js) and leaderboard.
+window.db = db;
+window.auth = auth;
+window.isUserOnline = isUserOnline;
+window.allUsersData = [];
+window.userPresenceCache = {};
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/[&<>"']/g, c => ({
@@ -1095,6 +1108,7 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   currentUser = user;
+  window.currentUser = user;
   console.log("👤 User:", user.email);
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
@@ -1108,6 +1122,7 @@ auth.onAuthStateChanged(async (user) => {
 
   if (!profileSetupRequired) {
     startUsersListener();
+    startSharedPresenceListener();
     startLeaderboardListeners();
     loadInitialChatTimestamps();
     setupHeartbeat();
@@ -1331,7 +1346,7 @@ function handleLogout() {
   }
 }
 
-let allUsersData = [];
+let allUsersData = window.allUsersData;
 let unreadMessages = {};
 let mutedChats = {};
 let favoritedChats = {};
@@ -1339,7 +1354,7 @@ let blockedUsers = {};
 let deletedChats = {};
 let latestMsgTime = {};
 let latestMsgText = {};
-let userPresenceCache = {};
+let userPresenceCache = window.userPresenceCache;
 let userStatus = "online";
 let presenceUnsubs = {};
 let userToDelete = null;
@@ -1405,7 +1420,8 @@ const PRESENCE_TIMEOUT_MS = 35000;
 function isUserOnline(pdata) {
   if (!pdata) return false;
   if (pdata.online === false || pdata.status === "offline") return false;
-  const lastSeen = pdata.lastSeen || 0;
+  if (pdata.online === true || pdata.status === "online") return true;
+  const lastSeen = pdata.lastSeen || pdata.last_seen || 0;
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
 
@@ -1443,30 +1459,82 @@ function startUsersListener() {
           displayName: displayName,
           photo: d.photoUrl || d.photo || "https://i.imgur.com/HeIi0wU.png"
         });
-
-        // Subscribe to this user's presence exactly once, ever.
-        if (!presenceUnsubs[uid]) {
-          presenceUnsubs[uid] = db.collection("presence").doc(uid).onSnapshot(pdoc => {
-            const pdata = pdoc.data() || {};
-            userPresenceCache[uid] = pdata;
-            updateUserOnlineDot(uid, pdata);
-          });
-        }
       }
     });
 
-    // Clean up presence listeners for users who no longer exist.
-    Object.keys(presenceUnsubs).forEach(uid => {
-      if (!seenUids.has(uid)) {
-        presenceUnsubs[uid]();
-        delete presenceUnsubs[uid];
-      }
-    });
+    // Keep window.allUsersData in sync (same reference) for external modules.
+    window.allUsersData = allUsersData;
 
     saveCachedUsers();
     renderUsers();
+    renderActiveNowBar();
     renderWeeklyLeaderboard();
   });
+}
+
+// Single shared presence listener — feeds userPresenceCache for the whole app
+// (online dots, Active Now bar, chat-header last seen, voice-room invite list).
+// Do NOT re-introduce per-user presence/{uid} doc listeners; one per contact
+// explodes Firestore reads and blows the Spark-plan quota.
+let sharedPresenceUnsub = null;
+function startSharedPresenceListener() {
+  if (sharedPresenceUnsub || !db) return;
+  sharedPresenceUnsub = db.collection("presence").onSnapshot(snap => {
+    snap.docChanges().forEach(change => {
+      const uid = change.doc.id;
+      const pdata = change.doc.data() || {};
+      userPresenceCache[uid] = pdata;
+      updateUserOnlineDot(uid, pdata);
+    });
+    // Re-render dependent UI with the fresh cache.
+    renderUsers();
+    renderActiveNowBar();
+    if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+  }, err => console.error("Shared presence listener error:", err));
+}
+
+// Facebook-style "Active Now" horizontal avatar strip. Reads from the shared
+// userPresenceCache so it stays in sync with the single presence listener.
+function renderActiveNowBar() {
+  const scroller = document.getElementById("activeNowScroller");
+  if (!scroller) return;
+
+  const onlineUsers = allUsersData
+    .filter(u => !blockedUsers[u.uid] && isUserOnline(userPresenceCache[u.uid]))
+    .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
+
+  if (!onlineUsers.length) {
+    if (!scroller.querySelector(".active-now-empty")) {
+      scroller.innerHTML = '<div class="active-now-empty">No friends online right now</div>';
+    }
+    return;
+  }
+
+  // Avoid full re-render when the online set hasn't changed (preserves scroll).
+  const key = onlineUsers.map(u => u.uid).join(",");
+  if (scroller.dataset.key === key) return;
+  scroller.dataset.key = key;
+
+  scroller.innerHTML = onlineUsers.map(u => {
+    const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
+    const name = escapeHtml(u.displayName || "User");
+    return `
+      <button class="active-now-item" data-uid="${u.uid}" onclick="selectUserFromActiveNow('${u.uid}')" title="${name}">
+        <span class="active-now-avatar-wrap">
+          <img src="${photo}" class="active-now-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <span class="active-now-dot"></span>
+        </span>
+        <span class="active-now-name">${name.split(' ')[0]}</span>
+      </button>`;
+  }).join("");
+}
+
+function selectUserFromActiveNow(uid) {
+  const u = allUsersData.find(x => x.uid === uid);
+  if (u) {
+    const el = document.querySelector(`.user-item[data-uid="${uid}"]`);
+    selectChat(u, el);
+  }
 }
 
 let lastRenderedUserOrder = "";
@@ -1866,12 +1934,14 @@ function startLeaderboardListeners() {
     }, err => console.error("Leaderboard users listener error:", err));
   }
 
-  // 2. Listen to ALL presence docs in system (exact same as admin.html)
+  // 2. Listen to ALL presence docs in system. Also feed userPresenceCache so
+  // the leaderboard and the shared presence listener stay consistent.
   if (!leaderboardPresenceUnsub) {
     leaderboardPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
       adminPresenceData = {};
       snapshot.docs.forEach(doc => {
         adminPresenceData[doc.id] = doc.data();
+        userPresenceCache[doc.id] = doc.data();
       });
       renderWeeklyLeaderboard();
     }, err => console.error("Leaderboard presence listener error:", err));
@@ -2265,13 +2335,12 @@ function updateChatHeaderPresence(data) {
 }
 
 function listenPresence() {
-  if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
+  // Do NOT open a per-user presence listener — the shared listener
+  // (startSharedPresenceListener) already feeds userPresenceCache and
+  // updates the chat header. Just refresh from the cache.
   if (!selectedUser) return;
-  unsubChatPresence = db.collection("presence").doc(selectedUser.uid).onSnapshot(doc => {
-    const data = doc.data() || {};
-    userPresenceCache[selectedUser.uid] = data;
-    updateChatHeaderPresence(data);
-  });
+  if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
+  updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
 }
 
 function formatLastSeen(ts) {
@@ -2323,15 +2392,43 @@ function loadUnreadCounts() {
 
 async function updateOnline(on) {
   if (!currentUser) return;
-  const isOnlineState = on && document.visibilityState === "visible";
+  // Mark online whenever the app is open — do NOT gate on
+  // document.visibilityState === "visible". Mobile backgrounding flips
+  // visibility constantly and caused users to appear offline. Offline is
+  // only set on explicit pagehide/beforeunload.
+  const isOnlineState = !!on;
   userStatus = isOnlineState ? "online" : "offline";
   try {
     await db.collection("presence").doc(currentUser.uid).set(
-      { online: isOnlineState, status: isOnlineState ? "online" : "offline", lastSeen: Date.now(), uid: currentUser.uid },
+      { online: isOnlineState, status: isOnlineState ? "online" : "offline", last_seen: Date.now(), lastSeen: Date.now(), uid: currentUser.uid },
       { merge: true }
     );
   } catch (err) {
     console.error("Error updating presence:", err);
+  }
+}
+
+// Browsers block autoplay + suspend AudioContext until a user gesture and on
+// backgrounding. This re-triggers .play() on the 1:1 call audio/video elements,
+// all voice-room remote audio elements, and resumes the voice room's AudioContext.
+// Wired to window focus, visibilitychange, and one-shot touchstart/click above.
+function resumeAllAudio() {
+  try {
+    const els = [
+      document.getElementById("remoteCallAudio"),
+      document.getElementById("remoteVideo"),
+      ...document.querySelectorAll('audio[id^="audio_"]')
+    ];
+    els.forEach(el => {
+      if (el && el.srcObject && el.paused) {
+        el.play().catch(() => {});
+      }
+    });
+    if (window.NexaVoiceRoom && NexaVoiceRoom.audioCtx && NexaVoiceRoom.audioCtx.state === "suspended") {
+      NexaVoiceRoom.audioCtx.resume().catch(() => {});
+    }
+  } catch (e) {
+    console.warn("resumeAllAudio error:", e);
   }
 }
 
@@ -2360,11 +2457,23 @@ function setupHeartbeat() {
       updateOnline(false);
     } else {
       updateOnline(true);
+      resumeAllAudio();
     }
   });
 
   window.addEventListener("beforeunload", () => updateOnline(false));
   window.addEventListener("pagehide", () => updateOnline(false));
+  window.addEventListener("focus", resumeAllAudio);
+
+  // One-shot gesture listeners so autoplay-blocked audio resumes on first
+  // user interaction (mobile especially blocks until a gesture happens).
+  const resumeOnGesture = () => {
+    resumeAllAudio();
+    document.removeEventListener("touchstart", resumeOnGesture);
+    document.removeEventListener("click", resumeOnGesture);
+  };
+  document.addEventListener("touchstart", resumeOnGesture, { once: true, passive: true });
+  document.addEventListener("click", resumeOnGesture, { once: true });
 
   let inactivityTimer = null;
 
@@ -4768,6 +4877,13 @@ function toggleCallSpeaker() {
   if (remoteVid) {
     remoteVid.muted = !isSpeakerOn;
     remoteVid.volume = isSpeakerOn ? 1.0 : 0.0;
+  }
+  // Voice calls play audio through the dedicated <audio> element, so mute
+  // that too — otherwise speaker toggle has no effect on voice-only calls.
+  const remoteAudio = document.getElementById("remoteCallAudio");
+  if (remoteAudio) {
+    remoteAudio.muted = !isSpeakerOn;
+    remoteAudio.volume = isSpeakerOn ? 1.0 : 0.0;
   }
 
   const btn = document.getElementById("callSpeakerBtn");
