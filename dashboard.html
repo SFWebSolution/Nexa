@@ -265,6 +265,16 @@
             <div class="profile-info-box status-active">● Active & Connected</div>
           </div>
 
+          <div class="profile-field-group">
+            <label class="profile-field-label">📝 Note (shows on your profile for 24 hours)</label>
+            <div class="note-editor-row">
+              <input type="text" id="profileNoteInput" class="note-input" placeholder="What's on your mind?" maxlength="160">
+              <button class="note-save-btn" id="noteSaveBtn" onclick="saveProfileNote()">Post</button>
+            </div>
+            <div id="profileNoteDisplay" style="margin-top: 8px;"></div>
+            <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">Your note appears on your profile and auto-clears after 24 hours.</div>
+          </div>
+
           <button class="profile-logout-btn" onclick="handleLogout()">
             <span>🚪 Sign Out</span>
           </button>
@@ -438,6 +448,46 @@
   </div>
 </div>
 
+<!-- ADD YOURS COMPOSER — post a response to an "Add Yours" prompt -->
+<div class="status-modal-overlay" id="addYoursModalOverlay" onclick="handleAddYoursOverlayClick(event)">
+  <div class="status-modal" id="addYoursModalBox">
+    <div class="status-modal-header">
+      <div class="status-modal-title">➕ Add Yours</div>
+      <button class="status-modal-close" onclick="closeAddYoursModal()">✕</button>
+    </div>
+    <div class="addyours-prompt-banner">
+      <div class="addyours-prompt-label">Responding to</div>
+      <div class="addyours-prompt-text" id="addYoursPromptDisplay">Add Yours</div>
+    </div>
+    <div class="status-tabs">
+      <button class="status-tab active" id="addYoursTypeImgBtn" onclick="setAddYoursType('image')">Image</button>
+      <button class="status-tab" id="addYoursTypeVidBtn" onclick="setAddYoursType('video')">Video</button>
+      <button class="status-tab" id="addYoursTypeTextBtn" onclick="setAddYoursType('text')">Text</button>
+    </div>
+    <div class="status-preview" id="addYoursPreview"><span>Tap to add a photo</span></div>
+    <input type="file" id="addYoursImgInput" hidden accept="image/*" onchange="previewAddYoursImage(event)">
+    <input type="file" id="addYoursVidInput" hidden accept="video/*" onchange="previewAddYoursVideo(event)">
+    <textarea id="addYoursCaption" class="status-text-input" placeholder="Add a caption (optional)…" maxlength="280"></textarea>
+    <div class="status-actions">
+      <button class="status-action-btn" onclick="closeAddYoursModal()">Cancel</button>
+      <button class="status-action-btn primary" id="addYoursShareBtn" onclick="shareAddYoursResponse()">Share</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROMPT RESPONSES VIEWER — browse all responses to an "Add Yours" prompt -->
+<div class="notif-settings-overlay" id="promptResponsesOverlay" onclick="handlePromptResponsesOverlayClick(event)">
+  <div class="notif-settings-modal story-analytics-modal">
+    <div class="notif-hdr">
+      <div class="notif-title" id="promptResponsesTitle">Add Yours</div>
+      <button class="notif-close" onclick="closePromptResponsesModal()">✕</button>
+    </div>
+    <div class="analytics-list" id="promptResponsesList" style="display:block;">
+      <div class="no-analytics">No responses yet</div>
+    </div>
+  </div>
+</div>
+
 <!-- STATUS MODAL (STORY CREATION) - FIXED LAYOUT -->
 <div class="status-modal-overlay" id="statusModalOverlay" onclick="handleStatusOverlayClick(event)">
   <div class="status-modal" id="statusModalBox">
@@ -451,6 +501,7 @@
       <button class="status-tab" id="tabVideo" onclick="switchStatusTab('video')">Video</button>
       <button class="status-tab" id="tabText" onclick="switchStatusTab('text')">Text</button>
       <button class="status-tab" id="tabMusic" onclick="switchStatusTab('music')">🎵</button>
+      <button class="status-tab" id="tabAddYours" onclick="switchStatusTab('addyours')">➕</button>
     </div>
     
     <div class="status-preview" id="statusPreview"><span>Preview</span></div>
@@ -470,7 +521,7 @@
     </div>
     
     <!-- TEXT INPUT - VISIBLE FOR IMAGE, VIDEO, AND MUSIC TABS -->
-    <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;"></textarea>
+    <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;" oninput="updateAddYoursPreview()"></textarea>
     
     <div class="status-actions">
       <button class="status-action-btn" onclick="closeStatusModal()">Cancel</button>
@@ -2145,6 +2196,93 @@ function renderProfileTab() {
 
   const pEmail = document.getElementById("profileTabEmail");
   if (pEmail) pEmail.textContent = currentUser.email || "No email";
+
+  loadProfileNote();
+}
+
+/* =========================================================================
+   PROFILE NOTES — 24-hour note shown on the user's profile (WhatsApp-style)
+   Stored in Firestore: profile_notes/{uid} = { text, createdAt, updatedAt }
+   Auto-expires after 24h (enforced on read + a cleanup tick).
+   ========================================================================= */
+let profileNoteUnsub = null;
+
+function loadProfileNote() {
+  if (!currentUser || !window.db) return;
+  if (profileNoteUnsub) { profileNoteUnsub(); profileNoteUnsub = null; }
+  profileNoteUnsub = window.db.collection("profile_notes").doc(currentUser.uid)
+    .onSnapshot(doc => {
+      const display = document.getElementById("profileNoteDisplay");
+      const input = document.getElementById("profileNoteInput");
+      if (!display) return;
+      const data = doc.data();
+      const now = Date.now();
+      const expired = data && data.createdAt && (now - data.createdAt > 24 * 60 * 60 * 1000);
+      if (!data || !data.text || expired) {
+        display.innerHTML = '<div class="note-empty">No active note. Add one above!</div>';
+        if (input) input.value = "";
+        return;
+      }
+      const remaining = 24 * 60 * 60 * 1000 - (now - data.createdAt);
+      display.innerHTML = `
+        <div class="note-active-card">
+          <div class="note-active-text">${escapeHtml(data.text)}</div>
+          <div class="note-active-meta">⏱ Expires in ${formatTimeRemaining(remaining)} • <a href="#" onclick="deleteProfileNote(); return false;" style="color: var(--danger, #ef4444);">Remove</a></div>
+        </div>`;
+      if (input) input.value = data.text;
+    }, err => console.warn("Profile note listener error:", err));
+}
+
+async function saveProfileNote() {
+  if (!currentUser) return;
+  const input = document.getElementById("profileNoteInput");
+  const text = input?.value.trim();
+  if (!text) { showNotifToast("Please write something first", "error"); return; }
+  const btn = document.getElementById("noteSaveBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Posting..."; }
+  try {
+    await window.db.collection("profile_notes").doc(currentUser.uid).set({
+      text: text,
+      uid: currentUser.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }, { merge: true });
+    showNotifToast("✓ Note posted to your profile!", "success");
+    if (input) input.value = "";
+  } catch (err) {
+    showNotifToast("Failed to save note: " + err.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Post"; }
+  }
+}
+
+async function deleteProfileNote() {
+  if (!currentUser) return;
+  try {
+    await window.db.collection("profile_notes").doc(currentUser.uid).delete();
+    showNotifToast("Note removed", "info");
+  } catch (err) {
+    showNotifToast("Failed to remove note: " + err.message, "error");
+  }
+}
+
+function formatTimeRemaining(ms) {
+  if (ms <= 0) return "soon";
+  const h = Math.floor(ms / (60 * 60 * 1000));
+  const m = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+// Fetch another user's active note for the profile modal (one-time read).
+async function fetchUserNote(uid) {
+  try {
+    const doc = await window.db.collection("profile_notes").doc(uid).get();
+    const data = doc.data();
+    if (!data || !data.text) return null;
+    if (data.createdAt && (Date.now() - data.createdAt > 24 * 60 * 60 * 1000)) return null;
+    return data.text;
+  } catch (e) { return null; }
 }
 
 function triggerProfilePhotoUpload() {
@@ -5185,6 +5323,18 @@ function openUserProfile() {
     bioEl.textContent = 'Hey! I am using Nexa.';
   }
 
+  // Fetch the user's 24h profile note (if any).
+  const noteEl = document.getElementById('userProfileNote');
+  if (noteEl) noteEl.innerHTML = '<div style="color:var(--text-3);font-size:12px;">Loading note…</div>';
+  fetchUserNote(u.uid).then(noteText => {
+    if (!noteEl) return;
+    if (noteText) {
+      noteEl.innerHTML = '📝 ' + escapeHtml(noteText);
+    } else {
+      noteEl.innerHTML = '';
+    }
+  });
+
   document.getElementById('userProfileModal').classList.add('active');
 }
 
@@ -5574,9 +5724,68 @@ function renderStorySlide(idx) {
     musicBadge.textContent = `🎵 ${story.musicData.title}`;
     musicBadge.style.display = "block";
     startStoryAnimation(duration);
+  } else if (story.type === "prompt") {
+    // "Add Yours" prompt story — a standalone text prompt that invites responses.
+    const overlay = document.createElement("div");
+    overlay.className = "prompt-story-overlay";
+    overlay.style.cssText = "position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:36px;text-align:center;z-index:5;background:linear-gradient(135deg, var(--primary), var(--primary-dk));";
+
+    const tag = document.createElement("div");
+    tag.style.cssText = "font-size:13px;color:rgba(255,255,255,0.75);font-weight:600;letter-spacing:0.5px;text-transform:uppercase;";
+    tag.textContent = "➕ Add Yours";
+    overlay.appendChild(tag);
+
+    const promptEl = document.createElement("div");
+    promptEl.style.cssText = "font-size:26px;font-weight:800;color:#fff;line-height:1.35;word-break:break-word;text-shadow:0 2px 12px rgba(0,0,0,0.5);";
+    promptEl.textContent = story.promptText || story.text || "";
+    overlay.appendChild(promptEl);
+
+    const pid = story.promptId;
+    let responseCount = 0;
+    if (pid) {
+      Object.values(userStatuses).forEach(arr => {
+        (arr || []).forEach(s => { if (s.promptId === pid && s.type !== "prompt") responseCount++; });
+      });
+    }
+
+    const ctaWrap = document.createElement("div");
+    ctaWrap.style.cssText = "display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:8px;";
+
+    const addBtn = document.createElement("button");
+    addBtn.textContent = "➕ Add Yours";
+    addBtn.className = "addyours-cta-btn";
+    addBtn.onclick = (ev) => { ev.stopPropagation(); openAddYoursComposer(story.promptId || null, story.promptText || story.text || ""); };
+    ctaWrap.appendChild(addBtn);
+
+    if (responseCount > 0) {
+      const viewAll = document.createElement("button");
+      viewAll.textContent = `👁 View all ${responseCount} response${responseCount > 1 ? 's' : ''}`;
+      viewAll.className = "addyours-viewall-btn";
+      viewAll.onclick = (ev) => { ev.stopPropagation(); openPromptResponsesModal(story.promptId || pid); };
+      ctaWrap.appendChild(viewAll);
+    }
+    overlay.appendChild(ctaWrap);
+    content.appendChild(overlay);
+
+    musicBadge.style.display = "none";
+    startStoryAnimation(8000);
   } else {
     musicBadge.style.display = "none";
     startStoryAnimation(5000);
+  }
+
+  // If this story is a RESPONSE to an "Add Yours" prompt (has promptId but is
+  // not itself a prompt), render a tappable sticker linking back to the chain.
+  if (story.promptId && story.type !== "prompt") {
+    const sticker = document.createElement("div");
+    sticker.className = "addyours-sticker";
+    sticker.innerHTML = `<div class="addyours-sticker-icon">➕</div>
+      <div class="addyours-sticker-body">
+        <div class="addyours-sticker-label">Add Yours</div>
+        <div class="addyours-sticker-prompt">${escapeHtml(story.promptText || "")}</div>
+      </div>`;
+    sticker.onclick = (ev) => { ev.stopPropagation(); openPromptResponsesModal(story.promptId); };
+    content.appendChild(sticker);
   }
 }
 
@@ -5865,6 +6074,217 @@ async function reactToStory() {
 }
 
 /* =========================================================================
+   "ADD YOURS" — WhatsApp-style prompt sticker on stories.
+   A prompt story (type:"prompt") carries a promptId + promptText. Viewers tap
+   "Add Yours" to post their own response (image/video/text) linked to the same
+   promptId, forming a reshare chain. "View all responses" browses the chain.
+   ========================================================================= */
+let addYoursFile = null;
+let addYoursTab = "image";
+let activeAddYoursPrompt = { promptId: null, promptText: "" };
+
+function updateAddYoursPreview() {
+  if (statusTab !== "addyours") return;
+  const text = document.getElementById("statusTextInput")?.value.trim() || "";
+  const prev = document.getElementById("addyoursPromptPreview");
+  if (prev) prev.textContent = text || "Your prompt appears here";
+}
+
+function openAddYoursComposer(promptId, promptText) {
+  activeAddYoursPrompt = { promptId: promptId || ("prompt_" + Date.now()), promptText: promptText || "" };
+  addYoursFile = null;
+  addYoursTab = "image";
+  const modal = document.getElementById("addYoursModalOverlay");
+  if (!modal) return;
+  document.getElementById("addYoursPromptDisplay").textContent = promptText || "Add Yours";
+  document.getElementById("addYoursCaption").value = "";
+  document.getElementById("addYoursPreview").innerHTML = "<span>Tap to add a photo</span>";
+  document.getElementById("addYoursImgInput").value = "";
+  document.getElementById("addYoursVidInput").value = "";
+  document.getElementById("addYoursTypeTextBtn").classList.remove("active");
+  document.getElementById("addYoursTypeImgBtn").classList.add("active");
+  document.getElementById("addYoursTypeVidBtn").classList.remove("active");
+  document.getElementById("addYoursCaption").style.display = "block";
+  document.getElementById("addYoursCaption").placeholder = "Add a caption (optional)…";
+  modal.classList.add("active");
+}
+
+function closeAddYoursModal() {
+  document.getElementById("addYoursModalOverlay").classList.remove("active");
+  addYoursFile = null;
+}
+
+function handleAddYoursOverlayClick(e) {
+  if (e.target === document.getElementById("addYoursModalOverlay")) closeAddYoursModal();
+}
+
+function setAddYoursType(tab) {
+  addYoursTab = tab;
+  ["Img", "Vid", "Text"].forEach(t => {
+    document.getElementById("addYoursType" + t + "Btn").classList.remove("active");
+  });
+  document.getElementById("addYoursType" + (tab === "image" ? "Img" : tab === "video" ? "Vid" : "Text") + "Btn").classList.add("active");
+  const caption = document.getElementById("addYoursCaption");
+  const preview = document.getElementById("addYoursPreview");
+  addYoursFile = null;
+  if (tab === "image") {
+    caption.style.display = "block";
+    caption.placeholder = "Add a caption (optional)…";
+    preview.innerHTML = "<span>Tap to add a photo</span>";
+    document.getElementById("addYoursImgInput").click();
+  } else if (tab === "video") {
+    caption.style.display = "block";
+    caption.placeholder = "Add a caption (optional)…";
+    preview.innerHTML = "<span>Tap to add a video</span>";
+    document.getElementById("addYoursVidInput").click();
+  } else {
+    caption.style.display = "block";
+    caption.placeholder = "Type your response…";
+    preview.innerHTML = "<span>Text response</span>";
+    caption.focus();
+  }
+}
+
+function previewAddYoursImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  addYoursFile = file;
+  addYoursTab = "image";
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById("addYoursPreview").innerHTML = `<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function previewAddYoursVideo(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  addYoursFile = file;
+  addYoursTab = "video";
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById("addYoursPreview").innerHTML = `<video src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;" controls></video>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function shareAddYoursResponse() {
+  if (!currentUser) { showNotifToast("Please login first", "error"); return; }
+  const caption = document.getElementById("addYoursCaption").value.trim();
+  if (addYoursTab === "text" && !caption) {
+    showNotifToast("Please type your response", "error");
+    return;
+  }
+  if ((addYoursTab === "image" || addYoursTab === "video") && !addYoursFile) {
+    showNotifToast("Please select a file", "error");
+    return;
+  }
+  const btn = document.getElementById("addYoursShareBtn");
+  btn.disabled = true;
+  btn.textContent = "Sharing...";
+  try {
+    let statusData = {
+      uid: currentUser.uid,
+      type: addYoursTab,
+      createdAt: Date.now(),
+      views: [],
+      likes: [],
+      reshares: [],
+      promptId: activeAddYoursPrompt.promptId,
+      promptText: activeAddYoursPrompt.promptText
+    };
+    if (caption) statusData.text = caption;
+
+    if (addYoursTab === "image" && addYoursFile) {
+      statusData.url = await uploadFile(addYoursFile);
+    } else if (addYoursTab === "video" && addYoursFile) {
+      statusData.url = await uploadFile(addYoursFile);
+    }
+    await db.collection("status").add(statusData);
+    closeAddYoursModal();
+    showNotifToast("✓ Added your response!", "success");
+    // Refresh the current story slide to update the response count.
+    if (typeof renderStorySlide === "function" && storyViewerData) renderStorySlide(storyViewerIndex);
+  } catch (err) {
+    showNotifToast("Failed to share: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Share";
+  }
+}
+
+function openPromptResponsesModal(promptId) {
+  const modal = document.getElementById("promptResponsesOverlay");
+  if (!modal) return;
+  const list = document.getElementById("promptResponsesList");
+  const titleEl = document.getElementById("promptResponsesTitle");
+  list.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:20px;text-align:center;">Loading responses…</div>';
+
+  // Gather all stories (prompt + responses) matching this promptId.
+  const all = [];
+  Object.entries(userStatuses).forEach(([uid, arr]) => {
+    (arr || []).forEach(s => {
+      if (s.promptId === promptId) all.push(s);
+    });
+  });
+  all.sort((a, b) => a.createdAt - b.createdAt);
+
+  const promptStory = all.find(s => s.type === "prompt");
+  const responses = all.filter(s => s.type !== "prompt");
+  if (promptStory) {
+    titleEl.textContent = promptStory.promptText || promptStory.text || "Add Yours";
+  } else if (responses.length) {
+    titleEl.textContent = responses[0].promptText || "Add Yours";
+  } else {
+    titleEl.textContent = "Add Yours";
+  }
+
+  if (responses.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:30px 20px;text-align:center;">No responses yet. Be the first to add yours!</div>';
+  } else {
+    list.innerHTML = "";
+    responses.forEach(s => {
+      const user = allUsersData.find(u => u.uid === s.uid);
+      const photo = user?.photo || "https://i.imgur.com/HeIi0wU.png";
+      const name = user?.displayName || "User";
+      const card = document.createElement("div");
+      card.className = "prompt-response-card";
+      let mediaHtml = "";
+      if (s.type === "image" && s.url) {
+        mediaHtml = `<img src="${s.url}" class="prompt-response-media" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">`;
+      } else if (s.type === "video" && s.url) {
+        mediaHtml = `<video src="${s.url}" class="prompt-response-media" controls></video>`;
+      } else {
+        mediaHtml = `<div class="prompt-response-text">${escapeHtml(s.text || "")}</div>`;
+      }
+      card.innerHTML = `
+        <div class="prompt-response-head">
+          <img src="${photo}" class="prompt-response-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <div>
+            <div class="prompt-response-name">${escapeHtml(name)}</div>
+            <div class="prompt-response-time">${formatTime(s.createdAt)}</div>
+          </div>
+        </div>
+        ${mediaHtml}
+        ${s.text && s.type !== "text" ? `<div class="prompt-response-caption">${escapeHtml(s.text)}</div>` : ""}
+        <button class="prompt-response-viewbtn" onclick="closePromptResponsesModal(); openStoryViewer('${s.uid}', '${s.id}')">View story</button>
+      `;
+      list.appendChild(card);
+    });
+  }
+  modal.classList.add("active");
+}
+
+function closePromptResponsesModal() {
+  document.getElementById("promptResponsesOverlay").classList.remove("active");
+}
+
+function handlePromptResponsesOverlayClick(e) {
+  if (e.target === document.getElementById("promptResponsesOverlay")) closePromptResponsesModal();
+}
+
+/* =========================================================================
    STORY ANALYTICS MODAL (Viewers, Likes, Reshares)
    ========================================================================= */
 let currentAnalyticsTab = 'views';
@@ -5994,6 +6414,11 @@ function switchStatusTab(tab) {
     textInput.style.display = "block";
     textInput.placeholder = "Add caption (optional)…";
     document.getElementById("musicSearchInput").focus();
+  } else if (tab === "addyours") {
+    textInput.style.display = "block";
+    textInput.placeholder = "Type a prompt (e.g. 'Show your pet! 👾')…";
+    document.getElementById("statusPreview").innerHTML = '<div class="addyours-preview-card"><div class="addyours-preview-icon">➕</div><div class="addyours-preview-label">Add Yours</div><div class="addyours-preview-prompt" id="addyoursPromptPreview">Your prompt appears here</div></div>';
+    textInput.focus();
   }
 }
 
@@ -6219,6 +6644,18 @@ async function shareStatus() {
       };
       const text = document.getElementById("statusTextInput").value.trim();
       if (text) statusData.text = text;
+    } else if (statusTab === "addyours") {
+      const promptText = document.getElementById("statusTextInput").value.trim();
+      if (!promptText) {
+        showNotifToast("Please type a prompt question", "error");
+        shareBtn.disabled = false;
+        shareBtn.textContent = "Share";
+        return;
+      }
+      statusData.type = "prompt";
+      statusData.text = promptText;
+      statusData.promptId = "prompt_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
+      statusData.promptText = promptText;
     }
 
     await db.collection("status").add(statusData);
@@ -6338,7 +6775,7 @@ function closeProfilePicModal(event) {
 <!-- USER PROFILE MODAL — click a contact's avatar to view their profile -->
 <div class="modal-overlay" id="userProfileModal" onclick="closeUserProfile(event)">
   <div class="user-profile-card" onclick="event.stopPropagation()">
-    <button class="user-profile-close" onclick="closeUserProfile()">✕</button>
+    <button class="user-profile-back" onclick="closeUserProfile()" title="Back">←</button>
     <div class="user-profile-cover"></div>
     <div class="user-profile-avatar-wrap" onclick="openProfilePic(document.getElementById('userProfileAvatar').src)">
       <img id="userProfileAvatar" src="" alt="Profile" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
@@ -6348,6 +6785,7 @@ function closeProfilePicModal(event) {
       <div class="user-profile-name" id="userProfileName"></div>
       <div class="user-profile-status" id="userProfileStatus"></div>
       <div class="user-profile-bio" id="userProfileBio"></div>
+      <div class="user-profile-note" id="userProfileNote"></div>
     </div>
     <div class="user-profile-actions" id="userProfileActions">
       <button class="up-action-btn" id="upMsgBtn" onclick="closeUserProfile()">
@@ -6457,4 +6895,4 @@ function closeProfilePicModal(event) {
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->
 <script src="nexa-voice-room.js"></script>
 </body>
-</html>
+</html>

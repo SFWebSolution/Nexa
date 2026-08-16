@@ -6152,67 +6152,194 @@ input[type="range"] {
   from { opacity: 0; transform: scale(0.92) translateY(16px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
-.user-profile-close {
+.user-profile-back {
   position: absolute;
-  top: 12px; right: 12px;
-  width: 32px; height: 32px;
+  top: 12px; left: 12px;
+  width: 34px; height: 34px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.45);
   color: #fff;
   border: none;
-  font-size: 16px;
+  font-size: 20px;
+  line-height: 1;
   cursor: pointer;
   z-index: 3;
   display: flex; align-items: center; justify-content: center;
   transition: background var(--tf);
 }
-.user-profile-close:hover { background: rgba(0, 0, 0, 0.6); }
+.user-profile-back:hover { background: rgba(0, 0, 0, 0.65); }
 .user-profile-cover {
-  height: 100px;
+  height: 84px;
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dk) 100%);
 }
 .user-profile-avatar-wrap {
   position: relative;
-  width: 92px; height: 92px;
-  margin: -46px auto 0;
+  width: 72px; height: 72px;
+  margin: -36px auto 0;
   cursor: pointer;
 }
 .user-profile-avatar-wrap img {
-  width: 92px; height: 92px;
+  width: 72px; height: 72px;
   border-radius: 50%;
   object-fit: cover;
-  border: 4px solid var(--bg-1);
+  border: 3px solid var(--bg-1);
   box-shadow: var(--shadow-md);
   display: block;
 }
 .user-profile-avatar-zoom {
   position: absolute;
   bottom: 2px; right: 2px;
-  width: 26px; height: 26px;
+  width: 22px; height: 22px;
   border-radius: 50%;
   background: var(--primary);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   display: flex; align-items: center; justify-content: center;
   border: 2px solid var(--bg-1);
   opacity: 0;
   transition: opacity var(--tf);
 }
 .user-profile-avatar-wrap:hover .user-profile-avatar-zoom { opacity: 1; }
-.user-profile-info { text-align: center; padding: 12px 20px 8px; }
-.user-profile-name { font-size: 20px; font-weight: 700; color: var(--text-0); letter-spacing: -0.3px; }
-.user-profile-status { font-size: 13px; margin-top: 4px; font-weight: 500; }
+.user-profile-info { text-align: center; padding: 10px 20px 8px; }
+.user-profile-name { font-size: 18px; font-weight: 700; color: var(--text-0); letter-spacing: -0.3px; }
+.user-profile-status { font-size: 12px; margin-top: 3px; font-weight: 500; }
 .user-profile-bio { font-size: 13px; color: var(--text-2); margin-top: 10px; line-height: 1.5; padding: 0 8px; }
-.user-profile-actions { display: flex; justify-content: center; gap: 12px; padding: 18px 20px 24px; }
+.user-profile-note {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  background: var(--primary-soft);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-1);
+  line-height: 1.45;
+  text-align: left;
+}
+.user-profile-note:empty { display: none; }
+.user-profile-actions { display: flex; justify-content: center; gap: 12px; padding: 16px 20px 22px; }
 .up-action-btn {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   background: var(--bg-3); border: 1px solid var(--border-md);
-  border-radius: var(--radius-md); padding: 12px 18px; color: var(--text-1);
-  cursor: pointer; transition: all var(--tf); min-width: 72px;
+  border-radius: var(--radius-md); padding: 10px 16px; color: var(--text-1);
+  cursor: pointer; transition: all var(--tf); min-width: 68px;
 }
 .up-action-btn:hover { background: var(--primary-soft); border-color: var(--primary); transform: translateY(-2px); }
-.up-action-icon { font-size: 20px; }
-.up-action-label { font-size: 12px; font-weight: 600; }
+.up-action-icon { font-size: 18px; }
+.up-action-label { font-size: 11px; font-weight: 600; }
+
+/* PROFILE NOTE EDITOR (Settings/Profile tab) */
+.note-editor-row { display: flex; gap: 8px; align-items: stretch; }
+.note-input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-3);
+  color: var(--text-0);
+  border: 1px solid var(--border-md);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--tf);
+}
+.note-input:focus { border-color: var(--primary); }
+.note-save-btn {
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter var(--tf);
+  white-space: nowrap;
+}
+.note-save-btn:hover { filter: brightness(1.1); }
+.note-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.note-empty { font-size: 12px; color: var(--text-3); padding: 8px 4px; font-style: italic; }
+.note-active-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border-md);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.note-active-text { font-size: 13px; color: var(--text-1); line-height: 1.45; word-break: break-word; }
+.note-active-meta { font-size: 11px; color: var(--text-3); margin-top: 6px; }
+
+/* ADD YOURS — story prompt sticker + composer + responses viewer */
+.addyours-preview-card {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dk));
+  color: #fff; border-radius: var(--radius-md); padding: 24px; text-align: center;
+}
+.addyours-preview-icon { font-size: 32px; }
+.addyours-preview-label { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.85; }
+.addyours-preview-prompt { font-size: 18px; font-weight: 800; line-height: 1.3; word-break: break-word; }
+
+.addyours-cta-btn {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary-dk, #0b5ed7);
+  border: none; border-radius: 999px;
+  padding: 10px 22px; font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: transform var(--tf), background var(--tf);
+}
+.addyours-cta-btn:hover { transform: scale(1.05); background: #fff; }
+.addyours-viewall-btn {
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff; border: 1px solid rgba(255,255,255,0.4); border-radius: 999px;
+  padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer; backdrop-filter: blur(4px);
+  transition: background var(--tf);
+}
+.addyours-viewall-btn:hover { background: rgba(0, 0, 0, 0.55); }
+
+.addyours-sticker {
+  position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.25); border-radius: 14px;
+  padding: 8px 14px; color: #fff; cursor: pointer; z-index: 6;
+  max-width: 80%; transition: transform var(--tf);
+}
+.addyours-sticker:hover { transform: translateX(-50%) scale(1.04); }
+.addyours-sticker-icon { font-size: 18px; }
+.addyours-sticker-label { font-size: 12px; font-weight: 700; }
+.addyours-sticker-prompt {
+  font-size: 12px; opacity: 0.9; max-width: 160px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+
+.addyours-prompt-banner {
+  background: var(--primary-soft);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.addyours-prompt-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.addyours-prompt-text { font-size: 14px; font-weight: 700; color: var(--text-0); margin-top: 3px; word-break: break-word; }
+
+.prompt-response-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-md);
+  overflow: hidden; margin-bottom: 14px;
+}
+.prompt-response-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.prompt-response-av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+.prompt-response-name { font-size: 13px; font-weight: 700; color: var(--text-0); }
+.prompt-response-time { font-size: 11px; color: var(--text-3); }
+.prompt-response-media { width: 100%; max-height: 320px; object-fit: cover; display: block; background: #000; }
+.prompt-response-text {
+  padding: 16px; font-size: 15px; color: var(--text-0); line-height: 1.5; word-break: break-word;
+  background: var(--bg-3);
+}
+.prompt-response-caption { padding: 8px 12px; font-size: 13px; color: var(--text-1); line-height: 1.4; }
+.prompt-response-viewbtn {
+  width: 100%; border: none; border-top: 1px solid var(--border-md);
+  background: var(--bg-3); color: var(--primary); padding: 10px;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: background var(--tf);
+}
+.prompt-response-viewbtn:hover { background: var(--primary-soft); }
 
 
 
