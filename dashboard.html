@@ -501,8 +501,18 @@
       <button class="status-tab" id="tabVideo" onclick="switchStatusTab('video')">Video</button>
       <button class="status-tab" id="tabText" onclick="switchStatusTab('text')">Text</button>
       <button class="status-tab" id="tabMusic" onclick="switchStatusTab('music')">🎵</button>
-      <button class="status-tab" id="tabAddYours" onclick="switchStatusTab('addyours')">➕</button>
-      <button class="status-tab" id="tabQuestion" onclick="switchStatusTab('question')" title="Ask a Question">❓</button>
+    </div>
+
+    <!-- INTERACTIVE STICKERS — attach an "Add Yours" / "Ask a Question" sticker
+         onto your photo/video/text story (WhatsApp-style: the sticker rides on
+         the image, and viewers who tap it get the same prompt). -->
+    <div class="story-sticker-bar">
+      <div class="story-sticker-bar-label">Stickers</div>
+      <div class="story-sticker-chips">
+        <button class="sticker-add-btn" id="stickerAddYoursBtn" onclick="attachStorySticker('addYours')">➕ Add Yours</button>
+        <button class="sticker-add-btn" id="stickerQuestionBtn" onclick="attachStorySticker('question')">❓ Ask a Question</button>
+      </div>
+      <div class="story-sticker-preview" id="storyStickerPreview"></div>
     </div>
     
     <div class="status-preview" id="statusPreview"><span>Preview</span></div>
@@ -522,7 +532,7 @@
     </div>
     
     <!-- TEXT INPUT - VISIBLE FOR IMAGE, VIDEO, AND MUSIC TABS -->
-    <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;" oninput="updateAddYoursPreview()"></textarea>
+    <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;" oninput="updateStoryStickerPreview()"></textarea>
     
     <div class="status-actions">
       <button class="status-action-btn" onclick="closeStatusModal()">Cancel</button>
@@ -5805,11 +5815,35 @@ function renderStorySlide(idx) {
     startStoryAnimation(5000);
   }
 
-  // If this story is a RESPONSE to an "Add Yours" prompt (has promptId but is
-  // not itself a prompt), render a tappable sticker. Tapping it opens the
-  // composer seeded with the SAME prompt so the viewer can post their own
-  // (WhatsApp "Add Yours" reshare chain), plus a small "view all" link.
-  if (story.promptId && story.type !== "prompt") {
+  // Interactive sticker overlay (WhatsApp-style): a small card riding on the
+  // image/video/text. Tapping it brings up the SAME prompt for the viewer —
+  // Add Yours → composer seeded with the same prompt (post your own photo);
+  // Question → type an answer → chat reply to the asker.
+  if (story.sticker && story.sticker.text) {
+    const sk = story.sticker;
+    const skEl = document.createElement("div");
+    skEl.className = "story-sticker-overlay";
+    const icon = sk.type === "question" ? "❓" : "➕";
+    const label = sk.type === "question" ? "Ask a Question" : "Add Yours";
+    skEl.innerHTML = `
+      <div class="story-sticker-overlay-icon">${icon}</div>
+      <div class="story-sticker-overlay-body">
+        <div class="story-sticker-overlay-label">${label}</div>
+        <div class="story-sticker-overlay-text">${escapeHtml(sk.text)}</div>
+      </div>`;
+    skEl.onclick = (ev) => {
+      ev.stopPropagation();
+      if (sk.type === "question") {
+        answerStoryQuestion(story);
+      } else {
+        openAddYoursComposer(sk.id, sk.text);
+      }
+    };
+    content.appendChild(skEl);
+  } else if (story.promptId && story.type !== "prompt") {
+    // Legacy: an "Add Yours" response story (has promptId, isn't a prompt).
+    // Tapping reopens the composer seeded with the same prompt so the viewer
+    // can post their own; "View all responses" browses the chain.
     const sticker = document.createElement("div");
     sticker.className = "addyours-sticker";
     sticker.innerHTML = `<div class="addyours-sticker-icon">➕</div>
@@ -5830,7 +5864,12 @@ async function answerStoryQuestion(story) {
     showNotifToast("This is your own question", "info");
     return;
   }
-  const question = story.questionText || story.text || "";
+  // The question text lives on story.sticker.text (WhatsApp-style image sticker)
+  // or, for legacy standalone question stories, on story.questionText/story.text.
+  const sticker = story.sticker || null;
+  const question = (sticker && sticker.type === "question" && sticker.text)
+    || story.questionText || story.text || "";
+  const qId = (sticker && sticker.id) || story.questionId || null;
   const answer = window.prompt("Answer: " + question, "");
   if (answer === null || !answer.trim()) return;
   const reply = answer.trim();
@@ -5841,7 +5880,7 @@ async function answerStoryQuestion(story) {
       text: "❓ " + question + "\n💬 " + reply,
       storyReplyId: story.id || null,
       storyReplyUid: story.uid,
-      storyQuestionId: story.questionId || null,
+      storyQuestionId: qId,
       storyQuestionText: question,
       storyQuestionAnswer: reply,
       storyUrl: story.url || null,
@@ -5866,7 +5905,7 @@ let isStoryPaused = false;
 let storyPauseElapsed = 0;
 
 function handleStoryContentClick(e) {
-  if (e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar')) return;
+  if (e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar') || e.target.closest('.story-sticker-overlay') || e.target.closest('.addyours-sticker')) return;
   toggleStoryPause();
 }
 
@@ -6156,11 +6195,60 @@ let addYoursFile = null;
 let addYoursTab = "image";
 let activeAddYoursPrompt = { promptId: null, promptText: "" };
 
-function updateAddYoursPreview() {
-  if (statusTab !== "addyours") return;
-  const text = document.getElementById("statusTextInput")?.value.trim() || "";
-  const prev = document.getElementById("addyoursPromptPreview");
-  if (prev) prev.textContent = text || "Your prompt appears here";
+// ── Story stickers (WhatsApp-style) ───────────────────────────────────
+// A sticker is ATTACHED to a normal photo/video/text story (not posted on its
+// own). pendingStorySticker = { type:"addYours"|"question", text, id }.
+// On share, it is saved as statusData.sticker. Viewers who tap the sticker
+// overlay get the same prompt (Add Yours → post own photo w/ same promptId;
+// Question → type answer → chat reply to asker).
+let pendingStorySticker = null;
+
+function updateStoryStickerPreview() {
+  // kept as a no-op hook for the textarea oninput; sticker preview is rendered
+  // via renderStoryStickerPreview().
+  renderStoryStickerPreview();
+}
+
+function renderStoryStickerPreview() {
+  const el = document.getElementById("storyStickerPreview");
+  if (!el) return;
+  if (!pendingStorySticker) { el.innerHTML = ""; return; }
+  const s = pendingStorySticker;
+  const icon = s.type === "question" ? "❓" : "➕";
+  const label = s.type === "question" ? "Ask a Question" : "Add Yours";
+  el.innerHTML = `
+    <div class="story-sticker-chip">
+      <span class="story-sticker-chip-icon">${icon}</span>
+      <span class="story-sticker-chip-label">${label}</span>
+      <span class="story-sticker-chip-text">${escapeHtml(s.text)}</span>
+      <button class="story-sticker-chip-remove" onclick="removeStorySticker()" title="Remove">✕</button>
+    </div>`;
+}
+
+function attachStorySticker(type) {
+  if (!currentUser) { showNotifToast("Please login first", "error"); return; }
+  // Stickers ride on photo/video/text stories — require content first.
+  const hasMedia = (statusTab === "image" || statusTab === "video") && statusFile;
+  const hasText = statusTab === "text" && (document.getElementById("statusTextInput").value.trim() || "");
+  if (!hasMedia && !hasText) {
+    showNotifToast("Pick a photo/video or type text first, then add a sticker", "error");
+    return;
+  }
+  const placeholder = type === "question"
+    ? "Type your question (e.g. 'Where should I travel next? 🌍')"
+    : "Type your prompt (e.g. 'Show your pet! 👾')";
+  const text = window.prompt(type === "question" ? "Ask a question:" : "Add Yours prompt:", "");
+  if (text === null) return;
+  const t = text.trim();
+  if (!t) { showNotifToast("Please type something for the sticker", "error"); return; }
+  const id = (type === "question" ? "q_" : "prompt_") + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
+  pendingStorySticker = { type, text: t, id };
+  renderStoryStickerPreview();
+}
+
+function removeStorySticker() {
+  pendingStorySticker = null;
+  renderStoryStickerPreview();
 }
 
 function openAddYoursComposer(promptId, promptText) {
@@ -6448,6 +6536,9 @@ function openStatusModal() {
   musicDuration = 30;
   document.getElementById("musicSearchInput").value = "";
 
+  pendingStorySticker = null;
+  renderStoryStickerPreview();
+
   switchStatusTab('image');
   document.getElementById("statusModalOverlay").classList.add("active");
 }
@@ -6456,6 +6547,8 @@ function closeStatusModal() {
   document.getElementById("statusModalOverlay").classList.remove("active");
   statusFile = null;
   selectedMusicData = null;
+  pendingStorySticker = null;
+  renderStoryStickerPreview();
 }
 
 function handleStatusOverlayClick(e) {
@@ -6467,18 +6560,7 @@ function handleStatusOverlayClick(e) {
 function switchStatusTab(tab) {
   statusTab = tab;
   document.querySelectorAll(".status-tab").forEach(el => el.classList.remove("active"));
-  // Tab button ids use specific casing (tabImage, tabVideo, tabText, tabMusic,
-  // tabAddYours, tabQuestion). Map each tab key to its exact element id so a
-  // case mismatch doesn't null-out the element and silently break the button.
-  const tabIdMap = {
-    image: "tabImage",
-    video: "tabVideo",
-    text: "tabText",
-    music: "tabMusic",
-    addyours: "tabAddYours",
-    question: "tabQuestion"
-  };
-  const tabBtn = document.getElementById(tabIdMap[tab] || ("tab" + tab.charAt(0).toUpperCase() + tab.slice(1)));
+  const tabBtn = document.getElementById("tab" + tab.charAt(0).toUpperCase() + tab.slice(1));
   if (tabBtn) tabBtn.classList.add("active");
 
   const textInput = document.getElementById("statusTextInput");
@@ -6499,16 +6581,6 @@ function switchStatusTab(tab) {
     textInput.style.display = "block";
     textInput.placeholder = "Add caption (optional)…";
     document.getElementById("musicSearchInput").focus();
-  } else if (tab === "addyours") {
-    textInput.style.display = "block";
-    textInput.placeholder = "Type a prompt (e.g. 'Show your pet! 👾')…";
-    document.getElementById("statusPreview").innerHTML = '<div class="addyours-preview-card"><div class="addyours-preview-icon">➕</div><div class="addyours-preview-label">Add Yours</div><div class="addyours-preview-prompt" id="addyoursPromptPreview">Your prompt appears here</div></div>';
-    textInput.focus();
-  } else if (tab === "question") {
-    textInput.style.display = "block";
-    textInput.placeholder = "Ask a question (e.g. 'Where should I travel next? 🌍')…";
-    document.getElementById("statusPreview").innerHTML = '<div class="addyours-preview-card"><div class="addyours-preview-icon">❓</div><div class="addyours-preview-label">Ask a Question</div><div class="addyours-preview-prompt" id="addyoursPromptPreview">Your question appears here</div></div>';
-    textInput.focus();
   }
 }
 
@@ -6734,30 +6806,21 @@ async function shareStatus() {
       };
       const text = document.getElementById("statusTextInput").value.trim();
       if (text) statusData.text = text;
-    } else if (statusTab === "addyours") {
-      const promptText = document.getElementById("statusTextInput").value.trim();
-      if (!promptText) {
-        showNotifToast("Please type a prompt question", "error");
-        shareBtn.disabled = false;
-        shareBtn.textContent = "Share";
-        return;
+    }
+
+    // Attach an interactive sticker (WhatsApp-style) onto the photo/video/text
+    // story. The sticker rides on the image; viewers who tap it get the same
+    // prompt. addYours sticker doubles as a promptId so response chains work.
+    if (pendingStorySticker && pendingStorySticker.text) {
+      const s = pendingStorySticker;
+      statusData.sticker = { type: s.type, text: s.text, id: s.id };
+      if (s.type === "addYours") {
+        statusData.promptId = s.id;
+        statusData.promptText = s.text;
+      } else if (s.type === "question") {
+        statusData.questionId = s.id;
+        statusData.questionText = s.text;
       }
-      statusData.type = "prompt";
-      statusData.text = promptText;
-      statusData.promptId = "prompt_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
-      statusData.promptText = promptText;
-    } else if (statusTab === "question") {
-      const questionText = document.getElementById("statusTextInput").value.trim();
-      if (!questionText) {
-        showNotifToast("Please type a question", "error");
-        shareBtn.disabled = false;
-        shareBtn.textContent = "Share";
-        return;
-      }
-      statusData.type = "question";
-      statusData.text = questionText;
-      statusData.questionId = "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
-      statusData.questionText = questionText;
     }
 
     await db.collection("status").add(statusData);

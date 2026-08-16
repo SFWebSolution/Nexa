@@ -6285,6 +6285,101 @@ input[type="range"] {
 }
 .addyours-sticker-viewall:hover { opacity: 0.8; }
 
+/* ── Story sticker bar (composer) — attach Add Yours / Ask a Question ── */
+.story-sticker-bar {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-md);
+}
+.story-sticker-bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.story-sticker-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.sticker-add-btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-md);
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--tf);
+}
+.sticker-add-btn:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.story-sticker-preview { margin-top: 8px; }
+.story-sticker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 10px;
+  background: var(--primary-soft);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-0);
+}
+.story-sticker-chip-icon { font-size: 14px; }
+.story-sticker-chip-label { font-weight: 700; color: var(--primary); }
+.story-sticker-chip-text { color: var(--text-1); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-sticker-chip-remove {
+  background: rgba(0,0,0,0.12);
+  border: none; color: var(--text-1);
+  width: 18px; height: 18px; border-radius: 50%;
+  cursor: pointer; font-size: 11px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.story-sticker-chip-remove:hover { background: rgba(0,0,0,0.25); color: #fff; }
+
+/* ── Story sticker overlay (viewer) — the small card riding on the image ── */
+.story-sticker-overlay {
+  position: absolute;
+  left: 16px;
+  bottom: 96px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 80%;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 16px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform var(--tf);
+  -webkit-tap-highlight-color: transparent;
+}
+.story-sticker-overlay:hover { transform: translateY(-2px); }
+.story-sticker-overlay:active { transform: scale(0.97); }
+.story-sticker-overlay-icon {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  background: var(--primary-soft);
+}
+.story-sticker-overlay-body { min-width: 0; }
+.story-sticker-overlay-label {
+  font-size: 11px; font-weight: 700; color: var(--primary);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.story-sticker-overlay-text {
+  font-size: 13.5px; font-weight: 600; color: var(--text-0);
+  line-height: 1.3; word-break: break-word;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* PROFILE NOTE EDITOR (Settings/Profile tab) */
 .note-editor-row { display: flex; gap: 8px; align-items: stretch; }
 .note-input {
