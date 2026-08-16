@@ -699,6 +699,25 @@
     /* 4. PEERJS WEBRTC MESH AUDIO ENGINE & WEB AUDIO DSP                     */
     /* --------------------------------------------------------------------- */
 
+    syncOwnPeerId() {
+      // Write the ACTUAL peer.id (not the stable preferred id) to our
+      // participant doc so other peers call the right id. Critical when the
+      // stable id was taken and PeerJS fell back to a unique id — otherwise
+      // peers call a non-existent stable id and the call fails silently.
+      if (!this.peer || !this.peer.id || !this.activeRoom) return;
+      const user = this.getCurrentUser();
+      if (!user) return;
+      // Only write if it changed from what we last synced.
+      if (this._lastSyncedPeerId === this.peer.id) return;
+      this._lastSyncedPeerId = this.peer.id;
+      if (window.db) {
+        window.db.collection('voice_rooms').doc(this.activeRoom.id)
+          .collection('participants').doc(user.id)
+          .set({ peerId: this.peer.id, updatedAt: Date.now() }, { merge: true })
+          .catch(() => {});
+      }
+    }
+
     initPeerJS() {
       if (typeof window.Peer === 'undefined') {
         // PeerJS may still be loading — retry shortly.
@@ -717,7 +736,16 @@
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'stun:relay.metered.ca:80' }
+        // TURN relays — STUN-only ICE CANNOT traverse symmetric NAT / CGNAT
+        // (mobile carriers, hotel WiFi, most home routers behind an ISP NAT).
+        // Without a TURN relay, two devices on different networks "connect" at
+        // the PeerJS signaling level but NO media packets flow → "can't hear
+        // anyone". The relay tunnels audio through a public server when direct
+        // P2P fails. OpenRelay (metered.ca) public test creds — rate-limited;
+        // for production sign up for your own Metered/Twilio TURN.
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
       ];
 
       try {
@@ -730,6 +758,7 @@
           console.log('[VoiceRoom] PeerJS connected with ID:', id);
           this.peerOpen = true;
           this.peerIdToUid.set(id, user.id);
+          this.syncOwnPeerId();
           // Build the mesh: call existing participants we're responsible for
           // (tie-breaker — only the lower-uid initiates) so there's exactly ONE
           // bidirectional MediaConnection per pair.
@@ -766,6 +795,7 @@
             this.peer.on('open', (id) => {
               this.peerOpen = true;
               this.peerIdToUid.set(id, user.id);
+              this.syncOwnPeerId();
               this.participants.forEach(p => {
                 if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) {
                   const pid = p.peerId || this.peerIdFor(p.id);
@@ -788,6 +818,20 @@
         this.peer.on('disconnected', () => {
           this.peerOpen = false;
           try { if (this.peer && !this.peer.destroyed) this.peer.reconnect(); } catch (e) {}
+          // Re-establish calls after a brief reconnect window. PeerJS reconnect
+          // doesn't always re-fire 'open', so probe peerOpen and re-mesh.
+          setTimeout(() => {
+            if (this.peer && this.peer.open) {
+              this.peerOpen = true;
+              this.syncOwnPeerId();
+              this.participants.forEach(p => {
+                if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) {
+                  const pid = p.peerId || this.peerIdFor(p.id);
+                  if (!this.peerCalls.has(pid)) this.callPeer(pid, p.id);
+                }
+              });
+            }
+          }, 1500);
         });
       } catch (err) {
         console.warn('[VoiceRoom] PeerJS init error:', err);
@@ -1445,6 +1489,8 @@
             if (change.type === 'added' || change.type === 'modified') {
               const isNew = !this.participants.has(p.id);
               const peerId = p.peerId || this.peerIdFor(p.id);
+              const prev = this.participants.get(p.id);
+              const peerIdChanged = !isNew && prev && prev.peerId && prev.peerId !== peerId;
               this.participants.set(p.id, {
                 id: p.id,
                 name: p.name,
@@ -1460,6 +1506,22 @@
                 this.updateUI();
                 // Build the mesh: only the lower-uid initiates the call
                 // (tie-breaker) so there's one bidirectional connection per pair.
+                if (p.id !== this.getCurrentUser().id && this.peerOpen && this.shouldInitiateCallTo(p.id)) {
+                  this.callPeer(peerId, p.id);
+                }
+              } else if (peerIdChanged) {
+                // A peer reconnected with a NEW peer id (e.g. stable id was
+                // taken → fallback id). Close the stale call to the old id and
+                // re-call the new one if we're the initiator.
+                if (prev && prev.peerId) {
+                  const oldCall = this.peerCalls.get(prev.peerId);
+                  if (oldCall) { try { oldCall.close(); } catch (e) {} this.peerCalls.delete(prev.peerId); }
+                  const oldAudio = document.getElementById('audio_' + prev.peerId);
+                  if (oldAudio) { try { oldAudio.pause(); oldAudio.srcObject = null; oldAudio.remove(); } catch (e) {} }
+                  this.peerIdToUid.delete(prev.peerId);
+                  this.pendingAudioPlays.delete(prev.peerId);
+                  this.retriedPeers.delete(prev.peerId);
+                }
                 if (p.id !== this.getCurrentUser().id && this.peerOpen && this.shouldInitiateCallTo(p.id)) {
                   this.callPeer(peerId, p.id);
                 }
@@ -1712,7 +1774,7 @@
         const handleJoin = () => {
           toast.classList.remove('active');
           if (window.db && payload.targetUserId) {
-            window.db.collection('voice_invites').doc(payload.targetUserId).update({ status: 'accepted' }).catch(() => {});
+            window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
           }
           this.joinRoom(payload.room);
           cleanup();
@@ -1721,7 +1783,7 @@
         const handleDecline = () => {
           toast.classList.remove('active');
           if (window.db && payload.targetUserId) {
-            window.db.collection('voice_invites').doc(payload.targetUserId).update({ status: 'declined' }).catch(() => {});
+            window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
           }
           cleanup();
         };
