@@ -4285,7 +4285,14 @@ const NEXA_ICE_SERVERS = [
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:relay.metered.ca:80' }
+  // TURN relays — STUN-only ICE CANNOT traverse symmetric NAT / CGNAT (mobile
+  // carriers, hotel WiFi, most home routers behind an ISP NAT). Without TURN,
+  // calls "connect" at the signaling level but no media flows → one-way/no
+  // audio. OpenRelay public test creds — rate-limited; replace with your own
+  // Metered/Twilio TURN for production.
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
 ];
 
 // ── Initialize PeerJS (called once on login) ──
@@ -4343,8 +4350,11 @@ function initPeerJS() {
     console.log('📞 Incoming PeerJS media call received from:', incomingMediaCall.peer);
     activeCall = incomingMediaCall;
     if (callState === 'active' && localStream) {
-      incomingMediaCall.answer(localStream);
+      // Attach stream handlers BEFORE answer() — PeerJS can fire `stream`
+      // synchronously during answer(), and attaching after means the remote
+      // audio/video fires into zero listeners → "I hear them but can't see them".
       setupCallStreamHandlers(incomingMediaCall);
+      incomingMediaCall.answer(localStream);
     }
   });
 
@@ -4359,8 +4369,8 @@ function initPeerJS() {
       nexaPeer.on('call', (incomingMediaCall) => {
         activeCall = incomingMediaCall;
         if (callState === 'active' && localStream) {
-          incomingMediaCall.answer(localStream);
           setupCallStreamHandlers(incomingMediaCall);
+          incomingMediaCall.answer(localStream);
         }
       });
     }
@@ -4691,14 +4701,16 @@ async function answerCall() {
 
   // Answer the PeerJS call if it already came in
   if (activeCall) {
-    activeCall.answer(localStream);
+    // Attach handlers BEFORE answer() — PeerJS can fire `stream`
+    // synchronously during answer(). Attaching after = no video/audio.
     setupCallStreamHandlers(activeCall);
+    activeCall.answer(localStream);
   } else {
     // Wait for PeerJS call to arrive
     nexaPeer.on('call', (mediaCall) => {
       activeCall = mediaCall;
-      mediaCall.answer(localStream);
       setupCallStreamHandlers(mediaCall);
+      mediaCall.answer(localStream);
     });
   }
 
@@ -4774,8 +4786,10 @@ async function endCall() {
 
 // ── Set up PeerJS media stream handlers ──
 function setupCallStreamHandlers(mediaCall) {
+  // Attach the PeerJS 'stream' handler immediately. PeerJS can fire this
+  // synchronously during answer(), so this MUST be registered before answer().
   mediaCall.on('stream', (stream) => {
-    console.log('📞 Remote stream received:', stream);
+    console.log('📞 Remote stream received:', stream.getTracks().map(t => t.kind).join(','));
     remoteStream = stream;
 
     // Always pipe remote audio through the dedicated <audio> element
@@ -4809,26 +4823,46 @@ function setupCallStreamHandlers(mediaCall) {
     document.getElementById("callStatusLabel").textContent = "In call";
   });
 
-  if (mediaCall.peerConnection) {
+  // Fallback: PeerJS's 'stream' may not fire for renegotiated/late tracks.
+  // ontrack catches those and re-applies the stream to both elements.
+  const wireOnTrack = () => {
+    if (!mediaCall.peerConnection) return false;
     mediaCall.peerConnection.ontrack = (event) => {
       console.log('📞 Dynamic remote track added:', event.track.kind);
-      if (event.streams && event.streams[0]) {
-        remoteStream = event.streams[0];
+      // Use the event stream if available, else the remoteStream we already have.
+      const stream = (event.streams && event.streams[0]) ? event.streams[0] : remoteStream;
+      if (stream) {
+        remoteStream = stream;
+        const remoteAudio = document.getElementById("remoteCallAudio");
+        if (remoteAudio && event.track.kind === 'audio') {
+          remoteAudio.srcObject = stream;
+          remoteAudio.play().catch(() => {});
+        }
         const remoteVid = document.getElementById("remoteVideo");
-        if (remoteVid) {
-          remoteVid.srcObject = remoteStream;
+        if (remoteVid && callType === 'video' && event.track.kind === 'video') {
+          remoteVid.srcObject = stream;
+          remoteVid.classList.add("active");
           remoteVid.play().catch(() => {});
+          document.getElementById("callProfileCard").style.display = "none";
         }
       }
     };
-
     mediaCall.peerConnection.oniceconnectionstatechange = () => {
-      console.log('📞 ICE Connection State:', mediaCall.peerConnection.iceConnectionState);
-      if (mediaCall.peerConnection.iceConnectionState === 'failed') {
+      const st = mediaCall.peerConnection.iceConnectionState;
+      console.log('📞 ICE Connection State:', st);
+      if (st === 'failed') {
         console.warn('⚠️ ICE connection failed, attempting restart...');
         try { mediaCall.peerConnection.restartIce(); } catch (e) {}
       }
     };
+    return true;
+  };
+  // peerConnection may not exist yet — retry until it's available.
+  if (!wireOnTrack()) {
+    let attempts = 0;
+    const poll = setInterval(() => {
+      if (wireOnTrack() || ++attempts > 10) clearInterval(poll);
+    }, 200);
   }
 
   mediaCall.on('close', () => {
@@ -5119,11 +5153,48 @@ function openCallModal(type) {
 }
 
 function openUserProfile() {
-  if (!selectedUser) {
-    alert("Select a user first");
-    return;
+  if (!selectedUser) { alert("Select a user first"); return; }
+  const u = selectedUser;
+  const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
+
+  document.getElementById('userProfileAvatar').src = photo;
+  document.getElementById('userProfileName').textContent = u.displayName || u.name || 'User';
+
+  // Presence / status from the shared cache (timestamp-based).
+  const pData = userPresenceCache[u.uid] || {};
+  const online = isUserOnline(pData);
+  const status = pData.status || (online ? 'online' : 'offline');
+  const statusEl = document.getElementById('userProfileStatus');
+  if (online && status === 'online') {
+    statusEl.innerHTML = '<span style="color:var(--online)">● online</span>';
+  } else if (online && status === 'away') {
+    statusEl.innerHTML = '<span style="color:#facc15">● away</span>';
+  } else {
+    statusEl.innerHTML = '<span style="color:var(--text-3)">last seen ' + formatLastSeen(pData.lastSeen || 0) + '</span>';
   }
-  showNotifToast(`👤 ${selectedUser.displayName || 'User'}`, "info");
+
+  // Bio / username / phone if present in the user doc.
+  const bio = u.bio || u.about || '';
+  const username = u.username || u.usernameField || '';
+  const bioEl = document.getElementById('userProfileBio');
+  if (bio) {
+    bioEl.innerHTML = escapeHtml(bio);
+  } else if (username) {
+    bioEl.innerHTML = '<span style="color:var(--text-3)">@</span>' + escapeHtml(username);
+  } else {
+    bioEl.textContent = 'Hey! I am using Nexa.';
+  }
+
+  document.getElementById('userProfileModal').classList.add('active');
+}
+
+function closeUserProfile() {
+  document.getElementById('userProfileModal').classList.remove('active');
+}
+
+function closeUserProfile(event) {
+  if (event && event.target !== document.getElementById('userProfileModal')) return;
+  document.getElementById('userProfileModal').classList.remove('active');
 }
 
 /* =========================================================================
@@ -6263,6 +6334,34 @@ function closeProfilePicModal(event) {
 
 </script>
 <div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+
+<!-- USER PROFILE MODAL — click a contact's avatar to view their profile -->
+<div class="modal-overlay" id="userProfileModal" onclick="closeUserProfile(event)">
+  <div class="user-profile-card" onclick="event.stopPropagation()">
+    <button class="user-profile-close" onclick="closeUserProfile()">✕</button>
+    <div class="user-profile-cover"></div>
+    <div class="user-profile-avatar-wrap" onclick="openProfilePic(document.getElementById('userProfileAvatar').src)">
+      <img id="userProfileAvatar" src="" alt="Profile" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+      <div class="user-profile-avatar-zoom">🔍</div>
+    </div>
+    <div class="user-profile-info">
+      <div class="user-profile-name" id="userProfileName"></div>
+      <div class="user-profile-status" id="userProfileStatus"></div>
+      <div class="user-profile-bio" id="userProfileBio"></div>
+    </div>
+    <div class="user-profile-actions" id="userProfileActions">
+      <button class="up-action-btn" id="upMsgBtn" onclick="closeUserProfile()">
+        <span class="up-action-icon">💬</span><span class="up-action-label">Message</span>
+      </button>
+      <button class="up-action-btn" onclick="openVoiceCall()">
+        <span class="up-action-icon">📞</span><span class="up-action-label">Voice</span>
+      </button>
+      <button class="up-action-btn" onclick="openCallModal('video')">
+        <span class="up-action-icon">📹</span><span class="up-action-label">Video</span>
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">
