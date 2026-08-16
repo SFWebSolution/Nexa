@@ -812,6 +812,9 @@ window.auth = auth;
 window.isUserOnline = isUserOnline;
 window.allUsersData = [];
 window.userPresenceCache = {};
+// Expose FieldValue so nexa-voice-room.js can use arrayUnion/arrayRemove without
+// importing firebase directly (it only has access to window.db).
+window.db.fieldValue = firebase.firestore.FieldValue;
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -1573,13 +1576,18 @@ function renderUsers() {
     return mA.name.localeCompare(mB.name);
   });
 
-  if (!list.length) { 
+  // WhatsApp-style "Message yourself" pinned self-contact, always at the very
+  // top, only when there is no active search query (so searching still works).
+  const selfContact = (!q && currentUser) ? getSelfContact() : null;
+
+  if (!list.length && !selfContact) { 
     box.innerHTML = '<div class="no-users">👋 No users found</div>'; 
     lastRenderedUserOrder = "";
     return; 
   }
 
-  const currentOrder = list.map(u => u.uid).join(",");
+  const fullList = selfContact ? [selfContact, ...list] : list;
+  const currentOrder = fullList.map(u => u.uid).join(",");
   const orderChanged = currentOrder !== lastRenderedUserOrder;
   lastRenderedUserOrder = currentOrder;
 
@@ -1589,14 +1597,14 @@ function renderUsers() {
     noUsersEl.remove();
   }
 
-  const validUids = new Set(list.map(u => u.uid));
+  const validUids = new Set(fullList.map(u => u.uid));
   box.querySelectorAll(".user-item").forEach(item => {
     if (!validUids.has(item.dataset.uid)) {
       item.remove();
     }
   });
 
-  list.forEach((user, idx) => {
+  fullList.forEach((user, idx) => {
     const name = escapeHtml(user.displayName || "User");
     const photo = user.photo || "https://i.imgur.com/HeIi0wU.png";
     const unread = unreadMessages[user.uid] || 0;
@@ -1604,14 +1612,17 @@ function renderUsers() {
     const timeStr = t ? formatTime(t) : "";
     const pdata = userPresenceCache[user.uid];
     const online = isUserOnline(pdata);
-    const prevText = latestMsgText[user.uid] || "Tap to chat";
+    const isSelf = !!user.isSelf;
+    const prevText = isSelf
+      ? (latestMsgText[user.uid] || "Message yourself")
+      : (latestMsgText[user.uid] || "Tap to chat");
     const isSelected = selectedUser && selectedUser.uid === user.uid;
 
     let el = box.querySelector(`.user-item[data-uid="${user.uid}"]`);
 
     if (!el) {
       el = document.createElement("div");
-      el.className = "user-item" + (isSelected ? " active" : "");
+      el.className = "user-item" + (isSelected ? " active" : "") + (isSelf ? " self-chat-item" : "");
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
@@ -1619,7 +1630,7 @@ function renderUsers() {
           <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
         </div>
         <div class="user-info">
-          <div class="user-name">${favoritedChats[user.uid] ? '⭐ ' : ''}${name}</div>
+          <div class="user-name">${isSelf ? '📝 ' : (favoritedChats[user.uid] ? '⭐ ' : '')}${name}</div>
           <div class="user-preview" id="prev-${user.uid}">${escapeHtml(prevText)}</div>
         </div>
         <div class="user-meta">
@@ -1628,13 +1639,13 @@ function renderUsers() {
         </div>
       `;
     } else {
-      el.className = "user-item" + (isSelected ? " active" : "");
+      el.className = "user-item" + (isSelected ? " active" : "") + (isSelf ? " self-chat-item" : "");
       
       const dot = el.querySelector(`.status-dot`);
       if (dot) dot.className = `status-dot ${online ? 'online' : ''}`;
       
       const nameEl = el.querySelector(`.user-name`);
-      if (nameEl) nameEl.innerHTML = `${favoritedChats[user.uid] ? '⭐ ' : ''}${name}`;
+      if (nameEl) nameEl.innerHTML = `${isSelf ? '📝 ' : (favoritedChats[user.uid] ? '⭐ ' : '')}${name}`;
       
       const prevEl = el.querySelector(`.user-preview`);
       if (prevEl && prevEl.textContent !== prevText) prevEl.textContent = prevText;
@@ -1664,6 +1675,7 @@ function renderUsers() {
       let isLongPress = false;
 
       el.addEventListener("touchstart", (e) => {
+        if (el._userData && el._userData.isSelf) return; // no delete on self-chat
         isLongPress = false;
         clearTimeout(pressTimer);
         pressTimer = setTimeout(() => {
@@ -1678,6 +1690,7 @@ function renderUsers() {
       el.addEventListener("touchcancel", () => clearTimeout(pressTimer));
 
       el.addEventListener("contextmenu", (e) => {
+        if (el._userData && el._userData.isSelf) return; // no delete on self-chat
         e.preventDefault();
         e.stopPropagation();
         if (el._userData) openDeleteChatModal(el._userData);
@@ -2267,12 +2280,18 @@ function selectChat(user, el) {
   document.getElementById("chatPic").src = user.photo || "https://i.imgur.com/HeIi0wU.png";
   document.querySelectorAll(".user-item").forEach(e => e.classList.remove("active"));
   if (el) el.classList.add("active");
-  markRead(user.uid);
+  if (!isSelfChat()) markRead(user.uid);
   delete unreadMessages[user.uid];
   renderUsers(); // Move selected user to the top immediately
   loadMessages();
-  listenPresence();
-  listenTyping();
+  // Typing + presence don't apply to the self-chat — skip those listeners.
+  if (isSelfChat()) {
+    if (unsubTyping) { unsubTyping(); unsubTyping = null; }
+    if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
+  } else {
+    listenPresence();
+    listenTyping();
+  }
   listenDisappearingSettings();
   document.getElementById("typingBar").innerHTML = "";
   closeChatInfo();
@@ -2384,6 +2403,8 @@ function loadUnreadCounts() {
     unreadMessages = {};
     snap.forEach(doc => {
       const f = doc.data().from;
+      // Don't count self-chat messages as unread.
+      if (f === currentUser.uid) return;
       unreadMessages[f] = (unreadMessages[f] || 0) + 1;
     });
     renderUsers();
@@ -2523,6 +2544,21 @@ function loadMessages() {
 
   const otherUid = selectedUser.uid;
 
+  // WhatsApp-style "chat yourself": both directions are the same query
+  // (from==me && to==me), so use a SINGLE listener to avoid duplicate
+  // message rendering.
+  if (isSelfChat()) {
+    unsubMessagesA = db.collection("chats")
+      .where("from", "==", currentUser.uid)
+      .where("to", "==", currentUser.uid)
+      .onSnapshot(snap => {
+        _msgsA = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        _msgsB = [];
+        renderMessageList();
+      }, err => console.error("messages(self) listener error:", err));
+    return;
+  }
+
   unsubMessagesA = db.collection("chats")
     .where("from", "==", currentUser.uid)
     .where("to", "==", otherUid)
@@ -2547,6 +2583,26 @@ function loadMessages() {
 
       renderMessageList();
     }, err => console.error("messages(B) listener error:", err));
+}
+
+// WhatsApp-style "Message yourself" — selectedUser is a synthetic self
+// contact whose uid equals currentUser.uid.
+function isSelfChat() {
+  return !!selectedUser && !!currentUser && selectedUser.uid === currentUser.uid;
+}
+
+// Build the synthetic self-contact shown as a pinned "You (Message yourself)"
+// entry at the top of the chat list.
+function getSelfContact() {
+  if (!currentUser) return null;
+  const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'You';
+  const myPhoto = document.getElementById('myPic')?.src || currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png';
+  return {
+    uid: currentUser.uid,
+    displayName: myName + ' (You)',
+    photo: myPhoto,
+    isSelf: true
+  };
 }
 
 let activeAudioPlayer = null;
@@ -2732,7 +2788,11 @@ function renderMessageList() {
   // Handle empty chat container
   const emptyChatEl = box.querySelector(".empty-chat");
   if (!allMessages.length) {
-    box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger</div><div style="font-size: 13px; color: var(--text-3);">No messages yet. Send a message to start conversation!</div></div>';
+    if (isSelfChat()) {
+      box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">📝</div><div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Message yourself</div><div style="font-size: 13px; color: var(--text-3);">Jot down notes, links, or reminders — only you can see this.</div></div>';
+    } else {
+      box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger</div><div style="font-size: 13px; color: var(--text-3);">No messages yet. Send a message to start conversation!</div></div>';
+    }
     return;
   } else if (emptyChatEl) {
     emptyChatEl.remove();
@@ -3474,12 +3534,26 @@ async function sendMessage() {
     const idx = _msgsA.findIndex(m => m.id === tempMsgObj.id);
     if (idx > -1) _msgsA.splice(idx, 1);
 
-    const senderName = document.getElementById('myName').textContent || 'Nexa User';
-    sendPushNotification(
-      senderName,
-      `You have received a new message: ${text.substring(0, 80)}`,
-      selectedUser.uid
-    );
+    // Don't push-notify yourself in the self-chat.
+    if (!isSelfChat()) {
+      const senderName = document.getElementById('myName').textContent || 'Nexa User';
+      sendPushNotification(
+        senderName,
+        `You have received a new message: ${text.substring(0, 80)}`,
+        selectedUser.uid
+      );
+    } else {
+      // Self-chat: mark our own message read immediately (single ticks → double).
+      try {
+        const lastDoc = await db.collection("chats")
+          .where("from", "==", currentUser.uid)
+          .where("to", "==", currentUser.uid)
+          .orderBy("createdAt", "desc").limit(1).get();
+        if (!lastDoc.empty) {
+          await db.collection("chats").doc(lastDoc.docs[0].id).update({ read: true, readAt: Date.now() });
+        }
+      } catch (e) {}
+    }
   } catch (err) {
     showNotifToast("Failed to send message: " + err.message, "error");
   }
@@ -4111,6 +4185,12 @@ function listenIncoming() {
       const msg = change.doc.data();
       const uid = msg.from;
       if (blockedUsers[uid]) return;
+      // Skip self-chat messages — they're handled by the self-chat listener,
+      // not as incoming notifications (don't toast yourself).
+      if (uid === currentUser.uid) {
+        db.collection("chats").doc(change.doc.id).update({ status: "delivered" });
+        return;
+      }
       if (deletedChats[uid]) {
         delete deletedChats[uid];
         saveDeletedChats();
@@ -4994,11 +5074,13 @@ function logCallToChat(result, type, durationSec) {
 // ── Public Entry Points (called from chat header buttons) ──
 async function openVoiceCall() {
   if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
+  if (isSelfChat()) { showNotifToast("You can't call yourself", "info"); return; }
   startCall('voice');
 }
 
 function openCallModal(type) {
   if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
+  if (isSelfChat()) { showNotifToast("You can't call yourself", "info"); return; }
   startCall(type || 'video');
 }
 

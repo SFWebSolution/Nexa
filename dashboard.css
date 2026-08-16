@@ -931,6 +931,21 @@ select:focus-visible {
   border-color: rgba(79, 143, 255, 0.25);
 }
 
+/* WhatsApp-style "Message yourself" pinned self-contact. Slightly tinted so
+   it reads as a special entry, not a normal contact. */
+.user-item.self-chat-item {
+  border-bottom: 1px solid var(--border-sm);
+  margin-bottom: 4px;
+  padding-bottom: 12px;
+}
+.user-item.self-chat-item .user-avatar {
+  border-color: var(--primary);
+}
+.user-item.self-chat-item .user-name {
+  font-weight: 600;
+  color: var(--primary);
+}
+
 .user-avatar-wrap {
   position: relative;
   flex-shrink: 0;

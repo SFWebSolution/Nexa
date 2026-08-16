@@ -25,6 +25,7 @@
       this.vadInterval = null;
       this.roomFirestoreUnsub = null;
       this.roomChatUnsub = null;
+      this.roomDocUnsub = null;
 
       // Maximum participants per voice room (mesh audio — 10 keeps it stable).
       this.maxParticipants = 10;
@@ -448,6 +449,25 @@
       this.showToast(`🎙️ Voice Chat started: "${title}"`);
     }
 
+    // Invite-only access check. Reads the room doc's `invitedUids` array.
+    // The host is always allowed; anyone not on the list is refused. The
+    // invite LINK alone does NOT grant access — the host must sendInvite
+    // first (which also fires the push toast).
+    async canJoinRoom(roomId, uid) {
+      if (!window.db) return true; // no Firestore → don't block (local-only mode)
+      try {
+        const roomDoc = await window.db.collection('voice_rooms').doc(roomId).get();
+        if (!roomDoc.exists) return false;
+        const data = roomDoc.data() || {};
+        if (data.hostId === uid) return true; // host always allowed
+        const invited = Array.isArray(data.invitedUids) ? data.invitedUids : [];
+        return invited.includes(uid);
+      } catch (e) {
+        console.warn('[VoiceRoom] canJoinRoom error:', e);
+        return false;
+      }
+    }
+
     async joinRoom(roomData) {
       if (!roomData || !roomData.id) return;
 
@@ -465,6 +485,15 @@
         } catch (e) {
           console.warn('[VoiceRoom] Capacity check error:', e);
         }
+      }
+
+      // Enforce invite-only access. The host is always allowed; anyone not on
+      // the room doc's invitedUids list is refused. The invite LINK alone does
+      // NOT grant access — the host must sendInvite first.
+      const allowed = await this.canJoinRoom(roomData.id, user.id);
+      if (!allowed) {
+        this.showToast('🚫 You need an invite from the host to join this Voice Chat.');
+        return;
       }
 
       this.activeRoom = {
@@ -558,40 +587,46 @@
         this.roomChatUnsub();
         this.roomChatUnsub = null;
       }
+      if (this.roomDocUnsub) {
+        this.roomDocUnsub();
+        this.roomDocUnsub = null;
+      }
 
-      // Remove ONLY our own participant doc (merge-based subcollection), then
-      // migrate host to the next remaining participant (or delete the room doc
-      // if empty). Never overwrite a participants array.
+      // Host-leaves-all-leave: if the HOST leaves, destroy the room for
+      // everyone — batch-delete ALL participant docs then delete the room
+      // doc, and broadcast ROOM_CLOSED. Non-host participants are kicked via:
+      // (1) the room doc onSnapshot (roomDocUnsub, set up in
+      // subscribeToRoomFirestore) sees the deletion and auto-leaveRoom()s
+      // with "📞 The host ended the Voice Chat." (cross-device signal);
+      // (2) same-browser tabs get the ROOM_CLOSED BroadcastChannel.
+      // A NON-host leaving only deletes their OWN participant doc (no room
+      // deletion, no migration).
       if (window.db && this.activeRoom) {
         const roomId = this.activeRoom.id;
         const userId = user.id;
-        window.db.collection('voice_rooms').doc(roomId)
-          .collection('participants').doc(userId).delete()
-          .then(() => {
-            return window.db.collection('voice_rooms').doc(roomId)
-              .collection('participants').get();
-          })
-          .then(snap => {
-            if (snap.empty) {
-              // Room is empty — delete the room doc entirely.
-              return window.db.collection('voice_rooms').doc(roomId).delete();
-            }
-            // Migrate host to the earliest remaining participant.
-            const remaining = snap.docs.map(d => d.data()).sort((a, b) =>
-              String(a.id).localeCompare(String(b.id)));
-            const newHost = remaining[0];
-            if (newHost) {
-              return window.db.collection('voice_rooms').doc(roomId)
-                .collection('participants').doc(newHost.id)
-                .set({ isHost: true }, { merge: true }).then(() =>
-                  window.db.collection('voice_rooms').doc(roomId).set({
-                    hostId: newHost.id, hostName: newHost.name, updatedAt: Date.now()
-                  }, { merge: true }));
-            }
-          })
-          .catch(err => console.warn('[VoiceRoom] Leave Firestore update error:', err));
+        const isHost = this.activeRoom.isHost;
+
+        if (isHost) {
+          // Host: tear down the whole room.
+          this.broadcast('ROOM_CLOSED', { roomId });
+          window.db.collection('voice_rooms').doc(roomId)
+            .collection('participants').get()
+            .then(snap => {
+              const batch = window.db.batch();
+              snap.docs.forEach(d => batch.delete(d.ref));
+              return batch.commit();
+            })
+            .then(() => window.db.collection('voice_rooms').doc(roomId).delete())
+            .catch(err => console.warn('[VoiceRoom] Host room teardown error:', err));
+        } else {
+          // Non-host: just remove ourselves.
+          window.db.collection('voice_rooms').doc(roomId)
+            .collection('participants').doc(userId).delete()
+            .catch(err => console.warn('[VoiceRoom] Leave Firestore error:', err));
+        }
       }
 
+      const wasHost = this.activeRoom && this.activeRoom.isHost;
       this.activeRoom = null;
       this.participants.clear();
 
@@ -600,7 +635,36 @@
       const miniBar = document.getElementById('nexaVrMiniBar');
       if (miniBar) miniBar.style.display = 'none';
 
-      this.showToast('📞 Left Voice Chat');
+      this.showToast(wasHost ? '📞 You ended the Voice Chat' : '📞 Left Voice Chat');
+    }
+
+    // Called by the room-doc onSnapshot listener (roomDocUnsub) when the host
+    // deletes the room — performs local cleanup WITHOUT touching Firestore
+    // (the host already deleted everything). Shows a distinct toast.
+    leaveRoomFromHostClose(reason) {
+      if (!this.activeRoom) return;
+      this.playChime('leave');
+
+      if (this.peerCalls) { this.peerCalls.forEach(call => call.close()); this.peerCalls.clear(); }
+      if (this.peer) { this.peer.destroy(); this.peer = null; }
+      document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
+        try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
+      });
+      if (this.localStream) { this.localStream.getTracks().forEach(t => t.stop()); this.localStream = null; }
+      if (this.audioCtx && this.audioCtx.state !== 'closed') { this.audioCtx.close().catch(() => {}); this.audioCtx = null; }
+      if (this.timerInterval) clearInterval(this.timerInterval);
+      if (this.vadInterval) clearInterval(this.vadInterval);
+      if (this.roomFirestoreUnsub) { this.roomFirestoreUnsub(); this.roomFirestoreUnsub = null; }
+      if (this.roomChatUnsub) { this.roomChatUnsub(); this.roomChatUnsub = null; }
+      if (this.roomDocUnsub) { this.roomDocUnsub(); this.roomDocUnsub = null; }
+
+      this.activeRoom = null;
+      this.participants.clear();
+      document.getElementById('nexaVrOverlay')?.classList.remove('active');
+      const miniBar = document.getElementById('nexaVrMiniBar');
+      if (miniBar) miniBar.style.display = 'none';
+
+      this.showToast(reason || '📞 The host ended the Voice Chat.');
     }
 
     /* --------------------------------------------------------------------- */
@@ -1045,6 +1109,17 @@
           ...payload,
           status: 'pending'
         }).catch(err => console.warn('[VoiceRoom] Firestore invite write error:', err));
+
+        // 3. Grant the invitee access to the room (invite-only). arrayUnion is
+        //    idempotent — re-inviting the same person is a no-op. The host is
+        //    already on invitedUids (seeded in syncRoomToFirestore).
+        if (this.activeRoom && userId !== this.activeRoom.hostId) {
+          window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
+            invitedUids: window.db.fieldValue
+              ? window.db.fieldValue.arrayUnion(userId)
+              : [userId]
+          }, { merge: true }).catch(err => console.warn('[VoiceRoom] invite grant error:', err));
+        }
       }
 
       this.showToast(`📩 Voice Chat invite sent to ${userName}`);
@@ -1149,13 +1224,21 @@
       const user = this.getCurrentUser();
 
       // Write room metadata (merge) — NEVER overwrite a participants array here.
-      window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
+      // Seed invitedUids with the host so the invite-only access check admits them.
+      const roomMeta = {
         id: this.activeRoom.id,
         title: this.activeRoom.title,
         hostId: this.activeRoom.hostId,
         hostName: this.activeRoom.hostName,
         updatedAt: Date.now()
-      }, { merge: true }).catch(err => console.warn('[VoiceRoom] Firestore room sync error:', err));
+      };
+      if (this.activeRoom.isHost) {
+        roomMeta.invitedUids = window.db.fieldValue
+          ? window.db.fieldValue.arrayUnion(user.id)
+          : [user.id];
+      }
+      window.db.collection('voice_rooms').doc(this.activeRoom.id).set(roomMeta, { merge: true })
+        .catch(err => console.warn('[VoiceRoom] Firestore room sync error:', err));
 
       // Write ONLY this client's own participant doc (merge). Each client owns
       // its own doc; never overwrite the whole participants array — that clobbers
@@ -1200,11 +1283,14 @@
     subscribeToRoomFirestore() {
       if (!window.db || !this.activeRoom) return;
       if (this.roomFirestoreUnsub) this.roomFirestoreUnsub();
+      if (this.roomDocUnsub) this.roomDocUnsub();
+
+      const roomId = this.activeRoom.id;
 
       // Listen to the participants SUBCOLLECTION (docChanges), not an array on
       // the room doc. On a new participant, callPeer() to build the full mesh.
       this.roomFirestoreUnsub = window.db.collection('voice_rooms')
-        .doc(this.activeRoom.id)
+        .doc(roomId)
         .collection('participants')
         .onSnapshot(snapshot => {
           snapshot.docChanges().forEach(change => {
@@ -1248,37 +1334,23 @@
               }
             }
           });
-
-          // Host migration: if the host doc vanished but the room still has
-          // people, promote the earliest remaining participant.
-          this.maybeMigrateHost();
         }, err => console.warn('[VoiceRoom] Participants listener error:', err));
-    }
 
-    maybeMigrateHost() {
-      if (!this.activeRoom) return;
-      const hasHost = Array.from(this.participants.values()).some(p => p.isHost);
-      if (hasHost) return;
+      // Host-close signal: when the HOST leaves they delete the room doc. This
+      // onSnapshot (cross-device) sees the deletion and kicks all non-host
+      // participants out with "📞 The host ended the Voice Chat." The host
+      // itself has already torn down locally via leaveRoom().
       const me = this.getCurrentUser();
-      if (!this.participants.has(me.id)) return;
-
-      // Promote self to host if the original host left.
-      const remaining = Array.from(this.participants.values());
-      // Pick the participant with the smallest id hash as a deterministic tie-breaker.
-      remaining.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      if (remaining[0] && remaining[0].id === me.id) {
-        this.activeRoom.isHost = true;
-        this.activeRoom.hostId = me.id;
-        this.activeRoom.hostName = me.name;
-        const p = this.participants.get(me.id);
-        if (p) p.isHost = true;
-        this.upsertOwnParticipantDoc();
-        window.db.collection('voice_rooms').doc(this.activeRoom.id).set({
-          hostId: me.id, hostName: me.name, updatedAt: Date.now()
-        }, { merge: true }).catch(() => {});
-        this.updateUI();
-        this.showToast(`👑 You are now the host`);
-      }
+      this.roomDocUnsub = window.db.collection('voice_rooms').doc(roomId)
+        .onSnapshot(doc => {
+          if (!doc.exists && this.activeRoom && this.activeRoom.id === roomId) {
+            // Avoid re-entrant teardown if we are already the host leaving.
+            const iAmHost = this.activeRoom.hostId === me.id;
+            if (!iAmHost) {
+              this.leaveRoomFromHostClose('📞 The host ended the Voice Chat.');
+            }
+          }
+        }, err => console.warn('[VoiceRoom] Room doc listener notice:', err));
     }
 
     refreshParticipantCard(id) {
@@ -1425,6 +1497,15 @@
               if (leavingUser) {
                 this.showToast(`🔴 ${leavingUser.name} left`);
               }
+            }
+            break;
+
+          case 'ROOM_CLOSED':
+            // Same-browser-tab signal that the host ended the room. The
+            // cross-device signal comes through the room-doc onSnapshot
+            // (roomDocUnsub); this handles other tabs on the same browser.
+            if (this.activeRoom && payload.roomId === this.activeRoom.id) {
+              this.leaveRoomFromHostClose('📞 The host ended the Voice Chat.');
             }
             break;
 

@@ -184,6 +184,23 @@
   TDZ-safe (`try { return x; } catch (_) { return <default>; }`) so an early
   read before the `let` executes can't throw a Temporal Dead Zone error and halt
   init the same way.
+- **`window.db.fieldValue`** is set to `firebase.firestore.FieldValue` so the
+  voice room module (which only has `window.db`) can use `arrayUnion` for the
+  invite-only `invitedUids` grant. Keep it exposed.
+- **WhatsApp-style "chat yourself":** `renderUsers()` prepends a synthetic
+  self-contact (uid === currentUser.uid) pinned at the top of the chat list
+  (`.user-item.self-chat-item`). `isSelfChat()` = `selectedUser.uid ===
+  currentUser.uid`. `loadMessages()` uses a SINGLE listener (from==me &&
+  to==me) for self-chat — the normal A/B split would run two identical queries
+  and double-render. `sendMessage()` skips the push notification and marks the
+  message `read: true` immediately. `listenIncoming()` and `loadUnreadCounts()`
+  both skip messages where `from === currentUser.uid` (don't toast/notify
+  yourself, don't count as unread). `selectChat()` skips `listenPresence()` +
+  `listenTyping()` for self-chat (no presence/typing for yourself). Call
+  buttons (`openVoiceCall`/`openCallModal`) are blocked for self-chat. Long-
+  press delete on the self-contact row is disabled (you can still delete
+  individual messages inside). `getChatKey(uid, uid)` returns the single uid
+  (sorted join), so disappearing-settings works for self-chat too.
 
 ## Call engine gotchas (dashboard.html, ~line 4034 "VOICE & VIDEO CALLING ENGINE")
 - Voice calls play remote audio through `<audio id="remoteAudio" autoplay playsinline>` (NOT `#remoteVideo`, which is `display:none` during voice calls). Video calls use `<video id="remoteVideo">`.
