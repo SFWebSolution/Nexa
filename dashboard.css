@@ -2197,16 +2197,19 @@ select:focus-visible {
 
 .status-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-sm);
   padding: 4px;
   overflow-x: auto;
+  scrollbar-width: none;
 }
+.status-tabs::-webkit-scrollbar { display: none; }
 
 .status-tab {
-  flex: 1;
-  padding: 7px 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 6px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -2217,6 +2220,9 @@ select:focus-visible {
   transition: all var(--tf);
   font-family: inherit;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
 }
 
 .status-tab.active {
@@ -6292,6 +6298,7 @@ input[type="range"] {
   border-radius: var(--radius-md);
   overflow: hidden;
 }
+/* Sticker rendered on top of the preview image (composer) */
 .sticker-on-image {
   position: absolute;
   left: 50%;
@@ -6304,17 +6311,23 @@ input[type="range"] {
 .sticker-on-image.has-sticker { pointer-events: auto; }
 
 /* The sticker card rendered on the preview image AND in the viewer share the
-   same WhatsApp-style look. .ws-sticker-card is used in both places. */
+   same WhatsApp-style look. .ws-sticker-card is used in both places.
+   It's a FROSTED GLASS card (backdrop-filter) so it picks up the underlying
+   photo/video color and always rhymes with the post — never a flat white box. */
 .ws-sticker-card {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   max-width: 320px;
-  padding: 10px 12px 10px 14px;
-  background: rgba(255, 255, 255, 0.97);
+  padding: 10px 12px 10px 16px;
+  background: rgba(20, 28, 40, 0.42);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 16px;
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+  color: #fff;
   cursor: pointer;
   transition: transform var(--tf);
   -webkit-tap-highlight-color: transparent;
@@ -6333,22 +6346,24 @@ input[type="range"] {
 .ws-sticker-label {
   font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px;
   text-transform: uppercase; margin-bottom: 2px;
+  color: rgba(255, 255, 255, 0.92);
 }
-.ws-sticker-card--addyours .ws-sticker-label { color: var(--primary); }
-.ws-sticker-card--question .ws-sticker-label { color: #7c3aed; }
+.ws-sticker-card--addyours .ws-sticker-label { color: #8ab4ff; }
+.ws-sticker-card--question .ws-sticker-label { color: #c4b5fd; }
 .ws-sticker-text {
-  font-size: 14px; font-weight: 600; color: var(--text-0);
+  font-size: 14px; font-weight: 600; color: #fff;
   line-height: 1.35; word-break: break-word;
   max-width: 240px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 .ws-sticker-remove {
   flex: 0 0 auto;
   width: 22px; height: 22px; border-radius: 50%;
-  background: rgba(0,0,0,0.1); border: none; color: var(--text-1);
+  background: rgba(0, 0, 0, 0.35); border: none; color: #fff;
   cursor: pointer; font-size: 12px; line-height: 1;
   display: flex; align-items: center; justify-content: center;
 }
-.ws-sticker-remove:hover { background: rgba(0,0,0,0.22); color: #fff; }
+.ws-sticker-remove:hover { background: rgba(0, 0, 0, 0.6); }
 
 /* Sticker toolbar button on the preview (WhatsApp-style sticker icon) */
 .sticker-tool-btn {
@@ -6429,13 +6444,16 @@ input[type="range"] {
 }
 .story-sticker-chip-remove:hover { background: rgba(0,0,0,0.25); color: #fff; }
 
-/* ── Story sticker overlay (viewer) — the WhatsApp-style card on the image ── */
+/* ── Story sticker overlay (viewer) — the WhatsApp-style card on the image ──
+   Sits clear of the reply/actions bar at the bottom and the caption text.
+   bottom: 150px keeps it above the actions bar (~96px tall) + the caption
+   (bottom: 130px), centered like WhatsApp's sticker placement. */
 .story-sticker-overlay {
   position: absolute;
   left: 50%;
-  bottom: 96px;
+  bottom: 150px;
   transform: translateX(-50%);
-  z-index: 8;
+  z-index: 9;
   max-width: 84%;
   cursor: pointer;
 }
