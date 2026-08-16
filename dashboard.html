@@ -502,6 +502,7 @@
       <button class="status-tab" id="tabText" onclick="switchStatusTab('text')">Text</button>
       <button class="status-tab" id="tabMusic" onclick="switchStatusTab('music')">🎵</button>
       <button class="status-tab" id="tabAddYours" onclick="switchStatusTab('addyours')">➕</button>
+      <button class="status-tab" id="tabQuestion" onclick="switchStatusTab('question')" title="Ask a Question">❓</button>
     </div>
     
     <div class="status-preview" id="statusPreview"><span>Preview</span></div>
@@ -5769,13 +5770,45 @@ function renderStorySlide(idx) {
 
     musicBadge.style.display = "none";
     startStoryAnimation(8000);
+  } else if (story.type === "question") {
+    // "Ask a Question" sticker story — viewers tap to type an answer that is
+    // sent to the asker as a chat reply (WhatsApp-style).
+    const overlay = document.createElement("div");
+    overlay.className = "prompt-story-overlay";
+    overlay.style.cssText = "position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:36px;text-align:center;z-index:5;background:linear-gradient(135deg,#7c3aed,#5b21b6);";
+
+    const tag = document.createElement("div");
+    tag.style.cssText = "font-size:13px;color:rgba(255,255,255,0.8);font-weight:600;letter-spacing:0.5px;text-transform:uppercase;";
+    tag.textContent = "❓ Ask a Question";
+    overlay.appendChild(tag);
+
+    const qEl = document.createElement("div");
+    qEl.style.cssText = "font-size:26px;font-weight:800;color:#fff;line-height:1.35;word-break:break-word;text-shadow:0 2px 12px rgba(0,0,0,0.5);";
+    qEl.textContent = story.questionText || story.text || "";
+    overlay.appendChild(qEl);
+
+    const ctaWrap = document.createElement("div");
+    ctaWrap.style.cssText = "display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:8px;";
+
+    const answerBtn = document.createElement("button");
+    answerBtn.textContent = "💬 Type your answer";
+    answerBtn.className = "addyours-cta-btn";
+    answerBtn.onclick = (ev) => { ev.stopPropagation(); answerStoryQuestion(story); };
+    ctaWrap.appendChild(answerBtn);
+    overlay.appendChild(ctaWrap);
+    content.appendChild(overlay);
+
+    musicBadge.style.display = "none";
+    startStoryAnimation(8000);
   } else {
     musicBadge.style.display = "none";
     startStoryAnimation(5000);
   }
 
   // If this story is a RESPONSE to an "Add Yours" prompt (has promptId but is
-  // not itself a prompt), render a tappable sticker linking back to the chain.
+  // not itself a prompt), render a tappable sticker. Tapping it opens the
+  // composer seeded with the SAME prompt so the viewer can post their own
+  // (WhatsApp "Add Yours" reshare chain), plus a small "view all" link.
   if (story.promptId && story.type !== "prompt") {
     const sticker = document.createElement("div");
     sticker.className = "addyours-sticker";
@@ -5783,9 +5816,49 @@ function renderStorySlide(idx) {
       <div class="addyours-sticker-body">
         <div class="addyours-sticker-label">Add Yours</div>
         <div class="addyours-sticker-prompt">${escapeHtml(story.promptText || "")}</div>
+        <div class="addyours-sticker-viewall" onclick="event.stopPropagation(); openPromptResponsesModal('${escapeHtml(story.promptId)}');">View all responses</div>
       </div>`;
-    sticker.onclick = (ev) => { ev.stopPropagation(); openPromptResponsesModal(story.promptId); };
+    sticker.onclick = (ev) => { ev.stopPropagation(); openAddYoursComposer(story.promptId, story.promptText || story.text || ""); };
     content.appendChild(sticker);
+  }
+}
+
+// Send a typed answer to an "Ask a Question" story as a chat reply to the asker.
+async function answerStoryQuestion(story) {
+  if (!currentUser || !story) return;
+  if (story.uid === currentUser.uid) {
+    showNotifToast("This is your own question", "info");
+    return;
+  }
+  const question = story.questionText || story.text || "";
+  const answer = window.prompt("Answer: " + question, "");
+  if (answer === null || !answer.trim()) return;
+  const reply = answer.trim();
+  try {
+    await db.collection("chats").add({
+      from: currentUser.uid,
+      to: story.uid,
+      text: "❓ " + question + "\n💬 " + reply,
+      storyReplyId: story.id || null,
+      storyReplyUid: story.uid,
+      storyQuestionId: story.questionId || null,
+      storyQuestionText: question,
+      storyQuestionAnswer: reply,
+      storyUrl: story.url || null,
+      storyText: story.text || null,
+      storyType: story.type || "question",
+      createdAt: Date.now(),
+      read: false,
+      status: "sent"
+    });
+    showNotifToast("✓ Answer sent", "success");
+    const owner = (typeof allUsersData !== "undefined" ? allUsersData.find(u => u.uid === story.uid) : null);
+    const myName = (document.getElementById("myName")?.textContent) || "Nexa User";
+    if (typeof sendPushNotification === "function") {
+      sendPushNotification("Answer from " + myName, "❓ " + question + " → " + reply, owner ? owner.oneSignalPlayerId : null);
+    }
+  } catch (err) {
+    showNotifToast("Failed to send answer: " + err.message, "error");
   }
 }
 
@@ -6394,7 +6467,19 @@ function handleStatusOverlayClick(e) {
 function switchStatusTab(tab) {
   statusTab = tab;
   document.querySelectorAll(".status-tab").forEach(el => el.classList.remove("active"));
-  document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.add("active");
+  // Tab button ids use specific casing (tabImage, tabVideo, tabText, tabMusic,
+  // tabAddYours, tabQuestion). Map each tab key to its exact element id so a
+  // case mismatch doesn't null-out the element and silently break the button.
+  const tabIdMap = {
+    image: "tabImage",
+    video: "tabVideo",
+    text: "tabText",
+    music: "tabMusic",
+    addyours: "tabAddYours",
+    question: "tabQuestion"
+  };
+  const tabBtn = document.getElementById(tabIdMap[tab] || ("tab" + tab.charAt(0).toUpperCase() + tab.slice(1)));
+  if (tabBtn) tabBtn.classList.add("active");
 
   const textInput = document.getElementById("statusTextInput");
 
@@ -6418,6 +6503,11 @@ function switchStatusTab(tab) {
     textInput.style.display = "block";
     textInput.placeholder = "Type a prompt (e.g. 'Show your pet! 👾')…";
     document.getElementById("statusPreview").innerHTML = '<div class="addyours-preview-card"><div class="addyours-preview-icon">➕</div><div class="addyours-preview-label">Add Yours</div><div class="addyours-preview-prompt" id="addyoursPromptPreview">Your prompt appears here</div></div>';
+    textInput.focus();
+  } else if (tab === "question") {
+    textInput.style.display = "block";
+    textInput.placeholder = "Ask a question (e.g. 'Where should I travel next? 🌍')…";
+    document.getElementById("statusPreview").innerHTML = '<div class="addyours-preview-card"><div class="addyours-preview-icon">❓</div><div class="addyours-preview-label">Ask a Question</div><div class="addyours-preview-prompt" id="addyoursPromptPreview">Your question appears here</div></div>';
     textInput.focus();
   }
 }
@@ -6656,6 +6746,18 @@ async function shareStatus() {
       statusData.text = promptText;
       statusData.promptId = "prompt_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
       statusData.promptText = promptText;
+    } else if (statusTab === "question") {
+      const questionText = document.getElementById("statusTextInput").value.trim();
+      if (!questionText) {
+        showNotifToast("Please type a question", "error");
+        shareBtn.disabled = false;
+        shareBtn.textContent = "Share";
+        return;
+      }
+      statusData.type = "question";
+      statusData.text = questionText;
+      statusData.questionId = "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
+      statusData.questionText = questionText;
     }
 
     await db.collection("status").add(statusData);
@@ -6756,28 +6858,51 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
-function openProfilePic(src) {
+function openProfilePic(src, returnTo) {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
-  img.src = src;
+  if (!modal || !img) return;
+  img.src = src || "https://i.imgur.com/HeIi0wU.png";
+  // Track where to return to ('profile' = the contact profile modal).
+  modal.dataset.returnTo = returnTo || "";
   modal.classList.add('active');
 }
 
 function closeProfilePicModal(event) {
-  if (event.target.id === 'profilePicModal') {
-    event.target.classList.remove('active');
+  // Close via backdrop click OR explicit call (event may be undefined).
+  if (event && event.target && event.target.id !== 'profilePicModal') return;
+  const modal = document.getElementById('profilePicModal');
+  if (modal) modal.classList.remove('active');
+}
+
+// Back button on the full-profile-pic viewer: returns to the contact profile
+// modal when opened from there, otherwise just closes.
+function profilePicGoBack() {
+  const modal = document.getElementById('profilePicModal');
+  if (!modal) return;
+  const returnTo = modal.dataset.returnTo || "";
+  modal.classList.remove('active');
+  if (returnTo === 'profile') {
+    const profileModal = document.getElementById('userProfileModal');
+    if (profileModal) profileModal.classList.add('active');
   }
 }
 
 </script>
-<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)"><div class="modal-content"><img id="modalProfileImg" src="" alt="Profile Picture"></div></div>
+<div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
+  <button class="profile-pic-back" onclick="profilePicGoBack()" title="Back">←</button>
+  <div class="profile-pic-viewer">
+    <img id="modalProfileImg" src="" alt="Profile Picture">
+    <div class="profile-pic-hint">Tap anywhere to close</div>
+  </div>
+</div>
 
 <!-- USER PROFILE MODAL — click a contact's avatar to view their profile -->
 <div class="modal-overlay" id="userProfileModal" onclick="closeUserProfile(event)">
   <div class="user-profile-card" onclick="event.stopPropagation()">
     <button class="user-profile-back" onclick="closeUserProfile()" title="Back">←</button>
     <div class="user-profile-cover"></div>
-    <div class="user-profile-avatar-wrap" onclick="openProfilePic(document.getElementById('userProfileAvatar').src)">
+    <div class="user-profile-avatar-wrap" onclick="openProfilePic(document.getElementById('userProfileAvatar').src, 'profile')">
       <img id="userProfileAvatar" src="" alt="Profile" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
       <div class="user-profile-avatar-zoom">🔍</div>
     </div>
@@ -6895,4 +7020,4 @@ function closeProfilePicModal(event) {
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->
 <script src="nexa-voice-room.js"></script>
 </body>
-</html>
+</html>
