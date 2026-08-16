@@ -38,46 +38,55 @@
 ## Presence / online status
 - Online dots + chat-header "last seen" are driven by a SINGLE shared
   `db.collection("presence").onSnapshot` listener (`startSharedPresenceListener`)
-  that feeds `userPresenceCache`. Do NOT re-introduce per-user
-  `presence/{uid}` doc listeners — one per contact exploded Firestore read
-  counts and is what broke presence at scale / hit the Spark-plan quota.
-- `startLeaderboardListeners()` also listens to `presence` and writes into the
-  same `userPresenceCache`, so both paths stay consistent.
-- `updateOnline()` marks the user online whenever the app is open (not gated on
-  `document.visibilityState === "visible"`), because mobile backgrounding
-  flips visibility constantly and caused users to appear offline. Offline is
-  only set on explicit `pagehide`/`beforeunload`.
-- **WhatsApp-style online/last-seen (current behaviour):** online is driven by
-  heartbeat FRESHNESS, not the `online`/`status` flags. `isUserOnline(pdata)`
-  returns `(Date.now() - pdata.lastSeen) < PRESENCE_TIMEOUT_MS` (90s) and
-  intentionally does NOT early-return on `online===false`/`status==="offline"`,
-  because those flags flicker false on every mobile background/screen-lock
-  (`pagehide`/`beforeunload` fire on tab-switch, not just real close). A fresh
-  `lastSeen` with `online:false` is that flicker → still online. When the app
-  is truly closed, the heartbeat stops → `lastSeen` goes stale → after 90s the
-  user correctly shows "last seen Xm ago". The 90s grace window absorbs mobile
-  setInterval throttling (backgrounded tabs run ~1/min).
-- `writeOfflineBeacon()` fires a `navigator.sendBeacon` to the Firestore REST
-  API on `pagehide`/`beforeunload` so the final `lastSeen`/offline stamp lands
-  even when the mobile tab is evicted before the async `set()` resolves (the
-  async `updateOnline(false)` is also called as a fallback). This REST write
-  targets `projects/mel-odix/.../presence/{uid}` with an `updateMask` for the
-  three fields — keep the project id in sync with the Firebase config.
-- Do NOT lower `PRESENCE_TIMEOUT_MS` back to 35s or re-add the
-  `if (pdata.online === false) return false` short-circuit — both caused the
-  "can't see online / flickers offline" symptom on mobile.
+  that feeds `userPresenceCache` (and mirrors into `adminPresenceData`).
+  Do NOT re-introduce per-user `presence/{uid}` doc listeners — one per contact
+  exploded Firestore read counts and is what broke presence at scale / hit the
+  Spark-plan quota. Do NOT re-add a SECOND full-collection presence listener in
+  `startLeaderboardListeners()` either — the leaderboard now reads from the same
+  shared cache and `startSharedPresenceListener` calls `renderWeeklyLeaderboard()`
+  on every presence change (the old `leaderboardPresenceUnsub` was a redundant
+  duplicate that raced with the shared one and doubled reads).
+- **"Online" = the user's app is actively heartbeating RIGHT NOW** (the
+  "in the app alone" rule). `isUserOnline(pdata)` returns true ONLY if
+  `lastSeen` (or `last_seen`) is fresher than `PRESENCE_TIMEOUT_MS` (35s),
+  i.e. the heartbeat wrote within the last ~35s. It does NOT trust a bare
+  `online === true` / `status === "online"` flag — that flag lingers true
+  forever when a mobile tab is swiped away without firing `beforeunload`.
+  An explicit `online === false` / `status === "offline"` wins immediately
+  (returns false) so a clean logout/`pagehide` shows offline at once; in every
+  other case it's pure heartbeat freshness. This is what makes online status
+  reflect ONLY people who currently have the app open.
+- **Heartbeat (`heartbeat()`):** runs every 10s via `setInterval` and is NOT
+  gated on `document.visibilityState === "visible"` — a backgrounded-but-open
+  tab is still "in the app", so it keeps heartbeating and stays online. It
+  refreshes `lastSeen`/`last_seen` + re-asserts `online:true` while PRESERVING
+  the current `userStatus` (so the inactivity timer's "away" status isn't
+  clobbered every 10s). A truly closed/killed app stops heartbeating →
+  `lastSeen` goes stale → within ~35s the user shows "last seen Xm ago",
+  even when `beforeunload`/`pagehide` failed to fire (mobile often doesn't).
+- `updateOnline(on)` is now only for state transitions (init online, explicit
+  offline on `beforeunload`/`pagehide`, back-to-online on interaction). Going
+  online preserves "away" if idle; going offline sets `status:"offline"`.
+- `visibilitychange` → hidden does NOT write offline (the tab is still alive);
+  visible re-asserts online + `resumeAllAudio()`. Only `beforeunload`/`pagehide`
+  write offline (true close) — and if they don't fire, staleness handles it.
+- Inactivity (3 min, `resetInactivity`): sets `userStatus = "away"` and calls
+  `heartbeat()` (so an idle-but-open user shows 🟡 away, still "online" by
+  freshness). Any click/key/mouse resets to "online" + heartbeat.
+- The 10s ticker also re-evaluates dots/Active Now/chat-header from the cache,
+  so a stale peer flips to offline locally without waiting for their write.
+- `updateChatHeaderPresence` shows "🟢 online" (fresh + status online),
+  "🟡 away" (fresh + status away), or "⚪ last seen {formatLastSeen}".
 - `listenPresence()` (chat header) no longer opens its own listener — it just
   refreshes from the shared cache.
-- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` (dashboard.html,
-  ~line 1586) draws a horizontal row of round avatars + green dots showing ONLY
-  currently-online users. It filters `userPresenceCache` via `isUserOnline()`
-  (heartbeat freshness, NOT the unreliable `online` flag), is hidden entirely
-  when no one is online, and is re-called at the end of `renderUsers()`.
-  HTML container `#activeNowBar` sits between the search input and users list
-  (~line 116); CSS lives in dashboard.css under `.active-now-*`. Clicking an
-  avatar reuses `selectChat(uid)` to open that user's chat. `updateChatHeaderPresence` shows "🟢 online"
-  when `isUserOnline` is true and "⚪ last seen {formatLastSeen}" otherwise
-  (staleness-driven, no "away" branch anymore).
+- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` (dashboard.html)
+  draws a horizontal row of round avatars + green dots showing ONLY
+  currently-online users (via `isUserOnline()` freshness). Hidden entirely when
+  no one is online; re-called from `renderUsers()`, `startSharedPresenceListener`,
+  and the 10s ticker. Container `#activeNowBar`; CSS `.active-now-*` in dashboard.css.
+- `nexa-voice-room.js` `isUserOnline(uid)` delegates to `window.isUserOnline`
+  (the shared timestamp rule); its fallbacks use the SAME freshness rule and do
+  NOT trust a stale `u.online === true` user flag.
 
 ## Audio autoplay / "can't hear anything"
 - Browsers block autoplay + suspend `AudioContext` until a user gesture and on

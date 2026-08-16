@@ -1015,26 +1015,22 @@
 
     isUserOnline(uid) {
       if (!uid) return false;
-      // 1. Check window.isUserOnline & userPresenceCache from Nexa app
+      // 1. Delegate to the Nexa app's shared isUserOnline (timestamp-based:
+      // online iff a fresh heartbeat within ~35s). This is the source of truth.
       if (typeof window.isUserOnline === 'function' && window.userPresenceCache && window.userPresenceCache[uid]) {
         return !!window.isUserOnline(window.userPresenceCache[uid]);
       }
-      // 2. Direct presence cache inspection
+      // 2. Direct presence cache inspection (same freshness rule as the app).
       if (window.userPresenceCache && window.userPresenceCache[uid]) {
         const pdata = window.userPresenceCache[uid];
-        if (pdata.state === 'online') return true;
-        if (pdata.last_seen) {
-          const lastSeen = pdata.last_seen.toDate ? pdata.last_seen.toDate().getTime() : (typeof pdata.last_seen === 'number' ? pdata.last_seen : 0);
-          return (Date.now() - lastSeen) < 35000;
-        }
+        if (pdata.online === false || pdata.status === 'offline') return false;
+        const raw = pdata.lastSeen || pdata.last_seen || 0;
+        const lastSeen = raw && raw.toDate ? raw.toDate().getTime() : (typeof raw === 'number' ? raw : 0);
+        if (!lastSeen) return false;
+        return (Date.now() - lastSeen) < 35000;
       }
-      // 3. Fallback to user object property
-      if (window.allUsersData) {
-        const u = window.allUsersData.find(x => x.uid === uid || x.id === uid);
-        if (u) {
-          if (u.online === true || u.state === 'online' || u.isOnline === true) return true;
-        }
-      }
+      // 3. No presence data at all → not online (do NOT trust a stale
+      // `u.online === true` user flag, which lingers after the app closed).
       return false;
     }
 
