@@ -18,6 +18,9 @@
       this.micGainNode = null;
       this.peer = null;
       this.peerCalls = new Map(); // peerId -> MediaConnection
+      this.peerIdToUid = new Map(); // peerId -> uid (for tie-breaker & cleanup)
+      this.retriedPeers = new Set(); // peerIds already retried once (reset after 15s)
+      this.pendingAudioPlays = new Map(); // peerId -> audioEl waiting for a gesture
       this.isMuted = false;
       this.isSpeakerMuted = false;
       this.isMinimized = false;
@@ -48,7 +51,8 @@
       this.injectUIComponents();
       this.attachEventListeners();
       this.setupChannelListeners();
-      
+      this.wireAudioUnlockListeners();
+
       // Delay Firestore listener setup slightly to ensure Firebase is fully loaded
       setTimeout(() => {
         this.setupFirestoreListeners();
@@ -157,6 +161,22 @@
       } catch (e) {}
 
       return [];
+    }
+
+    // Persistent listeners that unlock autoplay-blocked remote audio on the
+    // first user gesture and whenever the tab regains focus/visibility. Mobile
+    // browsers block .play() until a gesture; these ensure parked audio
+    // (pendingAudioPlays) starts as soon as the user touches the app.
+    wireAudioUnlockListeners() {
+      if (this._audioUnlockWired) return;
+      this._audioUnlockWired = true;
+      const unlock = () => this.unlockPendingAudio();
+      document.addEventListener('click', unlock);
+      document.addEventListener('touchstart', unlock, { passive: true });
+      window.addEventListener('focus', unlock);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') unlock();
+      });
     }
 
     /* --------------------------------------------------------------------- */
@@ -554,6 +574,9 @@
         this.peerCalls.forEach(call => call.close());
         this.peerCalls.clear();
       }
+      this.peerIdToUid.clear();
+      this.retriedPeers.clear();
+      this.pendingAudioPlays.clear();
       if (this.peer) {
         this.peer.destroy();
         this.peer = null;
@@ -579,6 +602,7 @@
       }
       if (this.timerInterval) clearInterval(this.timerInterval);
       if (this.vadInterval) clearInterval(this.vadInterval);
+      if (this._inviteRenderInterval) { clearInterval(this._inviteRenderInterval); this._inviteRenderInterval = null; }
       if (this.roomFirestoreUnsub) {
         this.roomFirestoreUnsub();
         this.roomFirestoreUnsub = null;
@@ -646,6 +670,9 @@
       this.playChime('leave');
 
       if (this.peerCalls) { this.peerCalls.forEach(call => call.close()); this.peerCalls.clear(); }
+      this.peerIdToUid.clear();
+      this.retriedPeers.clear();
+      this.pendingAudioPlays.clear();
       if (this.peer) { this.peer.destroy(); this.peer = null; }
       document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
         try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
@@ -654,6 +681,7 @@
       if (this.audioCtx && this.audioCtx.state !== 'closed') { this.audioCtx.close().catch(() => {}); this.audioCtx = null; }
       if (this.timerInterval) clearInterval(this.timerInterval);
       if (this.vadInterval) clearInterval(this.vadInterval);
+      if (this._inviteRenderInterval) { clearInterval(this._inviteRenderInterval); this._inviteRenderInterval = null; }
       if (this.roomFirestoreUnsub) { this.roomFirestoreUnsub(); this.roomFirestoreUnsub = null; }
       if (this.roomChatUnsub) { this.roomChatUnsub(); this.roomChatUnsub = null; }
       if (this.roomDocUnsub) { this.roomDocUnsub(); this.roomDocUnsub = null; }
@@ -701,22 +729,28 @@
         this.peer.on('open', (id) => {
           console.log('[VoiceRoom] PeerJS connected with ID:', id);
           this.peerOpen = true;
-          // Call existing room participants to build the full mesh.
+          this.peerIdToUid.set(id, user.id);
+          // Build the mesh: call existing participants we're responsible for
+          // (tie-breaker — only the lower-uid initiates) so there's exactly ONE
+          // bidirectional MediaConnection per pair.
           this.participants.forEach(p => {
-            if (p.id !== user.id) {
-              this.callPeer(p.peerId || this.peerIdFor(p.id));
+            if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) {
+              const pid = p.peerId || this.peerIdFor(p.id);
+              this.peerIdToUid.set(pid, p.id);
+              this.callPeer(pid, p.id);
             }
           });
         });
 
+        // Incoming call from another peer. ANSWERING is always allowed (the
+        // tie-breaker only gates who INITIATES). attachCallHandlers MUST run
+        // BEFORE call.answer() — PeerJS can fire `stream` synchronously during
+        // answer(), and attaching the handler after means the caller's audio
+        // fires into zero listeners → asymmetric "B can't hear A".
         this.peer.on('call', async (call) => {
-          if (!this.localStream) {
-            await this.initMicrophone();
-          }
+          if (!this.localStream) await this.initMicrophone();
+          this.attachCallHandlers(call, call.peer);
           call.answer(this.localStream);
-          call.on('stream', (remoteStream) => {
-            this.playRemoteAudioStream(call.peer, remoteStream);
-          });
         });
 
         // Fall back to a unique id if the stable id is taken (another tab/device).
@@ -729,16 +763,21 @@
             this.peer = new window.Peer(this.peerIdFor(user.id) + '_' + Math.random().toString(36).substr(2, 4), {
               debug: 1, config: { iceServers }
             });
-            this.peer.on('open', () => {
+            this.peer.on('open', (id) => {
               this.peerOpen = true;
+              this.peerIdToUid.set(id, user.id);
               this.participants.forEach(p => {
-                if (p.id !== user.id) this.callPeer(p.peerId || this.peerIdFor(p.id));
+                if (p.id !== user.id && this.shouldInitiateCallTo(p.id)) {
+                  const pid = p.peerId || this.peerIdFor(p.id);
+                  this.peerIdToUid.set(pid, p.id);
+                  this.callPeer(pid, p.id);
+                }
               });
             });
             this.peer.on('call', async (call) => {
               if (!this.localStream) await this.initMicrophone();
+              this.attachCallHandlers(call, call.peer);
               call.answer(this.localStream);
-              call.on('stream', (s) => this.playRemoteAudioStream(call.peer, s));
             });
           } else if (err && (err.type === 'disconnected' || err.type === 'network' || err.type === 'server-error')) {
             // Transient — try to reconnect.
@@ -755,16 +794,73 @@
       }
     }
 
-    callPeer(targetPeerId) {
-      if (!this.peer || !this.peerOpen || !this.localStream || this.peerCalls.has(targetPeerId)) return;
+    // Mesh tie-breaker: only the peer whose uid sorts strictly lower initiates
+    // the call. This yields exactly ONE bidirectional MediaConnection per pair
+    // (a single PeerJS call carries audio both ways). Without it, BOTH peers
+    // call each other → two redundant connections keyed under the same slot;
+    // when PeerJS prunes one, the shared audio element tears down while the
+    // survivor already fired `stream` → that pair goes permanently deaf.
+    shouldInitiateCallTo(theirUid) {
+      const me = this.getCurrentUser();
+      if (!theirUid || theirUid === me.id) return false;
+      return String(me.id) < String(theirUid);
+    }
+
+    // Wires stream/close/error handlers to a MediaConnection. MUST be called
+    // BEFORE call.answer() on the answer side (stream can fire synchronously).
+    // close/error: only tear down if THIS call is still the active one in the
+    // slot (double-call guard), then retry once (gated by tie-breaker).
+    attachCallHandlers(call, targetPeerId) {
+      if (!call) return;
+      const targetUid = this.peerIdToUid.get(targetPeerId);
+
+      call.on('stream', (remoteStream) => {
+        this.playRemoteAudioStream(targetPeerId, remoteStream);
+      });
+
+      const onFail = (reason) => {
+        // Double-call guard: only clean up if this call is still the active one.
+        if (this.peerCalls.get(targetPeerId) !== call) return;
+        this.peerCalls.delete(targetPeerId);
+        const audioEl = document.getElementById('audio_' + targetPeerId);
+        if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+        this.pendingAudioPlays.delete(targetPeerId);
+        // Retry once, but only if we're the initiator (tie-breaker) — the
+        // answerer doesn't initiate, so retrying would recreate the redundant
+        // second leg. Reset the retry lock after 15s so a later genuine drop
+        // can be recovered.
+        if (targetUid && this.shouldInitiateCallTo(targetUid) && !this.retriedPeers.has(targetPeerId)) {
+          this.retriedPeers.add(targetPeerId);
+          setTimeout(() => this.retriedPeers.delete(targetPeerId), 15000);
+          setTimeout(() => this.retryCallPeer(targetPeerId, targetUid), 600);
+        }
+      };
+
+      call.on('close', () => onFail('close'));
+      call.on('error', () => onFail('error'));
+    }
+
+    retryCallPeer(targetPeerId, targetUid) {
+      if (!this.peer || !this.peerOpen || !this.localStream) return;
+      if (!this.activeRoom) return;
+      // Still a participant? If they left, don't re-call.
+      if (targetUid && !this.participants.has(targetUid)) return;
+      if (this.peerCalls.has(targetPeerId)) return;
+      this.callPeer(targetPeerId, targetUid);
+    }
+
+    callPeer(targetPeerId, targetUid) {
+      if (!this.peer || !this.peerOpen || !this.localStream) return;
+      if (this.peerCalls.has(targetPeerId)) return;
+      // Tie-breaker: only the lower-uid initiates. (Answering is unrestricted.)
+      if (targetUid && !this.shouldInitiateCallTo(targetUid)) return;
+      if (targetUid) this.peerIdToUid.set(targetPeerId, targetUid);
 
       try {
         const call = this.peer.call(targetPeerId, this.localStream);
         if (call) {
           this.peerCalls.set(targetPeerId, call);
-          call.on('stream', (remoteStream) => {
-            this.playRemoteAudioStream(targetPeerId, remoteStream);
-          });
+          this.attachCallHandlers(call, targetPeerId);
         }
       } catch (e) {
         console.warn('[VoiceRoom] Call peer error:', e);
@@ -782,7 +878,39 @@
       }
       audioEl.srcObject = stream;
       audioEl.muted = this.isSpeakerMuted;
-      audioEl.play().catch(err => console.warn('[VoiceRoom] Remote audio play notice:', err));
+      this.attemptAudioPlay(peerId, audioEl);
+    }
+
+    // Browsers block autoplay + suspend AudioContext until a user gesture and
+    // on backgrounding. Retry play() a few times; if still blocked, park the
+    // element so unlockPendingAudio() (wired to persistent gesture/visibility
+    // listeners) can start it on the first interaction.
+    attemptAudioPlay(peerId, audioEl) {
+      if (!audioEl) return;
+      let tries = 0;
+      const tryPlay = () => {
+        audioEl.play().then(() => {
+          this.pendingAudioPlays.delete(peerId);
+        }).catch(() => {
+          tries++;
+          if (tries < 5) {
+            setTimeout(tryPlay, 700);
+          } else {
+            this.pendingAudioPlays.set(peerId, audioEl);
+          }
+        });
+      };
+      tryPlay();
+    }
+
+    unlockPendingAudio() {
+      if (!this.pendingAudioPlays.size) return;
+      this.pendingAudioPlays.forEach((audioEl, peerId) => {
+        audioEl.play().then(() => this.pendingAudioPlays.delete(peerId)).catch(() => {});
+      });
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
     }
 
     async initMicrophone() {
@@ -995,11 +1123,24 @@
       if (modal) {
         modal.classList.add('active');
         this.renderUserInviteList();
+        // Re-render periodically while the modal is open so the online-first
+        // sort + dots stay live as users come and go (presence is fed by the
+        // dashboard's shared listener into window.userPresenceCache).
+        clearInterval(this._inviteRenderInterval);
+        this._inviteRenderInterval = setInterval(() => {
+          if (document.getElementById('nexaVrInviteModal')?.classList.contains('active')) {
+            this.renderUserInviteList();
+          } else {
+            clearInterval(this._inviteRenderInterval);
+            this._inviteRenderInterval = null;
+          }
+        }, 5000);
       }
     }
 
     closeInviteModal() {
       document.getElementById('nexaVrInviteModal')?.classList.remove('active');
+      if (this._inviteRenderInterval) { clearInterval(this._inviteRenderInterval); this._inviteRenderInterval = null; }
     }
 
     copyInviteLink() {
@@ -1015,26 +1156,22 @@
 
     isUserOnline(uid) {
       if (!uid) return false;
-      // 1. Check window.isUserOnline & userPresenceCache from Nexa app
+      // 1. Delegate to the Nexa app's shared isUserOnline (timestamp-based:
+      // online iff a fresh heartbeat within ~35s). This is the source of truth.
       if (typeof window.isUserOnline === 'function' && window.userPresenceCache && window.userPresenceCache[uid]) {
         return !!window.isUserOnline(window.userPresenceCache[uid]);
       }
-      // 2. Direct presence cache inspection
+      // 2. Direct presence cache inspection (same freshness rule as the app).
       if (window.userPresenceCache && window.userPresenceCache[uid]) {
         const pdata = window.userPresenceCache[uid];
-        if (pdata.state === 'online') return true;
-        if (pdata.last_seen) {
-          const lastSeen = pdata.last_seen.toDate ? pdata.last_seen.toDate().getTime() : (typeof pdata.last_seen === 'number' ? pdata.last_seen : 0);
-          return (Date.now() - lastSeen) < 35000;
-        }
+        if (pdata.online === false || pdata.status === 'offline') return false;
+        const raw = pdata.lastSeen || pdata.last_seen || 0;
+        const lastSeen = raw && raw.toDate ? raw.toDate().getTime() : (typeof raw === 'number' ? raw : 0);
+        if (!lastSeen) return false;
+        return (Date.now() - lastSeen) < 35000;
       }
-      // 3. Fallback to user object property
-      if (window.allUsersData) {
-        const u = window.allUsersData.find(x => x.uid === uid || x.id === uid);
-        if (u) {
-          if (u.online === true || u.state === 'online' || u.isOnline === true) return true;
-        }
-      }
+      // 3. No presence data at all → not online (do NOT trust a stale
+      // `u.online === true` user flag, which lingers after the app closed).
       return false;
     }
 
@@ -1057,8 +1194,16 @@
 
       listContainer.innerHTML = actualUsers
         .filter(u => u.id !== currentUser.id) // exclude self
-        .map(u => {
-          const online = this.isUserOnline(u.id);
+        .map(u => ({ u, online: this.isUserOnline(u.id) }))
+        .sort((a, b) => {
+          // Online users first, then alphabetically by name. Keeps the people
+          // you'd actually invite (those in the app right now) at the top.
+          if (a.online !== b.online) return a.online ? -1 : 1;
+          const an = (a.u.name || '').toLowerCase();
+          const bn = (b.u.name || '').toLowerCase();
+          return an.localeCompare(bn);
+        })
+        .map(({ u, online }) => {
           return `
             <div class="nexa-vr-user-item">
               <div class="nexa-vr-user-info">
@@ -1299,21 +1444,24 @@
 
             if (change.type === 'added' || change.type === 'modified') {
               const isNew = !this.participants.has(p.id);
+              const peerId = p.peerId || this.peerIdFor(p.id);
               this.participants.set(p.id, {
                 id: p.id,
                 name: p.name,
                 avatar: p.avatar,
-                peerId: p.peerId || this.peerIdFor(p.id),
+                peerId: peerId,
                 isHost: !!p.isHost,
                 isMuted: !!p.isMuted,
                 isSpeaking: !!p.isSpeaking,
                 handRaised: !!p.handRaised
               });
+              this.peerIdToUid.set(peerId, p.id);
               if (isNew) {
                 this.updateUI();
-                // Build the mesh: call the new participant's peer.
-                if (p.id !== this.getCurrentUser().id && this.peer && this.peer.open) {
-                  this.callPeer(p.peerId || this.peerIdFor(p.id));
+                // Build the mesh: only the lower-uid initiates the call
+                // (tie-breaker) so there's one bidirectional connection per pair.
+                if (p.id !== this.getCurrentUser().id && this.peerOpen && this.shouldInitiateCallTo(p.id)) {
+                  this.callPeer(peerId, p.id);
                 }
               } else {
                 // Reflect mute/hand changes in the UI without a full rebuild.
@@ -1328,7 +1476,10 @@
                 const call = this.peerCalls.get(peerId);
                 if (call) { try { call.close(); } catch (e) {} this.peerCalls.delete(peerId); }
                 const audioEl = document.getElementById('audio_' + peerId);
-                if (audioEl) { audioEl.pause(); audioEl.remove(); }
+                if (audioEl) { try { audioEl.pause(); audioEl.srcObject = null; audioEl.remove(); } catch (e) {} }
+                this.peerIdToUid.delete(peerId);
+                this.pendingAudioPlays.delete(peerId);
+                this.retriedPeers.delete(peerId);
                 this.updateUI();
                 if (name) this.showToast(`🔴 ${name} left`);
               }

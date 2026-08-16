@@ -1420,11 +1420,19 @@ function confirmDeleteChat() {
 
 const PRESENCE_TIMEOUT_MS = 35000;
 
+// Online = the user's app is actively heartbeating RIGHT NOW. The heartbeat
+// writes lastSeen every ~10s while the app/tab is alive, so a user is online
+// iff lastSeen is fresher than PRESENCE_TIMEOUT_MS. This makes presence reflect
+// ONLY people who currently have the app open — not stale docs from users who
+// closed the app (mobile beforeunload/pagehide is unreliable, so a stale
+// lastSeen is the real signal). An explicit offline flag wins immediately.
+// Do NOT short-circuit on `online === true` alone — that flag stays true
+// forever when a mobile tab is swiped away without firing beforeunload.
 function isUserOnline(pdata) {
   if (!pdata) return false;
   if (pdata.online === false || pdata.status === "offline") return false;
-  if (pdata.online === true || pdata.status === "online") return true;
   const lastSeen = pdata.lastSeen || pdata.last_seen || 0;
+  if (!lastSeen) return false;
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
 
@@ -1476,9 +1484,10 @@ function startUsersListener() {
 }
 
 // Single shared presence listener — feeds userPresenceCache for the whole app
-// (online dots, Active Now bar, chat-header last seen, voice-room invite list).
-// Do NOT re-introduce per-user presence/{uid} doc listeners; one per contact
-// explodes Firestore reads and blows the Spark-plan quota.
+// (online dots, Active Now bar, chat-header last seen, voice-room invite list,
+// AND the weekly leaderboard). Do NOT re-introduce per-user presence/{uid} doc
+// listeners OR a second full-collection presence listener (the leaderboard used
+// to open its own) — each duplicates reads and races with this cache.
 let sharedPresenceUnsub = null;
 function startSharedPresenceListener() {
   if (sharedPresenceUnsub || !db) return;
@@ -1487,11 +1496,13 @@ function startSharedPresenceListener() {
       const uid = change.doc.id;
       const pdata = change.doc.data() || {};
       userPresenceCache[uid] = pdata;
+      adminPresenceData[uid] = pdata;
       updateUserOnlineDot(uid, pdata);
     });
     // Re-render dependent UI with the fresh cache.
     renderUsers();
     renderActiveNowBar();
+    renderWeeklyLeaderboard();
     if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
   }, err => console.error("Shared presence listener error:", err));
 }
@@ -1864,11 +1875,8 @@ function normalizeTimestamp(value) {
 
 function checkUserOnline(u) {
   const uid = typeof u === "string" ? u : u.uid;
-  const p = adminPresenceData[uid] || userPresenceCache[uid];
-  if (!p) return false;
-  if (p.online === false || p.status === "offline") return false;
-  const lastSeen = p.lastSeen || 0;
-  return (Date.now() - lastSeen) < 35000;
+  // Read from the single shared presence cache (fed by startSharedPresenceListener).
+  return isUserOnline(userPresenceCache[uid] || adminPresenceData[uid]);
 }
 
 function getMonday(d) {
@@ -1947,18 +1955,12 @@ function startLeaderboardListeners() {
     }, err => console.error("Leaderboard users listener error:", err));
   }
 
-  // 2. Listen to ALL presence docs in system. Also feed userPresenceCache so
-  // the leaderboard and the shared presence listener stay consistent.
-  if (!leaderboardPresenceUnsub) {
-    leaderboardPresenceUnsub = db.collection("presence").onSnapshot(snapshot => {
-      adminPresenceData = {};
-      snapshot.docs.forEach(doc => {
-        adminPresenceData[doc.id] = doc.data();
-        userPresenceCache[doc.id] = doc.data();
-      });
-      renderWeeklyLeaderboard();
-    }, err => console.error("Leaderboard presence listener error:", err));
-  }
+  // 2. Presence: the leaderboard reads from the SINGLE shared presence cache
+  // (startSharedPresenceListener) — do NOT open a second full-collection
+  // presence listener here. That duplicated reads and raced with the shared
+  // listener. The shared listener calls renderWeeklyLeaderboard() on every
+  // presence change, so leaderboard online dots stay live.
+  // (leaderboardPresenceUnsub kept null — no separate listener.)
 
   // 3. Listen to ALL chats since weekStart (exact same as admin.html)
   if (!leaderboardMsgUnsub) {
@@ -2012,8 +2014,8 @@ function renderWeeklyLeaderboard() {
   const userRankList = adminUsers.map(u => {
     const msgs = cachedMsgScores[u.uid] || 0;
     const stories = cachedStoryScores[u.uid] || 0;
-    const p = adminPresenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const p = userPresenceCache[u.uid] || adminPresenceData[u.uid] || {};
+    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || 0;
     const isOnline = checkUserOnline(u);
     const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
@@ -2413,19 +2415,40 @@ function loadUnreadCounts() {
 
 async function updateOnline(on) {
   if (!currentUser) return;
-  // Mark online whenever the app is open — do NOT gate on
-  // document.visibilityState === "visible". Mobile backgrounding flips
-  // visibility constantly and caused users to appear offline. Offline is
-  // only set on explicit pagehide/beforeunload.
   const isOnlineState = !!on;
-  userStatus = isOnlineState ? "online" : "offline";
+  // Going online preserves "away" if the user is currently idle (the inactivity
+  // timer sets userStatus="away"); going online from a fresh interaction resets
+  // to "online". Going offline always sets status "offline".
+  if (!isOnlineState) {
+    userStatus = "offline";
+  } else if (userStatus === "offline") {
+    userStatus = "online";
+  }
   try {
     await db.collection("presence").doc(currentUser.uid).set(
-      { online: isOnlineState, status: isOnlineState ? "online" : "offline", last_seen: Date.now(), lastSeen: Date.now(), uid: currentUser.uid },
+      { online: isOnlineState, status: userStatus, last_seen: Date.now(), lastSeen: Date.now(), uid: currentUser.uid },
       { merge: true }
     );
   } catch (err) {
     console.error("Error updating presence:", err);
+  }
+}
+
+// Lightweight heartbeat: refreshes lastSeen (and re-asserts online) WITHOUT
+// clobbering an "away" status the inactivity timer may have set. This is what
+// the 10s interval calls so a backgrounded-but-open app keeps showing online
+// while idle-away is preserved. lastSeen freshness is what isUserOnline() keys
+// on, so this is the single source of truth for "in the app right now".
+async function heartbeat() {
+  if (!currentUser) return;
+  if (userStatus === "offline") return;
+  try {
+    await db.collection("presence").doc(currentUser.uid).set(
+      { online: true, status: userStatus, last_seen: Date.now(), lastSeen: Date.now(), uid: currentUser.uid },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("Error heartbeat presence:", err);
   }
 }
 
@@ -2454,14 +2477,19 @@ function resumeAllAudio() {
 }
 
 function setupHeartbeat() {
-  // Update heartbeat every 10 seconds while active & tab visible
+  // Heartbeat every 10 seconds while the app/tab is ALIVE (not gated on
+  // visibilityState). A backgrounded-but-open tab is still "in the app", so it
+  // keeps heartbeating and stays online. Online status is decided purely by
+  // lastSeen freshness in isUserOnline(), so a truly closed/killed app stops
+  // heartbeating and goes offline within ~35s even if beforeunload didn't fire
+  // (mobile reliably fails to fire beforeunload on swipe-away).
   setInterval(() => {
-    if (currentUser && document.visibilityState === "visible") {
-      updateOnline(true);
-    }
+    heartbeat();
   }, 10000);
 
   // Periodic ticker every 10 seconds to re-evaluate active presence timeouts
+  // (a user whose heartbeat went stale should flip to offline here, not wait
+  // for a Firestore write from them).
   setInterval(() => {
     if (allUsersData && allUsersData.length) {
       allUsersData.forEach(user => {
@@ -2471,17 +2499,22 @@ function setupHeartbeat() {
     if (selectedUser) {
       updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
     }
+    renderActiveNowBar();
   }, 10000);
 
+  // Backgrounding/foregrounding: do NOT write offline when hidden — the tab is
+  // still alive and the heartbeat keeps it online (matches "in the app alone").
+  // On becoming visible again, re-assert online immediately + resume audio.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      updateOnline(false);
-    } else {
+    if (document.visibilityState === "visible") {
       updateOnline(true);
       resumeAllAudio();
     }
   });
 
+  // Only a TRUE close goes offline. These fire on tab close / app kill when the
+  // browser cooperates; if they don't (mobile), the stale-heartbeat timeout in
+  // isUserOnline() handles it.
   window.addEventListener("beforeunload", () => updateOnline(false));
   window.addEventListener("pagehide", () => updateOnline(false));
   window.addEventListener("focus", resumeAllAudio);
@@ -2500,14 +2533,15 @@ function setupHeartbeat() {
 
   function resetInactivity() {
     clearTimeout(inactivityTimer);
-    if (userStatus === "away" && document.visibilityState === "visible") updateOnline(true);
+    // User interacted again — if they were "away", move them back to "online".
+    if (userStatus === "away") {
+      userStatus = "online";
+      heartbeat();
+    }
     inactivityTimer = setTimeout(async () => {
       if (!currentUser) return;
       userStatus = "away";
-      await db.collection("presence").doc(currentUser.uid).set(
-        { online: true, status: "away", lastSeen: Date.now(), uid: currentUser.uid },
-        { merge: true }
-      );
+      heartbeat();
     }, 180000);
   }
 
