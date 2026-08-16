@@ -503,19 +503,37 @@
       <button class="status-tab" id="tabMusic" onclick="switchStatusTab('music')">🎵</button>
     </div>
 
-    <!-- INTERACTIVE STICKERS — attach an "Add Yours" / "Ask a Question" sticker
-         onto your photo/video/text story (WhatsApp-style: the sticker rides on
-         the image, and viewers who tap it get the same prompt). -->
-    <div class="story-sticker-bar">
-      <div class="story-sticker-bar-label">Stickers</div>
-      <div class="story-sticker-chips">
-        <button class="sticker-add-btn" id="stickerAddYoursBtn" onclick="attachStorySticker('addYours')">➕ Add Yours</button>
-        <button class="sticker-add-btn" id="stickerQuestionBtn" onclick="attachStorySticker('question')">❓ Ask a Question</button>
+    <!-- PREVIEW with an interactive sticker that sits ON the image (WhatsApp-style).
+         Stickers are ATTACHMENTS — they can never be posted on their own. The
+         sticker toolbar button only works once a photo/video/text is chosen. -->
+    <div class="status-preview-wrap">
+      <div class="status-preview" id="statusPreview"><span>Preview</span></div>
+
+      <!-- Sticker rendered on top of the preview image -->
+      <div class="sticker-on-image" id="stickerOnImage"></div>
+
+      <!-- Sticker toolbar button (like WhatsApp's sticker icon) -->
+      <button class="sticker-tool-btn" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker" disabled>😀</button>
+
+      <!-- Sticker tray popup -->
+      <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
+        <div class="sticker-tray-title">Interactive stickers</div>
+        <div class="sticker-tray-grid">
+          <button class="sticker-tray-item" onclick="attachStorySticker('addYours')">
+            <span class="sticker-tray-emoji">➕</span>
+            <span class="sticker-tray-label">Add Yours</span>
+          </button>
+          <button class="sticker-tray-item" onclick="attachStorySticker('question')">
+            <span class="sticker-tray-emoji">❓</span>
+            <span class="sticker-tray-label">Ask a Question</span>
+          </button>
+        </div>
+        <div class="sticker-tray-hint">Stickers attach to your photo — they can’t be posted alone.</div>
       </div>
-      <div class="story-sticker-preview" id="storyStickerPreview"></div>
     </div>
-    
-    <div class="status-preview" id="statusPreview"><span>Preview</span></div>
+
+    <!-- Removable chip summary of the attached sticker -->
+    <div class="story-sticker-preview" id="storyStickerPreview"></div>
     
     <input type="file" id="statusImageInput" hidden accept="image/*" onchange="previewStatusImage(event)">
     <input type="file" id="statusVideoInput" hidden accept="video/*" onchange="previewStatusVideo(event)">
@@ -5821,15 +5839,16 @@ function renderStorySlide(idx) {
   // Question → type an answer → chat reply to the asker.
   if (story.sticker && story.sticker.text) {
     const sk = story.sticker;
+    const isQ = sk.type === "question";
     const skEl = document.createElement("div");
     skEl.className = "story-sticker-overlay";
-    const icon = sk.type === "question" ? "❓" : "➕";
-    const label = sk.type === "question" ? "Ask a Question" : "Add Yours";
     skEl.innerHTML = `
-      <div class="story-sticker-overlay-icon">${icon}</div>
-      <div class="story-sticker-overlay-body">
-        <div class="story-sticker-overlay-label">${label}</div>
-        <div class="story-sticker-overlay-text">${escapeHtml(sk.text)}</div>
+      <div class="ws-sticker-card ${isQ ? "ws-sticker-card--question" : "ws-sticker-card--addyours"}">
+        <div class="ws-sticker-accent"></div>
+        <div class="ws-sticker-content">
+          <div class="ws-sticker-label">${isQ ? "❓ Ask a Question" : "➕ Add Yours"}</div>
+          <div class="ws-sticker-text">${escapeHtml(sk.text)}</div>
+        </div>
       </div>`;
     skEl.onclick = (ev) => {
       ev.stopPropagation();
@@ -6196,17 +6215,65 @@ let addYoursTab = "image";
 let activeAddYoursPrompt = { promptId: null, promptText: "" };
 
 // ── Story stickers (WhatsApp-style) ───────────────────────────────────
-// A sticker is ATTACHED to a normal photo/video/text story (not posted on its
-// own). pendingStorySticker = { type:"addYours"|"question", text, id }.
+// A sticker is ATTACHED to a normal photo/video/text story (never posted on
+// its own). pendingStorySticker = { type:"addYours"|"question", text, id }.
 // On share, it is saved as statusData.sticker. Viewers who tap the sticker
 // overlay get the same prompt (Add Yours → post own photo w/ same promptId;
 // Question → type answer → chat reply to asker).
 let pendingStorySticker = null;
 
 function updateStoryStickerPreview() {
-  // kept as a no-op hook for the textarea oninput; sticker preview is rendered
-  // via renderStoryStickerPreview().
+  refreshStickerToolButton();
   renderStoryStickerPreview();
+  renderStickerOnImage();
+}
+
+// Enable/disable the sticker toolbar button based on whether there's content
+// (a photo/video file, or typed text) to attach the sticker to.
+function refreshStickerToolButton() {
+  const btn = document.getElementById("stickerToolBtn");
+  if (!btn) return;
+  const hasMedia = (statusTab === "image" || statusTab === "video") && statusFile;
+  const hasText = statusTab === "text" && (document.getElementById("statusTextInput")?.value.trim() || "");
+  const hasMusic = statusTab === "music" && selectedMusicData;
+  btn.disabled = !(hasMedia || hasText || hasMusic);
+  btn.classList.toggle("disabled", btn.disabled);
+}
+
+function toggleStickerTray(ev) {
+  ev.stopPropagation();
+  const tray = document.getElementById("stickerTray");
+  if (!tray) return;
+  const btn = document.getElementById("stickerToolBtn");
+  if (btn && btn.disabled) {
+    showNotifToast("Pick a photo or video first, then add a sticker", "error");
+    return;
+  }
+  tray.classList.toggle("open");
+}
+
+function closeStickerTray() {
+  const tray = document.getElementById("stickerTray");
+  if (tray) tray.classList.remove("open");
+}
+
+// Render the sticker ON the preview image (WhatsApp-style sticker card).
+function renderStickerOnImage() {
+  const host = document.getElementById("stickerOnImage");
+  if (!host) return;
+  if (!pendingStorySticker) { host.innerHTML = ""; host.classList.remove("has-sticker"); return; }
+  const s = pendingStorySticker;
+  const isQ = s.type === "question";
+  host.classList.add("has-sticker");
+  host.innerHTML = `
+    <div class="ws-sticker-card ${isQ ? "ws-sticker-card--question" : "ws-sticker-card--addyours"}">
+      <div class="ws-sticker-accent"></div>
+      <div class="ws-sticker-content">
+        <div class="ws-sticker-label">${isQ ? "❓ Ask a Question" : "➕ Add Yours"}</div>
+        <div class="ws-sticker-text">${escapeHtml(s.text)}</div>
+      </div>
+      <button class="ws-sticker-remove" onclick="event.stopPropagation(); removeStorySticker()" title="Remove sticker">✕</button>
+    </div>`;
 }
 
 function renderStoryStickerPreview() {
@@ -6227,27 +6294,28 @@ function renderStoryStickerPreview() {
 
 function attachStorySticker(type) {
   if (!currentUser) { showNotifToast("Please login first", "error"); return; }
-  // Stickers ride on photo/video/text stories — require content first.
+  // Stickers ride on photo/video/text/music stories — require content first.
   const hasMedia = (statusTab === "image" || statusTab === "video") && statusFile;
   const hasText = statusTab === "text" && (document.getElementById("statusTextInput").value.trim() || "");
-  if (!hasMedia && !hasText) {
-    showNotifToast("Pick a photo/video or type text first, then add a sticker", "error");
+  const hasMusic = statusTab === "music" && selectedMusicData;
+  if (!hasMedia && !hasText && !hasMusic) {
+    showNotifToast("Pick a photo/video first, then add a sticker", "error");
     return;
   }
-  const placeholder = type === "question"
-    ? "Type your question (e.g. 'Where should I travel next? 🌍')"
-    : "Type your prompt (e.g. 'Show your pet! 👾')";
   const text = window.prompt(type === "question" ? "Ask a question:" : "Add Yours prompt:", "");
   if (text === null) return;
   const t = text.trim();
   if (!t) { showNotifToast("Please type something for the sticker", "error"); return; }
   const id = (type === "question" ? "q_" : "prompt_") + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
   pendingStorySticker = { type, text: t, id };
+  closeStickerTray();
+  renderStickerOnImage();
   renderStoryStickerPreview();
 }
 
 function removeStorySticker() {
   pendingStorySticker = null;
+  renderStickerOnImage();
   renderStoryStickerPreview();
 }
 
@@ -6538,6 +6606,8 @@ function openStatusModal() {
 
   pendingStorySticker = null;
   renderStoryStickerPreview();
+  renderStickerOnImage();
+  closeStickerTray();
 
   switchStatusTab('image');
   document.getElementById("statusModalOverlay").classList.add("active");
@@ -6549,16 +6619,21 @@ function closeStatusModal() {
   selectedMusicData = null;
   pendingStorySticker = null;
   renderStoryStickerPreview();
+  renderStickerOnImage();
+  closeStickerTray();
 }
 
 function handleStatusOverlayClick(e) {
   if (e.target === document.getElementById("statusModalOverlay")) {
     closeStatusModal();
+  } else if (!e.target.closest("#stickerTray") && !e.target.closest("#stickerToolBtn")) {
+    closeStickerTray();
   }
 }
 
 function switchStatusTab(tab) {
   statusTab = tab;
+  closeStickerTray();
   document.querySelectorAll(".status-tab").forEach(el => el.classList.remove("active"));
   const tabBtn = document.getElementById("tab" + tab.charAt(0).toUpperCase() + tab.slice(1));
   if (tabBtn) tabBtn.classList.add("active");
@@ -6582,6 +6657,8 @@ function switchStatusTab(tab) {
     textInput.placeholder = "Add caption (optional)…";
     document.getElementById("musicSearchInput").focus();
   }
+  refreshStickerToolButton();
+  renderStickerOnImage();
 }
 
 function previewStatusImage(e) {
@@ -6592,6 +6669,8 @@ function previewStatusImage(e) {
   const reader = new FileReader();
   reader.onload = (ev) => {
     document.getElementById("statusPreview").innerHTML = `<img src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;">`;
+    refreshStickerToolButton();
+    renderStickerOnImage();
   };
   reader.readAsDataURL(file);
 }
@@ -6604,6 +6683,8 @@ function previewStatusVideo(e) {
   const reader = new FileReader();
   reader.onload = (ev) => {
     document.getElementById("statusPreview").innerHTML = `<video src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;" controls></video>`;
+    refreshStickerToolButton();
+    renderStickerOnImage();
   };
   reader.readAsDataURL(file);
 }

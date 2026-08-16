@@ -6285,38 +6285,126 @@ input[type="range"] {
 }
 .addyours-sticker-viewall:hover { opacity: 0.8; }
 
-/* ── Story sticker bar (composer) — attach Add Yours / Ask a Question ── */
-.story-sticker-bar {
-  margin: 10px 0 4px;
-  padding: 8px 10px;
-  background: var(--bg-3);
+/* ── Story sticker composer (WhatsApp-style: sticker sits ON the preview) ── */
+.status-preview-wrap {
+  position: relative;
+  margin: 10px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.sticker-on-image {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: 84%;
+  pointer-events: none;
+}
+.sticker-on-image.has-sticker { pointer-events: auto; }
+
+/* The sticker card rendered on the preview image AND in the viewer share the
+   same WhatsApp-style look. .ws-sticker-card is used in both places. */
+.ws-sticker-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  padding: 10px 12px 10px 14px;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 16px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform var(--tf);
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+.ws-sticker-card:hover { transform: translateY(-2px); }
+.ws-sticker-card:active { transform: scale(0.97); }
+.ws-sticker-accent {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+}
+.ws-sticker-card--addyours .ws-sticker-accent { background: linear-gradient(180deg, var(--primary), var(--primary-dk)); }
+.ws-sticker-card--question .ws-sticker-accent { background: linear-gradient(180deg, #7c3aed, #5b21b6); }
+.ws-sticker-content { min-width: 0; padding-left: 2px; }
+.ws-sticker-label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px;
+  text-transform: uppercase; margin-bottom: 2px;
+}
+.ws-sticker-card--addyours .ws-sticker-label { color: var(--primary); }
+.ws-sticker-card--question .ws-sticker-label { color: #7c3aed; }
+.ws-sticker-text {
+  font-size: 14px; font-weight: 600; color: var(--text-0);
+  line-height: 1.35; word-break: break-word;
+  max-width: 240px;
+}
+.ws-sticker-remove {
+  flex: 0 0 auto;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(0,0,0,0.1); border: none; color: var(--text-1);
+  cursor: pointer; font-size: 12px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.ws-sticker-remove:hover { background: rgba(0,0,0,0.22); color: #fff; }
+
+/* Sticker toolbar button on the preview (WhatsApp-style sticker icon) */
+.sticker-tool-btn {
+  position: absolute;
+  top: 10px; right: 10px;
+  z-index: 7;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff; border: none;
+  font-size: 20px; line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--tf);
+  -webkit-tap-highlight-color: transparent;
+}
+.sticker-tool-btn:hover:not(.disabled) { background: rgba(0, 0, 0, 0.75); }
+.sticker-tool-btn.disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Sticker tray popup */
+.sticker-tray {
+  position: absolute;
+  top: 56px; right: 10px;
+  z-index: 8;
+  width: 240px;
+  background: var(--bg-1);
   border: 1px solid var(--border-md);
   border-radius: var(--radius-md);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  padding: 10px;
+  opacity: 0; visibility: hidden;
+  transform: translateY(-6px) scale(0.98);
+  transition: all var(--tf);
 }
-.story-sticker-bar-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+.sticker-tray.open { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
+.sticker-tray-title {
+  font-size: 11px; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px;
 }
-.story-sticker-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.sticker-add-btn {
-  flex: 1 1 auto;
-  min-width: 120px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
+.sticker-tray-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sticker-tray-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 6px;
+  background: var(--bg-3);
   border: 1px solid var(--border-md);
-  background: var(--bg-1);
-  color: var(--text-1);
-  font-size: 12.5px;
-  font-weight: 600;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--tf);
 }
-.sticker-add-btn:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
-.story-sticker-preview { margin-top: 8px; }
+.sticker-tray-item:hover { background: var(--primary-soft); border-color: var(--primary); }
+.sticker-tray-emoji { font-size: 22px; }
+.sticker-tray-label { font-size: 11px; font-weight: 600; color: var(--text-1); }
+.sticker-tray-hint { margin-top: 8px; font-size: 10.5px; color: var(--text-3); line-height: 1.3; }
+
+/* Removable chip summary below the preview */
+.story-sticker-preview { margin: 0 0 6px; }
 .story-sticker-chip {
   display: inline-flex;
   align-items: center;
@@ -6341,43 +6429,15 @@ input[type="range"] {
 }
 .story-sticker-chip-remove:hover { background: rgba(0,0,0,0.25); color: #fff; }
 
-/* ── Story sticker overlay (viewer) — the small card riding on the image ── */
+/* ── Story sticker overlay (viewer) — the WhatsApp-style card on the image ── */
 .story-sticker-overlay {
   position: absolute;
-  left: 16px;
+  left: 50%;
   bottom: 96px;
+  transform: translateX(-50%);
   z-index: 8;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 80%;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 16px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  max-width: 84%;
   cursor: pointer;
-  transition: transform var(--tf);
-  -webkit-tap-highlight-color: transparent;
-}
-.story-sticker-overlay:hover { transform: translateY(-2px); }
-.story-sticker-overlay:active { transform: scale(0.97); }
-.story-sticker-overlay-icon {
-  flex: 0 0 auto;
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
-  background: var(--primary-soft);
-}
-.story-sticker-overlay-body { min-width: 0; }
-.story-sticker-overlay-label {
-  font-size: 11px; font-weight: 700; color: var(--primary);
-  text-transform: uppercase; letter-spacing: 0.4px;
-}
-.story-sticker-overlay-text {
-  font-size: 13.5px; font-weight: 600; color: var(--text-0);
-  line-height: 1.3; word-break: break-word;
-  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* PROFILE NOTE EDITOR (Settings/Profile tab) */
