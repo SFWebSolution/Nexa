@@ -131,6 +131,19 @@ service cloud.firestore {
       );
     }
 
+    // ── Profile Notes (24h note shown on a user's profile) ────────────
+    // Anyone signed-in can read (to render on profile). Only the owner
+    // can write/delete their own note.
+    match /profile_notes/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.text is string
+        && request.resource.data.createdAt is int;
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
     // ── Per-chat disappearing-message settings ──────────────────────
     // Either party of the chat pair may read/write the shared setting doc.
     match /disappearingSettings/{keyId} {
