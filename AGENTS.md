@@ -130,15 +130,37 @@
   credentials `openrelayproject` / `openrelayproject` — rate-limited and
   shared; for production sign up for your own free Metered/Twilio/Xirsys
   TURN and replace in BOTH places.
-- The voice room mesh has TWO legs per pair (A→B and B→A are separate
-  MediaConnections). If one leg's ICE fails, you get one-way audio. The
-  incoming-call answer path (`peer.on('call')`) previously had NO
-  `call.on('error')` handler, so a failed leg silently died. All call legs
-  now go through `attachCallHandlers()` (stream/close/error) which calls
-  `retryCallPeer()` once on close/error while the peer is still a room
-  participant — recovering from transient ICE blips. `retriedPeers` Set
-  guards against close→re-call loops (resets after 15s and on peer leave).
-- Do NOT re-introduce bare `call.on('close') => delete` without the
+- The voice room mesh uses ONE bidirectional MediaConnection per pair,
+  enforced by a tie-breaker: `shouldInitiateCallTo(theirUid)` returns
+  `String(myUid) < String(theirUid)` — only the lower-uid peer INITIATES the
+  call; the other ANSWERS. A single PeerJS call carries audio both ways, so one
+  connection is enough. Do NOT let both peers call each other: that creates two
+  redundant connections keyed under the SAME `peerCalls[peerId]` slot; when
+  PeerJS prunes one, the shared `audio_<peerId>` element tears down while the
+  survivor already fired `stream` → that pair goes permanently deaf (the
+  "even 2 people can't hear each other" bug). `callPeer(peerId, uid)` and the
+  `peer.on('open')` / participants-`added` paths all gate on the tie-breaker;
+  ANSWERING (`peer.on('call')`) is always allowed (only initiation is gated).
+- `attachCallHandlers(call, targetPeerId)` MUST be called BEFORE `call.answer()`
+  on the answer side. PeerJS can fire `stream` synchronously during/immediately
+  after `answer()`, and attaching `call.on('stream')` AFTER means the caller's
+  audio fires into zero listeners → asymmetric "B can't hear A". (The answer
+  path calls `attachCallHandlers(call, call.peer)` then `call.answer(...)`.)
+- `attachCallHandlers` wires stream/close/error. close/error: a double-call
+  guard (`this.peerCalls.get(peerId) !== call` → skip) prevents tearing down
+  a newer survivor; then it deletes the slot, removes the audio element, and
+  retries ONCE via `retryCallPeer()` — but only if this peer is the initiator
+  (tie-breaker), so the answerer doesn't recreate the redundant leg.
+  `retriedPeers` Set guards against close→re-call loops (resets after 15s and
+  on peer leave). Do NOT re-introduce bare `call.on('close') => delete`
+  without the retry, or one-way audio holes won't self-heal.
+- `peerIdToUid` Map (peerId→uid) is populated from participant docs and
+  `peer.on('open')` so `attachCallHandlers`/`retryCallPeer` can resolve a
+  `call.peer` (a peerId) back to a uid for the tie-breaker. It is cleared on
+  leave/host-close.
+- A 10-user room = 9 connections per peer worst case (mesh). With the
+  tie-breaker there are exactly N*(N-1)/2 total connections (45 for 10), one
+  per pair, all bidirectional — everyone hears everyone.
   `retryCallPeer` call, or one-way audio holes won't self-heal.
 
 
