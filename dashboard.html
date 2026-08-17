@@ -1509,6 +1509,12 @@ function confirmDeleteChat() {
   deletedChats[uid] = true;
   saveDeletedChats();
 
+  // Clear this user's unread state so it stops counting toward the Chats-tab
+  // total badge (and isn't left lingering as read:false in Firestore).
+  delete unreadMessages[uid];
+  updateTotalUnreadBadge();
+  markRead(uid);
+
   if (selectedUser && selectedUser.uid === uid) {
     selectedUser = null;
     const chatNameEl = document.getElementById("chatName");
