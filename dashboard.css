@@ -1028,7 +1028,7 @@ select:focus-visible {
   min-width: 22px;
   height: 22px;
   padding: 0 6px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-lt));
+  background: #2b8fff;
   color: #ffffff;
   border-radius: 11px;
   display: flex;
@@ -1036,7 +1036,7 @@ select:focus-visible {
   justify-content: center;
   font-size: 10.5px;
   font-weight: 800;
-  box-shadow: 0 3px 12px rgba(79, 143, 255, 0.35);
+  box-shadow: 0 3px 12px rgba(43, 143, 255, 0.45);
   animation: scaleIn 0.15s ease-out;
 }
 
@@ -4158,7 +4158,7 @@ input[type="range"] {
     height: 18px;
     padding: 0 5px;
     border-radius: 9px;
-    background: #25d366;
+    background: #2b8fff;
     color: #fff;
     font-size: 10px;
     font-weight: 700;
