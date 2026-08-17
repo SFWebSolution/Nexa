@@ -2451,6 +2451,7 @@ function selectChat(user, el) {
   if (el) el.classList.add("active");
   if (!isSelfChat()) markRead(user.uid);
   delete unreadMessages[user.uid];
+  updateTotalUnreadBadge();
   renderUsers(); // Move selected user to the top immediately
   loadMessages();
   // Typing + presence don't apply to the self-chat — skip those listeners.
@@ -2577,7 +2578,29 @@ function loadUnreadCounts() {
       unreadMessages[f] = (unreadMessages[f] || 0) + 1;
     });
     renderUsers();
+    updateTotalUnreadBadge();
   });
+}
+
+// WhatsApp-style total unread badge on the Chats nav button (mobile bottom nav
+// + any desktop chat tab). Sums unreadMessages across all chats.
+function updateTotalUnreadBadge() {
+  let total = 0;
+  for (const uid in unreadMessages) total += unreadMessages[uid] || 0;
+  const label = total > 99 ? '99+' : String(total);
+  const navBtn = document.getElementById("navBtnChats");
+  if (!navBtn) return;
+  let badge = navBtn.querySelector(".nav-unread-badge");
+  if (total > 0) {
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "nav-unread-badge";
+      navBtn.appendChild(badge);
+    }
+    badge.textContent = label;
+  } else if (badge) {
+    badge.remove();
+  }
 }
 
 async function updateOnline(on) {
@@ -3262,10 +3285,12 @@ function buildMessage(id, msg, fromMe) {
   // Handle regular reply
   if (msg.replyTo) {
     const replied = allMessages.find(m => m.id === msg.replyTo);
-    if (replied) {
-      const rAuthor = replied.from === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-      inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(replied.text) || "(attachment)"}</div></div>`;
-    }
+    // Prefer the loaded original; fall back to the denormalized fields stored
+    // on the reply message itself so the preview shows on both sides.
+    const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
+    const rFrom = replied ? replied.from : (msg.replyToFrom || null);
+    const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
+    inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // Handle View Once Media
@@ -3686,7 +3711,13 @@ document.getElementById("fileInput").addEventListener("change", async e => {
    SENDING MESSAGES
    ========================================================================= */
 function handleKeyPress(e) {
-  if (e.key === "Enter" && e.shiftKey) {
+  if (e.key !== "Enter") return;
+  // On laptop/desktop (no coarse pointer / no touch), plain Enter sends and
+  // Shift+Enter inserts a newline — like WhatsApp Web. On touch devices we
+  // leave Enter as a newline (mobile keyboards rely on it) and the user sends
+  // via the send button.
+  const isTouch = (navigator.maxTouchPoints || 0) > 0 && window.matchMedia("(pointer: coarse)").matches;
+  if (!e.shiftKey && !isTouch) {
     e.preventDefault();
     sendMessage();
   }
@@ -3713,7 +3744,14 @@ async function sendMessage() {
   toggleActionButtons();
 
   const extras = { text };
-  if (messageRepliedTo) { extras.replyTo = messageRepliedTo.id; }
+  if (messageRepliedTo) {
+    extras.replyTo = messageRepliedTo.id;
+    // Denormalize the quoted message so the reply preview renders on BOTH
+    // sides (sender + receiver) even when the original isn't loaded in the
+    // viewer's allMessages (e.g. older/lazily-loaded messages).
+    extras.replyToText = messageRepliedTo.text || (messageRepliedTo.image ? "(Photo)" : messageRepliedTo.video ? "(Video)" : messageRepliedTo.audio ? "(Voice note)" : "(message)");
+    extras.replyToFrom = messageRepliedTo.from || null;
+  }
   const tempMsgObj = baseMsg(extras);
   tempMsgObj.id = "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
@@ -5946,12 +5984,8 @@ function pauseStoryPlayback() {
   if (storyAudioElement && !storyAudioElement.paused) storyAudioElement.pause();
   const vid = document.querySelector('#storyViewerContent video');
   if (vid && !vid.paused) vid.pause();
-
-  const indicator = document.getElementById('storyPauseIndicator');
-  if (indicator) {
-    indicator.classList.add('show');
-    if (window.lucide) lucide.createIcons();
-  }
+  // No on-screen PAUSED indicator — it would block the sticker. The story
+  // simply pauses on tap and resumes on the next tap.
 }
 
 function resumeStoryPlayback() {
