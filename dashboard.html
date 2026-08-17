@@ -1330,6 +1330,14 @@ async function initFCM(uid) {
             data: data,
             requireInteraction: false
           });
+          // Auto-dismiss after 10s (WhatsApp-style). Calls are not dismissed.
+          if (!isCall) {
+            setTimeout(() => {
+              registration.getNotifications({ tag: tag }).then(notifs => {
+                notifs.forEach(n => n.close());
+              }).catch(() => {});
+            }, 10000);
+          }
         }
       });
 
@@ -2588,17 +2596,23 @@ function listenTyping() {
 }
 
 function loadUnreadCounts() {
-  db.collection("chats").where("to", "==", currentUser.uid).where("read", "==", false).onSnapshot(snap => {
+  // Query only on the single indexed field `to == me` (Firestore always has a
+  // single-field index for this), then filter `read == false` in JS. This
+  // avoids any dependency on a (to, read) composite index that, if missing,
+  // would make the onSnapshot error silently and unread badges never appear.
+  db.collection("chats").where("to", "==", currentUser.uid).onSnapshot(snap => {
     unreadMessages = {};
     snap.forEach(doc => {
-      const f = doc.data().from;
+      const msg = doc.data();
+      if (msg.read === true) return;            // only unread messages count
+      const f = msg.from;
       // Don't count self-chat messages as unread.
       if (f === currentUser.uid) return;
       unreadMessages[f] = (unreadMessages[f] || 0) + 1;
     });
     renderUsers();
     updateTotalUnreadBadge();
-  });
+  }, err => console.error("loadUnreadCounts listener error:", err));
 }
 
 // WhatsApp-style total unread badge on the Chats nav button (mobile bottom nav

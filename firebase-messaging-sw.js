@@ -60,7 +60,7 @@ self.addEventListener("push", (event) => {
     tag: tag,
     data: data,
     renotify: false,
-    requireInteraction: isCall ? true : true,
+    requireInteraction: isCall ? true : false,
     vibrate: isCall ? [500, 250, 500, 250, 500, 250, 500, 250, 500] : [200, 100, 200],
     actions: isCall ? [
       { action: "answer", title: "📞 Answer Call" },
@@ -74,6 +74,17 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, options)
   );
+
+  // Auto-dismiss after 10 seconds so the user doesn't have to clear it
+  // manually (WhatsApp-style). Calls keep requireInteraction and are NOT
+  // auto-dismissed (they need a deliberate answer/decline).
+  if (!isCall) {
+    setTimeout(() => {
+      self.registration.getNotifications({ tag: tag }).then(notifs => {
+        notifs.forEach(n => n.close());
+      }).catch(() => {});
+    }, 10000);
+  }
 });
 
 // NOTE: onBackgroundMessage is intentionally NOT registered. It wraps the same
@@ -104,7 +115,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v4-perf';
+const CACHE_NAME = 'nexa-v5-perf';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

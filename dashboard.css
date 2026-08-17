@@ -1029,7 +1029,7 @@ select:focus-visible {
   height: 22px;
   padding: 0 6px;
   background: linear-gradient(135deg, var(--primary), var(--primary-lt));
-  color: var(--bg-0);
+  color: #ffffff;
   border-radius: 11px;
   display: flex;
   align-items: center;
