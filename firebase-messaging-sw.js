@@ -115,7 +115,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v5-perf';
+const CACHE_NAME = 'nexa-v6-perf';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -154,11 +154,32 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Stale-While-Revalidate fetch strategy for ultra-fast asset loading
+// Fetch strategy:
+//  - HTML navigations: NETWORK-FIRST, so the latest dashboard.html/login.html
+//    always load (otherwise the cached page hid code updates until a 2nd reload).
+//  - Other static assets: Stale-While-Revalidate for speed.
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  const isNavigation =
+    req.mode === 'navigate' ||
+    (req.headers.get('accept') || '').includes('text/html') ||
+    /\.(html)$/i.test(url.pathname);
+
+  if (isNavigation && url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(req).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
+        }
+        return networkResponse;
+      }).catch(() => caches.match(req).then((cached) => cached || caches.match('/dashboard.html')))
+    );
+    return;
+  }
 
   // Serve static UI assets with Stale-While-Revalidate
   if (
