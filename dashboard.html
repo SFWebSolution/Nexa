@@ -1236,6 +1236,12 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   if (isReaction && !notificationSettings.reactions) return;
   if (!isCall && !isReaction && !notificationSettings.messages) return;
 
+  // A single stable id for THIS notification. The receiver's service worker
+  // uses it as the notification tag so that if the backend delivers the same
+  // message to several of the user's FCM tokens, the resulting notifications
+  // COLLAPSE into one instead of stacking (2-3 per message).
+  const notifId = extraData.messageId || extraData.msgId || ('n_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+
   fetch(`${BACKEND_URL}/api/send-notification`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1248,6 +1254,7 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
         senderUid: currentUser ? currentUser.uid : null,
         timestamp: String(Date.now()),
         isCall: isCall ? "true" : "false",
+        messageId: notifId,
         ...extraData
       }
     })
@@ -1300,14 +1307,26 @@ async function initFCM(uid) {
           showNotifToast(`${title}: ${body}`, 'info');
         }
 
-        // Also show a system notification (so it appears in the
-        // notification tray even when the tab is focused)
-        if (Notification.permission === 'granted' && registration) {
+        // Only show a SYSTEM notification when the app is NOT focused on the
+        // relevant chat. Showing one while the user is already reading that
+        // chat created a duplicate (toast + system) for the same message.
+        const isCall = title.includes('Call') || data.isCall === 'true';
+        const sameChatOpen =
+          !!selectedUser &&
+          data.senderUid === selectedUser.uid &&
+          document.visibilityState === 'visible' &&
+          document.hasFocus();
+
+        if (Notification.permission === 'granted' && registration && !sameChatOpen) {
+          // Stable tag per message so duplicate pushes collapse into one
+          // notification (e.g. backend sent to several of the user's tokens).
+          const msgId = data.messageId || data.msgId || (data.senderUid ? (data.senderUid + '_' + (data.timestamp || Date.now())) : null);
+          const tag = isCall ? 'nexa-incoming-call' : (data.tag || (msgId ? ('nexa-msg-' + msgId) : ('nexa-foreground-' + Date.now())));
           registration.showNotification(title, {
             body: body,
             icon: data.icon || '/icon-192.png',
             badge: data.badge || '/icon-192.png',
-            tag: data.tag || 'nexa-foreground-' + Date.now(),
+            tag: tag,
             data: data,
             requireInteraction: false
           });

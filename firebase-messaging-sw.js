@@ -18,7 +18,12 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// ─── Native Web Push Event Listener (App Closed / Background / Foreground) ───
+// ─── Single notification path (background) ───
+// For data-only FCM messages there are two ways the SW can learn about a
+// push: the native "push" event and Firebase's onBackgroundMessage wrapper.
+// Handling BOTH made each message produce 2+ notifications. We keep ONLY the
+// native push handler (the reliable path for data-only messages) and DROP
+// onBackgroundMessage entirely so one message = one notification.
 self.addEventListener("push", (event) => {
   console.log("[firebase-messaging-sw.js] Native push event received:", event);
 
@@ -40,14 +45,21 @@ self.addEventListener("push", (event) => {
   const badge = notification.badge || data.badge || "/icon-192.png";
   const isCall = title.includes("Call") || data.isCall === "true";
 
+  // Stable tag per message so duplicate pushes (e.g. the same message sent to
+  // multiple of the user's FCM tokens) COLLAPSE into a single notification
+  // instead of stacking. Calls use a fixed tag so an incoming call replaces
+  // any prior call notification.
+  const msgId = data.messageId || data.msgId || (data.senderUid ? (data.senderUid + "_" + (data.timestamp || Date.now())) : null);
+  const tag = isCall ? "nexa-incoming-call" : (data.tag || (msgId ? ("nexa-msg-" + msgId) : ("nexa-msg-" + (data.senderUid || Date.now()))));
+
   const options = {
     body: body,
     icon: icon,
     badge: badge,
     sound: isCall ? "/iphone.mp3" : null,
-    tag: isCall ? "nexa-incoming-call" : (data.tag || ("nexa-msg-" + (data.senderUid || Date.now()))),
+    tag: tag,
     data: data,
-    renotify: true,
+    renotify: false,
     requireInteraction: isCall ? true : true,
     vibrate: isCall ? [500, 250, 500, 250, 500, 250, 500, 250, 500] : [200, 100, 200],
     actions: isCall ? [
@@ -64,36 +76,8 @@ self.addEventListener("push", (event) => {
   );
 });
 
-// ─── Handle Firebase Background Push Notifications ───
-messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] Background message received:", payload);
-
-  const data = payload.data || {};
-  const title = data.title || "Nexa Messenger";
-  const body = data.body || "You have received a new message";
-  const isCall = title.includes("Call") || data.isCall === "true";
-
-  const options = {
-    body: body,
-    icon: data.icon || "/icon-192.png",
-    badge: data.badge || "/icon-192.png",
-    sound: isCall ? "/iphone.mp3" : null,
-    tag: isCall ? "nexa-incoming-call" : (data.tag || ("nexa-msg-" + (data.senderUid || Date.now()))),
-    data: data,
-    renotify: true,
-    requireInteraction: isCall ? true : true,
-    vibrate: isCall ? [500, 250, 500, 250, 500, 250, 500, 250, 500] : [200, 100, 200],
-    actions: isCall ? [
-      { action: "answer", title: "📞 Answer Call" },
-      { action: "decline", title: "❌ Decline" }
-    ] : [
-      { action: "open", title: "Open Chat" },
-      { action: "dismiss", title: "Dismiss" }
-    ]
-  };
-
-  return self.registration.showNotification(title, options);
-});
+// NOTE: onBackgroundMessage is intentionally NOT registered. It wraps the same
+// push event as the handler above and would create duplicate notifications.
 
 // ─── Handle Notification Clicks ───
 self.addEventListener("notificationclick", (event) => {

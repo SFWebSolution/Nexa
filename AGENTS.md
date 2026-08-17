@@ -251,6 +251,12 @@
 
 
 
+## Push notifications — ONE notification per message (firebase-messaging-sw.js + dashboard.html)
+- The receiver's service worker (`firebase-messaging-sw.js`) registers ONLY the native `push` event listener and calls `showNotification` exactly once. Do NOT re-add `messaging.onBackgroundMessage(...)` — it wraps the same push event and produces a 2nd notification for the same message (the "2-3 notifications per message" bug).
+- Notifications use a **stable `tag`** derived from `data.messageId` (`nexa-msg-<messageId>`), so if the backend delivers the same message to several of the user's FCM tokens, the OS collapses them into a single notification instead of stacking.
+- `sendPushNotification(title, body, target, extraData)` generates `notifId` and sends it as `data.messageId` to the backend; pass `extraData.messageId` to reuse an existing id. Calls use the fixed tag `nexa-incoming-call`.
+- Foreground handler (`messaging.onMessage` in `initFCM`) shows an in-app toast always, but shows a SYSTEM notification only when the relevant chat is NOT already open & focused (`sameChatOpen` guard on `selectedUser.uid` + `visibilityState` + `document.hasFocus()`), avoiding toast+system duplicates while reading. It reuses the same stable `tag` as the SW.
+
 ## Voice Room gotchas (nexa-voice-room.js)
 - Stable peer id per user: `peerIdFor(uid)` returns `nexa_vr_<sanitized uid>`. Keep this consistent across all clients.
 - **PeerJS answer-before-handlers race (the #1 "can't hear each other" bug):**
