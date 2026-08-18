@@ -7153,6 +7153,23 @@ a:focus-visible, [tabindex]:focus-visible {
 }
 @keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 
+/* ── Motion polish: spring entrances + tactile press ── */
+/* Message + date-sep entrance: spring up + settle */
+.msg.msg-new, .date-sep.msg-new {
+  animation: msgSpring var(--duration-md) var(--spring) both;
+}
+@keyframes msgSpring {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* Tactile press feedback on interactive controls */
+.user-item:active { transform: scale(0.985); }
+.story-ring:active { transform: scale(0.92); }
+.my-pic:active { transform: scale(0.94); }
+.nav-item, .hdr-btn, .iact-btn, .btn-send, .info-close {
+  transition: transform var(--tf) var(--spring), background var(--tf), color var(--tf), border-color var(--tf), box-shadow var(--tf);
+}
+
 
 /* ╔══════════════════════════════════════════════════════════════════════════╗ */
 /* ║                       LIGHT THEME — "DAYLIGHT"                            ║ */

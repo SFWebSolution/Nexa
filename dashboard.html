@@ -3083,8 +3083,16 @@ function renderMessageList() {
   }
 
   let maxTime = latestMsgTime[selectedUser.uid] || 0;
-  let lastDate = null;
+  let lastDateKey = null;
   let prevSender = null;
+  // Stable reorder: ref walks front-to-back; each desired node is moved to the
+  // ref position only when out of place (no-op moves are skipped → no shake).
+  let ref = box.firstElementChild;
+  const place = (node) => {
+    if (node !== ref) box.insertBefore(node, ref);
+    ref = node.nextElementSibling;
+  };
+  const seenDateKeys = new Set();
 
   allMessages.forEach((msg, idx) => {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
@@ -3095,10 +3103,28 @@ function renderMessageList() {
       if (msg.video) autoSaveMedia(msg.video, 'video', msg.id);
     }
 
-    const dateStr = new Date(msg.createdAt).toLocaleDateString();
+    const dateKey = new Date(msg.createdAt).toDateString();
     const senderKey = fromMe ? 'me' : 'them';
-    const isGrouped = dateStr === lastDate && prevSender === senderKey;
-    lastDate = dateStr;
+    const isGrouped = dateKey === lastDateKey && prevSender === senderKey;
+
+    // Insert a date separator when the day changes.
+    if (dateKey !== lastDateKey) {
+      seenDateKeys.add(dateKey);
+      let sep = box.querySelector(`.date-sep[data-date-key="${CSS.escape(dateKey)}"]`);
+      if (!sep) {
+        sep = document.createElement("div");
+        sep.className = "date-sep";
+        sep.dataset.dateKey = dateKey;
+        const span = document.createElement("span");
+        span.textContent = fmtDateSep(msg.createdAt);
+        sep.appendChild(span);
+        sep.classList.add("msg-new");
+        setTimeout(() => { if (sep) sep.classList.remove("msg-new"); }, 200);
+      }
+      place(sep);
+    }
+
+    lastDateKey = dateKey;
     prevSender = senderKey;
 
     let msgEl = box.querySelector(`.msg[data-msg-id="${msg.id}"]`);
@@ -3156,12 +3182,13 @@ function renderMessageList() {
       }
     }
 
-    // Enforce 100% strict chronological order in DOM without shaking
-    const currentChild = box.children[idx];
-    if (currentChild !== msgEl) {
-      box.insertBefore(msgEl, currentChild || null);
-    }
+    place(msgEl);
     msgEl.classList.toggle("same-sender", !!isGrouped);
+  });
+
+  // Remove date separators whose day no longer has any messages.
+  box.querySelectorAll(".date-sep").forEach(sep => {
+    if (!seenDateKeys.has(sep.dataset.dateKey)) sep.remove();
   });
 
   if (allMessages.length > 0) {
