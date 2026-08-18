@@ -18,7 +18,7 @@
   <title>Nexa Messenger - Premium Edition</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -3084,6 +3084,7 @@ function renderMessageList() {
 
   let maxTime = latestMsgTime[selectedUser.uid] || 0;
   let lastDate = null;
+  let prevSender = null;
 
   allMessages.forEach((msg, idx) => {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
@@ -3095,9 +3096,10 @@ function renderMessageList() {
     }
 
     const dateStr = new Date(msg.createdAt).toLocaleDateString();
-    if (dateStr !== lastDate) {
-      lastDate = dateStr;
-    }
+    const senderKey = fromMe ? 'me' : 'them';
+    const isGrouped = dateStr === lastDate && prevSender === senderKey;
+    lastDate = dateStr;
+    prevSender = senderKey;
 
     let msgEl = box.querySelector(`.msg[data-msg-id="${msg.id}"]`);
 
@@ -3159,6 +3161,7 @@ function renderMessageList() {
     if (currentChild !== msgEl) {
       box.insertBefore(msgEl, currentChild || null);
     }
+    msgEl.classList.toggle("same-sender", !!isGrouped);
   });
 
   if (allMessages.length > 0) {
@@ -4133,6 +4136,7 @@ function loadMediaGrid() {
    ========================================================================= */
 const THEMES = {
   nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
+  light: { label: '☀️ Daylight', attr: 'light', tier: 'classic' },
   midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
   ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
   forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
