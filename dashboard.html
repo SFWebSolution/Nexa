@@ -68,7 +68,7 @@
   <div class="view-once-content" id="viewOnceContent"></div>
 </div>
 
-<!-- MEDIA COMPOSER (caption + view-once + sticker, WhatsApp-style) -->
+<!-- MEDIA COMPOSER (caption + view-once, WhatsApp-style) -->
 <div class="mc-overlay" id="mediaComposer">
   <div class="mc-sheet">
     <div class="mc-top">
@@ -80,9 +80,6 @@
     <div class="mc-bottom">
       <div class="mc-caption-row">
         <input type="text" id="mcCaption" class="mc-caption" placeholder="Add a caption…" autocomplete="off">
-        <button class="mc-sticker-btn" id="mcStickerBtn" onclick="sendAsSticker()" title="Send as sticker">
-          <i data-lucide="smile" style="width:20px;height:20px;"></i>
-        </button>
         <button class="mc-send-btn" onclick="sendMediaComposer()" title="Send">
           <i data-lucide="send" style="width:20px;height:20px;"></i>
         </button>
@@ -355,7 +352,6 @@
         <textarea id="text" placeholder="Type a message…" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
         <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
-        <button class="iact-btn" id="stickerBtn" onclick="pickSticker()" title="Sticker"><i data-lucide="smile" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
@@ -1770,7 +1766,7 @@ function renderUsers() {
 
     if (!el) {
       el = document.createElement("div");
-      el.className = "user-item" + (isSelected ? " active" : "") + (isSelf ? " self-chat-item" : "");
+      el.className = "user-item" + (isSelected ? " active" : "") + (isSelf ? " self-chat-item" : "") + (unread > 0 ? " has-unread" : "");
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
@@ -1813,6 +1809,7 @@ function renderUsers() {
       } else if (badge) {
         badge.remove();
       }
+      el.classList.toggle("has-unread", unread > 0);
     }
 
     el._userData = user;
@@ -3400,13 +3397,8 @@ function buildMessage(id, msg, fromMe) {
     inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
-  // Sticker: render borderless (no bubble background), like WhatsApp.
-  if (msg.sticker) {
-    bubble.classList.add("sticker-bubble");
-    inner += `<div class="sticker-wrap"><img src="${msg.sticker}" loading="lazy" alt="sticker"></div>`;
-  }
   // Handle View Once Media
-  else if (msg.isViewOnce && (msg.image || msg.video || msg.audio)) {
+  if (msg.isViewOnce && (msg.image || msg.video || msg.audio)) {
     const isOpened = msg.viewOnceOpened;
     const mediaType = msg.image ? "Photo" : msg.video ? "Video" : msg.audio ? "Voice note" : "Media";
     const typeKey = msg.image ? "image" : msg.video ? "video" : "audio";
@@ -3762,13 +3754,6 @@ async function uploadFile(file) {
 
 function pickImage() {
   if (!selectedUser) { alert("Select a user first"); return; }
-  mcPickerMode = "media";
-  document.getElementById("img").click();
-}
-
-function pickSticker() {
-  if (!selectedUser) { alert("Select a user first"); return; }
-  mcPickerMode = "sticker";
   document.getElementById("img").click();
 }
 
@@ -3815,19 +3800,16 @@ document.getElementById("fileInput").addEventListener("change", async e => {
 });
 
 /* =========================================================================
-   MEDIA COMPOSER (caption + view-once + sticker, WhatsApp-style)
+   MEDIA COMPOSER (caption + view-once, WhatsApp-style)
    ========================================================================= */
-let mcPickerMode = "media";        // "media" | "sticker"
 let mcPendingFile = null;          // File awaiting send
 let mcPendingType = "image";       // "image" | "video"
-let mcSticker = false;             // send current image as a sticker
 let mcViewOnce = false;            // composer-level view-once toggle
 let mcObjectURL = null;            // object URL for the preview
 
 function openMediaComposer(file, type) {
   mcPendingFile = file;
   mcPendingType = type;
-  mcSticker = mcPickerMode === "sticker";
   mcViewOnce = false;
 
   if (mcObjectURL) URL.revokeObjectURL(mcObjectURL);
@@ -3842,15 +3824,10 @@ function openMediaComposer(file, type) {
   }
 
   document.getElementById("mcCaption").value = "";
-  document.getElementById("mcTitle").textContent = type === "image" ? (mcSticker ? "Send sticker" : "Send photo") : "Send video";
+  document.getElementById("mcTitle").textContent = type === "image" ? "Send photo" : "Send video";
 
-  // View-once toggle: available for images & videos; sticker can't be view-once.
   const voBtn = document.getElementById("mcVOToggle");
   voBtn.classList.remove("active");
-  voBtn.style.display = mcSticker ? "none" : "flex";
-
-  // Sticker button only makes sense for images.
-  document.getElementById("mcStickerBtn").style.display = type === "image" ? "flex" : "none";
 
   document.getElementById("mediaComposer").classList.add("active");
   if (window.lucide) lucide.createIcons();
@@ -3869,7 +3846,6 @@ function closeMediaComposer() {
   document.getElementById("mediaComposer").classList.remove("active");
   if (mcObjectURL) { URL.revokeObjectURL(mcObjectURL); mcObjectURL = null; }
   mcPendingFile = null;
-  mcSticker = false;
   mcViewOnce = false;
 }
 
@@ -3880,33 +3856,20 @@ async function sendMediaComposer() {
   btn.disabled = true;
 
   try {
-    if (mcSticker && mcPendingType === "image") {
-      // Sticker: crop square + white outline, send borderless.
-      showNotifToast("✨ Making sticker...", "info");
-      const stickerBlob = await imageToStickerBlob(mcPendingFile);
-      const url = await uploadFile(new File([stickerBlob], "sticker.png", { type: "image/png" }));
-      if (url) {
-        await db.collection("chats").add(baseMsg({ sticker: url, isSticker: true }));
-        clearReply();
-        showNotifToast("✓ Sticker sent!", "success");
-        sendPushNotification(document.getElementById('myName').textContent || 'Nexa User', 'You have received a new message (✨ Sticker)', selectedUser.uid);
-      }
-    } else {
-      showNotifToast(mcPendingType === "image" ? "📷 Uploading image..." : "🎥 Uploading video...", "info");
-      const url = await uploadFile(mcPendingFile);
-      if (url) {
-        const extras = { caption, isViewOnce: mcViewOnce, viewOnceOpened: false };
-        if (mcPendingType === "image") extras.image = url;
-        else extras.video = url;
-        await db.collection("chats").add(baseMsg(extras));
-        clearReply();
-        showNotifToast("✓ Sent!", "success");
-        sendPushNotification(
-          document.getElementById('myName').textContent || 'Nexa User',
-          mcPendingType === "image" ? "You have received a new message (📷 Photo)" : "You have received a new message (🎥 Video)",
-          selectedUser.uid
-        );
-      }
+    showNotifToast(mcPendingType === "image" ? "📷 Uploading image..." : "🎥 Uploading video...", "info");
+    const url = await uploadFile(mcPendingFile);
+    if (url) {
+      const extras = { caption, isViewOnce: mcViewOnce, viewOnceOpened: false };
+      if (mcPendingType === "image") extras.image = url;
+      else extras.video = url;
+      await db.collection("chats").add(baseMsg(extras));
+      clearReply();
+      showNotifToast("✓ Sent!", "success");
+      sendPushNotification(
+        document.getElementById('myName').textContent || 'Nexa User',
+        mcPendingType === "image" ? "You have received a new message (📷 Photo)" : "You have received a new message (🎥 Video)",
+        selectedUser.uid
+      );
     }
     closeMediaComposer();
   } catch (err) {
@@ -3915,53 +3878,6 @@ async function sendMediaComposer() {
   } finally {
     btn.disabled = false;
   }
-}
-
-// Convert an image File into a square sticker PNG (center crop + white outline).
-function imageToStickerBlob(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const s = Math.min(img.naturalWidth, img.naturalHeight);
-      const pad = Math.round(s * 0.06);
-      const cv = document.createElement("canvas");
-      cv.width = s + pad * 2;
-      cv.height = s + pad * 2;
-      const ctx = cv.getContext("2d");
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      ctx.save();
-      const r = Math.round((s + pad * 2) * 0.12);
-      roundRectPath(ctx, 0, 0, cv.width, cv.height, r);
-      ctx.clip();
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      const sx = (img.naturalWidth - s) / 2;
-      const sy = (img.naturalHeight - s) / 2;
-      ctx.drawImage(img, sx, sy, s, s, pad, pad, s, s);
-      ctx.restore();
-      cv.toBlob(b => b ? resolve(b) : reject(new Error("sticker toBlob failed")), "image/png");
-      URL.revokeObjectURL(img.src);
-    };
-    img.onerror = () => reject(new Error("Could not load image"));
-    img.src = URL.createObjectURL(file);
-  });
-}
-
-function roundRectPath(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function sendAsSticker() {
-  // Reuse the currently loaded image but send it as a sticker.
-  if (!mcPendingFile || mcPendingType !== "image") return;
-  mcSticker = true;
-  sendMediaComposer();
 }
 
 /* =========================================================================
@@ -3983,7 +3899,6 @@ function handleKeyPress(e) {
 function toggleActionButtons() {
   const has = document.getElementById("text").value.trim().length > 0;
   document.getElementById("imgBtn").classList.toggle("hidden", has);
-  document.getElementById("stickerBtn").classList.toggle("hidden", has);
   document.getElementById("fileBtn").classList.toggle("hidden", has);
   document.getElementById("recordBtn").classList.toggle("hidden", has);
 }
@@ -4065,7 +3980,6 @@ function baseMsg(extras = {}) {
     image: "",
     video: "",
     audio: "",
-    sticker: "",
     caption: "",
     status: "sent",
     edited: false,

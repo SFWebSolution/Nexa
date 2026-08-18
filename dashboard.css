@@ -4766,25 +4766,6 @@ input[type="range"] {
   z-index: 5;
 }
 
-/* ── Sticker messages (borderless, like WhatsApp) ── */
-.sticker-bubble {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
-.sticker-bubble .sticker-wrap img {
-  width: 150px;
-  height: 150px;
-  object-fit: contain;
-  display: block;
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.35));
-}
-.sticker-bubble .msg-meta {
-  margin-top: 2px;
-  padding: 0 4px;
-}
-
 /* ── Media captions (WhatsApp-style) ── */
 .media-caption {
   position: absolute;
@@ -4894,7 +4875,6 @@ input[type="range"] {
   height: 40px;
 }
 .mc-caption::placeholder { color: rgba(255, 255, 255, 0.5); }
-.mc-sticker-btn,
 .mc-send-btn {
   width: 44px;
   height: 44px;
@@ -4907,10 +4887,6 @@ input[type="range"] {
   flex-shrink: 0;
   color: #fff;
   transition: transform 0.15s ease, opacity 0.2s ease;
-}
-.mc-sticker-btn { background: rgba(255, 255, 255, 0.15); }
-.mc-sticker-btn:hover { background: rgba(255, 255, 255, 0.25); }
-.mc-send-btn {
   background: linear-gradient(135deg, var(--primary, #2b8fff), var(--primary-lt, #4f8fff));
   box-shadow: 0 4px 14px rgba(43, 143, 255, 0.4);
 }
@@ -6763,5 +6739,181 @@ input[type="range"] {
 .prompt-response-viewbtn:hover { background: var(--primary-soft); }
 
 
+/* ╔══════════════════════════════════════════════════════════════════════════╗ */
+/* ║                       UI POLISH LAYER (v2)                                ║ */
+/* ║   Themed scrollbars, refined list/bubbles, premium feedback states.      ║ */
+/* ╚══════════════════════════════════════════════════════════════════════════╝ */
 
+/* ── Themed scrollbars ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(79, 143, 255, 0.5);
+  background-clip: content-box;
+}
 
+/* ── Chat list refinement ── */
+.user-item {
+  padding: 11px 12px;
+  margin: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.user-item:hover {
+  background: rgba(79, 143, 255, 0.07);
+  border-color: var(--border-md);
+  transform: none;
+}
+.user-item.active {
+  background: linear-gradient(135deg, rgba(79, 143, 255, 0.16), rgba(79, 143, 255, 0.06));
+  border-color: rgba(79, 143, 255, 0.35);
+}
+.user-item:active { transform: scale(0.985); }
+.user-avatar { border-radius: 50%; }
+
+/* Unread badge — pill, gradient, crisp */
+.unread-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  background: linear-gradient(135deg, #2b8fff, #1d4ed8);
+  box-shadow: 0 3px 10px rgba(29, 78, 216, 0.5);
+}
+
+/* A contact with unread messages gets a subtle accent dot + bolder name */
+.user-item.has-unread .user-name { color: var(--text-0); }
+.user-item.has-unread .user-preview { color: var(--text-2); font-weight: 600; }
+.user-item.has-unread .user-time { color: var(--primary-lt); font-weight: 700; }
+
+/* ── Message bubbles ── */
+.msg { gap: 0; }
+.messages { gap: 10px; padding: 18px 22px 22px; }
+.bubble { padding: 9px 13px; }
+.msg.me .bubble {
+  border-radius: var(--radius-md) var(--radius-md) var(--radius-xs) var(--radius-md);
+}
+.msg.them .bubble {
+  border-radius: var(--radius-xs) var(--radius-md) var(--radius-md) var(--radius-md);
+}
+.msg-text { font-size: 14px; line-height: 1.55; }
+
+/* Date separator — pill style like WhatsApp */
+.date-sep {
+  justify-content: center;
+  margin: 14px 0 6px;
+  opacity: 1;
+}
+.date-sep::before, .date-sep::after { display: none; }
+.date-sep span {
+  background: rgba(15, 23, 42, 0.6);
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-md);
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  box-shadow: var(--shadow-xs);
+}
+
+/* Empty chat state — softer, more premium */
+.empty-chat { gap: 16px; }
+.empty-chat-icon {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(79, 143, 255, 0.18), rgba(79, 143, 255, 0.04));
+  border: 1.5px solid var(--border-md);
+  font-size: 38px;
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Composer ── */
+.input-area { padding: 9px 16px 13px; }
+.input-wrap { border-radius: 22px; padding: 2px 6px 2px 16px; }
+.input-wrap:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.iact-btn { border-radius: 50%; transition: transform var(--tf), background var(--tf), color var(--tf); }
+.iact-btn:hover { transform: scale(1.12); }
+.iact-btn:active { transform: scale(0.92); }
+.btn-send {
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  font-size: 18px;
+  box-shadow: 0 5px 16px rgba(79, 143, 255, 0.36);
+}
+.btn-send:hover { box-shadow: 0 8px 24px rgba(79, 143, 255, 0.48); }
+.btn-send:active { transform: scale(0.9); }
+
+/* ── Header buttons ── */
+.hdr-btn { border-radius: 50%; transition: all var(--tf); }
+.hdr-btn:hover { transform: translateY(-1px) scale(1.05); }
+.hdr-btn:active { transform: scale(0.92); }
+
+/* ── Themed focus rings (replace default blue outlines) ── */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ── Sidebar search (if present) ── */
+.search-input,
+input[type="search"],
+input[type="text"].search {
+  border-radius: var(--radius-sm);
+}
+
+/* ── Bottom nav active indicator ── */
+.bottom-nav .nav-item { position: relative; transition: color var(--t), transform var(--tf); }
+.bottom-nav .nav-item:active { transform: scale(0.92); }
+.bottom-nav .nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
+
+/* ── Smoother modal/sheet transitions ── */
+.mc-overlay, .view-once-overlay, .story-viewer-overlay,
+.modal-overlay, .info-panel {
+  transition: opacity var(--duration-md) var(--ease);
+}
+
+/* ── Media hover affordance ── */
+.media-container { cursor: pointer; }
+.media-container img { transition: transform var(--duration-md) var(--ease); }
+.media-container:hover img { transform: scale(1.03); }
+
+/* ── Reply quote refinement ── */
+.reply-quote {
+  border-left: 3px solid var(--cyan);
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: var(--radius-xs);
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+.msg.me .bubble .reply-quote { background: rgba(0, 0, 0, 0.18); }
