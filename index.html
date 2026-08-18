@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>Nexa Messenger | The Next Generation of Messaging</title>
+  <title>Nexa Messenger — Secure messaging, reimagined</title>
 
-  <meta name="description" content="Experience the future of messaging with Nexa Messenger. Lightning-fast chats, crystal-clear voice notes, secure conversations, media sharing and a premium modern experience.">
+  <meta name="description" content="Nexa Messenger — secure messaging with real-time chat, voice notes, media sharing, stories, and an AI assistant. Private by default, fast by design.">
   <meta name="keywords" content="Nexa Messenger, Nexa, Messaging App, Chat App, Instant Messaging, Secure Chat, Voice Notes, Media Sharing, Real-Time Messaging, Social Network">
   <meta name="author" content="NeuroStack">
   <meta name="application-name" content="Nexa Messenger">
@@ -27,8 +27,8 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Nexa Messenger">
   <meta property="og:locale" content="en_US">
-  <meta property="og:title" content="💬 Nexa Messenger">
-  <meta property="og:description" content="The Next Generation of Messaging. Fast ⚡ Secure 🔒 Smart ✨ Connected 🌍">
+  <meta property="og:title" content="Nexa Messenger">
+  <meta property="og:description" content="Secure messaging with real-time chat, voice notes, media sharing, stories, and an AI assistant. Private by default, fast by design.">
   <meta property="og:url" content="https://nexa-qydr.onrender.com/">
   <meta property="og:image" content="https://nexa-qydr.onrender.com/social-preview.png?v=1">
   <meta property="og:image:secure_url" content="https://nexa-qydr.onrender.com/social-preview.png?v=1">
@@ -39,8 +39,8 @@
 
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="💬 Nexa Messenger">
-  <meta name="twitter:description" content="The Next Generation of Messaging. Fast ⚡ Secure 🔒 Smart ✨ Connected 🌍">
+  <meta name="twitter:title" content="Nexa Messenger">
+  <meta name="twitter:description" content="Secure messaging with real-time chat, voice notes, media sharing, stories, and an AI assistant. Private by default, fast by design.">
   <meta name="twitter:image" content="https://nexa-qydr.onrender.com/social-preview.png?v=1">
   <meta name="twitter:image:alt" content="Nexa Messenger Preview">
 
@@ -58,9 +58,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
-  <!-- Nexa WhatsApp Multi-User Voice Chat System -->
-  <link rel="stylesheet" href="nexa-voice-room.css">
 
   <style>
 /* ========================================================================
@@ -255,13 +252,13 @@ img { max-width: 100%; height: auto; display: block; }
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: var(--bg-primary);
+  background: radial-gradient(circle at 50% 45%, #0d1424 0%, var(--bg-primary) 70%);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 1.5rem;
-  transition: opacity 0.5s ease, visibility 0.5s ease;
+  gap: 1.75rem;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .loading-screen.hidden {
@@ -271,48 +268,79 @@ img { max-width: 100%; height: auto; display: block; }
 }
 
 .loading-logo {
-  width: 72px; height: 72px;
-  border-radius: var(--radius-xl);
-  background: var(--gradient-primary);
+  width: 88px; height: 88px;
+  border-radius: 22px;
   display: flex;
   align-items: center; justify-content: center;
-  font-size: 2rem; font-weight: 900;
-  color: var(--bg-primary);
-  animation: loadingPulse 1.5s ease-in-out infinite;
+  position: relative;
+  animation: loadingFloat 2.6s ease-in-out infinite;
 }
+.loading-logo::before {
+  content: ''; position: absolute; inset: -10px;
+  border-radius: 28px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.35), transparent 70%);
+  filter: blur(8px);
+  animation: loadingGlow 2.6s ease-in-out infinite;
+  z-index: 0;
+}
+.loading-logo::after {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  z-index: 1;
+}
+.loading-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 22px; position: relative; z-index: 2; }
 
 .loading-text {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 2px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  animation: loadingFadeIn 0.8s ease both;
+}
+.loading-text .loading-sub {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 2.5px;
   text-transform: uppercase;
+  margin-top: 6px;
 }
 
 .loading-bar {
-  width: 200px; height: 3px;
-  background: rgba(255,255,255,0.1);
+  width: 180px; height: 2px;
+  background: rgba(255,255,255,0.08);
   border-radius: 10px;
   overflow: hidden;
+  position: relative;
 }
 
 .loading-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--gradient-primary);
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--primary), var(--accent), transparent);
   border-radius: 10px;
-  animation: loadingFill 1.8s ease-in-out infinite;
+  animation: loadingSweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-@keyframes loadingPulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.4); }
-  50% { transform: scale(1.08); box-shadow: 0 0 30px 10px rgba(0, 229, 255, 0.15); }
+@keyframes loadingFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
-
-@keyframes loadingFill {
-  0% { width: 0%; margin-left: 0; }
-  50% { width: 70%; margin-left: 15%; }
-  100% { width: 0%; margin-left: 100%; }
+@keyframes loadingGlow {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+@keyframes loadingFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes loadingSweep {
+  0% { left: -30%; }
+  100% { left: 100%; }
 }
 
 /* ========================================================================
@@ -2009,8 +2037,8 @@ footer {
 
   <!-- LOADING SCREEN -->
   <div class="loading-screen" id="loadingScreen">
-    <div class="loading-logo"><img src="/icon-192.png" alt="Nexa Logo" style="width: 100%; height: 100%; object-fit: contain;"></div>
-    <div class="loading-text">Nexa Messenger</div>
+    <div class="loading-logo"><img src="/icon-192.png" alt="Nexa Logo"></div>
+    <div class="loading-text">Nexa<span class="loading-sub">Messenger</span></div>
     <div class="loading-bar"><div class="loading-bar-fill"></div></div>
   </div>
 
@@ -2027,7 +2055,7 @@ footer {
     <a href="#team" onclick="closeMobileMenu()">Team</a>
     <a href="#faq" onclick="closeMobileMenu()">FAQ</a>
     <a href="login.html" onclick="closeMobileMenu()">Login</a>
-    <a href="signup.html" class="mobile-cta" onclick="closeMobileMenu()">✨ Get Started</a>
+    <a href="signup.html" class="mobile-cta" onclick="closeMobileMenu()">Get started</a>
   </div>
 
   <!-- HEADER -->
@@ -2061,22 +2089,22 @@ footer {
       <div class="hero-content">
         <div class="hero-badge">
           <span class="pulse-dot"></span>
-          The Next Generation of Communication
+          Secure messaging, reimagined
         </div>
 
         <h1>
-          Experience the<br>
-          <span class="shimmer-text">Future of Messaging</span>
+          Talk freely.<br>
+          <span class="shimmer-text">Connect instantly.</span>
         </h1>
 
         <p>
-          Lightning-fast chats, crystal-clear voice notes, secure conversations,
-          AI-powered assistance, and a beautiful modern experience built for everyone.
+          Send messages, voice notes, and media to the people who matter.
+          Private by default, fast by design, built for real conversation.
         </p>
 
         <div class="hero-cta">
-          <a href="signup.html" class="btn btn-primary">✨ Create Account Free</a>
-          <a href="login.html" class="btn btn-secondary">🔐 Sign In</a>
+          <a href="signup.html" class="btn btn-primary">Create account</a>
+          <a href="login.html" class="btn btn-secondary">Sign in</a>
         </div>
       </div>
 
@@ -2098,11 +2126,11 @@ footer {
             </div>
             <div class="phone-messages">
               <div class="msg-bubble received" style="animation-delay: 0.3s;">
-                Hey! Welcome to Nexa 🎉
+                Welcome to Nexa
                 <div class="msg-time">9:38 AM</div>
               </div>
               <div class="msg-bubble sent" style="animation-delay: 0.6s;">
-                This app looks amazing! 🔥
+                This looks great
                 <div class="msg-time">9:39 AM ✓✓</div>
               </div>
               <div class="msg-voice" style="animation-delay: 0.9s;">
@@ -2120,11 +2148,11 @@ footer {
                 0:12
               </div>
               <div class="msg-bubble received" style="animation-delay: 1.2s;">
-                Try the voice notes & AI features ✨
+                Try voice notes and stories
                 <div class="msg-time">9:40 AM</div>
               </div>
               <div class="msg-bubble sent" style="animation-delay: 1.5s;">
-                Already loving it! 💜
+                Already loving it
                 <div class="msg-time">9:41 AM ✓✓</div>
               </div>
               <div class="typing-indicator" style="animation-delay: 1.8s;">
@@ -2143,16 +2171,16 @@ footer {
   <section class="app-preview-section" id="preview">
     <div class="container">
       <div class="section-header reveal">
-        <div class="section-tag">🖥️ Live Preview</div>
-        <h2>See Nexa in Action</h2>
-        <p>A sneak peek at the beautiful messaging experience waiting for you.</p>
+        <div class="section-tag">Live Preview</div>
+        <h2>See Nexa in action</h2>
+        <p>A look at the messaging experience waiting for you.</p>
       </div>
 
       <div class="reveal reveal-delay-2">
         <div class="preview-tabs">
-          <button class="preview-tab-btn active" data-tab="chat">💬 Chat</button>
-          <button class="preview-tab-btn" data-tab="voice">🎤 Voice</button>
-          <button class="preview-tab-btn" data-tab="ai">🤖 AI</button>
+          <button class="preview-tab-btn active" data-tab="chat">Chat</button>
+          <button class="preview-tab-btn" data-tab="voice">Voice</button>
+          <button class="preview-tab-btn" data-tab="ai">AI</button>
         </div>
 
         <div class="mock-window">
@@ -2170,23 +2198,23 @@ footer {
           <div class="mock-body preview-content active" id="preview-chat">
             <div class="mock-chat-view">
               <div class="mock-msg-bubble them">
-                Hey! Have you tried the new Nexa update? 🚀
+                Have you tried the new Nexa update?
                 <div class="mock-msg-meta">10:24 AM</div>
               </div>
               <div class="mock-msg-bubble me">
-                Yes! The new themes are incredible 🎨
+                Yes, the themes are really nice
                 <div class="mock-msg-meta">10:25 AM ✓✓</div>
               </div>
               <div class="mock-msg-bubble them">
-                Right?! And the voice notes sound so clear now
+                Right? And the voice notes sound so clear now
                 <div class="mock-msg-meta">10:25 AM</div>
               </div>
               <div class="mock-msg-bubble me">
-                The stories feature is my favorite addition ✨
+                Stories are my favorite addition
                 <div class="mock-msg-meta">10:26 AM ✓✓</div>
               </div>
               <div class="mock-msg-bubble them">
-                Same! Plus the AI assistant is so helpful for writing
+                Same. The AI assistant helps with writing too
                 <div class="mock-msg-meta">10:26 AM</div>
               </div>
             </div>
@@ -2196,7 +2224,7 @@ footer {
           <div class="mock-body preview-content" id="preview-voice">
             <div class="mock-chat-view">
               <div class="mock-msg-bubble them">
-                Check out this voice note I just recorded! 🎤
+                Check out this voice note I just recorded
                 <div class="mock-msg-meta">3:15 PM</div>
               </div>
               <div class="mock-msg-bubble them">
@@ -2219,7 +2247,7 @@ footer {
                 <div class="mock-msg-meta">3:15 PM</div>
               </div>
               <div class="mock-msg-bubble me">
-                Crystal clear! 🔊 The audio quality is amazing
+                Crystal clear. The audio quality is great
                 <div class="mock-msg-meta">3:16 PM ✓✓</div>
               </div>
               <div class="mock-msg-bubble me">
@@ -2249,7 +2277,7 @@ footer {
                 <div class="mock-msg-meta">2:30 PM ✓✓</div>
               </div>
               <div class="mock-msg-bubble them">
-                🤖 <strong>AI Summary:</strong><br><br>
+                <strong>AI Summary:</strong><br><br>
                 The team discussed the project timeline, agreed on the new feature priorities, and scheduled a follow-up meeting for next Wednesday at 3 PM.
                 <div class="mock-msg-meta">2:30 PM • AI</div>
               </div>
@@ -2258,8 +2286,8 @@ footer {
                 <div class="mock-msg-meta">2:31 PM ✓✓</div>
               </div>
               <div class="mock-msg-bubble them">
-                🤖 <strong>Translation:</strong><br><br>
-                "Bonjour, comment allez-vous ?" 🇫🇷
+                <strong>Translation:</strong><br><br>
+                "Bonjour, comment allez-vous ?"
                 <div class="mock-msg-meta">2:31 PM • AI</div>
               </div>
             </div>
@@ -2273,31 +2301,31 @@ footer {
   <section class="how-it-works" id="how-it-works">
     <div class="container">
       <div class="section-header reveal">
-        <div class="section-tag">🛠️ Simple Setup</div>
-        <h2>Get Started in 3 Steps</h2>
-        <p>From signup to sending your first message in under a minute.</p>
+        <div class="section-tag">Getting started</div>
+        <h2>Up and running in three steps</h2>
+        <p>From signup to your first message in under a minute.</p>
       </div>
 
       <div class="steps-container">
         <div class="step-card reveal reveal-delay-1">
           <div class="step-number">1</div>
           <div class="step-icon">📝</div>
-          <h3>Create Account</h3>
-          <p>Sign up with your email in seconds. No phone number required, completely free.</p>
+          <h3>Create your account</h3>
+          <p>Sign up with your email in seconds. No phone number required, and free to use.</p>
         </div>
 
         <div class="step-card reveal reveal-delay-2">
           <div class="step-number">2</div>
           <div class="step-icon">🔍</div>
-          <h3>Find Friends</h3>
+          <h3>Find your people</h3>
           <p>Search for friends by username or share your profile link to connect instantly.</p>
         </div>
 
         <div class="step-card reveal reveal-delay-3">
           <div class="step-number">3</div>
           <div class="step-icon">💬</div>
-          <h3>Start Chatting</h3>
-          <p>Send messages, voice notes, photos, and use AI — all in one beautiful interface.</p>
+          <h3>Start the conversation</h3>
+          <p>Send messages, voice notes, and photos, or use AI — all from one clean interface.</p>
         </div>
       </div>
     </div>
@@ -2307,70 +2335,70 @@ footer {
   <section class="features" id="features">
     <div class="container">
       <div class="section-header reveal">
-        <div class="section-tag">⚡ Core Features</div>
-        <h2>Everything You Need</h2>
-        <p>Everything you need. Nothing you don't. Built for real connections.</p>
+        <div class="section-tag">Features</div>
+        <h2>Everything you need</h2>
+        <p>Built for real conversation. Nothing you don't.</p>
       </div>
 
       <div class="features-grid">
         <div class="feature-card reveal reveal-delay-1">
           <div class="feature-icon">⚡</div>
-          <h3>Real-Time Messaging</h3>
-          <p>Send and receive messages instantly with blazing-fast delivery and smooth live updates.</p>
+          <h3>Real-time messaging</h3>
+          <p>Send and receive messages instantly with reliable delivery and live updates.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-2">
           <div class="feature-icon">🎤</div>
-          <h3>Voice Notes</h3>
-          <p>Record crystal-clear audio messages and stay connected naturally without typing.</p>
+          <h3>Voice notes</h3>
+          <p>Record clear audio messages and stay connected naturally without typing.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-3">
           <div class="feature-icon">📸</div>
-          <h3>Media Sharing</h3>
-          <p>Photos, videos, documents, and audio—everything shared effortlessly in one place.</p>
+          <h3>Media sharing</h3>
+          <p>Photos, videos, documents, and audio, all shared in one place.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-1">
           <div class="feature-icon">✨</div>
           <h3>Stories</h3>
-          <p>Share your daily moments through disappearing stories with your friends and followers.</p>
+          <p>Share daily moments through disappearing stories with your friends.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-2">
           <div class="feature-icon">🤖</div>
-          <h3>AI Assistant</h3>
-          <p>Get writing help, summarize conversations, translate languages, and more with AI power.</p>
+          <h3>AI assistant</h3>
+          <p>Get writing help, summarize conversations, and translate languages without leaving the chat.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-3">
           <div class="feature-icon">🔐</div>
-          <h3>Secure & Private</h3>
+          <h3>Secure and private</h3>
           <p>Your conversations belong to you. Built with modern security and account protection.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-1">
           <div class="feature-icon">📱</div>
-          <h3>Cross-Platform</h3>
-          <p>Access Nexa from your browser, mobile, or desktop anytime, anywhere, seamlessly.</p>
+          <h3>Cross-platform</h3>
+          <p>Access Nexa from your browser, mobile, or desktop, anytime, anywhere.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-2">
           <div class="feature-icon">🎨</div>
-          <h3>Beautiful Interface</h3>
-          <p>Amazing UI with smooth animations, multiple themes, and incredible design attention.</p>
+          <h3>Thoughtful design</h3>
+          <p>A clean interface with smooth motion, multiple themes, and attention to detail.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-3">
           <div class="feature-icon">🚀</div>
-          <h3>Fast Performance</h3>
-          <p>Optimized for speed and performance—stays lightweight while delivering premium features.</p>
+          <h3>Built for speed</h3>
+          <p>Optimized to stay lightweight while delivering the features you use every day.</p>
         </div>
 
         <div class="feature-card reveal reveal-delay-1" style="border-color: rgba(37,211,102,0.4); background: linear-gradient(135deg, rgba(7,12,26,0.95), rgba(37,211,102,0.12));">
           <div class="feature-icon" style="background: rgba(37,211,102,0.15); color: #25d366;">🎙️</div>
-          <h3>Multi-User Voice Chat</h3>
-          <p>Start a Voice Room, invite friends instantly, and chat with multiple users simultaneously with studio-quality Web Audio DSP, real-time speaking wave rings, and a floating app-wide bar!</p>
+          <h3>Voice rooms</h3>
+          <p>Start a voice room, invite friends, and talk with multiple people at once — with real-time speaking indicators and a floating bar that follows you across the app.</p>
         </div>
       </div>
     </div>
@@ -2380,9 +2408,9 @@ footer {
   <section class="team" id="team">
     <div class="container">
       <div class="section-header reveal">
-        <div class="section-tag">👥 Our Team</div>
-        <h2>Meet the Team</h2>
-        <p>Passionate creators building the next generation of communication.</p>
+        <div class="section-tag">Team</div>
+        <h2>Meet the team</h2>
+        <p>The people building Nexa.</p>
       </div>
 
       <div class="team-grid">
@@ -2442,9 +2470,9 @@ footer {
   <section class="faq" id="faq">
     <div class="faq-container">
       <div class="section-header reveal">
-        <div class="section-tag">❓ FAQ</div>
-        <h2>Frequently Asked Questions</h2>
-        <p>Everything you need to know about Nexa Messenger.</p>
+        <div class="section-tag">FAQ</div>
+        <h2>Frequently asked questions</h2>
+        <p>Everything you need to know about Nexa.</p>
       </div>
 
       <div class="reveal reveal-delay-1">
@@ -2454,7 +2482,7 @@ footer {
             <div class="faq-toggle">+</div>
           </div>
           <div class="faq-answer">
-            <p>Yes, completely! Creating an account and messaging are entirely free. We're committed to keeping Nexa accessible to everyone without hidden costs or premium paywalls.</p>
+            <p>Yes. Creating an account and messaging are free. We're committed to keeping Nexa accessible without hidden costs or paywalls.</p>
           </div>
         </div>
 
@@ -2474,7 +2502,7 @@ footer {
             <div class="faq-toggle">+</div>
           </div>
           <div class="faq-answer">
-            <p>Absolutely! Aksify AI is seamlessly integrated into Nexa. You can ask questions, generate content, improve your writing, translate languages, summarize conversations, and get intelligent assistance without leaving the app.</p>
+            <p>Yes. Aksify AI is built into Nexa. You can ask questions, generate content, improve your writing, translate languages, and summarize conversations without leaving the app.</p>
           </div>
         </div>
 
@@ -2494,7 +2522,7 @@ footer {
             <div class="faq-toggle">+</div>
           </div>
           <div class="faq-answer">
-            <p>Nexa works perfectly as a Progressive Web App (PWA) on all devices. You can install it from your browser with one click for a native app-like experience with offline support and push notifications.</p>
+            <p>Nexa works as a Progressive Web App (PWA) on all devices. Install it from your browser in one tap for a native app-like experience with offline support and push notifications.</p>
           </div>
         </div>
       </div>
@@ -2506,15 +2534,15 @@ footer {
     <div class="container">
       <div class="download-inner reveal">
         <div class="download-icon">📲</div>
-        <h2>Install Nexa on Your Device</h2>
+        <h2>Install Nexa on your device</h2>
         <p>Get the full app experience on your phone, tablet, or desktop. Install directly from your browser — no app store needed.</p>
         <div class="download-buttons">
           <button class="btn btn-primary" id="installBtn" onclick="installPWA()">
-            📱 Install App
+            Install app
           </button>
-          <a href="signup.html" class="btn btn-secondary">🌐 Use in Browser</a>
+          <a href="signup.html" class="btn btn-secondary">Use in browser</a>
         </div>
-        <p class="download-note" id="installStatus">Works on Android, iOS, Windows, Mac & Linux • Free forever</p>
+        <p class="download-note" id="installStatus">Works on Android, iOS, Windows, Mac, and Linux. Free forever.</p>
       </div>
     </div>
   </section>
@@ -2522,11 +2550,11 @@ footer {
   <!-- CTA SECTION -->
   <section class="cta">
     <div class="container reveal">
-      <h2>Ready to Experience the Future?</h2>
-      <p>Join thousands of users discovering a smarter, faster, and more beautiful way to communicate.</p>
+      <h2>Ready to get started?</h2>
+      <p>Join the people using Nexa for a simpler, faster way to stay in touch.</p>
       <div class="cta-buttons">
-        <a href="signup.html" class="btn btn-primary">✨ Get Started Now</a>
-        <a href="login.html" class="btn btn-secondary">Already have an account?</a>
+        <a href="signup.html" class="btn btn-primary">Create account</a>
+        <a href="login.html" class="btn btn-secondary">I already have an account</a>
       </div>
     </div>
   </section>
@@ -2540,7 +2568,7 @@ footer {
             <div class="logo-icon" style="width:38px;height:38px;font-size:1.1rem;"><img src="/icon-192.png" alt="Nexa Logo" style="width: 100%; height: 100%; object-fit: contain;"></div>
             <span class="logo-text" style="font-size:1.1rem;">NEXA</span>
           </a>
-          <p>The next generation messaging platform. Fast, secure, intelligent, and beautifully designed.</p>
+          <p>A secure messaging platform — fast, private, and thoughtfully designed.</p>
           <div class="social-links">
             <a href="https://neuro-stack.onrender.com" target="_blank" class="social-link" aria-label="Website">🌐</a>
             <a href="#" class="social-link" aria-label="Twitter">𝕏</a>
@@ -2576,7 +2604,7 @@ footer {
       <div class="footer-divider"></div>
 
       <div class="footer-bottom">
-        <p>© 2026 <strong>Nexa Messenger</strong>. Built with ❤️ by <strong>NeuroStack</strong></p>
+        <p>© 2026 <strong>Nexa Messenger</strong>. Built by <strong>NeuroStack</strong></p>
         <div class="footer-bottom-links">
           <a href="#">Privacy</a>
           <a href="#">Terms</a>
@@ -2605,8 +2633,6 @@ footer {
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    console.log("✅ Firebase initialized successfully");
-
     // ========================================================================
     // LOADING SCREEN
     // ========================================================================
@@ -2620,7 +2646,7 @@ footer {
     }
 
     // Hide after a short delay or when auth resolves
-    setTimeout(hideLoadingScreen, 2200);
+    setTimeout(hideLoadingScreen, 1400);
 
     // ========================================================================
     // AUTO-LOGIN HANDLER
@@ -2629,18 +2655,18 @@ footer {
     function initializeAuthListener() {
       auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
         .then(() => {
-          console.log("✅ Persistence set to LOCAL");
+
 
           auth.onAuthStateChanged(async (user) => {
             if (user) {
-              console.log("👤 User detected:", user.uid);
+
 
               try {
                 const userDoc = await db.collection("users").doc(user.uid).get();
 
                 if (userDoc.exists) {
                   const userData = userDoc.data();
-                  console.log("📋 User document found");
+
 
                   if (userData.banned === true) {
                     console.warn("⛔ User is banned. Signing out...");
@@ -2649,10 +2675,10 @@ footer {
                     return;
                   }
 
-                  console.log("✨ User is active. Redirecting to dashboard...");
+
                   window.location.replace("dashboard.html");
                 } else {
-                  console.warn("⚠️ User document does not exist in Firestore");
+
                   hideLoadingScreen();
                 }
               } catch (error) {
@@ -2660,7 +2686,7 @@ footer {
                 hideLoadingScreen();
               }
             } else {
-              console.log("➖ No user logged in");
+
               hideLoadingScreen();
             }
           });
@@ -2683,9 +2709,7 @@ footer {
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js")
-          .then(() => console.log("✅ Nexa PWA Ready"))
-          .catch(err => console.warn("⚠️ SW registration failed:", err));
+        navigator.serviceWorker.register("sw.js");
       });
     }
 
@@ -2807,7 +2831,7 @@ footer {
           });
         }
       });
-      console.log("✅ FAQ functionality initialized");
+
     }
 
     if (document.readyState === "loading") {
@@ -2916,7 +2940,5 @@ footer {
       }
     }
   </script>
-  <!-- Nexa WhatsApp Multi-User Voice Chat System -->
-  <script src="nexa-voice-room.js"></script>
 </body>
 </html>
