@@ -18,7 +18,7 @@
   <title>Nexa Messenger - Premium Edition</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -66,6 +66,26 @@
     <button onclick="closeViewOnceModal()" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
   </div>
   <div class="view-once-content" id="viewOnceContent"></div>
+</div>
+
+<!-- MEDIA COMPOSER (caption + view-once, WhatsApp-style) -->
+<div class="mc-overlay" id="mediaComposer">
+  <div class="mc-sheet">
+    <div class="mc-top">
+      <button class="mc-icon-btn" onclick="cancelMediaComposer()" title="Back">←</button>
+      <span class="mc-title" id="mcTitle">Send photo</span>
+      <button class="mc-icon-btn" id="mcVOToggle" onclick="toggleMcViewOnce()" title="Send as View Once (1)">1</button>
+    </div>
+    <div class="mc-preview" id="mcPreview"></div>
+    <div class="mc-bottom">
+      <div class="mc-caption-row">
+        <input type="text" id="mcCaption" class="mc-caption" placeholder="Add a caption…" autocomplete="off">
+        <button class="mc-send-btn" onclick="sendMediaComposer()" title="Send">
+          <i data-lucide="send" style="width:20px;height:20px;"></i>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="profile-setup-overlay" id="profileSetupOverlay">
@@ -1746,7 +1766,7 @@ function renderUsers() {
 
     if (!el) {
       el = document.createElement("div");
-      el.className = "user-item" + (isSelected ? " active" : "") + (isSelf ? " self-chat-item" : "");
+      el.className = "user-item" + (isSelected ? " active" : "") + (isSelf ? " self-chat-item" : "") + (unread > 0 ? " has-unread" : "");
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
@@ -1789,6 +1809,7 @@ function renderUsers() {
       } else if (badge) {
         badge.remove();
       }
+      el.classList.toggle("has-unread", unread > 0);
     }
 
     el._userData = user;
@@ -3062,7 +3083,16 @@ function renderMessageList() {
   }
 
   let maxTime = latestMsgTime[selectedUser.uid] || 0;
-  let lastDate = null;
+  let lastDateKey = null;
+  let prevSender = null;
+  // Stable reorder: ref walks front-to-back; each desired node is moved to the
+  // ref position only when out of place (no-op moves are skipped → no shake).
+  let ref = box.firstElementChild;
+  const place = (node) => {
+    if (node !== ref) box.insertBefore(node, ref);
+    ref = node.nextElementSibling;
+  };
+  const seenDateKeys = new Set();
 
   allMessages.forEach((msg, idx) => {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
@@ -3073,10 +3103,29 @@ function renderMessageList() {
       if (msg.video) autoSaveMedia(msg.video, 'video', msg.id);
     }
 
-    const dateStr = new Date(msg.createdAt).toLocaleDateString();
-    if (dateStr !== lastDate) {
-      lastDate = dateStr;
+    const dateKey = new Date(msg.createdAt).toDateString();
+    const senderKey = fromMe ? 'me' : 'them';
+    const isGrouped = dateKey === lastDateKey && prevSender === senderKey;
+
+    // Insert a date separator when the day changes.
+    if (dateKey !== lastDateKey) {
+      seenDateKeys.add(dateKey);
+      let sep = box.querySelector(`.date-sep[data-date-key="${CSS.escape(dateKey)}"]`);
+      if (!sep) {
+        sep = document.createElement("div");
+        sep.className = "date-sep";
+        sep.dataset.dateKey = dateKey;
+        const span = document.createElement("span");
+        span.textContent = fmtDateSep(msg.createdAt);
+        sep.appendChild(span);
+        sep.classList.add("msg-new");
+        setTimeout(() => { if (sep) sep.classList.remove("msg-new"); }, 200);
+      }
+      place(sep);
     }
+
+    lastDateKey = dateKey;
+    prevSender = senderKey;
 
     let msgEl = box.querySelector(`.msg[data-msg-id="${msg.id}"]`);
 
@@ -3133,11 +3182,13 @@ function renderMessageList() {
       }
     }
 
-    // Enforce 100% strict chronological order in DOM without shaking
-    const currentChild = box.children[idx];
-    if (currentChild !== msgEl) {
-      box.insertBefore(msgEl, currentChild || null);
-    }
+    place(msgEl);
+    msgEl.classList.toggle("same-sender", !!isGrouped);
+  });
+
+  // Remove date separators whose day no longer has any messages.
+  box.querySelectorAll(".date-sep").forEach(sep => {
+    if (!seenDateKeys.has(sep.dataset.dateKey)) sep.remove();
   });
 
   if (allMessages.length > 0) {
@@ -3184,7 +3235,7 @@ function toggleViewOnceMode() {
   showNotifToast(isViewOnceActive ? "1 View Once enabled for next media" : "View Once disabled", "info");
 }
 
-function openViewOnceModal(mediaUrl, mediaType, docId) {
+function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
   const modal = document.getElementById("viewOnceModal");
   const container = document.getElementById("viewOnceContent");
   if (!modal || !container) return;
@@ -3198,6 +3249,8 @@ function openViewOnceModal(mediaUrl, mediaType, docId) {
     const vid = document.createElement("video");
     vid.src = mediaUrl;
     vid.controls = true;
+    vid.controlsList = "nodownload nofullscreen noremoteplayback";
+    vid.disablePictureInPicture = true;
     vid.autoplay = true;
     container.appendChild(vid);
   } else if (mediaType === "audio") {
@@ -3206,6 +3259,13 @@ function openViewOnceModal(mediaUrl, mediaType, docId) {
     aud.controls = true;
     aud.autoplay = true;
     container.appendChild(aud);
+  }
+
+  if (caption) {
+    const cap = document.createElement("div");
+    cap.className = "view-once-caption";
+    cap.textContent = caption;
+    container.appendChild(cap);
   }
 
   modal.classList.add("active");
@@ -3226,6 +3286,41 @@ function closeViewOnceModal() {
   if (container) container.innerHTML = "";
   renderMessageList();
 }
+
+/* View-once screenshot/save protection.
+   Browsers can't block OS-level screenshots, but we can stop the obvious
+   routes: right-click save, long-press save, image drag, the native download
+   button, and we close the viewer if the user backgrounds the tab/app. */
+document.addEventListener("contextmenu", e => {
+  const modal = document.getElementById("viewOnceModal");
+  if (modal && modal.classList.contains("active") && e.target.closest("#viewOnceContent")) {
+    e.preventDefault();
+    showNotifToast("🔒 View once media can't be saved", "info");
+  }
+});
+document.addEventListener("dragstart", e => {
+  const modal = document.getElementById("viewOnceModal");
+  if (modal && modal.classList.contains("active")) { e.preventDefault(); }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    const modal = document.getElementById("viewOnceModal");
+    if (modal && modal.classList.contains("active")) {
+      // Blank the media before closing so it isn't left on screen.
+      const container = document.getElementById("viewOnceContent");
+      if (container) container.innerHTML = "";
+      modal.classList.remove("active");
+      renderMessageList();
+    }
+  }
+});
+// Block Ctrl+S / Cmd+S while the viewer is open.
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S" || e.key === "u" || e.key === "U")) {
+    const modal = document.getElementById("viewOnceModal");
+    if (modal && modal.classList.contains("active")) { e.preventDefault(); }
+  }
+});
 
 function buildStoryReplyPreview(msg) {
   const isOwnStory = msg.storyReplyUid === currentUser?.uid;
@@ -3353,7 +3448,7 @@ function buildMessage(id, msg, fromMe) {
         <span>${mediaType} (Tap to view)</span>
       `;
       if (!fromMe || currentUser.uid === msg.to) {
-        badge.onclick = () => openViewOnceModal(mediaUrl, typeKey, id);
+        badge.onclick = () => openViewOnceModal(mediaUrl, typeKey, id, msg.caption);
       } else {
         badge.onclick = () => showNotifToast("Sent as View Once media", "info");
       }
@@ -3364,20 +3459,25 @@ function buildMessage(id, msg, fromMe) {
     if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
 
     if (msg.image) {
-      inner += `<div class="media-container">
+      const cap = msg.caption ? `<div class="media-caption">${escapeHtml(msg.caption)}</div>` : "";
+      inner += `<div class="media-container ${msg.caption ? "has-caption" : ""}">
         <img src="${msg.image}"
              onclick="viewImg('${msg.image}')"
              loading="lazy"
-             alt="shared image">
+             alt="shared image"
+             draggable="false">
+        ${cap}
       </div>`;
     }
 
     if (msg.video) {
+      const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
       inner += `<div class="media-container">
-        <video controls preload="metadata">
+        <video controls preload="metadata" controlslist="nodownload" disablepictureinpicture>
           <source src="${msg.video}" type="video/mp4">
           Your browser does not support video playback.
         </video>
+        ${cap}
       </div>`;
     }
   }
@@ -3694,57 +3794,121 @@ function pickFile() {
 
 document.getElementById("img").addEventListener("change", async e => {
   const file = e.target.files[0];
-  if (!file || !selectedUser) return;
-  try {
-    showNotifToast("📷 Uploading image...", "info");
-    const url = await uploadFile(file);
-    if (url) {
-      await db.collection("chats").add(baseMsg({ image: url }));
-      clearReply();
-      showNotifToast("✓ Image sent!", "success");
-      const senderName = document.getElementById('myName').textContent || 'Nexa User';
-      sendPushNotification(senderName, 'You have received a new message (📷 Photo)', selectedUser.uid);
-    }
-  } catch (err) {
-    showNotifToast("Image upload failed: " + err.message, "error");
-    console.error(err);
-  }
   e.target.value = "";
+  if (!file || !selectedUser) return;
+  if (!file.type.startsWith("image/")) {
+    showNotifToast("Please pick an image", "error");
+    return;
+  }
+  openMediaComposer(file, "image");
 });
 
 document.getElementById("fileInput").addEventListener("change", async e => {
   const file = e.target.files[0];
+  e.target.value = "";
   if (!file || !selectedUser) return;
 
-  const isVideo = file.type.startsWith("video/");
-  const senderName = document.getElementById('myName').textContent || 'Nexa User';
+  if (file.type.startsWith("video/")) {
+    openMediaComposer(file, "video");
+    return;
+  }
 
+  const senderName = document.getElementById('myName').textContent || 'Nexa User';
   try {
-    if (isVideo) {
-      showNotifToast("🎥 Uploading video...", "info");
-      const url = await uploadFile(file);
-      if (url) {
-        await db.collection("chats").add(baseMsg({ video: url }));
-        clearReply();
-        showNotifToast("✓ Video sent!", "success");
-        sendPushNotification(senderName, 'You have received a new message (🎥 Video)', selectedUser.uid);
-      }
-    } else {
-      showNotifToast("📎 Uploading file...", "info");
-      const url = await uploadFile(file);
-      if (url) {
-        await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
-        clearReply();
-        showNotifToast("✓ File sent!", "success");
-        sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
-      }
+    showNotifToast("📎 Uploading file...", "info");
+    const url = await uploadFile(file);
+    if (url) {
+      await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
+      clearReply();
+      showNotifToast("✓ File sent!", "success");
+      sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
     }
   } catch (err) {
     showNotifToast("Upload failed: " + err.message, "error");
     console.error(err);
   }
-  e.target.value = "";
 });
+
+/* =========================================================================
+   MEDIA COMPOSER (caption + view-once, WhatsApp-style)
+   ========================================================================= */
+let mcPendingFile = null;          // File awaiting send
+let mcPendingType = "image";       // "image" | "video"
+let mcViewOnce = false;            // composer-level view-once toggle
+let mcObjectURL = null;            // object URL for the preview
+
+function openMediaComposer(file, type) {
+  mcPendingFile = file;
+  mcPendingType = type;
+  mcViewOnce = false;
+
+  if (mcObjectURL) URL.revokeObjectURL(mcObjectURL);
+  mcObjectURL = URL.createObjectURL(file);
+
+  const preview = document.getElementById("mcPreview");
+  preview.innerHTML = "";
+  if (type === "image") {
+    preview.innerHTML = `<img src="${mcObjectURL}" alt="preview">`;
+  } else {
+    preview.innerHTML = `<video src="${mcObjectURL}" controls playsinline></video>`;
+  }
+
+  document.getElementById("mcCaption").value = "";
+  document.getElementById("mcTitle").textContent = type === "image" ? "Send photo" : "Send video";
+
+  const voBtn = document.getElementById("mcVOToggle");
+  voBtn.classList.remove("active");
+
+  document.getElementById("mediaComposer").classList.add("active");
+  if (window.lucide) lucide.createIcons();
+}
+
+function toggleMcViewOnce() {
+  mcViewOnce = !mcViewOnce;
+  document.getElementById("mcVOToggle").classList.toggle("active", mcViewOnce);
+}
+
+function cancelMediaComposer() {
+  closeMediaComposer();
+}
+
+function closeMediaComposer() {
+  document.getElementById("mediaComposer").classList.remove("active");
+  if (mcObjectURL) { URL.revokeObjectURL(mcObjectURL); mcObjectURL = null; }
+  mcPendingFile = null;
+  mcViewOnce = false;
+}
+
+async function sendMediaComposer() {
+  if (!mcPendingFile || !selectedUser) return;
+  const caption = document.getElementById("mcCaption").value.trim();
+  const btn = document.querySelector("#mediaComposer .mc-send-btn");
+  btn.disabled = true;
+
+  try {
+    showNotifToast(mcPendingType === "image" ? "📷 Uploading image..." : "🎥 Uploading video...", "info");
+    const url = await uploadFile(mcPendingFile);
+    if (url) {
+      const extras = { caption, isViewOnce: mcViewOnce, viewOnceOpened: false };
+      if (mcPendingType === "image") extras.image = url;
+      else extras.video = url;
+      await db.collection("chats").add(baseMsg(extras));
+      clearReply();
+      showNotifToast("✓ Sent!", "success");
+      sendPushNotification(
+        document.getElementById('myName').textContent || 'Nexa User',
+        mcPendingType === "image" ? "You have received a new message (📷 Photo)" : "You have received a new message (🎥 Video)",
+        selectedUser.uid
+      );
+    }
+    closeMediaComposer();
+  } catch (err) {
+    showNotifToast("Upload failed: " + err.message, "error");
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 /* =========================================================================
    SENDING MESSAGES
@@ -3846,6 +4010,7 @@ function baseMsg(extras = {}) {
     image: "",
     video: "",
     audio: "",
+    caption: "",
     status: "sent",
     edited: false,
     read: false,
@@ -3855,7 +4020,7 @@ function baseMsg(extras = {}) {
     ...extras
   };
 
-  if (hasMedia && isViewOnceActive) {
+  if (hasMedia && isViewOnceActive && extras.isViewOnce === undefined) {
     isViewOnceActive = false;
     const btn = document.getElementById("viewOnceToggleBtn");
     if (btn) btn.classList.remove("active");
@@ -3998,6 +4163,7 @@ function loadMediaGrid() {
    ========================================================================= */
 const THEMES = {
   nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
+  light: { label: '☀️ Daylight', attr: 'light', tier: 'classic' },
   midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
   ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
   forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
