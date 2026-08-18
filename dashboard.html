@@ -68,6 +68,29 @@
   <div class="view-once-content" id="viewOnceContent"></div>
 </div>
 
+<!-- MEDIA COMPOSER (caption + view-once + sticker, WhatsApp-style) -->
+<div class="mc-overlay" id="mediaComposer">
+  <div class="mc-sheet">
+    <div class="mc-top">
+      <button class="mc-icon-btn" onclick="cancelMediaComposer()" title="Back">←</button>
+      <span class="mc-title" id="mcTitle">Send photo</span>
+      <button class="mc-icon-btn" id="mcVOToggle" onclick="toggleMcViewOnce()" title="Send as View Once (1)">1</button>
+    </div>
+    <div class="mc-preview" id="mcPreview"></div>
+    <div class="mc-bottom">
+      <div class="mc-caption-row">
+        <input type="text" id="mcCaption" class="mc-caption" placeholder="Add a caption…" autocomplete="off">
+        <button class="mc-sticker-btn" id="mcStickerBtn" onclick="sendAsSticker()" title="Send as sticker">
+          <i data-lucide="smile" style="width:20px;height:20px;"></i>
+        </button>
+        <button class="mc-send-btn" onclick="sendMediaComposer()" title="Send">
+          <i data-lucide="send" style="width:20px;height:20px;"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="profile-setup-overlay" id="profileSetupOverlay">
   <div class="profile-setup-modal">
     <div class="setup-title">👋 Welcome to Nexa!</div>
@@ -332,6 +355,7 @@
         <textarea id="text" placeholder="Type a message…" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
         <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn" id="stickerBtn" onclick="pickSticker()" title="Sticker"><i data-lucide="smile" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
@@ -3184,7 +3208,7 @@ function toggleViewOnceMode() {
   showNotifToast(isViewOnceActive ? "1 View Once enabled for next media" : "View Once disabled", "info");
 }
 
-function openViewOnceModal(mediaUrl, mediaType, docId) {
+function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
   const modal = document.getElementById("viewOnceModal");
   const container = document.getElementById("viewOnceContent");
   if (!modal || !container) return;
@@ -3198,6 +3222,8 @@ function openViewOnceModal(mediaUrl, mediaType, docId) {
     const vid = document.createElement("video");
     vid.src = mediaUrl;
     vid.controls = true;
+    vid.controlsList = "nodownload nofullscreen noremoteplayback";
+    vid.disablePictureInPicture = true;
     vid.autoplay = true;
     container.appendChild(vid);
   } else if (mediaType === "audio") {
@@ -3206,6 +3232,13 @@ function openViewOnceModal(mediaUrl, mediaType, docId) {
     aud.controls = true;
     aud.autoplay = true;
     container.appendChild(aud);
+  }
+
+  if (caption) {
+    const cap = document.createElement("div");
+    cap.className = "view-once-caption";
+    cap.textContent = caption;
+    container.appendChild(cap);
   }
 
   modal.classList.add("active");
@@ -3226,6 +3259,41 @@ function closeViewOnceModal() {
   if (container) container.innerHTML = "";
   renderMessageList();
 }
+
+/* View-once screenshot/save protection.
+   Browsers can't block OS-level screenshots, but we can stop the obvious
+   routes: right-click save, long-press save, image drag, the native download
+   button, and we close the viewer if the user backgrounds the tab/app. */
+document.addEventListener("contextmenu", e => {
+  const modal = document.getElementById("viewOnceModal");
+  if (modal && modal.classList.contains("active") && e.target.closest("#viewOnceContent")) {
+    e.preventDefault();
+    showNotifToast("🔒 View once media can't be saved", "info");
+  }
+});
+document.addEventListener("dragstart", e => {
+  const modal = document.getElementById("viewOnceModal");
+  if (modal && modal.classList.contains("active")) { e.preventDefault(); }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    const modal = document.getElementById("viewOnceModal");
+    if (modal && modal.classList.contains("active")) {
+      // Blank the media before closing so it isn't left on screen.
+      const container = document.getElementById("viewOnceContent");
+      if (container) container.innerHTML = "";
+      modal.classList.remove("active");
+      renderMessageList();
+    }
+  }
+});
+// Block Ctrl+S / Cmd+S while the viewer is open.
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S" || e.key === "u" || e.key === "U")) {
+    const modal = document.getElementById("viewOnceModal");
+    if (modal && modal.classList.contains("active")) { e.preventDefault(); }
+  }
+});
 
 function buildStoryReplyPreview(msg) {
   const isOwnStory = msg.storyReplyUid === currentUser?.uid;
@@ -3332,8 +3400,13 @@ function buildMessage(id, msg, fromMe) {
     inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
+  // Sticker: render borderless (no bubble background), like WhatsApp.
+  if (msg.sticker) {
+    bubble.classList.add("sticker-bubble");
+    inner += `<div class="sticker-wrap"><img src="${msg.sticker}" loading="lazy" alt="sticker"></div>`;
+  }
   // Handle View Once Media
-  if (msg.isViewOnce && (msg.image || msg.video || msg.audio)) {
+  else if (msg.isViewOnce && (msg.image || msg.video || msg.audio)) {
     const isOpened = msg.viewOnceOpened;
     const mediaType = msg.image ? "Photo" : msg.video ? "Video" : msg.audio ? "Voice note" : "Media";
     const typeKey = msg.image ? "image" : msg.video ? "video" : "audio";
@@ -3353,7 +3426,7 @@ function buildMessage(id, msg, fromMe) {
         <span>${mediaType} (Tap to view)</span>
       `;
       if (!fromMe || currentUser.uid === msg.to) {
-        badge.onclick = () => openViewOnceModal(mediaUrl, typeKey, id);
+        badge.onclick = () => openViewOnceModal(mediaUrl, typeKey, id, msg.caption);
       } else {
         badge.onclick = () => showNotifToast("Sent as View Once media", "info");
       }
@@ -3364,20 +3437,25 @@ function buildMessage(id, msg, fromMe) {
     if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
 
     if (msg.image) {
-      inner += `<div class="media-container">
+      const cap = msg.caption ? `<div class="media-caption">${escapeHtml(msg.caption)}</div>` : "";
+      inner += `<div class="media-container ${msg.caption ? "has-caption" : ""}">
         <img src="${msg.image}"
              onclick="viewImg('${msg.image}')"
              loading="lazy"
-             alt="shared image">
+             alt="shared image"
+             draggable="false">
+        ${cap}
       </div>`;
     }
 
     if (msg.video) {
+      const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
       inner += `<div class="media-container">
-        <video controls preload="metadata">
+        <video controls preload="metadata" controlslist="nodownload" disablepictureinpicture>
           <source src="${msg.video}" type="video/mp4">
           Your browser does not support video playback.
         </video>
+        ${cap}
       </div>`;
     }
   }
@@ -3684,6 +3762,13 @@ async function uploadFile(file) {
 
 function pickImage() {
   if (!selectedUser) { alert("Select a user first"); return; }
+  mcPickerMode = "media";
+  document.getElementById("img").click();
+}
+
+function pickSticker() {
+  if (!selectedUser) { alert("Select a user first"); return; }
+  mcPickerMode = "sticker";
   document.getElementById("img").click();
 }
 
@@ -3694,57 +3779,190 @@ function pickFile() {
 
 document.getElementById("img").addEventListener("change", async e => {
   const file = e.target.files[0];
-  if (!file || !selectedUser) return;
-  try {
-    showNotifToast("📷 Uploading image...", "info");
-    const url = await uploadFile(file);
-    if (url) {
-      await db.collection("chats").add(baseMsg({ image: url }));
-      clearReply();
-      showNotifToast("✓ Image sent!", "success");
-      const senderName = document.getElementById('myName').textContent || 'Nexa User';
-      sendPushNotification(senderName, 'You have received a new message (📷 Photo)', selectedUser.uid);
-    }
-  } catch (err) {
-    showNotifToast("Image upload failed: " + err.message, "error");
-    console.error(err);
-  }
   e.target.value = "";
+  if (!file || !selectedUser) return;
+  if (!file.type.startsWith("image/")) {
+    showNotifToast("Please pick an image", "error");
+    return;
+  }
+  openMediaComposer(file, "image");
 });
 
 document.getElementById("fileInput").addEventListener("change", async e => {
   const file = e.target.files[0];
+  e.target.value = "";
   if (!file || !selectedUser) return;
 
-  const isVideo = file.type.startsWith("video/");
-  const senderName = document.getElementById('myName').textContent || 'Nexa User';
+  if (file.type.startsWith("video/")) {
+    openMediaComposer(file, "video");
+    return;
+  }
 
+  const senderName = document.getElementById('myName').textContent || 'Nexa User';
   try {
-    if (isVideo) {
-      showNotifToast("🎥 Uploading video...", "info");
-      const url = await uploadFile(file);
-      if (url) {
-        await db.collection("chats").add(baseMsg({ video: url }));
-        clearReply();
-        showNotifToast("✓ Video sent!", "success");
-        sendPushNotification(senderName, 'You have received a new message (🎥 Video)', selectedUser.uid);
-      }
-    } else {
-      showNotifToast("📎 Uploading file...", "info");
-      const url = await uploadFile(file);
-      if (url) {
-        await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
-        clearReply();
-        showNotifToast("✓ File sent!", "success");
-        sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
-      }
+    showNotifToast("📎 Uploading file...", "info");
+    const url = await uploadFile(file);
+    if (url) {
+      await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
+      clearReply();
+      showNotifToast("✓ File sent!", "success");
+      sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
     }
   } catch (err) {
     showNotifToast("Upload failed: " + err.message, "error");
     console.error(err);
   }
-  e.target.value = "";
 });
+
+/* =========================================================================
+   MEDIA COMPOSER (caption + view-once + sticker, WhatsApp-style)
+   ========================================================================= */
+let mcPickerMode = "media";        // "media" | "sticker"
+let mcPendingFile = null;          // File awaiting send
+let mcPendingType = "image";       // "image" | "video"
+let mcSticker = false;             // send current image as a sticker
+let mcViewOnce = false;            // composer-level view-once toggle
+let mcObjectURL = null;            // object URL for the preview
+
+function openMediaComposer(file, type) {
+  mcPendingFile = file;
+  mcPendingType = type;
+  mcSticker = mcPickerMode === "sticker";
+  mcViewOnce = false;
+
+  if (mcObjectURL) URL.revokeObjectURL(mcObjectURL);
+  mcObjectURL = URL.createObjectURL(file);
+
+  const preview = document.getElementById("mcPreview");
+  preview.innerHTML = "";
+  if (type === "image") {
+    preview.innerHTML = `<img src="${mcObjectURL}" alt="preview">`;
+  } else {
+    preview.innerHTML = `<video src="${mcObjectURL}" controls playsinline></video>`;
+  }
+
+  document.getElementById("mcCaption").value = "";
+  document.getElementById("mcTitle").textContent = type === "image" ? (mcSticker ? "Send sticker" : "Send photo") : "Send video";
+
+  // View-once toggle: available for images & videos; sticker can't be view-once.
+  const voBtn = document.getElementById("mcVOToggle");
+  voBtn.classList.remove("active");
+  voBtn.style.display = mcSticker ? "none" : "flex";
+
+  // Sticker button only makes sense for images.
+  document.getElementById("mcStickerBtn").style.display = type === "image" ? "flex" : "none";
+
+  document.getElementById("mediaComposer").classList.add("active");
+  if (window.lucide) lucide.createIcons();
+}
+
+function toggleMcViewOnce() {
+  mcViewOnce = !mcViewOnce;
+  document.getElementById("mcVOToggle").classList.toggle("active", mcViewOnce);
+}
+
+function cancelMediaComposer() {
+  closeMediaComposer();
+}
+
+function closeMediaComposer() {
+  document.getElementById("mediaComposer").classList.remove("active");
+  if (mcObjectURL) { URL.revokeObjectURL(mcObjectURL); mcObjectURL = null; }
+  mcPendingFile = null;
+  mcSticker = false;
+  mcViewOnce = false;
+}
+
+async function sendMediaComposer() {
+  if (!mcPendingFile || !selectedUser) return;
+  const caption = document.getElementById("mcCaption").value.trim();
+  const btn = document.querySelector("#mediaComposer .mc-send-btn");
+  btn.disabled = true;
+
+  try {
+    if (mcSticker && mcPendingType === "image") {
+      // Sticker: crop square + white outline, send borderless.
+      showNotifToast("✨ Making sticker...", "info");
+      const stickerBlob = await imageToStickerBlob(mcPendingFile);
+      const url = await uploadFile(new File([stickerBlob], "sticker.png", { type: "image/png" }));
+      if (url) {
+        await db.collection("chats").add(baseMsg({ sticker: url, isSticker: true }));
+        clearReply();
+        showNotifToast("✓ Sticker sent!", "success");
+        sendPushNotification(document.getElementById('myName').textContent || 'Nexa User', 'You have received a new message (✨ Sticker)', selectedUser.uid);
+      }
+    } else {
+      showNotifToast(mcPendingType === "image" ? "📷 Uploading image..." : "🎥 Uploading video...", "info");
+      const url = await uploadFile(mcPendingFile);
+      if (url) {
+        const extras = { caption, isViewOnce: mcViewOnce, viewOnceOpened: false };
+        if (mcPendingType === "image") extras.image = url;
+        else extras.video = url;
+        await db.collection("chats").add(baseMsg(extras));
+        clearReply();
+        showNotifToast("✓ Sent!", "success");
+        sendPushNotification(
+          document.getElementById('myName').textContent || 'Nexa User',
+          mcPendingType === "image" ? "You have received a new message (📷 Photo)" : "You have received a new message (🎥 Video)",
+          selectedUser.uid
+        );
+      }
+    }
+    closeMediaComposer();
+  } catch (err) {
+    showNotifToast("Upload failed: " + err.message, "error");
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Convert an image File into a square sticker PNG (center crop + white outline).
+function imageToStickerBlob(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.naturalWidth, img.naturalHeight);
+      const pad = Math.round(s * 0.06);
+      const cv = document.createElement("canvas");
+      cv.width = s + pad * 2;
+      cv.height = s + pad * 2;
+      const ctx = cv.getContext("2d");
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.save();
+      const r = Math.round((s + pad * 2) * 0.12);
+      roundRectPath(ctx, 0, 0, cv.width, cv.height, r);
+      ctx.clip();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      const sx = (img.naturalWidth - s) / 2;
+      const sy = (img.naturalHeight - s) / 2;
+      ctx.drawImage(img, sx, sy, s, s, pad, pad, s, s);
+      ctx.restore();
+      cv.toBlob(b => b ? resolve(b) : reject(new Error("sticker toBlob failed")), "image/png");
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => reject(new Error("Could not load image"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function sendAsSticker() {
+  // Reuse the currently loaded image but send it as a sticker.
+  if (!mcPendingFile || mcPendingType !== "image") return;
+  mcSticker = true;
+  sendMediaComposer();
+}
 
 /* =========================================================================
    SENDING MESSAGES
@@ -3765,6 +3983,7 @@ function handleKeyPress(e) {
 function toggleActionButtons() {
   const has = document.getElementById("text").value.trim().length > 0;
   document.getElementById("imgBtn").classList.toggle("hidden", has);
+  document.getElementById("stickerBtn").classList.toggle("hidden", has);
   document.getElementById("fileBtn").classList.toggle("hidden", has);
   document.getElementById("recordBtn").classList.toggle("hidden", has);
 }
@@ -3846,6 +4065,8 @@ function baseMsg(extras = {}) {
     image: "",
     video: "",
     audio: "",
+    sticker: "",
+    caption: "",
     status: "sent",
     edited: false,
     read: false,
@@ -3855,7 +4076,7 @@ function baseMsg(extras = {}) {
     ...extras
   };
 
-  if (hasMedia && isViewOnceActive) {
+  if (hasMedia && isViewOnceActive && extras.isViewOnce === undefined) {
     isViewOnceActive = false;
     const btn = document.getElementById("viewOnceToggleBtn");
     if (btn) btn.classList.remove("active");

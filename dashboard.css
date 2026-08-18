@@ -1582,6 +1582,7 @@ select:focus-visible {
 }
 
 .media-container {
+  position: relative;
   max-width: 240px;
   max-height: 250px;
   border-radius: var(--radius-sm);
@@ -4746,6 +4747,175 @@ input[type="range"] {
   width: 100%;
   max-width: 400px;
 }
+
+/* Caption shown inside the view-once viewer */
+.view-once-caption {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80vw;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+  backdrop-filter: blur(6px);
+  z-index: 5;
+}
+
+/* ── Sticker messages (borderless, like WhatsApp) ── */
+.sticker-bubble {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.sticker-bubble .sticker-wrap img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.35));
+}
+.sticker-bubble .msg-meta {
+  margin-top: 2px;
+  padding: 0 4px;
+}
+
+/* ── Media captions (WhatsApp-style) ── */
+.media-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 12px 10px;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 500;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+  border-radius: 0 0 12px 12px;
+  word-break: break-word;
+}
+.media-caption.below {
+  position: static;
+  background: none;
+  color: var(--text-1);
+  padding: 6px 4px 2px;
+  border-radius: 0;
+}
+
+/* ── Media composer (caption + view-once + sticker) ── */
+.mc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 10500;
+  display: none;
+  flex-direction: column;
+}
+.mc-overlay.active { display: flex; }
+.mc-sheet {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.mc-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  color: #fff;
+}
+.mc-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+.mc-icon-btn:hover { background: rgba(255, 255, 255, 0.22); }
+.mc-icon-btn.active {
+  border: 1.5px solid var(--cyan, #2b8fff);
+  color: var(--cyan, #2b8fff);
+  background: rgba(43, 143, 255, 0.18);
+}
+.mc-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+}
+.mc-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px 16px;
+  min-height: 0;
+}
+.mc-preview img,
+.mc-preview video {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.mc-bottom {
+  padding: 12px 16px 20px;
+}
+.mc-caption-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 26px;
+  padding: 6px 6px 6px 18px;
+}
+.mc-caption {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 15px;
+  height: 40px;
+}
+.mc-caption::placeholder { color: rgba(255, 255, 255, 0.5); }
+.mc-sticker-btn,
+.mc-send-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+.mc-sticker-btn { background: rgba(255, 255, 255, 0.15); }
+.mc-sticker-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.mc-send-btn {
+  background: linear-gradient(135deg, var(--primary, #2b8fff), var(--primary-lt, #4f8fff));
+  box-shadow: 0 4px 14px rgba(43, 143, 255, 0.4);
+}
+.mc-send-btn:hover { transform: scale(1.06); }
+.mc-send-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ╔─ LUCIDE ICON ALIGNMENT ─╗ */
 .lucide {
