@@ -605,8 +605,20 @@
 <!-- CHAT INFO PANEL -->
 <div class="info-panel" id="infoPanel">
   <div class="info-hdr">
+    <button class="info-back" onclick="closeChatInfo()" title="Back">←</button>
     <div class="info-hdr-title">Chat Info</div>
     <button class="info-close" onclick="closeChatInfo()">✕</button>
+  </div>
+  <!-- CONTACT PROFILE HEADER — avatar + name + status + 24h note, like
+       WhatsApp's contact info. Avatar opens the full-profile-pic viewer. -->
+  <div class="info-contact" id="infoContact">
+    <div class="info-contact-avatar-wrap" onclick="openProfilePic(document.getElementById('infoContactAvatar').src, 'chatinfo')">
+      <img id="infoContactAvatar" class="info-contact-avatar" src="https://i.imgur.com/HeIi0wU.png" alt="Profile">
+      <div class="info-contact-avatar-zoom">🔍</div>
+    </div>
+    <div class="info-contact-name" id="infoContactName">User</div>
+    <div class="info-contact-status" id="infoContactStatus">offline</div>
+    <div class="info-contact-note" id="infoContactNote"></div>
   </div>
   <div class="info-section">
     <div class="info-sec-title">Shared Media</div>
@@ -4190,9 +4202,40 @@ function viewImg(url) {
    ========================================================================= */
 function openChatInfo() {
   if (!selectedUser) { alert("Select a user first"); return; }
+  renderInfoContact();
   document.getElementById("infoPanel").classList.add("active");
   loadMediaGrid();
   renderThemeGrid();
+}
+
+// Render the contact profile header at the top of the Chat Info panel: avatar
+// (opens full-pic viewer), display name, presence status, and the user's 24h
+// profile note. Mirrors the contact-info header WhatsApp shows in a chat.
+function renderInfoContact() {
+  if (!selectedUser) return;
+  const u = selectedUser;
+  document.getElementById("infoContactAvatar").src = u.photo || "https://i.imgur.com/HeIi0wU.png";
+  document.getElementById("infoContactName").textContent = u.displayName || u.name || "User";
+
+  const pData = userPresenceCache[u.uid] || {};
+  const online = isUserOnline(pData);
+  const status = pData.status || (online ? "online" : "offline");
+  const stEl = document.getElementById("infoContactStatus");
+  if (online && status === "online") {
+    stEl.innerHTML = '<span style="color:var(--online)">● online</span>';
+  } else if (online && status === "away") {
+    stEl.innerHTML = '<span style="color:#facc15">● away</span>';
+  } else {
+    stEl.innerHTML = '<span style="color:var(--text-3)">last seen ' + formatLastSeen(pData.lastSeen || 0) + "</span>";
+  }
+
+  const noteEl = document.getElementById("infoContactNote");
+  if (!noteEl) return;
+  noteEl.innerHTML = '<span style="color:var(--text-3);font-size:12px;">…</span>';
+  fetchUserNote(u.uid).then(noteText => {
+    if (!noteEl) return;
+    noteEl.innerHTML = noteText ? ("📝 " + escapeHtml(noteText)) : "";
+  });
 }
 
 function closeChatInfo() {
@@ -6193,6 +6236,8 @@ async function answerStoryQuestion(story) {
     showNotifToast("This is your own question", "info");
     return;
   }
+  // Pause the running story while the viewer types an answer.
+  if (typeof pauseStoryPlayback === "function") pauseStoryPlayback();
   // The question text lives on story.sticker.text (WhatsApp-style image sticker)
   // or, for legacy standalone question stories, on story.questionText/story.text.
   const sticker = story.sticker || null;
@@ -6234,7 +6279,7 @@ let isStoryPaused = false;
 let storyPauseElapsed = 0;
 
 function handleStoryContentClick(e) {
-  if (e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar') || e.target.closest('.story-sticker-overlay') || e.target.closest('.addyours-sticker')) return;
+  if (e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar') || e.target.closest('.story-sticker-overlay') || e.target.closest('.addyours-sticker') || e.target.closest('.prompt-story-overlay') || e.target.closest('.addyours-cta-btn') || e.target.closest('.addyours-viewall-btn')) return;
   toggleStoryPause();
 }
 
@@ -6456,6 +6501,14 @@ async function reshareStory() {
       url: story.url || null,
       text: story.text || null,
       musicData: story.musicData || null,
+      // Carry the interactive sticker + prompt/question chain forward so a
+      // reshared "Add Yours" / "Ask a Question" story keeps the same prompt
+      // viewers can tap into (WhatsApp-style reshare of an Add Yours story).
+      sticker: story.sticker || null,
+      promptId: story.promptId || null,
+      promptText: story.promptText || null,
+      questionId: story.questionId || null,
+      questionText: story.questionText || null,
       resharedFrom: {
         uid: story.uid,
         name: ownerName
@@ -6631,6 +6684,8 @@ function openAddYoursComposer(promptId, promptText) {
   addYoursTab = "image";
   const modal = document.getElementById("addYoursModalOverlay");
   if (!modal) return;
+  // Pause the running story so it doesn't auto-advance behind the composer.
+  if (typeof pauseStoryPlayback === "function") pauseStoryPlayback();
   document.getElementById("addYoursPromptDisplay").textContent = promptText || "Add Yours";
   document.getElementById("addYoursCaption").value = "";
   document.getElementById("addYoursPreview").innerHTML = "<span>Tap to add a photo</span>";
@@ -6752,6 +6807,8 @@ async function shareAddYoursResponse() {
 function openPromptResponsesModal(promptId) {
   const modal = document.getElementById("promptResponsesOverlay");
   if (!modal) return;
+  // Pause the running story while browsing responses.
+  if (typeof pauseStoryPlayback === "function") pauseStoryPlayback();
   const list = document.getElementById("promptResponsesList");
   const titleEl = document.getElementById("promptResponsesTitle");
   list.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:20px;text-align:center;">Loading responses…</div>';
@@ -7326,7 +7383,7 @@ function closeProfilePicModal(event) {
 }
 
 // Back button on the full-profile-pic viewer: returns to the contact profile
-// modal when opened from there, otherwise just closes.
+// modal (or the Chat Info panel) when opened from there, otherwise just closes.
 function profilePicGoBack() {
   const modal = document.getElementById('profilePicModal');
   if (!modal) return;
@@ -7335,6 +7392,9 @@ function profilePicGoBack() {
   if (returnTo === 'profile') {
     const profileModal = document.getElementById('userProfileModal');
     if (profileModal) profileModal.classList.add('active');
+  } else if (returnTo === 'chatinfo') {
+    const infoPanel = document.getElementById('infoPanel');
+    if (infoPanel) infoPanel.classList.add('active');
   }
 }
 

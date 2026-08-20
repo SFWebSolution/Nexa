@@ -2153,6 +2153,11 @@ select:focus-visible {
   display: flex;
 }
 
+/* The Add Yours composer is opened FROM the story viewer (z-index 9000), so it
+   must stack above it or it would be hidden behind the story overlay — which
+   was why tapping "Add Yours" appeared to do nothing. */
+#addYoursModalOverlay { z-index: 9500; }
+
 .status-modal {
   background: rgba(18, 24, 32, 0.97);
   backdrop-filter: blur(24px);
@@ -2791,6 +2796,74 @@ input[type="range"] {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* ← Back button in the Chat Info header (mirrors the close button). */
+.info-back {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-xs);
+  background: rgba(22, 32, 46, 0.5);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--tf);
+}
+.info-back:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+
+/* CONTACT PROFILE HEADER at the top of Chat Info (avatar + name + status + note). */
+.info-contact {
+  text-align: center;
+  padding: 22px 20px 16px;
+  border-bottom: 1px solid var(--border-dk);
+}
+.info-contact-avatar-wrap {
+  position: relative;
+  width: 84px; height: 84px;
+  margin: 0 auto 12px;
+  cursor: pointer;
+}
+.info-contact-avatar {
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--bg-1);
+  box-shadow: var(--shadow-md);
+  display: block;
+}
+.info-contact-avatar-zoom {
+  position: absolute;
+  bottom: 2px; right: 2px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--bg-1);
+  opacity: 0;
+  transition: opacity var(--tf);
+}
+.info-contact-avatar-wrap:hover .info-contact-avatar-zoom { opacity: 1; }
+.info-contact-name { font-size: 17px; font-weight: 700; color: var(--text-0); letter-spacing: -0.3px; }
+.info-contact-status { font-size: 12px; margin-top: 3px; font-weight: 500; }
+.info-contact-note {
+  margin: 12px auto 0;
+  max-width: 280px;
+  padding: 9px 13px;
+  background: var(--primary-soft);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-1);
+  line-height: 1.45;
+  text-align: left;
+}
+.info-contact-note:empty { display: none; }
 
 .info-section {
   padding: 18px 20px;
@@ -6439,8 +6512,8 @@ input[type="range"] {
 }
 .profile-pic-viewer img {
   /* Normal, not oversized: capped width + object-fit so the whole face shows. */
-  max-width: min(380px, 86vw);
-  max-height: 70vh;
+  max-width: min(340px, 82vw);
+  max-height: 66vh;
   width: auto; height: auto;
   object-fit: contain;
   border-radius: 18px;
