@@ -1201,7 +1201,8 @@
     isUserOnline(uid) {
       if (!uid) return false;
       // 1. Delegate to the Nexa app's shared isUserOnline (timestamp-based:
-      // online iff a fresh heartbeat within ~35s). This is the source of truth.
+      // online iff a fresh heartbeat within the PRESENCE_TIMEOUT window). This
+      // is the source of truth.
       if (typeof window.isUserOnline === 'function' && window.userPresenceCache && window.userPresenceCache[uid]) {
         return !!window.isUserOnline(window.userPresenceCache[uid]);
       }
@@ -1212,7 +1213,7 @@
         const raw = pdata.lastSeen || pdata.last_seen || 0;
         const lastSeen = raw && raw.toDate ? raw.toDate().getTime() : (typeof raw === 'number' ? raw : 0);
         if (!lastSeen) return false;
-        return (Date.now() - lastSeen) < 35000;
+        return (Date.now() - lastSeen) < 90000;
       }
       // 3. No presence data at all → not online (do NOT trust a stale
       // `u.online === true` user flag, which lingers after the app closed).
