@@ -1551,14 +1551,16 @@ function confirmDeleteChat() {
   showNotifToast("Chat removed from user list", "info");
 }
 
-const PRESENCE_TIMEOUT_MS = 35000;
+const PRESENCE_TIMEOUT_MS = 90000;
 
 // Online = the user's app is actively heartbeating RIGHT NOW. The heartbeat
-// writes lastSeen every ~10s while the app/tab is alive, so a user is online
-// iff lastSeen is fresher than PRESENCE_TIMEOUT_MS. This makes presence reflect
-// ONLY people who currently have the app open — not stale docs from users who
-// closed the app (mobile beforeunload/pagehide is unreliable, so a stale
-// lastSeen is the real signal). An explicit offline flag wins immediately.
+// writes lastSeen every ~30s while the app/tab is alive, so a user is online
+// iff lastSeen is fresher than PRESENCE_TIMEOUT_MS. The 90s window gives a
+// comfortable margin around the 30s heartbeat (3x) so a single missed tick
+// doesn't flicker a user offline, while a truly closed app goes offline
+// within ~90s even if beforeunload didn't fire (mobile beforeunload/pagehide
+// is unreliable, so a stale lastSeen is the real signal). An explicit offline
+// flag wins immediately.
 // Do NOT short-circuit on `online === true` alone — that flag stays true
 // forever when a mobile tab is swiped away without firing beforeunload.
 function isUserOnline(pdata) {
@@ -1608,6 +1610,14 @@ function startUsersListener() {
 
     // Keep window.allUsersData in sync (same reference) for external modules.
     window.allUsersData = allUsersData;
+
+    // Mirror into adminUsers so the weekly leaderboard (which no longer opens
+    // its own duplicate `users` listener) stays in sync from this single
+    // shared snapshot.
+    adminUsers = allUsersData.map(u => ({
+      ...u,
+      createdAt: normalizeTimestamp(u.createdAt)
+    }));
 
     saveCachedUsers();
     renderUsers();
@@ -2063,68 +2073,63 @@ function startLeaderboardListeners() {
   if (!window.db) return;
   const weekStart = getCurrentWeekStart();
 
-  // 1. Listen to ALL users in system (exact same as admin.html)
-  if (!leaderboardUsersUnsub) {
-    leaderboardUsersUnsub = db.collection("users").onSnapshot(snapshot => {
-      adminUsers = snapshot.docs.map(doc => {
-        const data = doc.data();
-        let displayName = null;
-        if (data.displayName && data.displayName.trim() && data.displayName !== "User") {
-          displayName = data.displayName;
-        } else if (data.name && data.name.trim()) {
-          displayName = data.name;
-        } else {
-          displayName = data.email ? data.email.split('@')[0] : "Nexa User";
-        }
-
-        return {
-          uid: doc.id,
-          ...data,
-          displayName: displayName,
-          photo: data.photoUrl || data.photo || "https://i.imgur.com/HeIi0wU.png",
-          createdAt: normalizeTimestamp(data.createdAt)
-        };
-      });
-      renderWeeklyLeaderboard();
-    }, err => console.error("Leaderboard users listener error:", err));
-  }
+  // 1. Users: do NOT open a second full-collection `users` listener — that
+  // duplicated reads of the entire users collection on every profile change
+  // (startUsersListener already maintains allUsersData and calls
+  // renderWeeklyLeaderboard). Derive adminUsers from that shared cache.
+  adminUsers = allUsersData.map(u => ({
+    ...u,
+    createdAt: normalizeTimestamp(u.createdAt)
+  }));
 
   // 2. Presence: the leaderboard reads from the SINGLE shared presence cache
   // (startSharedPresenceListener) — do NOT open a second full-collection
-  // presence listener here. That duplicated reads and raced with the shared
-  // listener. The shared listener calls renderWeeklyLeaderboard() on every
-  // presence change, so leaderboard online dots stay live.
+  // presence listener here. The shared listener calls renderWeeklyLeaderboard()
+  // on every presence change, so leaderboard online dots stay live.
   // (leaderboardPresenceUnsub kept null — no separate listener.)
 
-  // 3. Listen to ALL chats since weekStart (exact same as admin.html)
+  // 3. Chats: scope to the current week ONLY. Previously this listened to the
+  // ENTIRE chats collection real-time, which re-read every message in the
+  // database on every single send anywhere — the #1 quota burner. Bounding it
+  // to createdAt >= weekStart limits reads to recent messages only.
   if (!leaderboardMsgUnsub) {
-    leaderboardMsgUnsub = db.collection("chats").onSnapshot(snapshot => {
-      const msgScores = {};
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.from && data.createdAt && data.createdAt >= weekStart) {
-          msgScores[data.from] = (msgScores[data.from] || 0) + 1;
-        }
-      });
-      cachedMsgScores = msgScores;
-      renderWeeklyLeaderboard();
-    }, err => console.error("Leaderboard chats listener error:", err));
+    leaderboardMsgUnsub = db.collection("chats")
+      .where("createdAt", ">=", weekStart)
+      .onSnapshot(snapshot => {
+        const msgScores = {};
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.from) {
+            msgScores[data.from] = (msgScores[data.from] || 0) + 1;
+          }
+        });
+        cachedMsgScores = msgScores;
+        renderWeeklyLeaderboard();
+      }, err => console.error("Leaderboard chats listener error:", err));
   }
 
-  // 4. Listen to ALL stories since weekStart (exact same as admin.html)
-  if (!leaderboardStoryUnsub) {
-    leaderboardStoryUnsub = db.collection("status").onSnapshot(snapshot => {
-      const storyScores = {};
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.uid && data.createdAt && data.createdAt >= weekStart) {
-          storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
-        }
-      });
-      cachedStoryScores = storyScores;
-      renderWeeklyLeaderboard();
-    }, err => console.error("Leaderboard stories listener error:", err));
+  // 4. Stories: do NOT open a second full-collection `status` listener —
+  // startStatusListener already maintains userStatuses and calls
+  // renderUsers()/renderStoriesBar(). Compute story scores from that shared
+  // cache instead of re-reading the entire status collection.
+  computeStoryScores(weekStart);
+  renderWeeklyLeaderboard();
+}
+
+// Compute weekly story scores from the shared userStatuses cache (fed by
+// startStatusListener) instead of a second full-collection status listener.
+function computeStoryScores(weekStart) {
+  const storyScores = {};
+  for (const uid in userStatuses) {
+    const list = userStatuses[uid];
+    if (!Array.isArray(list)) continue;
+    list.forEach(s => {
+      if (s.createdAt && s.createdAt >= weekStart) {
+        storyScores[uid] = (storyScores[uid] || 0) + 2;
+      }
+    });
   }
+  cachedStoryScores = storyScores;
 }
 
 function renderWeeklyLeaderboard() {
@@ -2516,6 +2521,10 @@ function selectChat(user, el) {
     listenPresence();
     listenTyping();
   }
+  // Reset the typing-write guard on chat switch so the new conversation's
+  // first keystroke writes typing:true (not skipped as "already active").
+  typingCurrentlyActive = false;
+  if (typingTimeout) { clearTimeout(typingTimeout); typingTimeout = null; }
   listenDisappearingSettings();
   document.getElementById("typingBar").innerHTML = "";
   closeChatInfo();
@@ -2530,9 +2539,17 @@ function selectChat(user, el) {
 }
 
 function markRead(fromUid) {
+  // Batch all unread-from updates into a single write to avoid N individual
+  // update calls (one Firestore write per unread message) when opening a chat.
   db.collection("chats")
     .where("to", "==", currentUser.uid).where("from", "==", fromUid).where("read", "==", false)
-    .get().then(snap => snap.forEach(d => db.collection("chats").doc(d.id).update({ read: true, readAt: Date.now() })));
+    .get().then(snap => {
+      if (snap.empty) return;
+      const batch = db.batch();
+      const now = Date.now();
+      snap.forEach(d => batch.update(d.ref, { read: true, readAt: now }));
+      batch.commit().catch(e => console.error("markRead batch error:", e));
+    });
 }
 
 function toggleSidebar() {
@@ -2597,15 +2614,25 @@ function formatLastSeen(ts) {
 }
 
 let typingTimeout;
+let typingCurrentlyActive = false; // guard: only write typing:true once per typing session
 
 document.addEventListener("input", function(e) {
   if (e.target.id !== "text" || !selectedUser) return;
   const ta = document.getElementById("text");
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
-  db.collection("typing").doc(currentUser.uid).set({ typing: true, to: selectedUser.uid, timestamp: Date.now() }, { merge: true });
+  // Only write typing:true ONCE per typing session (transition from idle→typing),
+  // not on every keystroke. Previously this wrote on every input event, which
+  // was many writes/second during fast typing.
+  if (!typingCurrentlyActive) {
+    typingCurrentlyActive = true;
+    db.collection("typing").doc(currentUser.uid).set({ typing: true, to: selectedUser.uid, timestamp: Date.now() }, { merge: true });
+  }
   clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(() => db.collection("typing").doc(currentUser.uid).set({ typing: false }, { merge: true }), 1200);
+  typingTimeout = setTimeout(() => {
+    typingCurrentlyActive = false;
+    db.collection("typing").doc(currentUser.uid).set({ typing: false }, { merge: true });
+  }, 1200);
 });
 
 function listenTyping() {
@@ -2623,23 +2650,54 @@ function listenTyping() {
 }
 
 function loadUnreadCounts() {
+  // Incremental unread counts via docChanges(): maintain a running per-sender
+  // counter instead of re-iterating every message on every snapshot. This
+  // keeps the listener O(changes) rather than O(total inbox) on each event.
   // Query only on the single indexed field `to == me` (Firestore always has a
   // single-field index for this), then filter `read == false` in JS. This
   // avoids any dependency on a (to, read) composite index that, if missing,
   // would make the onSnapshot error silently and unread badges never appear.
   db.collection("chats").where("to", "==", currentUser.uid).onSnapshot(snap => {
-    unreadMessages = {};
-    snap.forEach(doc => {
-      const msg = doc.data();
-      if (msg.read === true) return;            // only unread messages count
+    snap.docChanges().forEach(change => {
+      const msg = change.doc.data();
       const f = msg.from;
-      // Don't count self-chat messages as unread.
-      if (f === currentUser.uid) return;
-      unreadMessages[f] = (unreadMessages[f] || 0) + 1;
+      if (f === currentUser.uid) return; // don't count self-chat
+      // Maintain a running per-sender counter based on doc changes only.
+      // On the first snapshot all existing docs arrive as "added" (the initial
+      // count); afterwards only the delta is processed.
+      if (change.type === "added") {
+        if (msg.read !== true) unreadMessages[f] = (unreadMessages[f] || 0) + 1;
+      } else if (change.type === "modified") {
+        // For read-flag flips we don't know the old value from docChanges,
+        // so fall back to a cheap single-sender recount (one small query).
+        recountUnreadForSender(f);
+      } else if (change.type === "removed") {
+        if (msg.read !== true) {
+          unreadMessages[f] = Math.max(0, (unreadMessages[f] || 0) - 1);
+          if (!unreadMessages[f]) delete unreadMessages[f];
+        }
+      }
     });
     renderUsers();
     updateTotalUnreadBadge();
   }, err => console.error("loadUnreadCounts listener error:", err));
+}
+
+// Cheap single-sender recount: one small query instead of recounting the
+// whole inbox. Used only on "modified" (read-flag flips), which are rare.
+function recountUnreadForSender(fromUid) {
+  db.collection("chats")
+    .where("to", "==", currentUser.uid)
+    .where("from", "==", fromUid)
+    .where("read", "==", false)
+    .get()
+    .then(snap => {
+      unreadMessages[fromUid] = snap.size || 0;
+      if (!unreadMessages[fromUid]) delete unreadMessages[fromUid];
+      renderUsers();
+      updateTotalUnreadBadge();
+    })
+    .catch(() => {});
 }
 
 // WhatsApp-style total unread badge on the Chats nav button (mobile bottom nav
@@ -2727,15 +2785,17 @@ function resumeAllAudio() {
 }
 
 function setupHeartbeat() {
-  // Heartbeat every 10 seconds while the app/tab is ALIVE (not gated on
+  // Heartbeat every 30 seconds while the app/tab is ALIVE (not gated on
   // visibilityState). A backgrounded-but-open tab is still "in the app", so it
   // keeps heartbeating and stays online. Online status is decided purely by
   // lastSeen freshness in isUserOnline(), so a truly closed/killed app stops
-  // heartbeating and goes offline within ~35s even if beforeunload didn't fire
-  // (mobile reliably fails to fire beforeunload on swipe-away).
+  // heartbeating and goes offline within the stale window even if beforeunload
+  // didn't fire (mobile reliably fails to fire beforeunload on swipe-away).
+  // 30s (not 10s) keeps lastSeen well within the online threshold while
+  // cutting presence writes ~3x and reducing presence-listener re-fires.
   setInterval(() => {
     heartbeat();
-  }, 10000);
+  }, 30000);
 
   // Periodic ticker every 10 seconds to re-evaluate active presence timeouts
   // (a user whose heartbeat went stale should flip to offline here, not wait
@@ -2857,13 +2917,16 @@ function loadMessages() {
     .onSnapshot(snap => {
       _msgsB = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // Mark newly-arrived, unread messages as read.
-      snap.forEach(doc => {
-        const msg = doc.data();
-        if (!msg.read) {
-          db.collection("chats").doc(doc.id).update({ read: true, readAt: Date.now() });
-        }
-      });
+      // Mark newly-arrived, unread messages as read — batched into a single
+      // write so opening a chat with many unread messages is one request, not
+      // one update per message.
+      const unread = snap.docs.filter(d => !(d.data().read));
+      if (unread.length) {
+        const batch = db.batch();
+        const now = Date.now();
+        unread.forEach(d => batch.update(d.ref, { read: true, readAt: now }));
+        batch.commit().catch(() => {});
+      }
 
       renderMessageList();
     }, err => console.error("messages(B) listener error:", err));
@@ -5645,6 +5708,10 @@ function startStatusListener() {
     });
     renderStoriesBar();
     renderUsers();
+    // Refresh weekly story scores from this shared cache (avoids a second
+    // full-collection status listener in the leaderboard).
+    computeStoryScores(getCurrentWeekStart());
+    renderWeeklyLeaderboard();
   });
 }
 

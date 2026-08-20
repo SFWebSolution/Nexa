@@ -48,22 +48,25 @@
   duplicate that raced with the shared one and doubled reads).
 - **"Online" = the user's app is actively heartbeating RIGHT NOW** (the
   "in the app alone" rule). `isUserOnline(pdata)` returns true ONLY if
-  `lastSeen` (or `last_seen`) is fresher than `PRESENCE_TIMEOUT_MS` (35s),
-  i.e. the heartbeat wrote within the last ~35s. It does NOT trust a bare
+  `lastSeen` (or `last_seen`) is fresher than `PRESENCE_TIMEOUT_MS` (90s),
+  i.e. the heartbeat wrote within the last ~90s. It does NOT trust a bare
   `online === true` / `status === "online"` flag — that flag lingers true
   forever when a mobile tab is swiped away without firing `beforeunload`.
   An explicit `online === false` / `status === "offline"` wins immediately
   (returns false) so a clean logout/`pagehide` shows offline at once; in every
   other case it's pure heartbeat freshness. This is what makes online status
   reflect ONLY people who currently have the app open.
-- **Heartbeat (`heartbeat()`):** runs every 10s via `setInterval` and is NOT
+- **Heartbeat (`heartbeat()`):** runs every 30s via `setInterval` and is NOT
   gated on `document.visibilityState === "visible"` — a backgrounded-but-open
   tab is still "in the app", so it keeps heartbeating and stays online. It
   refreshes `lastSeen`/`last_seen` + re-asserts `online:true` while PRESERVING
   the current `userStatus` (so the inactivity timer's "away" status isn't
-  clobbered every 10s). A truly closed/killed app stops heartbeating →
-  `lastSeen` goes stale → within ~35s the user shows "last seen Xm ago",
-  even when `beforeunload`/`pagehide` failed to fire (mobile often doesn't).
+  clobbered). A truly closed/killed app stops heartbeating → `lastSeen` goes
+  stale → within ~90s the user shows "last seen Xm ago", even when
+  `beforeunload`/`pagehide` failed to fire (mobile often doesn't). The 30s
+  interval (was 10s) cuts presence writes ~3x and reduces presence-listener
+  re-fires ~3x; the 90s window gives a 3x margin so a single missed tick
+  doesn't flicker a user offline.
 - `updateOnline(on)` is now only for state transitions (init online, explicit
   offline on `beforeunload`/`pagehide`, back-to-online on interaction). Going
   online preserves "away" if idle; going offline sets `status:"offline"`.
@@ -79,6 +82,38 @@
   "🟡 away" (fresh + status away), or "⚪ last seen {formatLastSeen}".
 - `listenPresence()` (chat header) no longer opens its own listener — it just
   refreshes from the shared cache.
+
+## Firestore quota / read+write optimization (do NOT undo)
+Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixed:
+- **Leaderboard** (`startLeaderboardListeners`): previously opened THREE extra
+  full-collection real-time listeners (`users`, `chats`, `status`) on top of
+  the ones the rest of the app already had. The `chats` one re-read EVERY
+  message in the database on every send anywhere — the #1 quota killer.
+  Now: (a) `adminUsers` is derived from the shared `allUsersData` (mirrored in
+  `startUsersListener`) — NO second `users` listener (`leaderboardUsersUnsub`
+  stays null); (b) `chats` is scoped to `.where("createdAt", ">=", weekStart)`
+  so it only reads this week's messages; (c) story scores come from
+  `computeStoryScores(weekStart)` reading the shared `userStatuses` cache —
+  NO second `status` listener (`leaderboardStoryUnsub` stays null).
+  `startStatusListener` calls `computeStoryScores()` + `renderWeeklyLeaderboard()`
+  so story scores stay live.
+- **Read-marking** (`markRead()` + the messages-B onSnapshot): previously did
+  one `update()` call PER unread message (N writes for N unread). Now both use
+  a single `db.batch()` so opening a chat with many unread messages is ONE
+  write request.
+- **Unread counts** (`loadUnreadCounts`): previously re-iterated the ENTIRE
+  inbox snapshot on every change to rebuild `unreadMessages`. Now uses
+  `docChanges()` to maintain a running per-sender counter incrementally
+  (O(changes), not O(inbox)). On a read-flag flip ("modified", rare) it falls
+  back to a cheap single-sender `recountUnreadForSender(uid)` query.
+- **Typing indicator**: the input handler previously wrote `typing:true` on
+  EVERY keystroke (many writes/sec during fast typing). Now a
+  `typingCurrentlyActive` guard writes `typing:true` only ONCE per typing
+  session (idle→typing transition); the 1200ms timeout writes `typing:false`
+  and clears the guard. The guard is reset on chat switch.
+- **Heartbeat**: 30s (was 10s) → ~3x fewer presence writes, and the presence
+  listener re-fires ~3x less. `PRESENCE_TIMEOUT_MS = 90000` (was 35000) gives
+  a 3x safety margin so a single missed heartbeat doesn't flicker offline.
 - **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` (dashboard.html)
   draws a horizontal row of round avatars + green dots showing ONLY
   currently-online users (via `isUserOnline()` freshness). Hidden entirely when
