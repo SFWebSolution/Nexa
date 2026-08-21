@@ -6511,14 +6511,15 @@ input[type="range"] {
   max-height: 92vh;
 }
 .profile-pic-viewer img {
-  /* Normal, not oversized: capped width + object-fit so the whole face shows. */
-  max-width: min(340px, 82vw);
-  max-height: 66vh;
-  width: auto; height: auto;
+  /* Normal, not oversized: a modest centered card so the whole face shows
+     without dominating the screen. WhatsApp-style contained image. */
+  width: min(260px, 72vw);
+  max-height: 52vh;
+  height: auto;
   object-fit: contain;
-  border-radius: 18px;
+  border-radius: 50%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-  background: var(--bg-2);
+  background: rgba(0,0,0,0.25);
 }
 .profile-pic-hint {
   color: rgba(255, 255, 255, 0.55);

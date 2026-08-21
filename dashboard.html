@@ -205,25 +205,6 @@
           </div>
 
           <div class="settings-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-              <div>
-                <div class="settings-group-title" style="margin-bottom: 2px;">🏆 Weekly Most Active Users</div>
-                <div style="font-size: 11px; color: var(--text-3, #6b7a95);">
-                  Top active contributors <span class="week-indicator" id="settingsWeekIndicator">Mon-Sun</span> • Auto-resets Monday
-                </div>
-              </div>
-              <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-weight: 700; cursor: pointer; border-radius: 8px; font-size: 12px;">
-                🔄 Reload Weekly Stats
-              </button>
-            </div>
-            <div class="leaderboard-grid" id="settingsLeaderboardGrid" style="margin-top: 8px;">
-              <div class="leaderboard-card">
-                <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-group">
             <div class="settings-group-title">🖼️ Global Chat Wallpaper</div>
             <div class="wallpaper-settings-card">
               <div class="wallpaper-preview-strip" id="settingsWallpaperPreview" onclick="openWallpaperModal('global')">
@@ -532,8 +513,10 @@
       <!-- Sticker rendered on top of the preview image -->
       <div class="sticker-on-image" id="stickerOnImage"></div>
 
-      <!-- Sticker toolbar button (like WhatsApp's sticker icon) -->
-      <button class="sticker-tool-btn" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker" disabled>😀</button>
+      <!-- Sticker toolbar button (like WhatsApp's sticker icon). Always
+           clickable: when no media is picked yet, tapping it opens the image
+           picker (handled in toggleStickerTray) instead of silently failing. -->
+      <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker">😀</button>
 
       <!-- Sticker tray popup -->
       <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
@@ -1238,7 +1221,6 @@ auth.onAuthStateChanged(async (user) => {
   if (!profileSetupRequired) {
     startUsersListener();
     startSharedPresenceListener();
-    startLeaderboardListeners();
     loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
@@ -1623,26 +1605,17 @@ function startUsersListener() {
     // Keep window.allUsersData in sync (same reference) for external modules.
     window.allUsersData = allUsersData;
 
-    // Mirror into adminUsers so the weekly leaderboard (which no longer opens
-    // its own duplicate `users` listener) stays in sync from this single
-    // shared snapshot.
-    adminUsers = allUsersData.map(u => ({
-      ...u,
-      createdAt: normalizeTimestamp(u.createdAt)
-    }));
-
     saveCachedUsers();
     renderUsers();
     renderActiveNowBar();
-    renderWeeklyLeaderboard();
   });
 }
 
 // Single shared presence listener — feeds userPresenceCache for the whole app
-// (online dots, Active Now bar, chat-header last seen, voice-room invite list,
-// AND the weekly leaderboard). Do NOT re-introduce per-user presence/{uid} doc
-// listeners OR a second full-collection presence listener (the leaderboard used
-// to open its own) — each duplicates reads and races with this cache.
+// (online dots, Active Now bar, chat-header last seen, voice-room invite list).
+// Do NOT re-introduce per-user presence/{uid} doc listeners OR a second
+// full-collection presence listener — each duplicates reads and races with
+// this cache.
 let sharedPresenceUnsub = null;
 function startSharedPresenceListener() {
   if (sharedPresenceUnsub || !db) return;
@@ -1651,13 +1624,11 @@ function startSharedPresenceListener() {
       const uid = change.doc.id;
       const pdata = change.doc.data() || {};
       userPresenceCache[uid] = pdata;
-      adminPresenceData[uid] = pdata;
       updateUserOnlineDot(uid, pdata);
     });
     // Re-render dependent UI with the fresh cache.
     renderUsers();
     renderActiveNowBar();
-    renderWeeklyLeaderboard();
     if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
   }, err => console.error("Shared presence listener error:", err));
 }
@@ -2008,226 +1979,6 @@ function renderStoriesTab() {
   }
 }
 
-/* =====================================================
-   WEEKLY MOST ACTIVE USERS (LEADERBOARD) - SETTINGS TAB
-   EXACT MIRROR OF ADMIN.HTML LEADERBOARD
-   ===================================================== */
-let adminUsers = [];
-let adminPresenceData = {};
-let cachedMsgScores = {};
-let cachedStoryScores = {};
-let leaderboardUsersUnsub = null;
-let leaderboardPresenceUnsub = null;
-let leaderboardMsgUnsub = null;
-let leaderboardStoryUnsub = null;
-
-function normalizeTimestamp(value) {
-  if (!value) return Date.now();
-  if (typeof value.toDate === "function") return value.toDate().getTime();
-  if (typeof value === "number") return value;
-  const parsed = new Date(value).getTime();
-  return isNaN(parsed) ? Date.now() : parsed;
-}
-
-function checkUserOnline(u) {
-  const uid = typeof u === "string" ? u : u.uid;
-  // Read from the single shared presence cache (fed by startSharedPresenceListener).
-  return isUserOnline(userPresenceCache[uid] || adminPresenceData[uid]);
-}
-
-function getMonday(d) {
-  d = new Date(d);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
-}
-
-function getCurrentWeekStart() {
-  const monday = getMonday(new Date());
-  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()).getTime();
-}
-
-function getWeekDateRange() {
-  const weekStart = getCurrentWeekStart();
-  const monday = new Date(weekStart);
-  const sunday = new Date(weekStart + 6 * 86400000);
-  
-  const monthStart = monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const monthEnd = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  
-  return `${monthStart} - ${monthEnd}`;
-}
-
-function reloadWeeklyStats() {
-  const btn = document.getElementById("reloadWeeklyBtn");
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = "⏳ Reloading...";
-  }
-
-  if (leaderboardUsersUnsub) { leaderboardUsersUnsub(); leaderboardUsersUnsub = null; }
-  if (leaderboardPresenceUnsub) { leaderboardPresenceUnsub(); leaderboardPresenceUnsub = null; }
-  if (leaderboardMsgUnsub) { leaderboardMsgUnsub(); leaderboardMsgUnsub = null; }
-  if (leaderboardStoryUnsub) { leaderboardStoryUnsub(); leaderboardStoryUnsub = null; }
-
-  startLeaderboardListeners();
-
-  setTimeout(() => {
-    renderWeeklyLeaderboard();
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = "🔄 Reload Weekly Stats";
-    }
-  }, 400);
-}
-
-function startLeaderboardListeners() {
-  if (!window.db) return;
-  const weekStart = getCurrentWeekStart();
-
-  // 1. Users: do NOT open a second full-collection `users` listener — that
-  // duplicated reads of the entire users collection on every profile change
-  // (startUsersListener already maintains allUsersData and calls
-  // renderWeeklyLeaderboard). Derive adminUsers from that shared cache.
-  adminUsers = allUsersData.map(u => ({
-    ...u,
-    createdAt: normalizeTimestamp(u.createdAt)
-  }));
-
-  // 2. Presence: the leaderboard reads from the SINGLE shared presence cache
-  // (startSharedPresenceListener) — do NOT open a second full-collection
-  // presence listener here. The shared listener calls renderWeeklyLeaderboard()
-  // on every presence change, so leaderboard online dots stay live.
-  // (leaderboardPresenceUnsub kept null — no separate listener.)
-
-  // 3. Chats: scope to the current week ONLY. Previously this listened to the
-  // ENTIRE chats collection real-time, which re-read every message in the
-  // database on every single send anywhere — the #1 quota burner. Bounding it
-  // to createdAt >= weekStart limits reads to recent messages only.
-  if (!leaderboardMsgUnsub) {
-    leaderboardMsgUnsub = db.collection("chats")
-      .where("createdAt", ">=", weekStart)
-      .onSnapshot(snapshot => {
-        const msgScores = {};
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.from) {
-            msgScores[data.from] = (msgScores[data.from] || 0) + 1;
-          }
-        });
-        cachedMsgScores = msgScores;
-        renderWeeklyLeaderboard();
-      }, err => console.error("Leaderboard chats listener error:", err));
-  }
-
-  // 4. Stories: do NOT open a second full-collection `status` listener —
-  // startStatusListener already maintains userStatuses and calls
-  // renderUsers()/renderStoriesBar(). Compute story scores from that shared
-  // cache instead of re-reading the entire status collection.
-  computeStoryScores(weekStart);
-  renderWeeklyLeaderboard();
-}
-
-// Compute weekly story scores from the shared userStatuses cache (fed by
-// startStatusListener) instead of a second full-collection status listener.
-function computeStoryScores(weekStart) {
-  const storyScores = {};
-  for (const uid in userStatuses) {
-    const list = userStatuses[uid];
-    if (!Array.isArray(list)) continue;
-    list.forEach(s => {
-      if (s.createdAt && s.createdAt >= weekStart) {
-        storyScores[uid] = (storyScores[uid] || 0) + 2;
-      }
-    });
-  }
-  cachedStoryScores = storyScores;
-}
-
-function renderWeeklyLeaderboard() {
-  const leaderboardGrid = document.getElementById("settingsLeaderboardGrid");
-  if (!leaderboardGrid) return;
-
-  const weekStart = getCurrentWeekStart();
-  const indicator = document.getElementById("settingsWeekIndicator");
-  if (indicator) indicator.textContent = getWeekDateRange();
-
-  if (!adminUsers || !adminUsers.length) {
-    leaderboardGrid.innerHTML = `
-      <div class="leaderboard-card" style="grid-column: 1 / -1;">
-        <div style="color: var(--text-3, #6b7a95); font-size: 13px;">Analyzing weekly user activity...</div>
-      </div>
-    `;
-    return;
-  }
-
-  // Exact same user rank mapping as admin.html
-  const userRankList = adminUsers.map(u => {
-    const msgs = cachedMsgScores[u.uid] || 0;
-    const stories = cachedStoryScores[u.uid] || 0;
-    const p = userPresenceCache[u.uid] || adminPresenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || 0;
-    const isOnline = checkUserOnline(u);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
-
-    const activeBonus = isWeeklyActive ? 5 : 0;
-    const onlineBonus = isOnline ? 3 : 0;
-    const totalScore = msgs + stories + activeBonus + onlineBonus;
-
-    return {
-      uid: u.uid,
-      displayName: u.displayName || u.name || "Nexa User",
-      photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
-      email: u.email || "",
-      banned: u.banned === true,
-      msgs: msgs,
-      stories: Math.floor(stories / 2),
-      isOnline: isOnline,
-      isWeeklyActive: isWeeklyActive,
-      score: totalScore
-    };
-  }).filter(u => !u.banned);
-
-  userRankList.sort((a, b) => b.score - a.score);
-
-  const topUsers = userRankList.slice(0, 5);
-  const maxScore = topUsers.length && topUsers[0].score > 0 ? topUsers[0].score : 1;
-
-  if (!topUsers.length || topUsers[0].score === 0) {
-    leaderboardGrid.innerHTML = `
-      <div class="leaderboard-card" style="grid-column: 1 / -1;">
-        <div style="color: var(--text-3, #6b7a95); font-size: 13px;">No user activity recorded this calendar week.</div>
-      </div>
-    `;
-    return;
-  }
-
-  leaderboardGrid.innerHTML = topUsers.map((u, idx) => {
-    const rank = idx + 1;
-    const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-    const rankClass = rank <= 3 ? `rank-${rank}` : "";
-    const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
-    const onlineTag = u.isOnline ? ` • <span style="color: #10d981; font-weight: 600;">🟢 Online</span>` : "";
-
-    return `
-      <div class="leaderboard-card ${rankClass}">
-        <div class="rank-badge">${rankBadge}</div>
-        <div class="leaderboard-info">
-          <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
-          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
-          <div class="activity-bar-bg">
-            <div class="activity-bar-fill" style="width: ${pct}%;"></div>
-          </div>
-        </div>
-        <div class="leaderboard-score">
-          <div class="score-val">${u.score}</div>
-          <div class="score-label">Points</div>
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
 function renderSettingsTab() {
   loadNotificationSettings();
   const msgToggle = document.getElementById("tabNotifMessages");
@@ -2236,9 +1987,6 @@ function renderSettingsTab() {
   if (stToggle) stToggle.classList.toggle("active", notificationSettings.stories);
   const clToggle = document.getElementById("tabNotifCalls");
   if (clToggle) clToggle.classList.toggle("active", notificationSettings.calls);
-
-  renderWeeklyLeaderboard();
-  startLeaderboardListeners();
 
   const grid = document.getElementById("settingsThemeGrid");
   if (!grid) return;
@@ -2375,14 +2123,21 @@ function formatTimeRemaining(ms) {
 }
 
 // Fetch another user's active note for the profile modal (one-time read).
+// Logs permission errors distinctly so an undeployed firestore.rules (the
+// usual cause of "the note doesn't show on their profile") is visible in the
+// console instead of silently looking like "no note set".
 async function fetchUserNote(uid) {
+  if (!uid) return null;
   try {
     const doc = await window.db.collection("profile_notes").doc(uid).get();
     const data = doc.data();
     if (!data || !data.text) return null;
     if (data.createdAt && (Date.now() - data.createdAt > 24 * 60 * 60 * 1000)) return null;
     return data.text;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.warn("[profile_notes] read failed for", uid, "— if this is a permission-denied error, deploy firestore.rules (`firebase deploy --only firestore:rules`) so cross-user reads are allowed.", e && e.code ? "(" + e.code + ")" : "", e);
+    return null;
+  }
 }
 
 function triggerProfilePhotoUpload() {
@@ -2662,54 +2417,30 @@ function listenTyping() {
 }
 
 function loadUnreadCounts() {
-  // Incremental unread counts via docChanges(): maintain a running per-sender
-  // counter instead of re-iterating every message on every snapshot. This
-  // keeps the listener O(changes) rather than O(total inbox) on each event.
-  // Query only on the single indexed field `to == me` (Firestore always has a
-  // single-field index for this), then filter `read == false` in JS. This
-  // avoids any dependency on a (to, read) composite index that, if missing,
-  // would make the onSnapshot error silently and unread badges never appear.
-  db.collection("chats").where("to", "==", currentUser.uid).onSnapshot(snap => {
-    snap.docChanges().forEach(change => {
-      const msg = change.doc.data();
-      const f = msg.from;
-      if (f === currentUser.uid) return; // don't count self-chat
-      // Maintain a running per-sender counter based on doc changes only.
-      // On the first snapshot all existing docs arrive as "added" (the initial
-      // count); afterwards only the delta is processed.
-      if (change.type === "added") {
-        if (msg.read !== true) unreadMessages[f] = (unreadMessages[f] || 0) + 1;
-      } else if (change.type === "modified") {
-        // For read-flag flips we don't know the old value from docChanges,
-        // so fall back to a cheap single-sender recount (one small query).
-        recountUnreadForSender(f);
-      } else if (change.type === "removed") {
-        if (msg.read !== true) {
-          unreadMessages[f] = Math.max(0, (unreadMessages[f] || 0) - 1);
-          if (!unreadMessages[f]) delete unreadMessages[f];
-        }
-      }
-    });
-    renderUsers();
-    updateTotalUnreadBadge();
-  }, err => console.error("loadUnreadCounts listener error:", err));
-}
-
-// Cheap single-sender recount: one small query instead of recounting the
-// whole inbox. Used only on "modified" (read-flag flips), which are rare.
-function recountUnreadForSender(fromUid) {
+  // Scope the listener to UNREAD messages only (.where("read","==",false)).
+  // Previously this listened to the ENTIRE incoming inbox (every message ever
+  // received) and re-read all of it on every change — a major quota burner for
+  // users with long histories. The all-equality query (to==me, read==false)
+  // needs no composite index (Firestore zigzag-merges single-field indexes),
+  // and the unread set is small, so we simply rebuild per-sender counts from
+  // the (small) snapshot each event instead of maintaining an incremental
+  // counter that could drift on read-flag flips.
+  if (!currentUser) return;
   db.collection("chats")
     .where("to", "==", currentUser.uid)
-    .where("from", "==", fromUid)
     .where("read", "==", false)
-    .get()
-    .then(snap => {
-      unreadMessages[fromUid] = snap.size || 0;
-      if (!unreadMessages[fromUid]) delete unreadMessages[fromUid];
+    .onSnapshot(snap => {
+      const counts = {};
+      snap.forEach(d => {
+        const m = d.data();
+        if (m.from && m.from !== currentUser.uid) {
+          counts[m.from] = (counts[m.from] || 0) + 1;
+        }
+      });
+      unreadMessages = counts;
       renderUsers();
       updateTotalUnreadBadge();
-    })
-    .catch(() => {});
+    }, err => console.error("loadUnreadCounts listener error:", err));
 }
 
 // WhatsApp-style total unread badge on the Chats nav button (mobile bottom nav
@@ -5737,25 +5468,60 @@ let storyAnimFrame = null;
 let viewingStoryUid = null;
 let storyCurrentDuration = 0;
 
+// Stories expire after 24h. We scope the listener to createdAt >= (now-24h)
+// so Firestore only returns recent stories instead of the ENTIRE status
+// collection on every change — a single-field range query (createdAt is
+// single-field auto-indexed), so no composite index is needed. This is the
+// single biggest read saver for the stories feature: a growing `status`
+// collection used to be re-read in full on every post/view anywhere.
+const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+let statusListenerUnsub = null;
+let statusGcRunning = false;
 function startStatusListener() {
-  db.collection("status").onSnapshot(snap => {
-    userStatuses = {};
-    snap.forEach(doc => {
-      const s = doc.data();
-      const uid = s.uid;
+  if (statusListenerUnsub) return;
+  const cutoff = Date.now() - STATUS_TTL_MS;
+  statusListenerUnsub = db.collection("status")
+    .where("createdAt", ">=", cutoff)
+    .onSnapshot(snap => {
+      // docChanges() keeps processing O(changes) on updates; the initial
+      // snapshot is already bounded to the last 24h by the where clause.
+      userStatuses = {};
       const now = Date.now();
-      if (now - s.createdAt < 24 * 60 * 60 * 1000) {
+      snap.forEach(doc => {
+        const s = doc.data();
+        // Client-side TTL guard: the server query cutoff is fixed at listener
+        // creation, so on very long sessions a story could age past 24h while
+        // still matching the original query. Drop it here if expired.
+        if (s.createdAt && (now - s.createdAt) > STATUS_TTL_MS) return;
+        const uid = s.uid;
+        if (!uid) return;
         if (!userStatuses[uid]) userStatuses[uid] = [];
         userStatuses[uid].push({ id: doc.id, ...s });
-      }
-    });
-    renderStoriesBar();
-    renderUsers();
-    // Refresh weekly story scores from this shared cache (avoids a second
-    // full-collection status listener in the leaderboard).
-    computeStoryScores(getCurrentWeekStart());
-    renderWeeklyLeaderboard();
-  });
+      });
+      renderStoriesBar();
+      renderUsers();
+    }, err => console.error("Status listener error:", err));
+  // One-time garbage collection of stories older than 24h. The scoped listener
+  // never returns them, so they'd otherwise linger in storage forever. We read
+  // ONLY the expired slice (createdAt < cutoff), bounded, and batch-delete —
+  // any signed-in client may delete an expired story per firestore.rules.
+  purgeExpiredStories();
+}
+
+// Delete stories past their 24h TTL. Bounded to the expired slice so it never
+// reads the whole collection; runs once per session on listener start.
+function purgeExpiredStories() {
+  if (statusGcRunning || !db) return;
+  statusGcRunning = true;
+  const cutoff = Date.now() - STATUS_TTL_MS;
+  db.collection("status").where("createdAt", "<", cutoff).get().then(snap => {
+    if (snap.empty) return;
+    let batch = db.batch();
+    let count = 0;
+    snap.forEach(d => { batch.delete(d.ref); count++; if (count % 400 === 0) { batch.commit(); batch = db.batch(); } });
+    if (count % 400 !== 0) batch.commit();
+    console.log("Purged", count, "expired stories (>" + Math.round(STATUS_TTL_MS/3600000) + "h old).");
+  }).catch(err => console.warn("Story GC error:", err)).finally(() => { statusGcRunning = false; });
 }
 
 function renderStoriesBar() {
@@ -6580,6 +6346,10 @@ let activeAddYoursPrompt = { promptId: null, promptText: "" };
 // overlay get the same prompt (Add Yours → post own photo w/ same promptId;
 // Question → type answer → chat reply to asker).
 let pendingStorySticker = null;
+// When the user taps a sticker (➕/❓) before picking a photo, we remember
+// their choice here, open the image picker, and re-run attachStorySticker()
+// once a photo is chosen so the sticker attaches smoothly (WhatsApp flow).
+let pendingStickerChoice = null;
 
 function updateStoryStickerPreview() {
   refreshStickerToolButton();
@@ -6589,25 +6359,35 @@ function updateStoryStickerPreview() {
 
 // Enable/disable the sticker toolbar button based on whether there's content
 // (a photo/video file, or typed text) to attach the sticker to.
+// NOTE: we never set the `disabled` HTML attribute — a disabled button
+// swallows clicks silently (so tapping ➕ "Add Yours" did nothing at all,
+// which is the bug the user hit). Instead we only toggle a visual class and
+// let toggleStickerTray/attachStorySticker handle the no-media case by
+// opening the image picker first (WhatsApp-style: pick a photo, then sticker).
 function refreshStickerToolButton() {
   const btn = document.getElementById("stickerToolBtn");
   if (!btn) return;
   const hasMedia = (statusTab === "image" || statusTab === "video") && statusFile;
   const hasText = statusTab === "text" && (document.getElementById("statusTextInput")?.value.trim() || "");
   const hasMusic = statusTab === "music" && selectedMusicData;
-  btn.disabled = !(hasMedia || hasText || hasMusic);
-  btn.classList.toggle("disabled", btn.disabled);
+  btn.classList.toggle("disabled", !(hasMedia || hasText || hasMusic));
 }
 
 function toggleStickerTray(ev) {
   ev.stopPropagation();
-  const tray = document.getElementById("stickerTray");
-  if (!tray) return;
   const btn = document.getElementById("stickerToolBtn");
-  if (btn && btn.disabled) {
-    showNotifToast("Pick a photo or video first, then add a sticker", "error");
+  const hasContent = btn && !btn.classList.contains("disabled");
+  if (!hasContent) {
+    // No media yet → start the WhatsApp flow: open the image picker so the
+    // user can choose a photo first, THEN add the sticker. We don't toast a
+    // generic "pick a photo first" because that reads as "the button's broken".
+    showNotifToast("Pick a photo first — stickers attach to your photo", "info");
+    pendingStickerChoice = null; // cleared; user must tap a sticker again after media
+    switchStatusTab("image");
     return;
   }
+  const tray = document.getElementById("stickerTray");
+  if (!tray) return;
   tray.classList.toggle("open");
 }
 
@@ -6658,15 +6438,23 @@ function attachStorySticker(type) {
   const hasText = statusTab === "text" && (document.getElementById("statusTextInput").value.trim() || "");
   const hasMusic = statusTab === "music" && selectedMusicData;
   if (!hasMedia && !hasText && !hasMusic) {
-    showNotifToast("Pick a photo/video first, then add a sticker", "error");
+    // WhatsApp flow: no media yet → remember which sticker the user wants,
+    // open the image picker, and once a photo is chosen we re-invoke this to
+    // prompt for the sticker text and attach it. This is the fix for "the
+    // Add Yours plus button does nothing" — it now opens the picker.
+    pendingStickerChoice = type;
+    showNotifToast("Pick a photo first, then add your sticker", "info");
+    switchStatusTab("image");
+    closeStickerTray();
     return;
   }
   const text = window.prompt(type === "question" ? "Ask a question:" : "Add Yours prompt:", "");
-  if (text === null) return;
+  if (text === null) { pendingStickerChoice = null; return; }
   const t = text.trim();
   if (!t) { showNotifToast("Please type something for the sticker", "error"); return; }
   const id = (type === "question" ? "q_" : "prompt_") + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
   pendingStorySticker = { type, text: t, id };
+  pendingStickerChoice = null;
   closeStickerTray();
   renderStickerOnImage();
   renderStoryStickerPreview();
@@ -6778,6 +6566,7 @@ async function shareAddYoursResponse() {
       uid: currentUser.uid,
       type: addYoursTab,
       createdAt: Date.now(),
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: [],
@@ -7026,7 +6815,7 @@ function switchStatusTab(tab) {
 
 function previewStatusImage(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) { pendingStickerChoice = null; return; }
   statusFile = file;
   statusTab = "image";
   const reader = new FileReader();
@@ -7034,13 +6823,16 @@ function previewStatusImage(e) {
     document.getElementById("statusPreview").innerHTML = `<img src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;">`;
     refreshStickerToolButton();
     renderStickerOnImage();
+    // If the user tapped a sticker before picking a photo (WhatsApp flow),
+    // now that we have media, prompt for the sticker text and attach it.
+    if (pendingStickerChoice) { const c = pendingStickerChoice; pendingStickerChoice = null; attachStorySticker(c); }
   };
   reader.readAsDataURL(file);
 }
 
 function previewStatusVideo(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) { pendingStickerChoice = null; return; }
   statusFile = file;
   statusTab = "video";
   const reader = new FileReader();
@@ -7048,6 +6840,7 @@ function previewStatusVideo(e) {
     document.getElementById("statusPreview").innerHTML = `<video src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;" controls></video>`;
     refreshStickerToolButton();
     renderStickerOnImage();
+    if (pendingStickerChoice) { const c = pendingStickerChoice; pendingStickerChoice = null; attachStorySticker(c); }
   };
   reader.readAsDataURL(file);
 }
@@ -7182,6 +6975,7 @@ async function shareStatus() {
       uid: currentUser.uid,
       type: statusTab,
       createdAt: Date.now(),
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
