@@ -924,6 +924,11 @@ select:focus-visible {
   transition: all var(--tf);
   position: relative;
   border: 1px solid transparent;
+  /* Skip rendering/painting off-screen contact rows entirely. Big scroll +
+     paint win for long contact lists (WhatsApp-feel). The intrinsic size
+     stops the scrollbar from jumping as rows virtualize in/out. */
+  content-visibility: auto;
+  contain-intrinsic-size: 64px;
 }
 
 .user-item:hover {
@@ -1387,6 +1392,11 @@ select:focus-visible {
 .msg {
   max-width: min(62%, 520px);
   position: relative;
+  /* Skip rendering/painting off-screen message bubbles. Keeps long chats
+     smooth (no jank) like WhatsApp. Intrinsic size is an estimate so the
+     scrollbar stays stable as messages virtualize in/out of view. */
+  content-visibility: auto;
+  contain-intrinsic-size: 64px;
 }
 
 .msg.msg-new {

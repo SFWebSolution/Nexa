@@ -18,6 +18,12 @@
   <title>Nexa Messenger - Premium Edition</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Pre-warm the image hosts (avatars, story thumbnails, media uploads) so
+       DNS/TLS resolves during the critical path instead of stalling first paint. -->
+  <link rel="preconnect" href="https://i.imgur.com">
+  <link rel="preconnect" href="https://res.cloudinary.com">
+  <link rel="preconnect" href="https://firebasestorage.googleapis.com">
+  <link rel="preconnect" href="https://lh3.googleusercontent.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -1626,10 +1632,11 @@ function startSharedPresenceListener() {
       userPresenceCache[uid] = pdata;
       updateUserOnlineDot(uid, pdata);
     });
-    // Re-render dependent UI with the fresh cache.
-    renderUsers();
-    renderActiveNowBar();
+    // Coalesce the re-render: a single presence snapshot can carry many
+    // docChanges (a heartbeat wave), so render once per frame instead of
+    // once per change. The chat-header update is cheap and immediate.
     if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
+    scheduleRender();
   }, err => console.error("Shared presence listener error:", err));
 }
 
@@ -1661,7 +1668,7 @@ function renderActiveNowBar() {
     return `
       <button class="active-now-item" data-uid="${u.uid}" onclick="selectUserFromActiveNow('${u.uid}')" title="${name}">
         <span class="active-now-avatar-wrap">
-          <img src="${photo}" class="active-now-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <img src="${photo}" class="active-now-avatar" loading="lazy" decoding="async" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
           <span class="active-now-dot"></span>
         </span>
         <span class="active-now-name">${name.split(' ')[0]}</span>
@@ -1678,6 +1685,24 @@ function selectUserFromActiveNow(uid) {
 }
 
 let lastRenderedUserOrder = "";
+
+// Render coalescer: collapses a burst of renderUsers() calls (e.g. when many
+// presence docs change at once during a heartbeat wave) into ONE render per
+// animation frame. This is the single biggest "feels instant, no jank" win —
+// without it, 50 presence changes fire 50 synchronous renderUsers() calls,
+// each re-sorting + re-querying the whole user list, causing visible lag.
+// Only data-change paths use this; imperative callers that need an immediate
+// update (selectChat, toggling favorites) call renderUsers() directly.
+let _renderScheduled = false;
+function scheduleRender() {
+  if (_renderScheduled) return;
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    renderUsers();
+    renderActiveNowBar();
+  });
+}
 
 function renderUsers() {
   const box = document.getElementById("users");
@@ -1763,7 +1788,7 @@ function renderUsers() {
       el.dataset.uid = user.uid;
       el.innerHTML = `
         <div class="user-avatar-wrap">
-          <img src="${photo}" class="user-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <img src="${photo}" class="user-avatar" loading="lazy" decoding="async" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
           <div class="status-dot ${online ? 'online' : ''}" id="dot-${user.uid}"></div>
         </div>
         <div class="user-info">
@@ -1956,7 +1981,7 @@ function renderStoriesTab() {
 
     card.innerHTML = `
       <div class="story-feed-ring ${allSeen ? 'seen' : 'unseen'}">
-        <img src="${photo}" class="story-feed-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <img src="${photo}" class="story-feed-avatar" loading="lazy" decoding="async" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
       </div>
       <div class="story-feed-info">
         <div class="story-feed-name">${name}</div>
@@ -2438,7 +2463,7 @@ function loadUnreadCounts() {
         }
       });
       unreadMessages = counts;
-      renderUsers();
+      scheduleRender();
       updateTotalUnreadBadge();
     }, err => console.error("loadUnreadCounts listener error:", err));
 }
@@ -2641,7 +2666,7 @@ function loadMessages() {
       .onSnapshot(snap => {
         _msgsA = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         _msgsB = [];
-        renderMessageList();
+        scheduleMessageRender();
       }, err => console.error("messages(self) listener error:", err));
     return;
   }
@@ -2651,7 +2676,7 @@ function loadMessages() {
     .where("to", "==", otherUid)
     .onSnapshot(snap => {
       _msgsA = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderMessageList();
+      scheduleMessageRender();
     }, err => console.error("messages(A) listener error:", err));
 
   unsubMessagesB = db.collection("chats")
@@ -2671,7 +2696,7 @@ function loadMessages() {
         batch.commit().catch(() => {});
       }
 
-      renderMessageList();
+      scheduleMessageRender();
     }, err => console.error("messages(B) listener error:", err));
 }
 
@@ -2830,7 +2855,24 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   return container;
 }
 
+// Coalesce message-list renders: the two-direction listeners (A & B) can both
+// fire in the same tick for one logical update, and a burst of edits/reads can
+// fire several snapshots back-to-back. Collapsing to one render per animation
+// frame keeps typing/receiving smooth with no double-work.
+let _msgRenderScheduled = false;
+function scheduleMessageRender() {
+  if (_msgRenderScheduled) return;
+  _msgRenderScheduled = true;
+  requestAnimationFrame(() => {
+    _msgRenderScheduled = false;
+    renderMessageList();
+  });
+}
+
 function renderMessageList() {
+  // A direct (imperative) render supersedes any pending coalesced render —
+  // cancel it so a stale rAF doesn't overwrite a newer immediate render.
+  _msgRenderScheduled = false;
   if (!selectedUser) return;
   const box = document.getElementById("messages");
   if (!box) return;
