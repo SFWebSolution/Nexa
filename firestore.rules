@@ -36,19 +36,35 @@ service cloud.firestore {
 
     // ── Direct messages & call log entries ──────────────────────────
     // A message is readable by either the sender or the recipient.
-    // Only the sender may create it (recipient marks read via update).
+    // Only the sender may create it — `from` MUST equal the caller's uid,
+    // so nobody can send a message impersonating another user.
     match /chats/{msgId} {
       function isParty(data) {
         return isSignedIn()
           && (request.auth.uid == data.from || request.auth.uid == data.to);
       }
       allow read: if resource.data == null || isParty(resource.data);
-      allow create: if isParty(request.resource.data);
-      allow update: if isSignedIn()
-                    && (request.auth.uid == resource.data.from
-                        || request.auth.uid == resource.data.to)
-                    && request.resource.data.diff(resource.data)
-                        .affectedKeys().hasOnly(['read', 'readAt', 'status', 'react', 'edited', 'text', 'updatedAt']);
+      allow create: if isSignedIn()
+                    && request.resource.data.from == request.auth.uid
+                    && request.resource.data.to is string
+                    && request.resource.data.to.size() > 0
+                    && (!request.resource.data.keys().hasAny(['text'])
+                        || (request.resource.data.text is string
+                            && request.resource.data.text.size() <= 10000));
+      // Recipient may only mark read/react/open view-once; the sender may
+      // additionally edit their own text. Neither may touch other fields.
+      allow update: if isSignedIn() && (
+        (request.auth.uid == resource.data.to
+         && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['read', 'readAt', 'status', 'react', 'reactions', 'viewOnceOpened']))
+        || (request.auth.uid == resource.data.from
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['read', 'readAt', 'status', 'react', 'reactions', 'viewOnceOpened',
+                           'edited', 'editedAt', 'text', 'updatedAt'])
+            && (!request.resource.data.keys().hasAny(['text'])
+                || (request.resource.data.text is string
+                    && request.resource.data.text.size() <= 10000)))
+      );
       allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
     }
 
@@ -61,18 +77,21 @@ service cloud.firestore {
           && (request.auth.uid == data.from || request.auth.uid == data.to);
       }
       allow read: if resource.data == null || isCallParty(resource.data);
-      allow create: if isCallParty(request.resource.data);
+      allow create: if isSignedIn()
+                    && request.resource.data.from == request.auth.uid
+                    && request.resource.data.to is string;
       allow update: if isCallParty(resource.data);
       allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
     }
 
     // ── Multi-user voice rooms ──────────────────────────────────────
     // Room metadata: readable by any signed-in user (so invite links work).
-    // Created/updated by any signed-in user (host migration, etc.).
+    // Created/updated by any signed-in user (host migration, invite grants).
+    // Only the HOST may delete the room (host close ends it for everyone).
     match /voice_rooms/{roomId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow delete: if isSignedIn() && resource.data.hostId == request.auth.uid;
 
       // Each participant owns its own doc in the subcollection.
       // Anyone in the room can read all participants; a client writes only its own.
@@ -95,11 +114,13 @@ service cloud.firestore {
     }
 
     // ── Voice room invites ──────────────────────────────────────────
-    // Anyone signed in can write a pending invite to another user's doc
-    // (the doc id is the invitee's uid). The invitee reads & clears it.
+    // An invite is written INTO the invitee's doc (doc id = invitee uid) by
+    // the inviter — so create/update is only allowed on SOMEONE ELSE's doc.
+    // Only the invitee may delete their own invite doc (accept/decline).
     match /voice_invites/{uid} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isSignedIn();
+      allow create, update: if isSignedIn() && uid != request.auth.uid;
+      allow delete: if isSignedIn() && uid == request.auth.uid;
     }
 
     // ── Stories / status ────────────────────────────────────────────
@@ -145,14 +166,18 @@ service cloud.firestore {
     }
 
     // ── Per-chat disappearing-message settings ──────────────────────
-    // Either party of the chat pair may read/write the shared setting doc.
+    // The doc id is the two participants' uids joined with "_" (sorted).
+    // Only a member of that pair may read/write the doc.
     match /disappearingSettings/{keyId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && request.auth.uid in keyId.split('_');
     }
 
-    // ── Typing indicators (per chat pair) ───────────────────────────
-    match /typing/{keyId} {
-      allow read, write: if isSignedIn();
+    // ── Typing indicators ───────────────────────────────────────────
+    // Doc id is the TYPER's uid. Anyone signed in may read (to show the
+    // "typing…" bar); a user can only write their own typing state.
+    match /typing/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(uid);
     }
 
     // Deny everything else by default.
