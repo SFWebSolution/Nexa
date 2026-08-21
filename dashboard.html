@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src https://askifyai.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Nexa Messenger - Premium Chat & Stories Platform with Music Integration">
   <meta name="theme-color" content="#080c14">
@@ -341,7 +343,7 @@
 
     <div class="input-area">
       <div class="input-wrap">
-        <textarea id="text" placeholder="Type a message…" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
+        <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
         <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
@@ -929,6 +931,19 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// Sanitize a media URL before interpolating it into HTML markup (src="…",
+// style url("…"), inline handlers). Only http(s) and local blob:/data: media
+// URLs are allowed — javascript:/vbscript: are dropped, and quote/backslash
+// characters are stripped so the URL can't break out of its attribute.
+function safeMediaUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  const u = url.trim();
+  if (/^(https?:|blob:|data:(image|video|audio)\/)/i.test(u)) {
+    return u.replace(/["'`\\]/g, "");
+  }
+  return "";
+}
+
 function linkify(text) {
   if (!text) return "";
   const escaped = escapeHtml(text);
@@ -1126,6 +1141,10 @@ function loadCachedUsers() {
     const saved = localStorage.getItem("nexa_cached_users_" + currentUser.uid);
     if (saved) {
       allUsersData = JSON.parse(saved);
+      // Re-sanitize cached photo URLs — the cache may predate sanitization.
+      allUsersData.forEach(u => {
+        u.photo = safeMediaUrl(u.photo) || "https://i.imgur.com/HeIi0wU.png";
+      });
       renderUsers();
     }
   } catch (e) {}
@@ -1608,7 +1627,7 @@ function startUsersListener() {
           uid: uid,
           ...d,
           displayName: displayName,
-          photo: d.photoUrl || d.photo || "https://i.imgur.com/HeIi0wU.png"
+          photo: safeMediaUrl(d.photoUrl || d.photo) || "https://i.imgur.com/HeIi0wU.png"
         });
       }
     });
@@ -2891,7 +2910,17 @@ function isChatNearBottom() {
 function scrollChatToBottom() {
   const box = document.getElementById("messages");
   if (!box) return;
-  box.scrollTop = box.scrollHeight;
+  const scrollNow = () => {
+    const msgs = box.querySelectorAll(".msg");
+    const last = msgs[msgs.length - 1];
+    if (last) last.scrollIntoView({ block: "end" });
+    box.scrollTop = box.scrollHeight;
+  };
+  scrollNow();
+  // Media can finish loading after the first scroll and push the latest
+  // message further down — re-scroll so we truly land on it.
+  setTimeout(scrollNow, 250);
+  setTimeout(scrollNow, 600);
   scrollDownNewCount = 0;
   updateScrollDownBtn();
 }
@@ -3232,7 +3261,7 @@ function buildStoryReplyPreview(msg) {
     storyObj = userStatuses[msg.storyReplyUid].find(s => s.id === msg.storyReplyId);
   }
 
-  const url = msg.storyUrl || storyObj?.url || null;
+  const url = safeMediaUrl(msg.storyUrl || storyObj?.url || "") || null;
   const text = msg.storyText || storyObj?.text || null;
   const type = msg.storyType || storyObj?.type || (url ? "image" : "text");
   const musicTitle = msg.storyMusicTitle || storyObj?.musicData?.title || null;
@@ -3332,7 +3361,7 @@ function buildMessage(id, msg, fromMe) {
     const isOpened = msg.viewOnceOpened;
     const mediaType = msg.image ? "Photo" : msg.video ? "Video" : msg.audio ? "Voice note" : "Media";
     const typeKey = msg.image ? "image" : msg.video ? "video" : "audio";
-    const mediaUrl = msg.image || msg.video || msg.audio;
+    const mediaUrl = safeMediaUrl(msg.image || msg.video || msg.audio);
 
     const badge = document.createElement("div");
     badge.className = `view-once-badge ${isOpened ? "opened" : ""}`;
@@ -3359,26 +3388,28 @@ function buildMessage(id, msg, fromMe) {
     if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
 
     if (msg.image) {
+      const imgUrl = safeMediaUrl(msg.image);
       const cap = msg.caption ? `<div class="media-caption">${escapeHtml(msg.caption)}</div>` : "";
-      inner += `<div class="media-container ${msg.caption ? "has-caption" : ""}">
-        <img src="${msg.image}"
-             onclick="viewImg('${msg.image}')"
+      inner += imgUrl ? `<div class="media-container ${msg.caption ? "has-caption" : ""}">
+        <img src="${imgUrl}"
+             onclick="viewImg('${imgUrl}')"
              loading="lazy"
              alt="shared image"
              draggable="false">
         ${cap}
-      </div>`;
+      </div>` : "";
     }
 
     if (msg.video) {
+      const vidUrl = safeMediaUrl(msg.video);
       const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
-      inner += `<div class="media-container">
+      inner += vidUrl ? `<div class="media-container">
         <video controls preload="metadata" controlslist="nodownload" disablepictureinpicture>
-          <source src="${msg.video}" type="video/mp4">
+          <source src="${vidUrl}" type="video/mp4">
           Your browser does not support video playback.
         </video>
         ${cap}
-      </div>`;
+      </div>` : "";
     }
   }
 
@@ -4079,10 +4110,10 @@ function loadMediaGrid() {
     const el = document.createElement("div");
     el.className = "media-thumb";
     if (m.image) {
-      el.innerHTML = `<img src="${m.image}" alt="media">`;
+      el.innerHTML = `<img src="${safeMediaUrl(m.image)}" alt="media">`;
       el.addEventListener("click", () => viewImg(m.image));
     } else if (m.video) {
-      el.innerHTML = `<video src="${m.video}" style="width: 100%; height: 100%; object-fit: cover;"></video>`;
+      el.innerHTML = `<video src="${safeMediaUrl(m.video)}" style="width: 100%; height: 100%; object-fit: cover;"></video>`;
       el.addEventListener("click", () => window.open(m.video, "_blank"));
     }
     grid.appendChild(el);
@@ -4184,7 +4215,7 @@ function applyCurrentWallpaper() {
   if (config && config.url) {
     chatArea.classList.add("has-custom-wallpaper");
     wallpaperLayer.classList.add("active");
-    wallpaperImg.style.backgroundImage = `url("${config.url}")`;
+    wallpaperImg.style.backgroundImage = `url("${safeMediaUrl(config.url)}")`;
     
     const blurPx = config.blur !== undefined ? config.blur : 2;
     wallpaperImg.style.filter = `blur(${blurPx}px)`;
@@ -4219,7 +4250,7 @@ function updateWallpaperUIIndicators(isPerChat, config) {
   const settingsSub = document.getElementById("settingsWpSub");
   if (settingsThumb) {
     if (globalWallpaper && globalWallpaper.url) {
-      settingsThumb.style.backgroundImage = `url("${globalWallpaper.url}")`;
+      settingsThumb.style.backgroundImage = `url("${safeMediaUrl(globalWallpaper.url)}")`;
       settingsTitle.textContent = "Global Wallpaper Active";
       settingsSub.textContent = `Blur: ${globalWallpaper.blur || 0}px • Darken: ${globalWallpaper.dimming || 50}%`;
     } else {
@@ -4237,12 +4268,12 @@ function updateWallpaperUIIndicators(isPerChat, config) {
   
   if (infoThumb) {
     if (isPerChat && config && config.url) {
-      infoThumb.style.backgroundImage = `url("${config.url}")`;
+      infoThumb.style.backgroundImage = `url("${safeMediaUrl(config.url)}")`;
       infoTitle.textContent = "Custom Wallpaper (This Chat)";
       infoSub.textContent = `Specific to ${selectedUser ? (selectedUser.displayName || 'this chat') : 'this chat'}`;
       if (infoResetBtn) infoResetBtn.style.display = "inline-flex";
     } else if (globalWallpaper && globalWallpaper.url) {
-      infoThumb.style.backgroundImage = `url("${globalWallpaper.url}")`;
+      infoThumb.style.backgroundImage = `url("${safeMediaUrl(globalWallpaper.url)}")`;
       infoTitle.textContent = "Using Global Wallpaper";
       infoSub.textContent = "Inherited from global settings";
       if (infoResetBtn) infoResetBtn.style.display = "none";
@@ -6727,9 +6758,9 @@ function openPromptResponsesModal(promptId) {
       card.className = "prompt-response-card";
       let mediaHtml = "";
       if (s.type === "image" && s.url) {
-        mediaHtml = `<img src="${s.url}" class="prompt-response-media" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">`;
+        mediaHtml = `<img src="${safeMediaUrl(s.url)}" class="prompt-response-media" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">`;
       } else if (s.type === "video" && s.url) {
-        mediaHtml = `<video src="${s.url}" class="prompt-response-media" controls></video>`;
+        mediaHtml = `<video src="${safeMediaUrl(s.url)}" class="prompt-response-media" controls></video>`;
       } else {
         mediaHtml = `<div class="prompt-response-text">${escapeHtml(s.text || "")}</div>`;
       }
@@ -6974,7 +7005,7 @@ async function searchTrendingMusic() {
       const previewUrl = track.previewUrl || "";
 
       el.innerHTML = `
-        <img src="${img}" class="music-result-img" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <img src="${safeMediaUrl(img)}" class="music-result-img" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
         <div class="music-result-info">
           <div class="music-result-title">${escapeHtml(title)}</div>
           <div class="music-result-artist">${escapeHtml(artist)}</div>
@@ -7014,7 +7045,7 @@ function selectMusic(musicData) {
   selectedBox.innerHTML = `
     <div class="music-selected">
       <div class="music-selected-info">
-        <img src="${musicData.albumArt}" class="music-selected-img" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <img src="${safeMediaUrl(musicData.albumArt)}" class="music-selected-img" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
         <div class="music-selected-meta">
           <div class="music-selected-title">${escapeHtml(musicData.title)}</div>
           <div class="music-selected-artist">${escapeHtml(musicData.artist)}</div>

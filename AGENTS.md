@@ -470,3 +470,42 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `renderMessageList` only when the new last message has a NEWER `createdAt`
   — an id check alone false-positives when the last message is deleted).
   Counter resets on reaching the bottom, on button click, and on chat switch.
+
+## Security hardening (do NOT regress)
+- **`safeMediaUrl(url)`** (dashboard.html, next to `escapeHtml`): every URL from
+  Firestore/APIs that gets interpolated into HTML markup (`src="…"`,
+  `style url("…")`, inline `onclick`) MUST go through it. It allows only
+  http(s)/blob:/data:image|video|audio and strips quotes/backslashes so a
+  crafted URL can't break out of the attribute or run `javascript:`. Applied
+  at: chat image/video bubbles, view-once media, story-reply thumbnails,
+  shared-media grid, wallpapers, music art, prompt-response media, and user
+  photos (sanitized centrally in `startUsersListener` + `loadCachedUsers`,
+  which covers every avatar sink).
+- Text content is safe via `escapeHtml`/`linkify`/`textContent` — keep it
+  that way; never interpolate raw user text into innerHTML.
+- **CSP + referrer meta tags** are set in the `<head>` of dashboard.html,
+  login.html, signup.html, admin.html, index.html. dashboard.html's CSP
+  allows gstatic/unpkg/jsdelivr scripts (with 'unsafe-inline' for the inline
+  init script), https/wss connect-src, and frame-src limited to
+  askifyai.onrender.com. If you add a new external script/frame/font, extend
+  the CSP or it will be blocked.
+- **firestore.rules tightened** (must be DEPLOYED:
+  `firebase deploy --only firestore:rules`):
+  - chats/calls create requires `from == request.auth.uid` (no impersonation)
+    + `to` non-empty + `text` ≤ 10000 chars.
+  - chats update split by role: recipient (`to`) may only touch
+    read/readAt/status/react/reactions/viewOnceOpened; sender (`from`) may
+    additionally edit text/edited/editedAt/updatedAt (text size re-checked).
+    NOTE: client reaction writes use field `reactions`, edits use `editedAt`
+    — keep both in the allowed lists or those features break.
+  - voice_rooms delete = host only (`hostId`); voice_invites create/update
+    only into someone else's doc, delete only by the invitee.
+  - typing docs are keyed by the TYPER's uid (not the chat key!) — read:
+    any signed-in user, write: owner only. disappearingSettings docs are
+    keyed by getChatKey (sorted uid pair joined with "_") and restricted to
+    pair members via `request.auth.uid in keyId.split('_')`.
+- Chat textarea has `maxlength="5000"` (client-side cap; the 10000-char rules
+  cap is the server-side backstop).
+- Scroll button: `scrollChatToBottom()` uses `scrollIntoView` on the last
+  `.msg` + deferred re-scrolls (250/600ms) so late-loading media can't leave
+  the view stranded above the latest message.
