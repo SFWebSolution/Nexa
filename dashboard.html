@@ -323,13 +323,18 @@
       <span id="disappearingBannerText">Disappearing messages are turned on</span>
     </div>
 
-    <div class="messages" id="messages">
+    <div class="messages" id="messages" onscroll="updateScrollDownBtn()">
       <div class="empty-chat">
         <div class="empty-chat-icon">💬</div>
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger for Web</div>
         <div style="font-size: 13px; color: var(--text-3);">Select a conversation from the sidebar to start chatting</div>
       </div>
     </div>
+
+    <button class="scroll-down-btn" id="scrollDownBtn" onclick="scrollChatToBottom()" title="Scroll to latest message">
+      <i data-lucide="chevron-down" style="width: 22px; height: 22px;"></i>
+      <span class="scroll-down-badge" id="scrollDownBadge" style="display: none;">0</span>
+    </button>
 
     <div class="typing-bar" id="typingBar"></div>
     <div id="replyStripWrap"></div>
@@ -2320,6 +2325,8 @@ function selectChat(user, el) {
   listenDisappearingSettings();
   document.getElementById("typingBar").innerHTML = "";
   closeChatInfo();
+  scrollDownNewCount = 0;
+  updateScrollDownBtn();
 
   if (window.innerWidth <= 768) {
     const app = document.getElementById("app");
@@ -2869,6 +2876,40 @@ function scheduleMessageRender() {
   });
 }
 
+// WhatsApp-style floating "scroll to latest" button. Shown when the user has
+// scrolled away from the bottom; its badge counts messages that arrive while
+// scrolled up. (.messages has scroll-behavior:smooth, so a scrollTop jump
+// animates on its own.)
+let scrollDownNewCount = 0;
+
+function isChatNearBottom() {
+  const box = document.getElementById("messages");
+  if (!box) return true;
+  return box.scrollHeight - box.scrollTop - box.clientHeight < 200;
+}
+
+function scrollChatToBottom() {
+  const box = document.getElementById("messages");
+  if (!box) return;
+  box.scrollTop = box.scrollHeight;
+  scrollDownNewCount = 0;
+  updateScrollDownBtn();
+}
+
+function updateScrollDownBtn() {
+  const btn = document.getElementById("scrollDownBtn");
+  if (!btn) return;
+  const nearBottom = isChatNearBottom();
+  if (nearBottom) scrollDownNewCount = 0;
+  btn.classList.toggle("show", !nearBottom);
+  const badge = document.getElementById("scrollDownBadge");
+  if (badge) {
+    const showBadge = !nearBottom && scrollDownNewCount > 0;
+    badge.style.display = showBadge ? "flex" : "none";
+    if (showBadge) badge.textContent = scrollDownNewCount > 99 ? "99+" : String(scrollDownNewCount);
+  }
+}
+
 function renderMessageList() {
   // A direct (imperative) render supersedes any pending coalesced render —
   // cancel it so a stale rAF doesn't overwrite a newer immediate render.
@@ -2877,6 +2918,8 @@ function renderMessageList() {
   const box = document.getElementById("messages");
   if (!box) return;
 
+  const prevLast = allMessages.length ? allMessages[allMessages.length - 1] : null;
+  const prevLastTime = prevLast ? (prevLast.createdAt || 0) : 0;
   allMessages = [..._msgsA, ..._msgsB].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
   // Check and apply disappearing messages filter
@@ -2925,6 +2968,7 @@ function renderMessageList() {
     } else {
       box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger</div><div style="font-size: 13px; color: var(--text-3);">No messages yet. Send a message to start conversation!</div></div>';
     }
+    updateScrollDownBtn();
     return;
   } else if (emptyChatEl) {
     emptyChatEl.remove();
@@ -3061,6 +3105,14 @@ function renderMessageList() {
   } else if (wasNearBottom) {
     box.scrollTop = box.scrollHeight;
   }
+
+  // Badge the scroll-down button when a new incoming message lands while the
+  // user is scrolled up reading older messages.
+  const newLast = allMessages.length ? allMessages[allMessages.length - 1] : null;
+  if (newLast && (newLast.createdAt || 0) > prevLastTime && !wasNearBottom && !chatJustOpened && newLast.from !== currentUser.uid) {
+    scrollDownNewCount++;
+  }
+  updateScrollDownBtn();
 
   if (allMessages.length) {
     const last = allMessages[allMessages.length - 1];

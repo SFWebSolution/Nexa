@@ -455,3 +455,18 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - The immediate hint is suppressed on `?banned=1`/`?deleted=1` redirects so
   it doesn't overwrite those more important messages.
 
+
+## Scroll-to-bottom button (dashboard.html)
+- WhatsApp-style floating button `#scrollDownBtn` (`.scroll-down-btn` in
+  dashboard.css) sits absolute inside `.chat` (bottom: 92px, right: 18px,
+  z-index 40). It shows only when `#messages` is scrolled >200px from the
+  bottom (`isChatNearBottom`), toggled via `updateScrollDownBtn()` which is
+  wired to the messages div's inline `onscroll` and called from
+  `renderMessageList()` (both exit paths) and `selectChat()`.
+- `scrollChatToBottom()` just sets `box.scrollTop = box.scrollHeight` —
+  `.messages` already has `scroll-behavior: smooth`, so it animates.
+- The green badge (`#scrollDownBadge`) counts incoming messages that arrive
+  while the user is scrolled up (`scrollDownNewCount`, incremented in
+  `renderMessageList` only when the new last message has a NEWER `createdAt`
+  — an id check alone false-positives when the last message is deleted).
+  Counter resets on reaching the bottom, on button click, and on chat switch.

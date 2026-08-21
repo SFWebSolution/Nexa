@@ -1333,6 +1333,52 @@ select:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 
+/* WhatsApp-style floating "scroll to latest" button (shown when scrolled up) */
+.scroll-down-btn {
+  position: absolute;
+  bottom: 92px;
+  right: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border-md);
+  background: var(--bg-4);
+  color: var(--text-1);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 40;
+  opacity: 0;
+  transform: translateY(10px) scale(0.9);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.15s ease;
+}
+.scroll-down-btn.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.scroll-down-btn:hover { background: var(--bg-5); }
+.scroll-down-btn:active { transform: scale(0.94); }
+.scroll-down-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--online);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+}
+
 .empty-chat {
   margin: auto;
   text-align: center;
