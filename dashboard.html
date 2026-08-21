@@ -513,8 +513,10 @@
       <!-- Sticker rendered on top of the preview image -->
       <div class="sticker-on-image" id="stickerOnImage"></div>
 
-      <!-- Sticker toolbar button (like WhatsApp's sticker icon) -->
-      <button class="sticker-tool-btn" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker" disabled>😀</button>
+      <!-- Sticker toolbar button (like WhatsApp's sticker icon). Always
+           clickable: when no media is picked yet, tapping it opens the image
+           picker (handled in toggleStickerTray) instead of silently failing. -->
+      <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker">😀</button>
 
       <!-- Sticker tray popup -->
       <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
@@ -2121,14 +2123,21 @@ function formatTimeRemaining(ms) {
 }
 
 // Fetch another user's active note for the profile modal (one-time read).
+// Logs permission errors distinctly so an undeployed firestore.rules (the
+// usual cause of "the note doesn't show on their profile") is visible in the
+// console instead of silently looking like "no note set".
 async function fetchUserNote(uid) {
+  if (!uid) return null;
   try {
     const doc = await window.db.collection("profile_notes").doc(uid).get();
     const data = doc.data();
     if (!data || !data.text) return null;
     if (data.createdAt && (Date.now() - data.createdAt > 24 * 60 * 60 * 1000)) return null;
     return data.text;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.warn("[profile_notes] read failed for", uid, "— if this is a permission-denied error, deploy firestore.rules (`firebase deploy --only firestore:rules`) so cross-user reads are allowed.", e && e.code ? "(" + e.code + ")" : "", e);
+    return null;
+  }
 }
 
 function triggerProfilePhotoUpload() {
@@ -5467,6 +5476,7 @@ let storyCurrentDuration = 0;
 // collection used to be re-read in full on every post/view anywhere.
 const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 let statusListenerUnsub = null;
+let statusGcRunning = false;
 function startStatusListener() {
   if (statusListenerUnsub) return;
   const cutoff = Date.now() - STATUS_TTL_MS;
@@ -5491,6 +5501,27 @@ function startStatusListener() {
       renderStoriesBar();
       renderUsers();
     }, err => console.error("Status listener error:", err));
+  // One-time garbage collection of stories older than 24h. The scoped listener
+  // never returns them, so they'd otherwise linger in storage forever. We read
+  // ONLY the expired slice (createdAt < cutoff), bounded, and batch-delete —
+  // any signed-in client may delete an expired story per firestore.rules.
+  purgeExpiredStories();
+}
+
+// Delete stories past their 24h TTL. Bounded to the expired slice so it never
+// reads the whole collection; runs once per session on listener start.
+function purgeExpiredStories() {
+  if (statusGcRunning || !db) return;
+  statusGcRunning = true;
+  const cutoff = Date.now() - STATUS_TTL_MS;
+  db.collection("status").where("createdAt", "<", cutoff).get().then(snap => {
+    if (snap.empty) return;
+    let batch = db.batch();
+    let count = 0;
+    snap.forEach(d => { batch.delete(d.ref); count++; if (count % 400 === 0) { batch.commit(); batch = db.batch(); } });
+    if (count % 400 !== 0) batch.commit();
+    console.log("Purged", count, "expired stories (>" + Math.round(STATUS_TTL_MS/3600000) + "h old).");
+  }).catch(err => console.warn("Story GC error:", err)).finally(() => { statusGcRunning = false; });
 }
 
 function renderStoriesBar() {
@@ -6315,6 +6346,10 @@ let activeAddYoursPrompt = { promptId: null, promptText: "" };
 // overlay get the same prompt (Add Yours → post own photo w/ same promptId;
 // Question → type answer → chat reply to asker).
 let pendingStorySticker = null;
+// When the user taps a sticker (➕/❓) before picking a photo, we remember
+// their choice here, open the image picker, and re-run attachStorySticker()
+// once a photo is chosen so the sticker attaches smoothly (WhatsApp flow).
+let pendingStickerChoice = null;
 
 function updateStoryStickerPreview() {
   refreshStickerToolButton();
@@ -6324,25 +6359,35 @@ function updateStoryStickerPreview() {
 
 // Enable/disable the sticker toolbar button based on whether there's content
 // (a photo/video file, or typed text) to attach the sticker to.
+// NOTE: we never set the `disabled` HTML attribute — a disabled button
+// swallows clicks silently (so tapping ➕ "Add Yours" did nothing at all,
+// which is the bug the user hit). Instead we only toggle a visual class and
+// let toggleStickerTray/attachStorySticker handle the no-media case by
+// opening the image picker first (WhatsApp-style: pick a photo, then sticker).
 function refreshStickerToolButton() {
   const btn = document.getElementById("stickerToolBtn");
   if (!btn) return;
   const hasMedia = (statusTab === "image" || statusTab === "video") && statusFile;
   const hasText = statusTab === "text" && (document.getElementById("statusTextInput")?.value.trim() || "");
   const hasMusic = statusTab === "music" && selectedMusicData;
-  btn.disabled = !(hasMedia || hasText || hasMusic);
-  btn.classList.toggle("disabled", btn.disabled);
+  btn.classList.toggle("disabled", !(hasMedia || hasText || hasMusic));
 }
 
 function toggleStickerTray(ev) {
   ev.stopPropagation();
-  const tray = document.getElementById("stickerTray");
-  if (!tray) return;
   const btn = document.getElementById("stickerToolBtn");
-  if (btn && btn.disabled) {
-    showNotifToast("Pick a photo or video first, then add a sticker", "error");
+  const hasContent = btn && !btn.classList.contains("disabled");
+  if (!hasContent) {
+    // No media yet → start the WhatsApp flow: open the image picker so the
+    // user can choose a photo first, THEN add the sticker. We don't toast a
+    // generic "pick a photo first" because that reads as "the button's broken".
+    showNotifToast("Pick a photo first — stickers attach to your photo", "info");
+    pendingStickerChoice = null; // cleared; user must tap a sticker again after media
+    switchStatusTab("image");
     return;
   }
+  const tray = document.getElementById("stickerTray");
+  if (!tray) return;
   tray.classList.toggle("open");
 }
 
@@ -6393,15 +6438,23 @@ function attachStorySticker(type) {
   const hasText = statusTab === "text" && (document.getElementById("statusTextInput").value.trim() || "");
   const hasMusic = statusTab === "music" && selectedMusicData;
   if (!hasMedia && !hasText && !hasMusic) {
-    showNotifToast("Pick a photo/video first, then add a sticker", "error");
+    // WhatsApp flow: no media yet → remember which sticker the user wants,
+    // open the image picker, and once a photo is chosen we re-invoke this to
+    // prompt for the sticker text and attach it. This is the fix for "the
+    // Add Yours plus button does nothing" — it now opens the picker.
+    pendingStickerChoice = type;
+    showNotifToast("Pick a photo first, then add your sticker", "info");
+    switchStatusTab("image");
+    closeStickerTray();
     return;
   }
   const text = window.prompt(type === "question" ? "Ask a question:" : "Add Yours prompt:", "");
-  if (text === null) return;
+  if (text === null) { pendingStickerChoice = null; return; }
   const t = text.trim();
   if (!t) { showNotifToast("Please type something for the sticker", "error"); return; }
   const id = (type === "question" ? "q_" : "prompt_") + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
   pendingStorySticker = { type, text: t, id };
+  pendingStickerChoice = null;
   closeStickerTray();
   renderStickerOnImage();
   renderStoryStickerPreview();
@@ -6513,6 +6566,7 @@ async function shareAddYoursResponse() {
       uid: currentUser.uid,
       type: addYoursTab,
       createdAt: Date.now(),
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: [],
@@ -6761,7 +6815,7 @@ function switchStatusTab(tab) {
 
 function previewStatusImage(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) { pendingStickerChoice = null; return; }
   statusFile = file;
   statusTab = "image";
   const reader = new FileReader();
@@ -6769,13 +6823,16 @@ function previewStatusImage(e) {
     document.getElementById("statusPreview").innerHTML = `<img src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;">`;
     refreshStickerToolButton();
     renderStickerOnImage();
+    // If the user tapped a sticker before picking a photo (WhatsApp flow),
+    // now that we have media, prompt for the sticker text and attach it.
+    if (pendingStickerChoice) { const c = pendingStickerChoice; pendingStickerChoice = null; attachStorySticker(c); }
   };
   reader.readAsDataURL(file);
 }
 
 function previewStatusVideo(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) { pendingStickerChoice = null; return; }
   statusFile = file;
   statusTab = "video";
   const reader = new FileReader();
@@ -6783,6 +6840,7 @@ function previewStatusVideo(e) {
     document.getElementById("statusPreview").innerHTML = `<video src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;" controls></video>`;
     refreshStickerToolButton();
     renderStickerOnImage();
+    if (pendingStickerChoice) { const c = pendingStickerChoice; pendingStickerChoice = null; attachStorySticker(c); }
   };
   reader.readAsDataURL(file);
 }
@@ -6917,6 +6975,7 @@ async function shareStatus() {
       uid: currentUser.uid,
       type: statusTab,
       createdAt: Date.now(),
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
