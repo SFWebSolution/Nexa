@@ -29,7 +29,8 @@
 - Stories live in the Firestore `status` collection (doc id auto, fields: `uid`, `type`, `createdAt` (ms epoch), `expireAt` (Firestore Timestamp = createdAt + 24h), `url`/`text`/`musicData`, `views`, `likes`, `reshares`).
 - **Stories auto-expire 24h after posting and are actually DELETED, not just hidden.** Every open client's `startStatusListener()` garbage-collects ALL expired stories on each snapshot (any signed-in user may delete a story past its `expireAt`, per the Firestore rule). New stories are stamped with `expireAt = firebase.firestore.Timestamp.fromMillis(createdAt + 24h)`. Legacy docs without `expireAt` are expired via `createdAt + 24h`. A story with no usable timestamp is treated as already expired (deleted). Don't re-introduce a "never delete, only hide" listener — that left `status` growing forever and inflated Firestore reads (same quota failure mode as the old per-user presence listeners).
 - **Firestore rules (`firestore.rules`, `match /status/{statusId}`)** are what make cross-user deletion safe: `allow delete` = owner anytime OR `storyExpired(resource.data)` (past `expireAt`, or legacy `createdAt + 24h`); `allow update` = owner anytime OR non-owner touching ONLY `views`/`likes`/`reshares` (`affectedKeys().hasOnly`); `allow create` = own uid + `createdAt is int` + `expireAt` is a future Timestamp (optional). **The old rule was owner-only update, which silently broke view/like/reshare recording on others' stories — that's now fixed.** Rules must be DEPLOYED to take effect: `firebase deploy --only firestore:rules` (project `mel-odix`; create a local `.firebaserc` with `{projects:{default:"mel-odix"}}` — it's gitignored).
-- The weekly-leaderboard story listener (`startLeaderboardListeners`) also reads `status` and counts docs with `createdAt >= weekStart`.
+- **`startStatusListener()` is scoped to the last 24h** via `.where("createdAt", ">=", Date.now() - 24h)` (a single-field range query — `createdAt` is auto-indexed, no composite index needed). This is the single biggest stories read saver: instead of re-reading the ENTIRE `status` collection on every post/view anywhere, Firestore only returns the last 24h of stories. A client-side TTL guard also drops any story that aged past 24h during a very long session (the server query cutoff is fixed at listener creation). Do NOT revert to an unscoped `db.collection("status").onSnapshot`.
+- The dashboard "Weekly Most Active Users" leaderboard in Settings has been REMOVED (it ran a real-time week-scoped `chats` listener + derived scores on every send/presence/status change). `admin.html` still has its own separate leaderboard. Do NOT re-add a leaderboard to `dashboard.html`.
 
 ## Chat list ordering (`renderUsers`)
 - The user list is sorted primarily by **last-chat time** (`latestMsgTime[uid]`, descending) — "those you chatted last" on top. Favorites / online / name are only tiebreakers among contacts with the same (or no) last-chat time. Don't put favorites or a "has message" tier ABOVE recency — that buries recently-chatted contacts under old favorites.
@@ -38,14 +39,9 @@
 ## Presence / online status
 - Online dots + chat-header "last seen" are driven by a SINGLE shared
   `db.collection("presence").onSnapshot` listener (`startSharedPresenceListener`)
-  that feeds `userPresenceCache` (and mirrors into `adminPresenceData`).
-  Do NOT re-introduce per-user `presence/{uid}` doc listeners — one per contact
-  exploded Firestore read counts and is what broke presence at scale / hit the
-  Spark-plan quota. Do NOT re-add a SECOND full-collection presence listener in
-  `startLeaderboardListeners()` either — the leaderboard now reads from the same
-  shared cache and `startSharedPresenceListener` calls `renderWeeklyLeaderboard()`
-  on every presence change (the old `leaderboardPresenceUnsub` was a redundant
-  duplicate that raced with the shared one and doubled reads).
+  that feeds `userPresenceCache`. Do NOT re-introduce per-user
+  `presence/{uid}` doc listeners — one per contact exploded Firestore read
+  counts and is what broke presence at scale / hit the Spark-plan quota.
 - **"Online" = the user's app is actively heartbeating RIGHT NOW** (the
   "in the app alone" rule). `isUserOnline(pdata)` returns true ONLY if
   `lastSeen` (or `last_seen`) is fresher than `PRESENCE_TIMEOUT_MS` (90s),
@@ -85,27 +81,31 @@
 
 ## Firestore quota / read+write optimization (do NOT undo)
 Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixed:
-- **Leaderboard** (`startLeaderboardListeners`): previously opened THREE extra
-  full-collection real-time listeners (`users`, `chats`, `status`) on top of
-  the ones the rest of the app already had. The `chats` one re-read EVERY
-  message in the database on every send anywhere — the #1 quota killer.
-  Now: (a) `adminUsers` is derived from the shared `allUsersData` (mirrored in
-  `startUsersListener`) — NO second `users` listener (`leaderboardUsersUnsub`
-  stays null); (b) `chats` is scoped to `.where("createdAt", ">=", weekStart)`
-  so it only reads this week's messages; (c) story scores come from
-  `computeStoryScores(weekStart)` reading the shared `userStatuses` cache —
-  NO second `status` listener (`leaderboardStoryUnsub` stays null).
-  `startStatusListener` calls `computeStoryScores()` + `renderWeeklyLeaderboard()`
-  so story scores stay live.
+- **Dashboard weekly leaderboard — REMOVED entirely.** It previously opened a
+  real-time `chats` listener (scoped to the week) plus derived scores on every
+  send/presence/status change, and (before that) THREE extra full-collection
+  listeners (`users`, `chats`, `status`). The leaderboard UI, its JS
+  (`startLeaderboardListeners`, `renderWeeklyLeaderboard`, `reloadWeeklyStats`,
+  `computeStoryScores`, `getCurrentWeekStart`, `getWeekDateRange`, `getMonday`,
+  `normalizeTimestamp`, `checkUserOnline`), and its `adminUsers`/`adminPresenceData`/
+  `cachedMsgScores`/`cachedStoryScores`/`leaderboard*Unsub` globals are all gone
+  from `dashboard.html`. `admin.html` keeps its own independent leaderboard.
+  Do NOT re-add a leaderboard to the dashboard.
+- **Status/stories listener scoped to 24h**: `startStatusListener()` uses
+  `.where("createdAt", ">=", Date.now() - 24h)` so Firestore returns only the
+  last 24h of stories instead of the whole `status` collection on every change.
+  Single-field range, no composite index. Do NOT revert to unscoped.
+- **Unread counts scoped to unread-only**: `loadUnreadCounts()` listens to
+  `.where("to","==",me).where("read","==",false)` and rebuilds per-sender
+  counts from the (small) unread snapshot each event. Previously it listened to
+  the ENTIRE incoming inbox (every message ever received) and re-read all of it
+  on every change — a major read burner for users with long histories. The
+  all-equality query needs no composite index (Firestore zigzag-merges
+  single-field indexes). `recountUnreadForSender` was removed (no longer needed).
 - **Read-marking** (`markRead()` + the messages-B onSnapshot): previously did
   one `update()` call PER unread message (N writes for N unread). Now both use
   a single `db.batch()` so opening a chat with many unread messages is ONE
   write request.
-- **Unread counts** (`loadUnreadCounts`): previously re-iterated the ENTIRE
-  inbox snapshot on every change to rebuild `unreadMessages`. Now uses
-  `docChanges()` to maintain a running per-sender counter incrementally
-  (O(changes), not O(inbox)). On a read-flag flip ("modified", rare) it falls
-  back to a cheap single-sender `recountUnreadForSender(uid)` query.
 - **Typing indicator**: the input handler previously wrote `typing:true` on
   EVERY keystroke (many writes/sec during fast typing). Now a
   `typingCurrentlyActive` guard writes `typing:true` only ONCE per typing
