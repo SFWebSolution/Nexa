@@ -6748,6 +6748,7 @@ async function reshareStory() {
         name: ownerName
       },
       createdAt: Date.now(),
+      expireAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
       views: [],
       likes: [],
       reshares: []
