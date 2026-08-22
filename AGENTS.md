@@ -199,6 +199,15 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `retryCallPeer` call, or one-way audio holes won't self-heal.
 
 
+## Message pagination (`loadMessages` + scroll-up paging)
+- A chat opens with only the newest **12 messages per direction** (`MSG_PAGE_SIZE`), via `.orderBy("createdAt","desc").limit(12)` on the two per-chat listeners. Older history loads in **25-message** chunks (`MSG_OLDER_PAGE_SIZE`) when the user scrolls within 80px of the top (`maybeLoadOlderMessages` → `loadOlderMessages`, with a `.older-msgs-loading` pill + scroll-position preservation).
+- **Composite index REQUIRED**: `chats (from, to, createdAt DESC)` — defined in `firestore.indexes.json` (also covers the pre-existing `from/to + createdAt` indexes used by `loadInitialChatTimestamps`; deploying indexes DELETES any not listed). Deploy with `firebase deploy --only firestore` (rules + indexes).
+- **Sliding-window continuity:** the live window slides as new messages arrive. `retainSlidOut()` moves ejected messages into `_olderMsgsA/B` so no gap forms, and `recordSeam()` detects BULK slides (window's previous newest < new window's oldest → messages between never appeared in any snapshot) and records a seam range that gets healed lazily on scroll-up via `startAfter/endBefore` fetch. Do NOT remove either — removing them makes mid-history messages silently vanish in active chats.
+- Older pages live in `_olderMsgsA/B` (NOT `_msgsA/B`, which the live listener replaces wholesale). `renderMessageList` merges all four and DEDUPES by id (a seam-healed message can later slide back into the window).
+- Features that now must account for unloaded history: `clearChat` (deletes the WHOLE conversation via full-conversation queries, batched ≤400/batch, own messages only per rules), message search (full-history fetch cached 60s per chat + 250ms debounce), `scrollToMsg` (pages older chunks until the target renders), `saveEditMessage`/`deleteMsg` (patch older pages locally since they aren't live-listened).
+- Remote deletes of messages that only live in `_olderMsgs` are NOT live-propagated (ghost until chat re-open) — accepted tradeoff to keep the listener windowed.
+- `autoSaveMedia` caches the parsed `nexa_autosaved_media` localStorage map in memory (`_autoSavedMediaCache`) instead of re-parsing per media message per render; the map is capped at 500 entries.
+
 ## Firestore rules + secrets
 - `firestore.rules` now exists and is wired into `firebase.json` (`firestore.rules`).
   Deploy with `firebase deploy --only firestore:rules`. Rules allow auth-only

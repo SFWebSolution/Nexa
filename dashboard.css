@@ -1362,6 +1362,39 @@ select:focus-visible {
 }
 .scroll-down-btn:hover { background: var(--bg-5); }
 .scroll-down-btn:active { transform: scale(0.94); }
+
+/* WhatsApp-style "loading older messages" pill, shown at the top of the
+   chat while a history page is being fetched. */
+.older-msgs-loading {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-md);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  z-index: 40;
+  pointer-events: none;
+}
+.older-msgs-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-md);
+  border-top-color: var(--cyan);
+  animation: olderMsgsSpin 0.8s linear infinite;
+}
+@keyframes olderMsgsSpin {
+  to { transform: rotate(360deg); }
+}
 .scroll-down-badge {
   position: absolute;
   top: -6px;
