@@ -1450,7 +1450,7 @@ function checkUserOnline(u) {
   const p = presenceData[uid];
   if (!p) return false;
   if (p.online === false || p.status === "offline") return false;
-  const lastSeen = p.lastSeen || 0;
+  const lastSeen = p.lastSeen || p.last_seen || 0;
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
 
@@ -1538,7 +1538,7 @@ function refreshOnlineCounts() {
   users.forEach(u => {
     if (checkUserOnline(u)) onlineCount++;
     const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
     if (lastSeen >= (now - day)) activeTodayCount++;
   });
 
@@ -1571,7 +1571,7 @@ function applyFiltersAndRender() {
 
     const isOnline = checkUserOnline(u);
     const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
     const isActiveToday = lastSeen >= (now - 86400000);
 
     if (currentFilter === "active") return isActiveToday;
@@ -1729,7 +1729,7 @@ function renderLeaderboard() {
     const msgs = cachedMsgScores[u.uid] || 0;
     const stories = cachedStoryScores[u.uid] || 0;
     const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
     const isOnline = checkUserOnline(u);
     const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
@@ -1794,12 +1794,15 @@ function renderLeaderboard() {
 /* =====================================================
    TIMESTAMP HELPER
    ===================================================== */
+// Missing/unparseable timestamps must NOT become "now" — that would mark
+// legacy users as registered today. 0 means "unknown", excluded from
+// today-stats and the growth chart.
 function normalizeTimestamp(value) {
-  if (!value) return Date.now();
+  if (!value) return 0;
   if (typeof value.toDate === "function") return value.toDate().getTime();
   if (typeof value === "number") return value;
   const parsed = new Date(value).getTime();
-  return isNaN(parsed) ? Date.now() : parsed;
+  return isNaN(parsed) ? 0 : parsed;
 }
 
 function formatLastSeen(ts) {
@@ -1826,7 +1829,10 @@ function render() {
   const weekStart = getCurrentWeekStart();
 
   const totalUsers = users.length;
-  const todayUsers = users.filter(u => u.createdAt >= now - day).length;
+  // Calendar "today" (local midnight) so this stat always matches the
+  // chart's last bar; users with unknown createdAt (0) are excluded.
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const todayUsers = users.filter(u => u.createdAt >= todayStart).length;
   const bannedUsers = users.filter(u => u.banned).length;
 
   let activeTodayCount = 0;
@@ -1835,7 +1841,7 @@ function render() {
 
   users.forEach(u => {
     const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || u.lastSeen || 0;
+    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
     const isOnline = checkUserOnline(u);
     const isActive = lastSeen >= (now - day);
     const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
@@ -2190,7 +2196,7 @@ function renderTable(data) {
 
   table.innerHTML = data.map(u => {
     const p = presenceData[u.uid] || {};
-    const lastSeenTs = p.lastSeen || u.lastSeen || 0;
+    const lastSeenTs = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
     const isOnline = checkUserOnline(u);
     const isAway = p.status === "away" && isOnline;
 
@@ -2202,7 +2208,7 @@ function renderTable(data) {
 
     let statusClass = u.banned ? "status-banned" : isOnline ? "status-active" : "status-offline";
     
-    const joinedStr = new Date(u.createdAt).toLocaleDateString();
+    const joinedStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—";
     const lastSeenStr = isOnline && !u.banned ? "Online now" : formatLastSeen(lastSeenTs);
     const nameDisplay = u.displayName || u.name || "—";
     const emailDisplay = u.email || "—";
