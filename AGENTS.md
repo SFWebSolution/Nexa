@@ -208,6 +208,13 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Remote deletes of messages that only live in `_olderMsgs` are NOT live-propagated (ghost until chat re-open) — accepted tradeoff to keep the listener windowed.
 - `autoSaveMedia` caches the parsed `nexa_autosaved_media` localStorage map in memory (`_autoSavedMediaCache`) instead of re-parsing per media message per render; the map is capped at 500 entries.
 
+## Admin backend (`server/admin-api.js`)
+- The hardened Firestore rules forbid browser-side edit/ban/delete of OTHER users' `users` docs (update is owner-only, delete is `if false`). `admin.html` therefore routes Edit/Ban/Delete through an Express backend using the Firebase Admin SDK: `POST /api/admin/edit-user`, `/api/admin/ban-user`, `/api/admin/delete-user`.
+- Deploy it into the SAME backend the dashboard already uses for push notifications (`BACKEND_URL` = `https://nexa-backend-e6pq.onrender.com`, see dashboard.html). `admin.html` picks the same base via `ADMIN_API_BASE` (localhost:3000 in dev).
+- Auth is a shared secret: every request must send header `X-Admin-Secret` matching the backend's `ADMIN_SECRET` env var, else 403. `admin.html` has an `ADMIN_SECRET` const that must be set to the same value (it's visible in page source — accepted since the page is admin-email-gated, but the backend copy stays in an env var, never in the repo).
+- Backend env vars: `ADMIN_SECRET`, `ALLOWED_ORIGIN` (CORS), and either `GOOGLE_APPLICATION_CREDENTIALS` (local key file) or `FIREBASE_SERVICE_ACCOUNT` (whole JSON as env var, for Render). ban-user also disables the Firebase Auth account; delete-user removes users + presence docs and the Auth account.
+- Run locally: `cd server && npm install && ADMIN_SECRET=... GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json npm start`.
+
 ## Firestore rules + secrets
 - `firestore.rules` now exists and is wired into `firebase.json` (`firestore.rules`).
   Deploy with `firebase deploy --only firestore:rules`. Rules allow auth-only

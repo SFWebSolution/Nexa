@@ -1344,6 +1344,30 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
 
 const ADMIN_EMAIL = "neuro_stack@outlook.com";
 
+// Same backend the dashboard uses for push notifications. The admin
+// endpoints (edit/ban/delete) live there too — see server/admin-api.js.
+const ADMIN_API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:3000"
+  : "https://nexa-backend-e6pq.onrender.com";
+
+// The shared secret the backend checks via the X-Admin-Secret header.
+// Must match the ADMIN_SECRET env var on the backend. Anyone who can read
+// this page's source can see it — that's accepted for this admin panel
+// (the page itself is already gated by the admin-email login), but keep
+// the backend's copy in an env var, never in the repo.
+const ADMIN_SECRET = "change-me-to-a-long-random-string";
+
+function adminFetch(path, body) {
+  return fetch(ADMIN_API_BASE + path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Secret": ADMIN_SECRET
+    },
+    body: JSON.stringify(body)
+  });
+}
+
 let users = [];
 let presenceData = {};
 let totalMessagesCount = 0;
@@ -2050,29 +2074,17 @@ function saveUserEdit(uid, modal, nameInput, emailInput) {
     saveBtn.textContent = "💾 Saving...";
   }
 
-  // Real-time sync: Update Firestore with new data
-  const updateData = {
-    displayName: newName,
-    name: newName,
-    updatedAt: Date.now(),
-    lastModifiedBy: currentUser?.uid || "admin"
-  };
-
-  if (newEmail) {
-    updateData.email = newEmail;
-  }
-
-  db.collection("users").doc(uid).update(updateData)
-    .then(() => {
+  // Edit goes through the admin backend — the hardened Firestore rules only
+  // let a user edit their OWN profile, so a browser-side update to someone
+  // else's doc is permission-denied. The users listener re-renders on sync.
+  adminFetch("/api/admin/edit-user", { uid, displayName: newName, email: newEmail || undefined })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.success) throw new Error(data.error || "Failed");
       log(`✏️ Updated user ${uid}: name="${newName}" ${newEmail ? `email="${newEmail}"` : ''}`, "success");
-      
-      // Close modal immediately
       if (modal.parentNode) {
         document.body.removeChild(modal);
       }
-
-      // The Firestore listener will automatically update the dashboard across all devices
-      // No need to manually refresh - the onSnapshot listener handles it
     })
     .catch(err => {
       console.error("Edit error:", err);
@@ -2109,11 +2121,7 @@ function toggleBan(uid, currentState) {
     render();
   }
 
-  fetch("http://localhost:3000/api/admin/ban-user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uid, banned: newBannedState })
-  })
+  adminFetch("/api/admin/ban-user", { uid, banned: newBannedState })
   .then(res => res.json())
   .then(data => {
     if (data.success) {
@@ -2122,9 +2130,9 @@ function toggleBan(uid, currentState) {
       throw new Error(data.error || "Failed");
     }
   })
-  .catch(() => {
-    alert("⚠️ Ban/unban from the admin panel requires the admin backend (localhost:3000) running with admin-sdk. It cannot be done from the browser under the hardened Firestore rules.");
-    log(`Failed to toggle ban for ${uid}: admin backend unavailable`, "error");
+  .catch(err => {
+    alert("❌ Ban/unban failed: " + err.message + " (is the admin backend deployed with ADMIN_SECRET set?)");
+    log(`Failed to toggle ban for ${uid}: ${err.message}`, "error");
     if (u) { u.banned = currentState; render(); }
   });
 }
@@ -2141,11 +2149,7 @@ function deleteUser(uid) {
   users = users.filter(x => x.uid !== uid);
   render();
 
-  fetch("http://localhost:3000/api/admin/delete-user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uid })
-  })
+  adminFetch("/api/admin/delete-user", { uid })
   .then(res => res.json())
   .then(data => {
     if (data.success) {
@@ -2154,9 +2158,9 @@ function deleteUser(uid) {
       throw new Error(data.error || "Failed");
     }
   })
-  .catch(() => {
-    alert("⚠️ Delete user from the admin panel requires the admin backend (localhost:3000) running with admin-sdk. It cannot be done from the browser under the hardened Firestore rules.");
-    log(`Failed to delete user ${uid}: admin backend unavailable`, "error");
+  .catch(err => {
+    alert("❌ Delete user failed: " + err.message + " (is the admin backend deployed with ADMIN_SECRET set?)");
+    log(`Failed to delete user ${uid}: ${err.message}`, "error");
     users = oldUsers;
     render();
   });
