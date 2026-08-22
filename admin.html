@@ -1417,7 +1417,9 @@ function handleLogout() {
   }).catch(err => console.error(err));
 }
 
-const PRESENCE_TIMEOUT_MS = 35000;
+const PRESENCE_TIMEOUT_MS = 90000; // matches dashboard.html — a stale flag
+// alone is NOT trusted (mobile swipe-away leaves online:true forever); only a
+// heartbeat fresher than this counts as online.
 
 function checkUserOnline(u) {
   const uid = typeof u === "string" ? u : u.uid;
@@ -2121,17 +2123,9 @@ function toggleBan(uid, currentState) {
     }
   })
   .catch(() => {
-    db.collection("users").doc(uid).update({
-      banned: newBannedState,
-      updatedAt: Date.now()
-    }).then(() => {
-      log(`${newBannedState ? "Banned" : "Unbanned"} user ${uid}`, newBannedState ? "warning" : "success");
-    }).catch(err => {
-      console.error(err);
-      alert("❌ Error: " + err.message);
-      log(`Failed to toggle ban for ${uid}`, "error");
-      if (u) { u.banned = currentState; render(); }
-    });
+    alert("⚠️ Ban/unban from the admin panel requires the admin backend (localhost:3000) running with admin-sdk. It cannot be done from the browser under the hardened Firestore rules.");
+    log(`Failed to toggle ban for ${uid}: admin backend unavailable`, "error");
+    if (u) { u.banned = currentState; render(); }
   });
 }
 
@@ -2161,16 +2155,10 @@ function deleteUser(uid) {
     }
   })
   .catch(() => {
-    db.collection("users").doc(uid).delete().then(() => {
-      db.collection("presence").doc(uid).delete().catch(() => {});
-      log(`Permanently deleted user ${uid}`, "error");
-    }).catch(err => {
-      console.error(err);
-      alert("❌ Error: " + err.message);
-      log(`Failed to delete user ${uid}`, "error");
-      users = oldUsers;
-      render();
-    });
+    alert("⚠️ Delete user from the admin panel requires the admin backend (localhost:3000) running with admin-sdk. It cannot be done from the browser under the hardened Firestore rules.");
+    log(`Failed to delete user ${uid}: admin backend unavailable`, "error");
+    users = oldUsers;
+    render();
   });
 }
 
@@ -2219,7 +2207,7 @@ function renderTable(data) {
       <tr>
         <td><strong>${escapeHtml(nameDisplay)}</strong></td>
         <td>${escapeHtml(emailDisplay)}</td>
-        <td><span class="uid-text" title="${u.uid}">${u.uid}</span></td>
+        <td><span class="uid-text" title="${escapeHtml(u.uid)}">${escapeHtml(u.uid)}</span></td>
         <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
         <td>${joinedStr}</td>
         <td><span style="font-weight: 500; color: ${isOnline ? 'var(--online)' : 'var(--text-3)'}">${lastSeenStr}</span></td>
