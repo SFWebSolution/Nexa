@@ -140,12 +140,13 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.createdAt is int
-        && (request.resource.data.expireAt == null
+        && (!('expireAt' in request.resource.data)
             || (request.resource.data.expireAt is timestamp
                 && request.resource.data.expireAt > request.time));
       allow update: if isSignedIn() && (
         resource.data.uid == request.auth.uid
-        || request.resource.data.affectedKeys().hasOnly(['views','likes','reshares'])
+        || request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['views','likes','reshares'])
       );
       allow delete: if isSignedIn() && (
         resource.data.uid == request.auth.uid || storyExpired(resource.data)
