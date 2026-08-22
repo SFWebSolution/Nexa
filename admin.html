@@ -1355,7 +1355,7 @@ const ADMIN_API_BASE = window.location.hostname === "localhost" || window.locati
 // this page's source can see it — that's accepted for this admin panel
 // (the page itself is already gated by the admin-email login), but keep
 // the backend's copy in an env var, never in the repo.
-const ADMIN_SECRET = "change-me-to-a-long-random-string";
+const ADMIN_SECRET = "108c6d07a4a34d4b6c90ea9c59513fe154e7550a76f2705d";
 
 function adminFetch(path, body) {
   return fetch(ADMIN_API_BASE + path, {
