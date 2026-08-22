@@ -325,12 +325,17 @@
       <span id="disappearingBannerText">Disappearing messages are turned on</span>
     </div>
 
-    <div class="messages" id="messages" onscroll="updateScrollDownBtn()">
+    <div class="messages" id="messages" onscroll="updateScrollDownBtn(); maybeLoadOlderMessages()">
       <div class="empty-chat">
         <div class="empty-chat-icon">💬</div>
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger for Web</div>
         <div style="font-size: 13px; color: var(--text-3);">Select a conversation from the sidebar to start chatting</div>
       </div>
+    </div>
+
+    <div class="older-msgs-loading" id="olderMsgsSpinner" style="display: none;">
+      <div class="older-msgs-spinner"></div>
+      <span>Loading older messages…</span>
     </div>
 
     <button class="scroll-down-btn" id="scrollDownBtn" onclick="scrollChatToBottom()" title="Scroll to latest message">
@@ -2663,7 +2668,93 @@ function setupHeartbeat() {
 let allMessages = [];
 let _msgsA = [];
 let _msgsB = [];
+let _olderMsgsA = []; // fetched-on-demand history, kept separate so the live
+let _olderMsgsB = []; // windowed listeners never overwrite it
 let chatJustOpened = false;
+
+// WhatsApp-style message pagination: only the newest MSG_PAGE_SIZE messages
+// are live-listened; older history loads in MSG_OLDER_PAGE_SIZE chunks as the
+// user scrolls to the top (maybeLoadOlderMessages → loadOlderMessages).
+const MSG_PAGE_SIZE = 12;
+const MSG_OLDER_PAGE_SIZE = 25;
+let msgPaging = {
+  oldestA: null, oldestB: null,
+  windowFullA: false, windowFullB: false,
+  exhaustedA: false, exhaustedB: false,
+  seamA: [], seamB: [], // timestamp gaps left by bulk window slides
+  loading: false
+};
+let _loadingOlderRender = false; // renderMessageList must not auto-scroll on older loads
+
+function resetMsgPaging() {
+  msgPaging = {
+    oldestA: null, oldestB: null,
+    windowFullA: false, windowFullB: false,
+    exhaustedA: false, exhaustedB: false,
+    seamA: [], seamB: [],
+    loading: false
+  };
+  _olderMsgsA = [];
+  _olderMsgsB = [];
+  _loadingOlderRender = false;
+}
+
+function msgPagingHasMore() {
+  return (msgPaging.windowFullA && !msgPaging.exhaustedA)
+      || (msgPaging.windowFullB && !msgPaging.exhaustedB)
+      || msgPaging.seamA.length > 0
+      || msgPaging.seamB.length > 0;
+}
+
+// Find a message across both the live window and the fetched older pages.
+function findLocalMsg(id) {
+  return _msgsA.find(m => m.id === id)
+      || _msgsB.find(m => m.id === id)
+      || _olderMsgsA.find(m => m.id === id)
+      || _olderMsgsB.find(m => m.id === id)
+      || null;
+}
+
+// Detect a bulk slide seam: if the previously FULL window's newest message is
+// older than the new window's oldest, messages between them never appeared in
+// any snapshot (a many-messages-at-once slide). Record the range; it gets
+// healed lazily on scroll-up via a startAfter/endBefore fetch.
+function recordSeam(prevArr, newMsgs, seamArr) {
+  if (prevArr.length < MSG_PAGE_SIZE || !newMsgs.length) return;
+  let prevMaxTs = null;
+  prevArr.forEach(m => {
+    if (typeof m.createdAt === "number" && (prevMaxTs == null || m.createdAt > prevMaxTs)) prevMaxTs = m.createdAt;
+  });
+  let newMinTs = null;
+  newMsgs.forEach(m => {
+    if (typeof m.createdAt === "number" && (newMinTs == null || m.createdAt < newMinTs)) newMinTs = m.createdAt;
+  });
+  if (prevMaxTs == null || newMinTs == null) return;
+  if (prevMaxTs < newMinTs) seamArr.push({ after: prevMaxTs, before: newMinTs });
+}
+
+// Messages that slide out of the newest-N live window as new messages arrive
+// are retained as "history" so scrolling up never hits a gap. A slide-out
+// only ever ejects from the OLDEST end of the window, so a message removed
+// from a newer position (a real remote delete) is not retained. (Known edge:
+// if the remote party deletes exactly the window's oldest message while you
+// have history loaded, it lingers until you re-open the chat.)
+function retainSlidOut(prevArr, newMsgs, olderArr) {
+  if (!prevArr.length) return;
+  const newIds = new Set(newMsgs.map(m => m.id));
+  let newOldestTs = null;
+  newMsgs.forEach(m => {
+    if (typeof m.createdAt === "number" && (newOldestTs == null || m.createdAt < newOldestTs)) {
+      newOldestTs = m.createdAt;
+    }
+  });
+  prevArr.forEach(m => {
+    if (newIds.has(m.id)) return;
+    if (typeof m.id === "string" && m.id.startsWith("temp_")) return;
+    if (newOldestTs == null || typeof m.createdAt !== "number" || m.createdAt >= newOldestTs) return;
+    if (!olderArr.some(o => o.id === m.id)) olderArr.push(m);
+  });
+}
 
 function loadMessages() {
   if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
@@ -2672,6 +2763,7 @@ function loadMessages() {
   _msgsB = [];
   allMessages = [];
   chatJustOpened = true;
+  resetMsgPaging();
 
   const box = document.getElementById("messages");
   if (box) {
@@ -2682,6 +2774,20 @@ function loadMessages() {
 
   const otherUid = selectedUser.uid;
 
+  // Track the oldest timestamp ever loaded per direction — older pages are
+  // fetched with endBefore(that timestamp). Live snapshots only ever LOWER
+  // it (a fresh window's oldest is newer than any loaded history).
+  const trackWindow = (side, docs) => {
+    docs.forEach(d => {
+      const ts = d.data().createdAt;
+      if (typeof ts === "number") {
+        const k = side === "A" ? "oldestA" : "oldestB";
+        if (msgPaging[k] == null || ts < msgPaging[k]) msgPaging[k] = ts;
+      }
+    });
+    msgPaging[side === "A" ? "windowFullA" : "windowFullB"] = docs.length >= MSG_PAGE_SIZE;
+  };
+
   // WhatsApp-style "chat yourself": both directions are the same query
   // (from==me && to==me), so use a SINGLE listener to avoid duplicate
   // message rendering.
@@ -2689,9 +2795,15 @@ function loadMessages() {
     unsubMessagesA = db.collection("chats")
       .where("from", "==", currentUser.uid)
       .where("to", "==", currentUser.uid)
+      .orderBy("createdAt", "desc")
+      .limit(MSG_PAGE_SIZE)
       .onSnapshot(snap => {
-        _msgsA = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const newMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        recordSeam(_msgsA, newMsgs, msgPaging.seamA);
+        retainSlidOut(_msgsA, newMsgs, _olderMsgsA);
+        _msgsA = newMsgs;
         _msgsB = [];
+        trackWindow("A", snap.docs);
         scheduleMessageRender();
       }, err => console.error("messages(self) listener error:", err));
     return;
@@ -2700,16 +2812,28 @@ function loadMessages() {
   unsubMessagesA = db.collection("chats")
     .where("from", "==", currentUser.uid)
     .where("to", "==", otherUid)
+    .orderBy("createdAt", "desc")
+    .limit(MSG_PAGE_SIZE)
     .onSnapshot(snap => {
-      _msgsA = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const newMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      recordSeam(_msgsA, newMsgs, msgPaging.seamA);
+      retainSlidOut(_msgsA, newMsgs, _olderMsgsA);
+      _msgsA = newMsgs;
+      trackWindow("A", snap.docs);
       scheduleMessageRender();
     }, err => console.error("messages(A) listener error:", err));
 
   unsubMessagesB = db.collection("chats")
     .where("from", "==", otherUid)
     .where("to", "==", currentUser.uid)
+    .orderBy("createdAt", "desc")
+    .limit(MSG_PAGE_SIZE)
     .onSnapshot(snap => {
-      _msgsB = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const newMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      recordSeam(_msgsB, newMsgs, msgPaging.seamB);
+      retainSlidOut(_msgsB, newMsgs, _olderMsgsB);
+      _msgsB = newMsgs;
+      trackWindow("B", snap.docs);
 
       // Mark newly-arrived, unread messages as read — batched into a single
       // write so opening a chat with many unread messages is one request, not
@@ -2724,6 +2848,119 @@ function loadMessages() {
 
       scheduleMessageRender();
     }, err => console.error("messages(B) listener error:", err));
+}
+
+// Fires on every messages-area scroll; kicks off an older-page fetch when the
+// user reaches the top of the loaded history.
+function maybeLoadOlderMessages() {
+  const box = document.getElementById("messages");
+  if (!box || !selectedUser || chatJustOpened || msgPaging.loading) return;
+  if (!msgPagingHasMore()) return;
+  if (box.scrollHeight <= box.clientHeight) return; // nothing scrollable yet
+  if (box.scrollTop < 80) loadOlderMessages();
+}
+
+async function loadOlderMessages() {
+  if (!selectedUser || !currentUser || msgPaging.loading) return;
+  if (!msgPagingHasMore()) return;
+  msgPaging.loading = true;
+
+  const spinner = document.getElementById("olderMsgsSpinner");
+  if (spinner) spinner.style.display = "flex";
+
+  const box = document.getElementById("messages");
+  const prevHeight = box ? box.scrollHeight : 0;
+  const prevTop = box ? box.scrollTop : 0;
+
+  try {
+    const me = currentUser.uid;
+    const other = selectedUser.uid;
+    const olderQuery = (fromUid, toUid, before) =>
+      db.collection("chats")
+        .where("from", "==", fromUid)
+        .where("to", "==", toUid)
+        .orderBy("createdAt", "desc")
+        .endBefore(before)
+        .limit(MSG_OLDER_PAGE_SIZE)
+        .get();
+
+    const fetches = [];
+    if (msgPaging.windowFullA && !msgPaging.exhaustedA && msgPaging.oldestA != null)
+      fetches.push(olderQuery(me, other, msgPaging.oldestA).then(snap => ({ side: "A", kind: "page", snap })));
+    if (!isSelfChat() && msgPaging.windowFullB && !msgPaging.exhaustedB && msgPaging.oldestB != null)
+      fetches.push(olderQuery(other, me, msgPaging.oldestB).then(snap => ({ side: "B", kind: "page", snap })));
+
+    // Heal bulk-slide seams (messages that never appeared in any snapshot).
+    const seamQuery = (fromUid, toUid, range) =>
+      db.collection("chats")
+        .where("from", "==", fromUid)
+        .where("to", "==", toUid)
+        .orderBy("createdAt", "asc")
+        .startAfter(range.after)
+        .endBefore(range.before)
+        .limit(200)
+        .get();
+    ["A", "B"].forEach(side => {
+      if (side === "B" && isSelfChat()) return;
+      const seamArr = side === "A" ? msgPaging.seamA : msgPaging.seamB;
+      const fromUid = side === "A" ? me : other;
+      const toUid = side === "A" ? other : me;
+      seamArr.forEach(range => {
+        fetches.push(seamQuery(fromUid, toUid, range).then(snap => ({ side, kind: "seam", range, snap })));
+      });
+    });
+
+    const results = await Promise.all(fetches);
+
+    results.forEach(({ side, kind, range, snap }) => {
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const arr = side === "A" ? _olderMsgsA : _olderMsgsB;
+      // Dedupe against both the older pages and the live window (they can
+      // overlap when messages arrive while paging up).
+      const live = side === "A" ? _msgsA : _msgsB;
+      const existing = new Set([...arr, ...live].map(m => m.id));
+      let minTs = null;
+      msgs.forEach(m => {
+        if (existing.has(m.id)) return;
+        arr.push(m);
+        if (typeof m.createdAt === "number" && (minTs == null || m.createdAt < minTs)) minTs = m.createdAt;
+      });
+      if (kind === "seam") {
+        // Consume the healed range.
+        const seamArr = side === "A" ? msgPaging.seamA : msgPaging.seamB;
+        const ri = seamArr.indexOf(range);
+        if (ri > -1) seamArr.splice(ri, 1);
+        return;
+      }
+      const oldestK = side === "A" ? "oldestA" : "oldestB";
+      if (minTs != null && (msgPaging[oldestK] == null || minTs < msgPaging[oldestK])) {
+        msgPaging[oldestK] = minTs;
+      }
+      // A short page means history is exhausted in this direction.
+      if (snap.size < MSG_OLDER_PAGE_SIZE) {
+        msgPaging[side === "A" ? "exhaustedA" : "exhaustedB"] = true;
+      }
+    });
+
+    // Render with scroll preserved so the view stays on the same message
+    // instead of jumping to the bottom or top.
+    _loadingOlderRender = true;
+    renderMessageList();
+    if (box) {
+      requestAnimationFrame(() => {
+        box.scrollTop = box.scrollHeight - prevHeight + prevTop;
+        _loadingOlderRender = false;
+      });
+    } else {
+      _loadingOlderRender = false;
+    }
+  } catch (err) {
+    console.warn("loadOlderMessages error:", err);
+    _loadingOlderRender = false;
+  } finally {
+    msgPaging.loading = false;
+    if (spinner) spinner.style.display = "none";
+  }
 }
 
 // WhatsApp-style "Message yourself" — selectedUser is a synthetic self
@@ -2949,7 +3186,12 @@ function renderMessageList() {
 
   const prevLast = allMessages.length ? allMessages[allMessages.length - 1] : null;
   const prevLastTime = prevLast ? (prevLast.createdAt || 0) : 0;
-  allMessages = [..._msgsA, ..._msgsB].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  // Dedupe by id — a seam-healed message can later slide back into the live
+  // window, appearing in both arrays.
+  const seenIds = new Set();
+  allMessages = [..._olderMsgsA, ..._msgsA, ..._olderMsgsB, ..._msgsB]
+    .filter(m => { if (seenIds.has(m.id)) return false; seenIds.add(m.id); return true; })
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
   // Check and apply disappearing messages filter
   const key = getChatKey(currentUser.uid, selectedUser.uid);
@@ -3131,6 +3373,9 @@ function renderMessageList() {
     setTimeout(forceScroll, 500);
     // Only clear the flag after enough time for both snapshots to fire
     setTimeout(() => { chatJustOpened = false; }, 600);
+  } else if (_loadingOlderRender) {
+    // Older history was prepended — loadOlderMessages restores the scroll
+    // position itself; never auto-scroll here.
   } else if (wasNearBottom) {
     box.scrollTop = box.scrollHeight;
   }
@@ -3527,7 +3772,12 @@ function saveEditMessage() {
   const newText = document.getElementById("editText").value.trim();
   if (!newText) { alert("Cannot be empty"); return; }
   db.collection("chats").doc(editingMessageId).update({ text: newText, edited: true, editedAt: Date.now() })
-    .then(() => closeEditModal())
+    .then(() => {
+      // The live listener covers the newest window; patch older pages locally.
+      const m = findLocalMsg(editingMessageId);
+      if (m) { m.text = newText; m.edited = true; renderMessageList(); }
+      closeEditModal();
+    })
     .catch(e => alert("Error: " + e.message));
 }
 
@@ -3571,7 +3821,14 @@ function copyMsg(id) {
 
 function deleteMsg(id) {
   if (confirm("Delete this message?")) {
-    db.collection("chats").doc(id).delete();
+    db.collection("chats").doc(id).delete().then(() => {
+      // The live listener prunes window messages; older pages are pruned here.
+      [_olderMsgsA, _olderMsgsB].forEach(arr => {
+        const i = arr.findIndex(m => m.id === id);
+        if (i > -1) arr.splice(i, 1);
+      });
+      renderMessageList();
+    }).catch(e => console.error("deleteMsg error:", e));
   }
   closeCtxMenu();
 }
@@ -3632,17 +3889,27 @@ window.renderMessages = renderMessageList;
 /* =========================================================================
    AUTO-SAVE MEDIA TO USER DEVICE (Photos & Videos)
    ========================================================================= */
+let _autoSavedMediaCache = null; // parsed once, not per message per render
+
 function autoSaveMedia(mediaUrl, mediaType, msgId) {
   if (!msgId || !mediaUrl) return;
-  let saved = {};
-  try {
-    saved = JSON.parse(localStorage.getItem("nexa_autosaved_media") || "{}");
-  } catch (e) {
-    saved = {};
+  if (_autoSavedMediaCache === null) {
+    try {
+      _autoSavedMediaCache = JSON.parse(localStorage.getItem("nexa_autosaved_media") || "{}");
+    } catch (e) {
+      _autoSavedMediaCache = {};
+    }
   }
+  const saved = _autoSavedMediaCache;
   if (saved[msgId]) return; // Already auto-saved to device
 
   saved[msgId] = Date.now();
+  // Keep the marker map bounded so it never grows without limit.
+  const keys = Object.keys(saved);
+  if (keys.length > 500) {
+    keys.sort((a, b) => saved[a] - saved[b]);
+    keys.slice(0, keys.length - 500).forEach(k => delete saved[k]);
+  }
   try {
     localStorage.setItem("nexa_autosaved_media", JSON.stringify(saved));
   } catch (e) {}
@@ -3675,8 +3942,16 @@ function autoSaveMedia(mediaUrl, mediaType, msgId) {
 
 
 
-function scrollToMsg(msgId) {
-  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+async function scrollToMsg(msgId) {
+  let el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  // The target may live in unloaded history — page older chunks in until it
+  // renders (or history is exhausted).
+  let guard = 0;
+  while (!el && selectedUser && msgPagingHasMore() && !msgPaging.loading && guard < 60) {
+    guard++;
+    await loadOlderMessages();
+    el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  }
   if (!el) return;
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.style.outline = "2px solid var(--cyan)";
@@ -4544,9 +4819,42 @@ function favoriteChat() {
   renderUsers();
 }
 
-function clearChat() {
+async function clearChat() {
   if (!selectedUser || !confirm("Clear all messages?")) return;
-  allMessages.forEach(m => db.collection("chats").doc(m.id).delete());
+  const me = currentUser.uid;
+  const other = selectedUser.uid;
+  try {
+    // Delete the WHOLE conversation, not just the loaded window. Rules only
+    // allow deleting your own messages, so filter to those.
+    const queries = [
+      db.collection("chats").where("from", "==", me).where("to", "==", other).get()
+    ];
+    if (!isSelfChat()) {
+      queries.push(db.collection("chats").where("from", "==", other).where("to", "==", me).get());
+    }
+    const snaps = await Promise.all(queries);
+    const refs = [];
+    const seen = new Set();
+    snaps.forEach(snap => snap.forEach(d => {
+      if (!seen.has(d.id) && d.data().from === me) {
+        seen.add(d.id);
+        refs.push(d.ref);
+      }
+    }));
+    // Firestore batches cap at 500 writes — chunk to be safe.
+    for (let i = 0; i < refs.length; i += 400) {
+      const batch = db.batch();
+      refs.slice(i, i + 400).forEach(ref => batch.delete(ref));
+      await batch.commit();
+    }
+    // Drop locally held history too — the live listener only prunes the
+    // newest window, not the paged-in older messages.
+    _olderMsgsA = [];
+    _olderMsgsB = [];
+    renderMessageList();
+  } catch (e) {
+    console.error("clearChat error:", e);
+  }
 }
 
 function openSearchModal() {
@@ -4560,12 +4868,47 @@ function closeSearchModal() {
   document.getElementById("searchInput").value = "";
 }
 
+// Full-history search pool, cached per chat for 60s so every keystroke
+// doesn't re-download the whole conversation.
+let _searchPoolCache = { chatUid: null, fetchedAt: 0, pool: [] };
+let _searchDebounce = null;
+
 function searchMessages() {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(runMessageSearch, 250);
+}
+
+async function runMessageSearch() {
   const q = document.getElementById("searchInput").value.trim().toLowerCase();
   const box = document.getElementById("searchResults");
   box.innerHTML = "";
-  if (!q) return;
-  const found = allMessages.filter(m => m.text?.toLowerCase().includes(q));
+  if (!q || !selectedUser) return;
+
+  let pool = allMessages;
+  try {
+    const chatUid = selectedUser.uid;
+    if (_searchPoolCache.chatUid !== chatUid || Date.now() - _searchPoolCache.fetchedAt > 60000) {
+      const me = currentUser.uid;
+      const queries = [
+        db.collection("chats").where("from", "==", me).where("to", "==", chatUid).get()
+      ];
+      if (!isSelfChat()) {
+        queries.push(db.collection("chats").where("from", "==", chatUid).where("to", "==", me).get());
+      }
+      const snaps = await Promise.all(queries);
+      const map = new Map();
+      snaps.forEach(snap => snap.forEach(d => map.set(d.id, { id: d.id, ...d.data() })));
+      _searchPoolCache = { chatUid, fetchedAt: Date.now(), pool: [...map.values()] };
+    }
+    pool = _searchPoolCache.pool;
+  } catch (e) {
+    console.warn("Search full-history fetch failed, using loaded messages:", e);
+  }
+
+  const found = pool
+    .filter(m => m.text && m.text.toLowerCase().includes(q))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 50);
   if (!found.length) {
     box.innerHTML = '<div style="text-align: center; color: var(--text-3); padding: 24px; font-size: 13px;">No results</div>';
     return;
