@@ -1,0 +1,14 @@
+{
+  "name": "nexa-admin-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Privileged admin endpoints for admin.html (edit/ban/delete users) via Firebase Admin SDK",
+  "main": "admin-api.js",
+  "scripts": {
+    "start": "node admin-api.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.7.0"
+  }
+}
