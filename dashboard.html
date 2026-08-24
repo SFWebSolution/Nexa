@@ -1304,6 +1304,12 @@ auth.onAuthStateChanged(async (user) => {
 
   currentUser = user;
   window.currentUser = user;
+  // The voice-room module only has window.*, and its invite listener binds to
+  // the real uid — tell it to (re)bind now that the real user is known so
+  // cross-device voice invites actually arrive.
+  if (window.NexaVoiceRoom && typeof window.NexaVoiceRoom.bindInviteListener === 'function') {
+    try { window.NexaVoiceRoom.bindInviteListener(); } catch (e) {}
+  }
   // Mark this device as signed-in so index.html skips the landing page and
   // bounces straight here on the next app open (WhatsApp-style).
   try {
@@ -3165,7 +3171,10 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   `;
 
   const audio = new Audio(audioUrl);
-  audio.preload = "metadata";
+  // Preload the whole clip so the FIRST tap plays instantly — no wait for the
+  // stream to buffer. Voice notes are small, so eager loading is cheap.
+  audio.preload = "auto";
+  try { audio.load(); } catch (e) {}
   let playbackRate = 1.0;
 
   const playBtn = container.querySelector(".vn-btn-play");
@@ -3234,10 +3243,17 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
       }
       activeAudioPlayer = audio;
       audio.playbackRate = playbackRate;
+      // Show a buffering hint so the first tap on a remote clip doesn't feel
+      // frozen while it streams in.
+      playBtn.classList.add("vn-loading");
       audio.play().then(() => {
+        playBtn.classList.remove("vn-loading");
         playIcon.style.display = "none";
         pauseIcon.style.display = "block";
-      }).catch(err => console.log("Audio play error:", err));
+      }).catch(err => {
+        playBtn.classList.remove("vn-loading");
+        console.log("Audio play error:", err);
+      });
     } else {
       audio.pause();
       playIcon.style.display = "block";
@@ -3245,6 +3261,10 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
       if (activeAudioPlayer === audio) activeAudioPlayer = null;
     }
   });
+
+  // Clear the buffering hint the moment playback actually starts or stalls out.
+  audio.addEventListener("playing", () => playBtn.classList.remove("vn-loading"));
+  audio.addEventListener("waiting", () => { if (!audio.paused) playBtn.classList.add("vn-loading"); });
 
   waveWrap.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -4401,6 +4421,8 @@ function baseMsg(extras = {}) {
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingBlob = null;
+let recordingMime = "audio/webm";
+let recDuration = 0;
 let isRecording = false;
 let recStart = 0;
 let recTimer = null;
@@ -4423,13 +4445,25 @@ async function startRec(e) {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true }
     });
-    mediaRecorder = new MediaRecorder(stream);
+    // Pick the best supported audio container so the blob is natively playable
+    // (opus/webm on Chrome/Android, mp4 on iOS/Safari) — this removes the "can't
+    // play it right away" problem from a mismatched container.
+    const VN_MIME = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
+      .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+    mediaRecorder = VN_MIME ? new MediaRecorder(stream, { mimeType: VN_MIME }) : new MediaRecorder(stream);
     audioChunks = [];
-    mediaRecorder.addEventListener("dataavailable", e => audioChunks.push(e.data));
+    mediaRecorder.addEventListener("dataavailable", e => { if (e.data && e.data.size) audioChunks.push(e.data); });
     mediaRecorder.addEventListener("stop", () => {
-      recordingBlob = new Blob(audioChunks, { type: "audio/webm" });
+      // Use the recorder's actual MIME so the saved clip matches what was captured.
+      const type = (mediaRecorder && mediaRecorder.mimeType) || VN_MIME || "audio/webm";
+      recordingBlob = new Blob(audioChunks, { type });
+      recordingMime = type;
+      recDuration = Date.now() - recStart; // capture duration NOW (not at send)
     });
-    mediaRecorder.start();
+    // Start WITH a 250ms timeslice so dataavailable fires continuously — the
+    // blob is already mostly formed when you hit stop, so sending is instant
+    // instead of waiting for the whole clip to finalize.
+    mediaRecorder.start(250);
     isRecording = true;
     recStart = Date.now();
     recordBtn.classList.add("active");
@@ -4457,21 +4491,50 @@ function stopRec() {
 }
 
 async function sendVoice() {
-  if (!recordingBlob || !selectedUser) return;
+  if (!selectedUser) return;
+  // If the recorder is still finalizing the blob, wait briefly for it.
+  if (!recordingBlob && isRecording) {
+    stopRec();
+    const t0 = Date.now();
+    while (!recordingBlob && Date.now() - t0 < 1500) {
+      await new Promise(r => setTimeout(r, 60));
+    }
+  }
+  if (!recordingBlob) { showNotifToast("No recording to send", "error"); return; }
+
   const btn = document.getElementById("vSendBtn");
   btn.disabled = true;
-  btn.textContent = "Uploading…";
+  btn.textContent = "Sending…";
+
+  // Optimistic bubble: show the voice note in the chat immediately (from the
+  // local blob) so it appears the instant you tap send — then swap in the
+  // uploaded URL once it's stored. No more "waiting for it to send".
+  const localUrl = URL.createObjectURL(recordingBlob);
+  const dur = recDuration || 0;
+  const tempMsg = baseMsg({ audio: localUrl, duration: dur });
+  tempMsg.id = "temp_vn_" + Date.now();
+  tempMsg._localAudio = true;
+  _msgsA.push(tempMsg);
+  renderMessageList();
+  scrollMessagesToBottom();
+
   try {
-    const f = new File([recordingBlob], "voice.webm", { type: "audio/webm" });
+    const ext = recordingMime.includes("mp4") ? "m4a" : recordingMime.includes("ogg") ? "ogg" : "webm";
+    const f = new File([recordingBlob], `voice.${ext}`, { type: recordingMime });
     const url = await uploadFile(f);
     if (url) {
-      await db.collection("chats").add(baseMsg({ audio: url, duration: Date.now() - recStart }));
+      await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
+      // Replace the optimistic local-blob bubble with the stored one.
+      const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
+      if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
       cancelVoice();
       const senderName = document.getElementById('myName').textContent || 'Nexa User';
       sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
     }
   } catch (e) {
-    alert("Failed: " + e.message);
+    const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
+    if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+    showNotifToast("Failed to send voice note: " + e.message, "error");
   }
   btn.disabled = false;
   btn.textContent = "✓ Send";

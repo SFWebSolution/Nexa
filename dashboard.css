@@ -5130,6 +5130,17 @@ input[type="range"] {
   stroke: currentColor;
 }
 
+/* Buffering state — a soft pulse on the play button while a remote clip
+   streams in, so the first tap doesn't feel frozen. */
+.vn-btn-play.vn-loading {
+  animation: vnPulse 0.9s ease-in-out infinite;
+  opacity: 0.85;
+}
+@keyframes vnPulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 0.6; }
+}
+
 .vn-body {
   flex: 1;
   display: flex;

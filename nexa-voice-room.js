@@ -1655,12 +1655,29 @@
 
     setupFirestoreListeners() {
       if (!window.db) return;
+      // Bind (or re-bind) the invite listener to the REAL signed-in uid.
+      this.bindInviteListener();
+      // Auth often hasn't restored from LOCAL persistence yet at setup time
+      // (getCurrentUser() returns a fake `user_xxx`). Re-check shortly after and
+      // whenever the dashboard publishes the real user so cross-device invites
+      // actually arrive at voice_invites/<realUid> instead of a dead fake doc.
+      setTimeout(() => this.bindInviteListener(), 1500);
+      setTimeout(() => this.bindInviteListener(), 4000);
+    }
 
+    // Subscribe to voice_invites/<uid> for the REAL current user, rebinding if
+    // the uid has changed since the last subscribe. Refuses the fake `user_*`
+    // id so we never listen on a doc nobody writes to. Safe to call repeatedly.
+    bindInviteListener() {
+      if (!window.db) return;
       const user = this.getCurrentUser();
-      if (!user || !user.id) return;
+      const uid = user && user.id;
+      if (!uid || uid.startsWith('user_')) return; // not signed in yet — wait for real uid
+      if (this._inviteListenerUid === uid && this._inviteUnsub) return; // already bound
 
-      // Listen for incoming voice chat invites for current user
-      window.db.collection('voice_invites').doc(user.id).onSnapshot(doc => {
+      if (this._inviteUnsub) { try { this._inviteUnsub(); } catch (e) {} this._inviteUnsub = null; }
+      this._inviteListenerUid = uid;
+      this._inviteUnsub = window.db.collection('voice_invites').doc(uid).onSnapshot(doc => {
         if (doc.exists) {
           const data = doc.data() || {};
           if (data.status === 'pending' && data.room) {
@@ -1668,6 +1685,7 @@
           }
         }
       }, err => console.warn('[VoiceRoom] Firestore invite listener notice:', err));
+      console.log('[VoiceRoom] Invite listener bound to uid:', uid);
     }
 
     broadcast(type, payload) {
