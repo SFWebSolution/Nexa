@@ -35,31 +35,33 @@
   --danger: #f43f5e;
   --danger-soft: rgba(244, 63, 94, 0.10);
   
-  /* ╔─ SURFACE PALETTE (DARK OBSIDIAN SLATE) ─╗ */
-  --bg-0: #090d16;
-  --bg-1: #0f172a;
-  --bg-2: #151d30;
-  --bg-3: #1e293b;
-  --bg-4: #283548;
-  --bg-5: #334155;
-  
+  /* ╔─ SURFACE PALETTE (SOFT LIGHT — Nexa Light, the default) ─╗
+     A comfortable, professional light slate — easy on the eyes for long
+     sessions, matching the landing page family. NOT stark white. */
+  --bg-0: #eef2f7;
+  --bg-1: #ffffff;
+  --bg-2: #f4f7fb;
+  --bg-3: #eaeef4;
+  --bg-4: #dde4ed;
+  --bg-5: #d3dce8;
+
   /* ╔─ TEXT HIERARCHY ─╗ */
-  --text-0: #ffffff;
-  --text-1: #f1f5f9;
-  --text-2: #94a3b8;
-  --text-3: #64748b;
-  
+  --text-0: #0f1b2d;
+  --text-1: #1f2d44;
+  --text-2: #46566e;
+  --text-3: #6b7a92;
+
   /* ╔─ BORDER & DIVIDER ─╗ */
-  --border-dk: rgba(255, 255, 255, 0.06);
-  --border-md: rgba(255, 255, 255, 0.12);
-  --border-lt: rgba(255, 255, 255, 0.18);
-  
+  --border-dk: rgba(15, 27, 45, 0.08);
+  --border-md: rgba(15, 27, 45, 0.12);
+  --border-lt: rgba(15, 27, 45, 0.18);
+
   /* ╔─ ELEVATION SYSTEM ─╗ */
-  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.55);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.7);
+  --shadow-xs: 0 1px 3px rgba(15, 27, 45, 0.06);
+  --shadow-sm: 0 2px 8px rgba(15, 27, 45, 0.08);
+  --shadow-md: 0 8px 24px rgba(15, 27, 45, 0.10);
+  --shadow-lg: 0 16px 44px rgba(15, 27, 45, 0.14);
+  --shadow-xl: 0 24px 64px rgba(15, 27, 45, 0.18);
   --glow-primary: 0 0 0 0 transparent;
   
   /* ╔─ ANIMATION CURVES ─╗ */
@@ -96,6 +98,16 @@
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* THEME VARIANTS */
 /* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Nexa Blue (Dark) — the original dark obsidian slate, now an explicit theme
+   so the base (no-attribute) default can be Nexa Light. */
+:root[data-theme="nexa"] {
+  --bg-0: #090d16; --bg-1: #0f172a; --bg-2: #151d30; --bg-3: #1e293b; --bg-4: #283548; --bg-5: #334155;
+  --text-0: #ffffff; --text-1: #f1f5f9; --text-2: #94a3b8; --text-3: #64748b;
+  --border-dk: rgba(255, 255, 255, 0.06); --border-md: rgba(255, 255, 255, 0.12); --border-lt: rgba(255, 255, 255, 0.18);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.2); --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4); --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.55); --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
 
 :root[data-theme="midnight"] {
   --primary: #1e40af; --primary-dk: #1e3a8a; --primary-lt: #3b82f6;
@@ -7450,3 +7462,116 @@ a:focus-visible, [tabindex]:focus-visible {
   border-color: rgba(43, 143, 255, 0.25);
 }
 :root[data-theme="light"] .reply-quote { background: rgba(15, 27, 45, 0.05); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEXA LIGHT — DEFAULT BASE (no data-theme attribute)
+   The base :root palette is already light. These overrides re-skin the
+   components that were originally authored dark so the DEFAULT app experience
+   is the comfortable Nexa Light look (matching the landing page family).
+   The dark experience is preserved under :root[data-theme="nexa"].
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root:not([data-theme]) .app {
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(43, 143, 255, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(99, 102, 241, 0.06), transparent 55%),
+    var(--bg-0);
+}
+:root:not([data-theme]) .app::before { opacity: 0.5; }
+:root:not([data-theme]) .app::after { opacity: 0.03; mix-blend-mode: multiply; }
+:root:not([data-theme]) .sidebar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(244, 247, 251, 0.9));
+  box-shadow: inset -1px 0 0 var(--border-dk), 1px 0 24px rgba(15, 27, 45, 0.06);
+}
+:root:not([data-theme]) .top { background: linear-gradient(180deg, rgba(43, 143, 255, 0.04), transparent); }
+:root:not([data-theme]) .my-pic { box-shadow: 0 6px 18px rgba(43, 143, 255, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+:root:not([data-theme]) .user-item:hover { background: rgba(43, 143, 255, 0.05); }
+:root:not([data-theme]) .user-item.active {
+  background: linear-gradient(135deg, rgba(43, 143, 255, 0.14), rgba(43, 143, 255, 0.04));
+  border-color: rgba(43, 143, 255, 0.25);
+  box-shadow: inset 2px 0 0 var(--primary), 0 4px 14px rgba(15, 27, 45, 0.05);
+}
+:root:not([data-theme]) .user-item.active .user-name,
+:root:not([data-theme]) .user-item .user-name,
+:root:not([data-theme]) .chat-name { color: var(--text-0); }
+:root:not([data-theme]) .user-preview,
+:root:not([data-theme]) .user-time { color: var(--text-3); }
+:root:not([data-theme]) .chat-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.6));
+  box-shadow: 0 1px 0 var(--border-dk), 0 8px 24px rgba(15, 27, 45, 0.06);
+}
+:root:not([data-theme]) .chat-avatar { box-shadow: 0 4px 12px rgba(43, 143, 255, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.3); }
+:root:not([data-theme]) .msg.me .bubble {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dk) 100%);
+  box-shadow: 0 6px 18px rgba(43, 143, 255, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+:root:not([data-theme]) .msg.me .bubble .msg-text,
+:root:not([data-theme]) .msg.me .bubble .msg-meta { color: #fff; }
+:root:not([data-theme]) .msg.them .bubble {
+  background: linear-gradient(180deg, #ffffff, #f4f7fb);
+  border: 1px solid var(--border-md);
+  box-shadow: 0 2px 8px rgba(15, 27, 45, 0.06);
+}
+:root:not([data-theme]) .msg.them .bubble .msg-text { color: var(--text-1); }
+:root:not([data-theme]) .date-sep span {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border-md);
+  box-shadow: 0 2px 8px rgba(15, 27, 45, 0.08);
+  color: var(--text-2);
+}
+:root:not([data-theme]) .input-area { background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.5) 30%); }
+:root:not([data-theme]) .input-wrap {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border-md);
+  box-shadow: 0 4px 16px rgba(15, 27, 45, 0.06);
+}
+:root:not([data-theme]) .input-wrap:focus-within {
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: 0 0 0 4px var(--primary-soft);
+}
+:root:not([data-theme]) .input-wrap input,
+:root:not([data-theme]) .input-wrap textarea { color: var(--text-1); }
+:root:not([data-theme]) .input-wrap input::placeholder,
+:root:not([data-theme]) .input-wrap textarea::placeholder { color: var(--text-3); }
+:root:not([data-theme]) .hdr-btn,
+:root:not([data-theme]) .iact-btn,
+:root:not([data-theme]) .info-close {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-md);
+  color: var(--text-2);
+  backdrop-filter: blur(8px);
+}
+:root:not([data-theme]) .hdr-btn:hover,
+:root:not([data-theme]) .iact-btn:hover,
+:root:not([data-theme]) .info-close:hover {
+  background: rgba(43, 143, 255, 0.10);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+:root:not([data-theme]) .info-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 247, 251, 0.98));
+  box-shadow: -16px 0 48px rgba(15, 27, 45, 0.12);
+}
+:root:not([data-theme]) .modal-card,
+:root:not([data-theme]) .sheet-card {
+  background: linear-gradient(180deg, #ffffff, #f4f7fb);
+  box-shadow: 0 30px 80px rgba(15, 27, 45, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  color: var(--text-1);
+}
+:root:not([data-theme]) .bottom-nav {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(244, 247, 251, 0.98));
+  box-shadow: 0 -1px 0 var(--border-dk), 0 -8px 24px rgba(15, 27, 45, 0.05);
+}
+:root:not([data-theme]) .bottom-nav .nav-item { color: var(--text-3); }
+:root:not([data-theme]) .bottom-nav .nav-item.active { color: var(--primary); }
+:root:not([data-theme]) .empty-chat-icon {
+  background: radial-gradient(circle at 35% 30%, rgba(43, 143, 255, 0.16), rgba(43, 143, 255, 0.03));
+  border: 1px solid var(--border-md);
+  box-shadow: 0 12px 36px rgba(15, 27, 45, 0.1);
+}
+:root:not([data-theme]) .stories-bar { background: rgba(244, 247, 251, 0.6); }
+:root:not([data-theme]) .reply-quote { background: rgba(15, 27, 45, 0.05); }
+:root:not([data-theme]) * { scrollbar-color: rgba(15, 27, 45, 0.18) transparent; }
+:root:not([data-theme]) ::-webkit-scrollbar-thumb { background: rgba(15, 27, 45, 0.16); background-clip: content-box; }
+:root:not([data-theme]) ::-webkit-scrollbar-thumb:hover { background: rgba(43, 143, 255, 0.5); background-clip: content-box; }

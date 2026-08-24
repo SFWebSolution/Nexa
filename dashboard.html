@@ -4561,8 +4561,8 @@ function loadMediaGrid() {
    THEMES
    ========================================================================= */
 const THEMES = {
-  nexa: { label: '🔵 Nexa Blue', attr: 'nexa', tier: 'classic' },
-  light: { label: '☀️ Daylight', attr: 'light', tier: 'classic' },
+  light: { label: '☀️ Nexa Light', attr: 'light', tier: 'classic' },
+  nexa: { label: '🔵 Nexa Blue (Dark)', attr: 'nexa', tier: 'classic' },
   midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
   ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
   forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
@@ -4579,13 +4579,15 @@ const THEMES = {
   infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
 };
 
-let currentTheme = 'nexa';
+let currentTheme = 'light';
 
 function setTheme(themeName) {
   const theme = THEMES[themeName];
   if (!theme) return;
   currentTheme = themeName;
-  if (themeName === 'nexa') {
+  // 'light' is the default/base theme — it needs no data-theme attribute
+  // override. Every other theme sets its attribute so its CSS applies.
+  if (themeName === 'light') {
     document.documentElement.removeAttribute('data-theme');
   } else {
     document.documentElement.setAttribute('data-theme', theme.attr);
@@ -7830,7 +7832,7 @@ function savePrefs() {
 function loadPrefs() {
   try {
     const prefs = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");
-    currentTheme = prefs.theme || 'nexa';
+    currentTheme = prefs.theme || 'light';
     mutedChats = prefs.muted || {};
     favoritedChats = prefs.favorited || {};
     blockedUsers = prefs.blocked || {};
