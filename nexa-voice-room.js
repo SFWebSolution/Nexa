@@ -631,8 +631,15 @@
         const isHost = this.activeRoom.isHost;
 
         if (isHost) {
-          // Host: tear down the whole room.
+          // Host: tear down the whole room. CRITICAL: deleting the ROOM DOC is
+          // the cross-device kick signal (non-hosts' roomDocUnsub sees it and
+          // auto-leave). Do that FIRST and independently so a Firestore-rules
+          // block on the participant batch can't prevent the kick.
           this.broadcast('ROOM_CLOSED', { roomId });
+          window.db.collection('voice_rooms').doc(roomId).delete()
+            .catch(err => console.warn('[VoiceRoom] Host room-doc delete error:', err));
+          // Best-effort: clear participant docs too (host can delete all per the
+          // rules). Independent of the room-doc delete so it can't block the kick.
           window.db.collection('voice_rooms').doc(roomId)
             .collection('participants').get()
             .then(snap => {
@@ -640,8 +647,7 @@
               snap.docs.forEach(d => batch.delete(d.ref));
               return batch.commit();
             })
-            .then(() => window.db.collection('voice_rooms').doc(roomId).delete())
-            .catch(err => console.warn('[VoiceRoom] Host room teardown error:', err));
+            .catch(err => console.warn('[VoiceRoom] Host participant cleanup error:', err));
         } else {
           // Non-host: just remove ourselves.
           window.db.collection('voice_rooms').doc(roomId)

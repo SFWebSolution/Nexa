@@ -95,10 +95,14 @@ service cloud.firestore {
 
       // Each participant owns its own doc in the subcollection.
       // Anyone in the room can read all participants; a client writes only its own.
+      // Delete: a participant deletes their OWN doc (leaving), OR the room HOST
+      // deletes ANY participant doc (host-close tears the room down for everyone).
       match /participants/{uid} {
         allow read: if isSignedIn();
         allow create, update: if isOwner(uid);
-        allow delete: if isOwner(uid);
+        allow delete: if isOwner(uid)
+          || (isSignedIn()
+              && get(/databases/$(database)/documents/voice_rooms/$(roomId)).data.hostId == request.auth.uid);
       }
 
       // In-room text chat messages. Any signed-in user may read; only the
