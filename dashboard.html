@@ -122,7 +122,7 @@
       <div class="sidebar-tab-switcher">
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
         <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
-        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i></button>
+        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
         <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
       </div>
@@ -390,6 +390,7 @@
   <button class="nav-item" id="navBtnStories" onclick="switchTab('stories')">
     <span class="nav-icon"><i data-lucide="circle-dot" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Stories</span>
+    <span class="story-tab-dot" id="storyTabDotMobile" style="display:none;"></span>
   </button>
   <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
     <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
@@ -1275,6 +1276,7 @@ auth.onAuthStateChanged(async (user) => {
     listenIncoming();
     initPWA();
     await updateOnline(true);
+    maybeReopenLastChat();
     console.log("✅ App fully ready");
   }
 });
@@ -1657,6 +1659,8 @@ function confirmDeleteChat() {
 
   if (selectedUser && selectedUser.uid === uid) {
     selectedUser = null;
+    setLastOpenChat(null);
+    clearChatMsgCache(uid);
     const chatNameEl = document.getElementById("chatName");
     if (chatNameEl) chatNameEl.textContent = "Select a conversation";
     const msgBox = document.getElementById("messages");
@@ -2037,6 +2041,7 @@ function switchTab(tabName) {
   // 5. Trigger tab-specific renders
   if (tabName === 'stories') {
     renderStoriesTab();
+    updateStoryTabDot();
   } else if (tabName === 'settings') {
     renderSettingsTab();
   } else if (tabName === 'profile') {
@@ -2408,7 +2413,11 @@ async function changeDisappearingSetting(value) {
 }
 
 function selectChat(user, el) {
+  // Persist the chat we're LEAVING so it reopens instantly next app-open,
+  // then remember the newly selected chat as the last-open one.
+  if (selectedUser && selectedUser.uid !== user.uid) saveChatMsgCache(selectedUser.uid);
   selectedUser = user;
+  setLastOpenChat(user.uid);
   applyCurrentWallpaper();
   if (deletedChats[user.uid]) {
     delete deletedChats[user.uid];
@@ -2798,6 +2807,75 @@ function msgPagingHasMore() {
       || msgPaging.seamB.length > 0;
 }
 
+/* =========================================================================
+   OPEN-CHAT INSTANT CACHE (WhatsApp-style): remember the newest messages of
+   the chat the user last had open. On the next app open we auto-reopen that
+   chat and paint these cached bubbles instantly — before the live from/to
+   listeners return. The live snapshots then overwrite/replace them (they
+   dedupe by id and carry authoritative read/edited/media state), so this is
+   purely a perceived-speed optimization, never a source of truth.
+   ========================================================================= */
+const CHAT_MSG_CACHE_MAX = 24;
+function chatMsgCacheKey(uid) {
+  const me = (currentUser && currentUser.uid) || localStorage.getItem("nexa_last_uid");
+  return me ? ("nexa_chat_msgs_" + me + "_" + uid) : null;
+}
+function saveChatMsgCache(uid) {
+  try {
+    if (!currentUser) return;
+    const k = chatMsgCacheKey(uid);
+    if (!k) return;
+    const merged = _msgsA.concat(_msgsB)
+      .filter(m => !m.isViewOnce) // never cache view-once (self-destructing)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const slice = merged.slice(-CHAT_MSG_CACHE_MAX);
+    if (!slice.length) return;
+    localStorage.setItem(k, JSON.stringify(slice));
+  } catch (e) {}
+}
+function loadChatMsgCache(uid) {
+  try {
+    const k = chatMsgCacheKey(uid);
+    if (!k) return [];
+    const arr = JSON.parse(localStorage.getItem(k) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+function clearChatMsgCache(uid) {
+  try { const k = chatMsgCacheKey(uid); if (k) localStorage.removeItem(k); } catch (e) {}
+}
+function setLastOpenChat(uid) {
+  try {
+    if (!currentUser) return;
+    if (uid) localStorage.setItem("nexa_last_open_chat_" + currentUser.uid, uid);
+    else localStorage.removeItem("nexa_last_open_chat_" + currentUser.uid);
+  } catch (e) {}
+}
+function getLastOpenChat() {
+  try {
+    return (currentUser && localStorage.getItem("nexa_last_open_chat_" + currentUser.uid)) || null;
+  } catch (e) { return null; }
+}
+
+// WhatsApp-style: on app open, jump straight back into the conversation you
+// last had open. Cached bubbles paint instantly (loadChatMsgCache), then the
+// live listeners fill in anything new. On mobile the chat slides in full-
+// screen via the existing chat-open-mobile class inside selectChat().
+function maybeReopenLastChat() {
+  try {
+    const uid = getLastOpenChat();
+    if (!uid || selectedUser) return;
+    let user = null;
+    if (currentUser && uid === currentUser.uid) {
+      user = getSelfContact(); // the pinned "Message yourself" contact
+    } else {
+      user = (allUsersData || []).find(u => u.uid === uid);
+    }
+    if (!user) return; // contact no longer in the list — stay on the chat list
+    selectChat(user, null);
+  } catch (e) {}
+}
+
 // Find a message across both the live window and the fetched older pages.
 function findLocalMsg(id) {
   return _msgsA.find(m => m.id === id)
@@ -2858,11 +2936,24 @@ function loadMessages() {
   resetMsgPaging();
 
   const box = document.getElementById("messages");
-  if (box) {
-    box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 14px; font-weight: 500; color: var(--text-3);">Loading conversation...</div></div>';
+
+  if (!selectedUser) {
+    if (box) box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 14px; font-weight: 500; color: var(--text-3);">Select a conversation</div></div>';
+    return;
   }
 
-  if (!selectedUser) return;
+  // WhatsApp-style instant open: paint this chat's cached newest messages
+  // immediately so the conversation appears before the live listeners return.
+  // Cached bubbles go into the "older" buckets (which the windowed listeners
+  // never overwrite); the live snapshots then replace them by id.
+  const cached = loadChatMsgCache(selectedUser.uid);
+  if (cached.length) {
+    _olderMsgsA = cached.filter(m => m.from === currentUser.uid);
+    _olderMsgsB = cached.filter(m => m.from !== currentUser.uid);
+    scheduleMessageRender();
+  } else if (box) {
+    box.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 14px; font-weight: 500; color: var(--text-3);">Loading conversation...</div></div>';
+  }
 
   const otherUid = selectedUser.uid;
 
@@ -3452,6 +3543,8 @@ function renderMessageList() {
       latestMsgTime[selectedUser.uid] = lastM.createdAt;
       latestMsgText[selectedUser.uid] = lastM.text || (lastM.image ? "📷 Photo" : lastM.video ? "🎥 Video" : lastM.audio ? "🎤 Voice" : "Message");
     }
+    // Keep the instant-open cache for this chat fresh (newest windowed msgs).
+    saveChatMsgCache(selectedUser.uid);
   }
 
   if (chatJustOpened) {
@@ -6121,6 +6214,7 @@ function loadCachedStories() {
 
 function renderStoriesBar() {
   renderStoriesTab();
+  updateStoryTabDot();
   const bar = document.getElementById("storiesBar");
   if (!bar) return;
   bar.innerHTML = "";
@@ -6178,6 +6272,26 @@ function markStorySeen(id) {
   const seen = getSeenStories();
   seen[id] = true;
   localStorage.setItem("seenStories", JSON.stringify(seen));
+  updateStoryTabDot();
+}
+
+// WhatsApp-style "new story" indicator: light up the Stories tab (mobile
+// bottom nav + desktop sidebar) with a green dot whenever at least one
+// contact has a story the user hasn't viewed yet. Your OWN stories don't
+// trigger it. Cleared automatically once every story is seen.
+function updateStoryTabDot() {
+  const seenMap = getSeenStories();
+  const myUid = currentUser ? currentUser.uid : localStorage.getItem("nexa_last_uid");
+  let hasUnseen = false;
+  for (const uid in userStatuses) {
+    if (uid === myUid) continue; // your own story isn't a "new story" alert
+    const statuses = userStatuses[uid] || [];
+    if (statuses.some(s => !seenMap[s.id])) { hasUnseen = true; break; }
+  }
+  ["storyTabDotMobile", "storyTabDotDesktop"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = hasUnseen ? "block" : "none";
+  });
 }
 
 function openStoryViewer(uid, storyId = null) {

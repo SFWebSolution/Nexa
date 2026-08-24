@@ -3869,6 +3869,19 @@ input[type="range"] {
   background: var(--primary);
   box-shadow: 0 2px 10px var(--primary-glow);
 }
+.s-tab-btn { position: relative; }
+.s-tab-btn .story-tab-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #25d366;
+  border: 2px solid var(--bg-1, #0b141a);
+  z-index: 5;
+  pointer-events: none;
+}
 
 /* Tab Panes Container & Panes */
 .tab-panes-container {
@@ -4334,6 +4347,20 @@ input[type="range"] {
     line-height: 18px;
     text-align: center;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* WhatsApp-style "new story" green dot on the Stories tab button */
+  .nav-item .story-tab-dot {
+    position: absolute;
+    top: 4px;
+    right: 26%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #25d366;
+    border: 2px solid var(--bg-1, #0b141a);
     z-index: 5;
     pointer-events: none;
   }
