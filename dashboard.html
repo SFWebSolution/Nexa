@@ -3294,20 +3294,30 @@ function isChatNearBottom() {
   return box.scrollHeight - box.scrollTop - box.clientHeight < 200;
 }
 
-function scrollChatToBottom() {
+/* Force the messages view to the very bottom, instantly (bypassing the
+   container's scroll-behavior:smooth so we never animate-lag behind), and
+   re-assert after layout / async media / composer growth settle. This is what
+   guarantees the latest message is fully in view — never "a little bit below"
+   — on open, on send, and on receive. */
+function scrollMessagesToBottom(immediate = true) {
   const box = document.getElementById("messages");
   if (!box) return;
-  const scrollNow = () => {
-    const msgs = box.querySelectorAll(".msg");
-    const last = msgs[msgs.length - 1];
-    if (last) last.scrollIntoView({ block: "end" });
+  const doScroll = () => {
+    const prevBehavior = box.style.scrollBehavior;
+    box.style.scrollBehavior = "auto"; // override smooth for a hard jump
     box.scrollTop = box.scrollHeight;
+    box.style.scrollBehavior = prevBehavior;
   };
-  scrollNow();
-  // Media can finish loading after the first scroll and push the latest
-  // message further down — re-scroll so we truly land on it.
-  setTimeout(scrollNow, 250);
-  setTimeout(scrollNow, 600);
+  doScroll();
+  if (!immediate) return;
+  requestAnimationFrame(doScroll);
+  setTimeout(doScroll, 60);
+  setTimeout(doScroll, 200);
+  setTimeout(doScroll, 450);
+}
+
+function scrollChatToBottom() {
+  scrollMessagesToBottom();
   scrollDownNewCount = 0;
   updateScrollDownBtn();
 }
@@ -3515,21 +3525,19 @@ function renderMessageList() {
   }
 
   if (chatJustOpened) {
-    // Force scroll to bottom on chat open — multiple deferred attempts
-    // to handle async DOM layout, images loading, and both Firestore snapshots
-    const forceScroll = () => { box.scrollTop = box.scrollHeight; };
-    forceScroll();
-    requestAnimationFrame(forceScroll);
-    setTimeout(forceScroll, 50);
-    setTimeout(forceScroll, 200);
-    setTimeout(forceScroll, 500);
-    // Only clear the flag after enough time for both snapshots to fire
+    // Force scroll to the very bottom on chat open — the helper overrides the
+    // container's smooth-scroll and re-asserts across async layout / media /
+    // both Firestore snapshots, so the latest message is truly in view.
+    scrollMessagesToBottom();
     setTimeout(() => { chatJustOpened = false; }, 600);
   } else if (_loadingOlderRender) {
     // Older history was prepended — loadOlderMessages restores the scroll
     // position itself; never auto-scroll here.
   } else if (wasNearBottom) {
+    scrollMessagesToBottom(false);
+    box.style.scrollBehavior = "auto";
     box.scrollTop = box.scrollHeight;
+    box.style.scrollBehavior = "";
   }
 
   // Badge the scroll-down button when a new incoming message lands while the
@@ -4326,8 +4334,8 @@ async function sendMessage() {
   renderMessageList();
   clearReply();
 
-  const box = document.getElementById("messages");
-  if (box) box.scrollTop = box.scrollHeight;
+  // Scroll fully to the latest message so the just-sent bubble is in view.
+  scrollMessagesToBottom();
 
   try {
     await db.collection("chats").add(baseMsg(extras));
