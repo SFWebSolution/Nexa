@@ -150,6 +150,60 @@
         <div class="users" id="users">
           <div class="no-users">Loading users…</div>
         </div>
+        <script>
+        // WhatsApp-style instant first paint: render the cached chat list
+        // immediately, BEFORE the heavy CDN scripts (Firebase/PeerJS/lucide)
+        // finish loading and before DOMContentLoaded. This is deliberately
+        // self-contained (no app functions) so it can run this early. The main
+        // script's renderUsers() (fired by restoreInstantState + the live
+        // listeners) rebuilds these rows in place and updates previews/badges/
+        // online dots once real data arrives.
+        (function () {
+          try {
+            if (localStorage.getItem("nexa_signed_in") !== "1") return;
+            var uid = localStorage.getItem("nexa_last_uid");
+            if (!uid) return;
+            var users = JSON.parse(localStorage.getItem("nexa_cached_users_" + uid) || "null");
+            if (!users || !users.length) return;
+            var times = JSON.parse(localStorage.getItem("nexa_latest_msg_time") || "{}");
+            var texts = JSON.parse(localStorage.getItem("nexa_latest_msg_text") || "{}");
+            var unread = JSON.parse(localStorage.getItem("nexa_unread_" + uid) || "{}");
+            var deleted = JSON.parse(localStorage.getItem("nexa_deleted_chats_" + uid) || "{}");
+            var box = document.getElementById("users");
+            if (!box) return;
+            var esc = function (s) { return String(s || "").replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+            var okUrl = function (u) { return (u && /^(https?:|data:image\/|blob:)/.test(u)) ? u : "https://i.imgur.com/HeIi0wU.png"; };
+            var list = users.filter(function (u) { return !deleted[u.uid]; });
+            list.sort(function (a, b) { return (times[b.uid] || 0) - (times[a.uid] || 0); });
+            var html = "";
+            list.forEach(function (u) {
+              var photo = okUrl(u.photo);
+              var name = esc(u.displayName || "User");
+              var prev = esc(texts[u.uid] || "");
+              var time = times[u.uid] ? esc(new Date(times[u.uid]).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })) : "";
+              var badge = (unread[u.uid] || 0) > 0 ? '<div class="unread-badge">' + (unread[u.uid] > 99 ? "99+" : unread[u.uid]) + "</div>" : "";
+              html += '<div class="user-item" data-uid="' + esc(u.uid) + '">' +
+                '<div class="user-avatar-wrap"><img src="' + esc(photo) + '" class="user-avatar" loading="lazy" decoding="async" onerror="this.src=\'https://i.imgur.com/HeIi0wU.png\'"><div class="status-dot" id="dot-' + esc(u.uid) + '"></div></div>' +
+                '<div class="user-info"><div class="user-name">' + name + '</div><div class="user-preview" id="prev-' + esc(u.uid) + '">' + prev + '</div></div>' +
+                '<div class="user-meta"><div class="user-time">' + time + '</div>' + badge + '</div>' +
+                '</div>';
+            });
+            if (html) box.innerHTML = html;
+            // Fallback search so the list stays filterable even if the heavy
+            // main script hasn't finished loading yet (it defines the real
+            // searchUsers + selectChat and overwrites this once ready).
+            if (typeof window.searchUsers !== "function") {
+              window.searchUsers = function () {
+                var q = (document.getElementById("userSearch").value || "").toLowerCase();
+                box.querySelectorAll(".user-item").forEach(function (it) {
+                  var nm = (it.querySelector(".user-name") || {}).textContent || "";
+                  it.style.display = nm.toLowerCase().indexOf(q) > -1 ? "" : "none";
+                });
+              };
+            }
+          } catch (e) {}
+        })();
+        </script>
       </div>
 
       <!-- 2. STORIES TAB -->
@@ -1533,83 +1587,6 @@ let userPresenceCache = window.userPresenceCache;
 let userStatus = "online";
 let presenceUnsubs = {};
 let userToDelete = null;
-
-/* =========================================================================
-   INSTANT OPEN (WhatsApp-style): restore the last-known UI from localStorage
-   BEFORE Firebase auth resolves, so a returning user sees their chat list,
-   last-message previews, unread badges and stories instantly — exactly as
-   they left them. Live Firestore listeners (started in onAuthStateChanged)
-   then blend in any updates a moment later. This block runs synchronously
-   after the state `let`s above (so they're past their TDZ) but before the
-   async auth callback fires. It is a pure cache rehydrate — every piece is
-   re-validated and overwritten by the live listeners once they connect.
-   ========================================================================= */
-function restoreInstantState() {
-  try {
-    // Only paint the cached UI for a device that still believes it's signed in.
-    // If the user signed out, the flag is cleared and we skip the restore so no
-    // stale chats flash before the auth-gate bounces to login.html.
-    if (localStorage.getItem("nexa_signed_in") !== "1") return;
-    const uid = localStorage.getItem("nexa_last_uid");
-    if (!uid) return; // never signed in here — nothing cached to restore
-
-    // Own profile header (avatar + name) so the shell looks complete.
-    try {
-      const prof = JSON.parse(localStorage.getItem("nexa_my_profile_" + uid) || "null");
-      if (prof) {
-        if (prof.name) { const n = document.getElementById("myName"); if (n) n.textContent = prof.name; }
-        const pic = safeMediaUrl(prof.photo) || "";
-        if (pic) {
-          const mp = document.getElementById("myPic"); if (mp) mp.src = pic;
-          const st = document.getElementById("storyTabMyPic"); if (st) st.src = pic;
-        }
-      }
-    } catch (e) {}
-
-    // Chat ordering + last-message previews (drives list sort + subtitles).
-    loadLatestMsgState();
-
-    // Muted / favorited / blocked maps + theme (pure localStorage read).
-    loadPrefs();
-
-    // Locally-deleted (cleared) chats so the list matches what they left.
-    try {
-      const dc = localStorage.getItem("nexa_deleted_chats_" + uid);
-      if (dc) deletedChats = JSON.parse(dc);
-    } catch (e) {}
-
-    // The user list itself (names, avatars) — renders instantly.
-    try {
-      const saved = localStorage.getItem("nexa_cached_users_" + uid);
-      if (saved) {
-        allUsersData = JSON.parse(saved);
-        allUsersData.forEach(u => {
-          u.photo = safeMediaUrl(u.photo) || "https://i.imgur.com/HeIi0wU.png";
-        });
-        window.allUsersData = allUsersData;
-      }
-    } catch (e) {}
-
-    // Unread badges from the last session.
-    try {
-      const un = JSON.parse(localStorage.getItem("nexa_unread_" + uid) || "null");
-      if (un && typeof un === "object") unreadMessages = un;
-    } catch (e) {}
-
-    // Stories bar from the last session (dropped if aged past 24h).
-    loadCachedStories();
-
-    // Paint the whole thing now — no waiting for the network.
-    renderUsers();
-    renderActiveNowBar();
-    renderStoriesBar();
-    updateTotalUnreadBadge();
-    console.log("⚡ Instant state restored from cache");
-  } catch (e) {
-    console.warn("Instant restore failed (non-fatal):", e);
-  }
-}
-restoreInstantState();
 
 function loadDeletedChats() {
   if (!currentUser) return;
@@ -7867,6 +7844,84 @@ function loadPrefs() {
 document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) lucide.createIcons();
 });
+
+/* =========================================================================
+   INSTANT OPEN (WhatsApp-style): restore the last-known UI from localStorage
+   BEFORE Firebase auth resolves, so a returning user sees their chat list,
+   last-message previews, unread badges and stories instantly — exactly as
+   they left them. This runs on DOMContentLoaded (after every function above
+   is defined, but still before the async onAuthStateChanged callback fires),
+   so the users list paints immediately instead of showing "Loading users…".
+   Live Firestore listeners then blend in any updates a moment later. It is a
+   pure cache rehydrate — every piece is re-validated and overwritten by the
+   live listeners once they connect.
+   ========================================================================= */
+function restoreInstantState() {
+  try {
+    // Only paint the cached UI for a device that still believes it's signed in.
+    // If the user signed out, the flag is cleared and we skip the restore so no
+    // stale chats flash before the auth-gate bounces to login.html.
+    if (localStorage.getItem("nexa_signed_in") !== "1") return;
+    const uid = localStorage.getItem("nexa_last_uid");
+    if (!uid) return; // never signed in here — nothing cached to restore
+
+    // Own profile header (avatar + name) so the shell looks complete.
+    try {
+      const prof = JSON.parse(localStorage.getItem("nexa_my_profile_" + uid) || "null");
+      if (prof) {
+        if (prof.name) { const n = document.getElementById("myName"); if (n) n.textContent = prof.name; }
+        const pic = safeMediaUrl(prof.photo) || "";
+        if (pic) {
+          const mp = document.getElementById("myPic"); if (mp) mp.src = pic;
+          const st = document.getElementById("storyTabMyPic"); if (st) st.src = pic;
+        }
+      }
+    } catch (e) {}
+
+    // Chat ordering + last-message previews (drives list sort + subtitles).
+    loadLatestMsgState();
+
+    // Muted / favorited / blocked maps + theme (pure localStorage read).
+    loadPrefs();
+
+    // Locally-deleted (cleared) chats so the list matches what they left.
+    try {
+      const dc = localStorage.getItem("nexa_deleted_chats_" + uid);
+      if (dc) deletedChats = JSON.parse(dc);
+    } catch (e) {}
+
+    // The user list itself (names, avatars) — renders instantly.
+    try {
+      const saved = localStorage.getItem("nexa_cached_users_" + uid);
+      if (saved) {
+        allUsersData = JSON.parse(saved);
+        allUsersData.forEach(u => {
+          u.photo = safeMediaUrl(u.photo) || "https://i.imgur.com/HeIi0wU.png";
+        });
+        window.allUsersData = allUsersData;
+      }
+    } catch (e) {}
+
+    // Unread badges from the last session.
+    try {
+      const un = JSON.parse(localStorage.getItem("nexa_unread_" + uid) || "null");
+      if (un && typeof un === "object") unreadMessages = un;
+    } catch (e) {}
+
+    // Stories bar from the last session (dropped if aged past 24h).
+    loadCachedStories();
+
+    // Paint the whole thing now — no waiting for the network.
+    renderUsers();
+    renderActiveNowBar();
+    renderStoriesBar();
+    updateTotalUnreadBadge();
+    console.log("⚡ Instant state restored from cache");
+  } catch (e) {
+    console.warn("Instant restore failed (non-fatal):", e);
+  }
+}
+document.addEventListener("DOMContentLoaded", restoreInstantState);
 
 console.log("✨ All initialization complete! Nexa Messenger is ready.");
 function openProfilePic(src, returnTo) {
