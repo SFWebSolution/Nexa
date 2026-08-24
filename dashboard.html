@@ -2120,21 +2120,11 @@ function renderSettingsTab() {
   grid.innerHTML = "";
 
   const themes = [
-    { id: 'nexa', name: 'Nexa Deep', color: '#4f8fff' },
+    { id: 'light', name: 'Nexa Light', color: '#eef2f7' },
+    { id: 'nexa', name: 'Nexa Blue (Dark)', color: '#2b8fff' },
     { id: 'midnight', name: 'Midnight', color: '#3b82f6' },
-    { id: 'ocean', name: 'Ocean Cyan', color: '#00d9ff' },
-    { id: 'forest', name: 'Forest Emerald', color: '#22c55e' },
-    { id: 'sunset', name: 'Sunset Orange', color: '#f97316' },
-    { id: 'lavender', name: 'Lavender Violet', color: '#a855f7' },
-    { id: 'rose', name: 'Rose Pink', color: '#e11d48' },
-    { id: 'neon', name: 'Neon Cyber', color: '#0ff' },
-    { id: 'obsidian', name: 'Obsidian Dark', color: '#8b8b8b' },
-    { id: 'gold', name: 'Luxury Gold', color: '#d4af37' },
-    { id: 'crimson', name: 'Crimson Red', color: '#dc2626' },
-    { id: 'arctic', name: 'Arctic Light', color: '#06b6d4' },
-    { id: 'galaxy', name: 'Galaxy Purple', color: '#7c3aed' },
-    { id: 'mint', name: 'Mint Teal', color: '#14b8a6' },
-    { id: 'infinity', name: 'Infinity Glow', color: '#00ffff' }
+    { id: 'rose', name: 'Rose', color: '#e11d48' },
+    { id: 'lavender', name: 'Lavender', color: '#a855f7' }
   ];
 
   themes.forEach(t => {
@@ -4564,19 +4554,8 @@ const THEMES = {
   light: { label: '☀️ Nexa Light', attr: 'light', tier: 'classic' },
   nexa: { label: '🔵 Nexa Blue (Dark)', attr: 'nexa', tier: 'classic' },
   midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
-  ocean: { label: '🌊 Ocean Wave', attr: 'ocean', tier: 'classic' },
-  forest: { label: '🌲 Forest Green', attr: 'forest', tier: 'classic' },
-  sunset: { label: '🌅 Sunset Glow', attr: 'sunset', tier: 'classic' },
-  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' },
-  rose: { label: '🌹 Rose Pink', attr: 'rose', tier: 'classic' },
-  neon: { label: '⚡ Neon Pulse', attr: 'neon', tier: 'classic' },
-  obsidian: { label: '🖤 Obsidian', attr: 'obsidian', tier: 'classic' },
-  gold: { label: '✨ Gold Elite', attr: 'gold', tier: 'classic' },
-  crimson: { label: '🔴 Crimson', attr: 'crimson', tier: 'classic' },
-  arctic: { label: '🩵 Arctic Ice', attr: 'arctic', tier: 'classic' },
-  galaxy: { label: '🌌 Galaxy', attr: 'galaxy', tier: 'classic' },
-  mint: { label: '🍃 Mint Fresh', attr: 'mint', tier: 'classic' },
-  infinity: { label: '🌌 Nexa Infinity', attr: 'infinity', tier: 'ultimate' }
+  rose: { label: '🌹 Rose', attr: 'rose', tier: 'classic' },
+  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' }
 };
 
 let currentTheme = 'light';
@@ -7833,6 +7812,9 @@ function loadPrefs() {
   try {
     const prefs = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");
     currentTheme = prefs.theme || 'light';
+    // Fallback: if a saved theme was removed from the picker, reset to the
+    // default so the user isn't left with no theme applied.
+    if (!THEMES[currentTheme]) currentTheme = 'light';
     mutedChats = prefs.muted || {};
     favoritedChats = prefs.favorited || {};
     blockedUsers = prefs.blocked || {};
