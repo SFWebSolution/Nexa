@@ -1801,7 +1801,21 @@
           if (window.db && payload.targetUserId) {
             window.db.collection('voice_invites').doc(payload.targetUserId).delete().catch(() => {});
           }
-          this.joinRoom(payload.room);
+          // Verify the room still exists before joining — the host may have
+          // ended it after sending the invite.
+          if (window.db && payload.room && payload.room.id) {
+            window.db.collection('voice_rooms').doc(payload.room.id).get()
+              .then(doc => {
+                if (doc.exists) {
+                  this.joinRoom(payload.room);
+                } else {
+                  this.showToast('📞 This Voice Chat has ended.');
+                }
+              })
+              .catch(() => this.joinRoom(payload.room));
+          } else {
+            this.joinRoom(payload.room);
+          }
           cleanup();
         };
 
