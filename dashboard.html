@@ -639,9 +639,10 @@
 <div class="voice-panel" id="voicePanel">
   <div class="voice-circle">🎤</div>
   <div class="voice-timer-txt" id="voiceTimer">0:00</div>
-  <div class="voice-hint">Release to send • Discard to cancel</div>
+  <div class="voice-hint">Recording… tap Send or Discard</div>
   <div class="voice-actions">
     <button class="vbtn vbtn-del" onclick="cancelVoice()">🗑 Discard</button>
+    <button class="vbtn vbtn-send" id="vSendBtn" onclick="sendVoice()">✓ Send</button>
   </div>
 </div>
 
@@ -4433,24 +4434,10 @@ const voiceTimerEl = document.getElementById("voiceTimer");
 recordBtn.addEventListener("mousedown", startRec);
 recordBtn.addEventListener("touchstart", e => { e.preventDefault(); startRec(e); });
 
-// Release anywhere (button or overlay) ends the recording. WhatsApp-style:
-// releasing sends the note UNLESS the release landed on Discard.
-function handleRecRelease(e) {
-  if (!isRecording) return;
-  const onDiscard = e && e.target && e.target.closest && e.target.closest(".vbtn-del");
-  if (onDiscard) { cancelVoice(); return; }
-  stopRec(true); // release-to-send
-}
-document.addEventListener("mouseup", handleRecRelease);
-document.addEventListener("touchend", handleRecRelease);
-
-// Discard button: stop it from also triggering the release-to-send handler.
-const vDiscardBtn = document.querySelector(".vbtn-del");
-if (vDiscardBtn) {
-  vDiscardBtn.addEventListener("mousedown", e => e.stopPropagation());
-  vDiscardBtn.addEventListener("touchstart", e => e.stopPropagation(), { passive: true });
-  vDiscardBtn.addEventListener("touchend", e => { e.stopPropagation(); }, { passive: true });
-}
+// Releasing the press just STOPS the recording (keeps the clip ready). The
+// user then taps Send or Discard explicitly — send sends, discard discards.
+document.addEventListener("mouseup", () => { if (isRecording) stopRec(); });
+document.addEventListener("touchend", () => { if (isRecording) stopRec(); });
 
 async function startRec(e) {
   if (isRecording || !selectedUser) {
@@ -4493,9 +4480,7 @@ async function startRec(e) {
   }
 }
 
-let voiceCanceled = false;
-
-function stopRec(autoSend = true) {
+function stopRec() {
   if (!isRecording) return;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
@@ -4506,23 +4491,14 @@ function stopRec(autoSend = true) {
   isRecording = false;
   recordBtn.classList.remove("active");
   clearInterval(recTimer);
-  // WhatsApp-style: releasing the press sends the note immediately (single
-  // press-and-release). If Discard was tapped, voiceCanceled suppresses this.
-  if (autoSend && !voiceCanceled) {
-    // Wait for the stop event to produce the blob, then send.
-    const t0 = Date.now();
-    const waitThenSend = () => {
-      if (recordingBlob) { sendVoice(); }
-      else if (Date.now() - t0 < 1500) setTimeout(waitThenSend, 50);
-    };
-    setTimeout(waitThenSend, 30);
-  }
-  voiceCanceled = false;
 }
 
 async function sendVoice() {
   if (!selectedUser) return;
   if (!recordingBlob) { showNotifToast("No recording to send", "error"); return; }
+
+  const btn = document.getElementById("vSendBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
 
   // Capture the blob/mime/duration BEFORE cancelVoice() clears them.
   const blob = recordingBlob;
@@ -4558,12 +4534,11 @@ async function sendVoice() {
     if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
     showNotifToast("Failed to send voice note: " + e.message, "error");
   }
+  if (btn) { btn.disabled = false; btn.textContent = "✓ Send"; }
 }
 
 function cancelVoice() {
-  // Mark canceled BEFORE stopping so stopRec's auto-send doesn't fire.
-  voiceCanceled = true;
-  if (isRecording) stopRec(false);
+  // Stop any in-flight recording, then clear state. Discard just discards.
   if (mediaRecorder && mediaRecorder.state === "recording") {
     try { mediaRecorder.stop(); } catch (e) {}
     if (mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(t => t.stop());
