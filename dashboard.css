@@ -7552,6 +7552,19 @@ a:focus-visible, [tabindex]:focus-visible {
 :root:not([data-theme]) .empty-chat > div:nth-child(3) { color: #45536b !important; }
 :root:not([data-theme]) .stories-bar { background: rgba(244, 247, 251, 0.6); }
 :root:not([data-theme]) .reply-quote { background: rgba(15, 27, 45, 0.05); }
+/* Toast notifications (e.g. the "Welcome to Nexa Messenger" popup) — the base
+   toast is a dark card that used --text-1, which is DARK in the light theme,
+   making the text invisible. Give the light theme a clean white toast with
+   dark text, and keep the type colors readable on it. */
+:root:not([data-theme]) .notif-toast {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--border-md);
+  color: #16233a;
+  box-shadow: 0 18px 50px rgba(15, 27, 45, 0.18);
+}
+:root:not([data-theme]) .notif-toast.success { color: #16a34a; border-color: #16a34a; }
+:root:not([data-theme]) .notif-toast.error { color: #e11d48; border-color: #e11d48; }
+:root:not([data-theme]) .notif-toast.warning { color: #b45309; border-color: #f59e0b; }
 :root:not([data-theme]) * { scrollbar-color: rgba(15, 27, 45, 0.18) transparent; }
 :root:not([data-theme]) ::-webkit-scrollbar-thumb { background: rgba(15, 27, 45, 0.16); background-clip: content-box; }
 :root:not([data-theme]) ::-webkit-scrollbar-thumb:hover { background: rgba(43, 143, 255, 0.5); background-clip: content-box; }
