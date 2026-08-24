@@ -639,10 +639,9 @@
 <div class="voice-panel" id="voicePanel">
   <div class="voice-circle">🎤</div>
   <div class="voice-timer-txt" id="voiceTimer">0:00</div>
-  <div class="voice-hint">Recording… Discard or Send</div>
+  <div class="voice-hint">Release to send • Discard to cancel</div>
   <div class="voice-actions">
     <button class="vbtn vbtn-del" onclick="cancelVoice()">🗑 Discard</button>
-    <button class="vbtn vbtn-send" id="vSendBtn" onclick="sendVoice()">✓ Send</button>
   </div>
 </div>
 
@@ -4433,8 +4432,25 @@ const voiceTimerEl = document.getElementById("voiceTimer");
 
 recordBtn.addEventListener("mousedown", startRec);
 recordBtn.addEventListener("touchstart", e => { e.preventDefault(); startRec(e); });
-document.addEventListener("mouseup", stopRec);
-document.addEventListener("touchend", stopRec);
+
+// Release anywhere (button or overlay) ends the recording. WhatsApp-style:
+// releasing sends the note UNLESS the release landed on Discard.
+function handleRecRelease(e) {
+  if (!isRecording) return;
+  const onDiscard = e && e.target && e.target.closest && e.target.closest(".vbtn-del");
+  if (onDiscard) { cancelVoice(); return; }
+  stopRec(true); // release-to-send
+}
+document.addEventListener("mouseup", handleRecRelease);
+document.addEventListener("touchend", handleRecRelease);
+
+// Discard button: stop it from also triggering the release-to-send handler.
+const vDiscardBtn = document.querySelector(".vbtn-del");
+if (vDiscardBtn) {
+  vDiscardBtn.addEventListener("mousedown", e => e.stopPropagation());
+  vDiscardBtn.addEventListener("touchstart", e => e.stopPropagation(), { passive: true });
+  vDiscardBtn.addEventListener("touchend", e => { e.stopPropagation(); }, { passive: true });
+}
 
 async function startRec(e) {
   if (isRecording || !selectedUser) {
@@ -4477,7 +4493,9 @@ async function startRec(e) {
   }
 }
 
-function stopRec() {
+let voiceCanceled = false;
+
+function stopRec(autoSend = true) {
   if (!isRecording) return;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
@@ -4488,46 +4506,50 @@ function stopRec() {
   isRecording = false;
   recordBtn.classList.remove("active");
   clearInterval(recTimer);
+  // WhatsApp-style: releasing the press sends the note immediately (single
+  // press-and-release). If Discard was tapped, voiceCanceled suppresses this.
+  if (autoSend && !voiceCanceled) {
+    // Wait for the stop event to produce the blob, then send.
+    const t0 = Date.now();
+    const waitThenSend = () => {
+      if (recordingBlob) { sendVoice(); }
+      else if (Date.now() - t0 < 1500) setTimeout(waitThenSend, 50);
+    };
+    setTimeout(waitThenSend, 30);
+  }
+  voiceCanceled = false;
 }
 
 async function sendVoice() {
   if (!selectedUser) return;
-  // If the recorder is still finalizing the blob, wait briefly for it.
-  if (!recordingBlob && isRecording) {
-    stopRec();
-    const t0 = Date.now();
-    while (!recordingBlob && Date.now() - t0 < 1500) {
-      await new Promise(r => setTimeout(r, 60));
-    }
-  }
   if (!recordingBlob) { showNotifToast("No recording to send", "error"); return; }
 
-  const btn = document.getElementById("vSendBtn");
-  btn.disabled = true;
-  btn.textContent = "Sending…";
+  // Capture the blob/mime/duration BEFORE cancelVoice() clears them.
+  const blob = recordingBlob;
+  const mime = recordingMime;
+  const dur = recDuration || 0;
 
   // Optimistic bubble: show the voice note in the chat immediately (from the
-  // local blob) so it appears the instant you tap send — then swap in the
+  // local blob) so it appears the instant you release — then swap in the
   // uploaded URL once it's stored. No more "waiting for it to send".
-  const localUrl = URL.createObjectURL(recordingBlob);
-  const dur = recDuration || 0;
+  const localUrl = URL.createObjectURL(blob);
   const tempMsg = baseMsg({ audio: localUrl, duration: dur });
   tempMsg.id = "temp_vn_" + Date.now();
   tempMsg._localAudio = true;
   _msgsA.push(tempMsg);
   renderMessageList();
   scrollMessagesToBottom();
+  cancelVoice(); // hide the panel + reset state right away
 
   try {
-    const ext = recordingMime.includes("mp4") ? "m4a" : recordingMime.includes("ogg") ? "ogg" : "webm";
-    const f = new File([recordingBlob], `voice.${ext}`, { type: recordingMime });
+    const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+    const f = new File([blob], `voice.${ext}`, { type: mime });
     const url = await uploadFile(f);
     if (url) {
       await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
       // Replace the optimistic local-blob bubble with the stored one.
       const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
       if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
-      cancelVoice();
       const senderName = document.getElementById('myName').textContent || 'Nexa User';
       sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
     }
@@ -4536,13 +4558,21 @@ async function sendVoice() {
     if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
     showNotifToast("Failed to send voice note: " + e.message, "error");
   }
-  btn.disabled = false;
-  btn.textContent = "✓ Send";
 }
 
 function cancelVoice() {
+  // Mark canceled BEFORE stopping so stopRec's auto-send doesn't fire.
+  voiceCanceled = true;
+  if (isRecording) stopRec(false);
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    try { mediaRecorder.stop(); } catch (e) {}
+    if (mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+  isRecording = false;
   recordingBlob = null;
   audioChunks = [];
+  recordBtn.classList.remove("active");
+  clearInterval(recTimer);
   voicePanel.classList.remove("active");
   voiceTimerEl.textContent = "0:00";
 }

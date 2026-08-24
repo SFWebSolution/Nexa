@@ -1658,11 +1658,17 @@
       // Bind (or re-bind) the invite listener to the REAL signed-in uid.
       this.bindInviteListener();
       // Auth often hasn't restored from LOCAL persistence yet at setup time
-      // (getCurrentUser() returns a fake `user_xxx`). Re-check shortly after and
-      // whenever the dashboard publishes the real user so cross-device invites
-      // actually arrive at voice_invites/<realUid> instead of a dead fake doc.
-      setTimeout(() => this.bindInviteListener(), 1500);
-      setTimeout(() => this.bindInviteListener(), 4000);
+      // (getCurrentUser() returns a fake `user_xxx`). Poll briefly until the real
+      // uid is available, so cross-device invites reliably bind to
+      // voice_invites/<realUid> instead of a dead fake doc. Stops once bound or
+      // after ~20s.
+      let tries = 0;
+      const retry = () => {
+        if (this._inviteUnsub && this._inviteListenerUid && !this._inviteListenerUid.startsWith('user_')) return; // bound to real uid
+        this.bindInviteListener();
+        if (tries++ < 12) setTimeout(retry, 1600);
+      };
+      setTimeout(retry, 800);
     }
 
     // Subscribe to voice_invites/<uid> for the REAL current user, rebinding if
