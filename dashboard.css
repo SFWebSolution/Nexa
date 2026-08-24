@@ -7534,10 +7534,22 @@ a:focus-visible, [tabindex]:focus-visible {
 :root:not([data-theme]) .bottom-nav .nav-item { color: var(--text-3); }
 :root:not([data-theme]) .bottom-nav .nav-item.active { color: var(--primary); }
 :root:not([data-theme]) .empty-chat-icon {
-  background: radial-gradient(circle at 35% 30%, rgba(43, 143, 255, 0.16), rgba(43, 143, 255, 0.03));
+  background: radial-gradient(circle at 35% 30%, rgba(22, 111, 229, 0.16), rgba(22, 111, 229, 0.03));
   border: 1px solid var(--border-md);
   box-shadow: 0 12px 36px rgba(15, 27, 45, 0.1);
 }
+/* Empty-state ("Nexa Messenger / Select a conversation") — make the title and
+   subtitle clearly readable on the light background instead of the faint
+   default gray. Title gets a strong near-ink color + display font; subtitle a
+   clearly readable body gray. */
+:root:not([data-theme]) .empty-chat { color: #3d4c63; }
+:root:not([data-theme]) .empty-chat > div:nth-child(2) {
+  color: #101c33 !important;
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+:root:not([data-theme]) .empty-chat > div:nth-child(3) { color: #45536b !important; }
 :root:not([data-theme]) .stories-bar { background: rgba(244, 247, 251, 0.6); }
 :root:not([data-theme]) .reply-quote { background: rgba(15, 27, 45, 0.05); }
 :root:not([data-theme]) * { scrollbar-color: rgba(15, 27, 45, 0.18) transparent; }
