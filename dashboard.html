@@ -1033,6 +1033,12 @@ async function loadProfile() {
     document.getElementById("myPic").src = photoUrl;
     renderProfileTab();
 
+    // Cache own profile so the next open paints the header before auth resolves.
+    try {
+      localStorage.setItem("nexa_my_profile_" + currentUser.uid,
+        JSON.stringify({ name: displayName, photo: photoUrl }));
+    } catch (e) {}
+
     console.log("✓ Profile loaded:", displayName);
   } catch (err) {
     console.error("Error loading profile:", err);
@@ -1236,12 +1242,19 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     if (accountStatusUnsub) accountStatusUnsub();
+    try { localStorage.removeItem("nexa_signed_in"); } catch (e) {}
     window.location.href = "login.html";
     return;
   }
 
   currentUser = user;
   window.currentUser = user;
+  // Mark this device as signed-in so index.html skips the landing page and
+  // bounces straight here on the next app open (WhatsApp-style).
+  try {
+    localStorage.setItem("nexa_signed_in", "1");
+    localStorage.setItem("nexa_last_uid", user.uid);
+  } catch (e) {}
   console.log("👤 User:", user.email);
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
@@ -1501,6 +1514,7 @@ async function installPWA() {
 
 function handleLogout() {
   if (confirm('Logout?')) {
+    try { localStorage.removeItem("nexa_signed_in"); } catch (e) {}
     auth.signOut();
   }
 }
@@ -1517,6 +1531,83 @@ let userPresenceCache = window.userPresenceCache;
 let userStatus = "online";
 let presenceUnsubs = {};
 let userToDelete = null;
+
+/* =========================================================================
+   INSTANT OPEN (WhatsApp-style): restore the last-known UI from localStorage
+   BEFORE Firebase auth resolves, so a returning user sees their chat list,
+   last-message previews, unread badges and stories instantly — exactly as
+   they left them. Live Firestore listeners (started in onAuthStateChanged)
+   then blend in any updates a moment later. This block runs synchronously
+   after the state `let`s above (so they're past their TDZ) but before the
+   async auth callback fires. It is a pure cache rehydrate — every piece is
+   re-validated and overwritten by the live listeners once they connect.
+   ========================================================================= */
+function restoreInstantState() {
+  try {
+    // Only paint the cached UI for a device that still believes it's signed in.
+    // If the user signed out, the flag is cleared and we skip the restore so no
+    // stale chats flash before the auth-gate bounces to login.html.
+    if (localStorage.getItem("nexa_signed_in") !== "1") return;
+    const uid = localStorage.getItem("nexa_last_uid");
+    if (!uid) return; // never signed in here — nothing cached to restore
+
+    // Own profile header (avatar + name) so the shell looks complete.
+    try {
+      const prof = JSON.parse(localStorage.getItem("nexa_my_profile_" + uid) || "null");
+      if (prof) {
+        if (prof.name) { const n = document.getElementById("myName"); if (n) n.textContent = prof.name; }
+        const pic = safeMediaUrl(prof.photo) || "";
+        if (pic) {
+          const mp = document.getElementById("myPic"); if (mp) mp.src = pic;
+          const st = document.getElementById("storyTabMyPic"); if (st) st.src = pic;
+        }
+      }
+    } catch (e) {}
+
+    // Chat ordering + last-message previews (drives list sort + subtitles).
+    loadLatestMsgState();
+
+    // Muted / favorited / blocked maps + theme (pure localStorage read).
+    loadPrefs();
+
+    // Locally-deleted (cleared) chats so the list matches what they left.
+    try {
+      const dc = localStorage.getItem("nexa_deleted_chats_" + uid);
+      if (dc) deletedChats = JSON.parse(dc);
+    } catch (e) {}
+
+    // The user list itself (names, avatars) — renders instantly.
+    try {
+      const saved = localStorage.getItem("nexa_cached_users_" + uid);
+      if (saved) {
+        allUsersData = JSON.parse(saved);
+        allUsersData.forEach(u => {
+          u.photo = safeMediaUrl(u.photo) || "https://i.imgur.com/HeIi0wU.png";
+        });
+        window.allUsersData = allUsersData;
+      }
+    } catch (e) {}
+
+    // Unread badges from the last session.
+    try {
+      const un = JSON.parse(localStorage.getItem("nexa_unread_" + uid) || "null");
+      if (un && typeof un === "object") unreadMessages = un;
+    } catch (e) {}
+
+    // Stories bar from the last session (dropped if aged past 24h).
+    loadCachedStories();
+
+    // Paint the whole thing now — no waiting for the network.
+    renderUsers();
+    renderActiveNowBar();
+    renderStoriesBar();
+    updateTotalUnreadBadge();
+    console.log("⚡ Instant state restored from cache");
+  } catch (e) {
+    console.warn("Instant restore failed (non-fatal):", e);
+  }
+}
+restoreInstantState();
 
 function loadDeletedChats() {
   if (!currentUser) return;
@@ -2494,6 +2585,7 @@ function loadUnreadCounts() {
         }
       });
       unreadMessages = counts;
+      try { localStorage.setItem("nexa_unread_" + currentUser.uid, JSON.stringify(counts)); } catch (e) {}
       scheduleRender();
       updateTotalUnreadBadge();
     }, err => console.error("loadUnreadCounts listener error:", err));
@@ -5968,6 +6060,7 @@ function startStatusListener() {
       });
       renderStoriesBar();
       renderUsers();
+      saveCachedStories();
     }, err => console.error("Status listener error:", err));
   // One-time garbage collection of stories older than 24h. The scoped listener
   // never returns them, so they'd otherwise linger in storage forever. We read
@@ -5990,6 +6083,40 @@ function purgeExpiredStories() {
     if (count % 400 !== 0) batch.commit();
     console.log("Purged", count, "expired stories (>" + Math.round(STATUS_TTL_MS/3600000) + "h old).");
   }).catch(err => console.warn("Story GC error:", err)).finally(() => { statusGcRunning = false; });
+}
+
+// Cache the stories bar so a returning user sees story rings instantly on
+// open (before the status listener connects). Only a light projection is kept
+// (id/uid/type/createdAt/text/url) — heavy blobs like musicData are dropped.
+// Stories older than 24h are discarded on restore, matching the live TTL.
+function saveCachedStories() {
+  if (!currentUser) return;
+  try {
+    const light = {};
+    for (const uid in userStatuses) {
+      light[uid] = (userStatuses[uid] || []).map(s => ({
+        id: s.id, uid: s.uid, type: s.type, createdAt: s.createdAt,
+        text: s.text || null, url: s.url || null
+      }));
+    }
+    localStorage.setItem("nexa_cached_stories_" + currentUser.uid, JSON.stringify(light));
+  } catch (e) {}
+}
+
+function loadCachedStories() {
+  const uid = (currentUser && currentUser.uid) || localStorage.getItem("nexa_last_uid");
+  if (!uid) return;
+  try {
+    const saved = localStorage.getItem("nexa_cached_stories_" + uid);
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    const now = Date.now();
+    userStatuses = {};
+    for (const k in parsed) {
+      const arr = (parsed[k] || []).filter(s => s.createdAt && (now - s.createdAt) < STATUS_TTL_MS);
+      if (arr.length) userStatuses[k] = arr;
+    }
+  } catch (e) {}
 }
 
 function renderStoriesBar() {
