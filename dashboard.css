@@ -7475,7 +7475,12 @@ a:focus-visible, [tabindex]:focus-visible {
   border: 1px solid var(--border-md);
   box-shadow: 0 2px 8px rgba(15, 27, 45, 0.06);
 }
-:root:not([data-theme]) .msg.them .bubble .msg-text { color: var(--text-1); }
+/* Crisp, readable text + meta inside received (gray) bubbles — the default
+   --text-1/--text-3 shades were too faint on the light bubble, so the message
+   content and timestamp looked washed out. */
+:root:not([data-theme]) .msg.them .bubble .msg-text { color: #16233a; font-weight: 500; }
+:root:not([data-theme]) .msg.them .msg-meta { color: #54657f !important; opacity: 1 !important; }
+:root:not([data-theme]) .msg.them .bubble .msg-text a { color: var(--primary); }
 :root:not([data-theme]) .date-sep span {
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--border-md);
