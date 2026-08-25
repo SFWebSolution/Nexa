@@ -291,15 +291,23 @@
           <div class="settings-group">
             <div class="settings-group-title">🎁 Invite Friends</div>
             <div class="referral-card">
-              <div class="referral-title">Share Nexa, grow your circle</div>
-              <div class="referral-sub">Invite friends with your personal link — you'll see how many joined.</div>
+              <div class="referral-hero">
+                <div class="referral-hero-icon">🎁</div>
+                <div class="referral-hero-text">
+                  <div class="referral-title">Share Nexa, grow your circle</div>
+                  <div class="referral-sub">Invite friends with your personal link — track how many join.</div>
+                </div>
+              </div>
               <div class="referral-link-row">
-                <input type="text" id="referralLinkInput" class="referral-link-input" readonly value="">
-                <button class="referral-copy-btn" onclick="copyReferralLink()">Copy</button>
+                <div class="referral-link-pill">
+                  <span class="referral-link-text" id="referralLinkText"></span>
+                  <input type="text" id="referralLinkInput" class="referral-link-input" readonly value="">
+                </div>
+                <button class="referral-copy-btn" onclick="copyReferralLink()" title="Copy link">⧉ Copy</button>
               </div>
               <div class="referral-actions">
                 <button class="referral-share-btn" onclick="shareReferralLink()">📤 Share link</button>
-                <div class="referral-count">🎉 <span id="referralCount">0</span> joined</div>
+                <div class="referral-count"><span class="referral-count-num" id="referralCount">0</span> friends joined</div>
               </div>
             </div>
           </div>
@@ -2184,8 +2192,11 @@ function getReferralLink(username) {
 
 async function initReferralCard() {
   const username = await getMyUsername();
+  const link = getReferralLink(username);
   const input = document.getElementById("referralLinkInput");
-  if (input) input.value = getReferralLink(username);
+  if (input) input.value = link;
+  const text = document.getElementById("referralLinkText");
+  if (text) text.textContent = link;
   loadReferralCount();
 }
 
