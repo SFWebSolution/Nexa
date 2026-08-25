@@ -1229,6 +1229,52 @@ td {
       </div>
     </div>
 
+    <!-- ══════ APP ANALYTICS — engagement & health overview ══════ -->
+    <div class="section-header" style="margin-top: 28px;">
+      <div>
+        <h2 class="section-title">📊 App Analytics</h2>
+        <p class="section-subtitle">Engagement &amp; health at a glance — computed live from your data</p>
+      </div>
+    </div>
+    <div class="stats-grid" id="analyticsGrid">
+      <div class="stat-card">
+        <div class="stat-icon">📈</div>
+        <div class="stat-label">Engagement Rate</div>
+        <div class="stat-value" id="engagementRate">0%</div>
+        <div class="stat-change">Weekly actives ÷ total users</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">💬</div>
+        <div class="stat-label">Msgs / Active User</div>
+        <div class="stat-value" id="msgsPerUser">0</div>
+        <div class="stat-change">This week</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📸</div>
+        <div class="stat-label">Stories This Week</div>
+        <div class="stat-value" id="storiesThisWeek">0</div>
+        <div class="stat-change">All story posts this week</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🆕</div>
+        <div class="stat-label">New Users (7d)</div>
+        <div class="stat-value" id="newUsers7d">0</div>
+        <div class="stat-change">Signed up in last 7 days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔁</div>
+        <div class="stat-label">Retention Proxy</div>
+        <div class="stat-value" id="retentionRate">0%</div>
+        <div class="stat-change">Weekly actives who are online now</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⏱️</div>
+        <div class="stat-label">Avg Msgs / Day (7d)</div>
+        <div class="stat-value" id="msgsPerDay">0</div>
+        <div class="stat-change">Platform-wide</div>
+      </div>
+    </div>
+
     <!-- Search & Filter Controls -->
     <div class="search-box" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
       <input 
@@ -1372,6 +1418,8 @@ let users = [];
 let presenceData = {};
 let totalMessagesCount = 0;
 let activeStoriesCount = 0;
+let weeklyMessagesCount = 0;
+let weeklyStoriesCount = 0;
 let cachedMsgScores = {};
 let cachedStoryScores = {};
 let currentWeekStart = null;
@@ -1546,6 +1594,7 @@ function refreshOnlineCounts() {
   document.getElementById("activeToday").textContent = activeTodayCount;
 
   applyFiltersAndRender();
+  renderAnalytics();
 }
 
 function setFilter(filterName) {
@@ -1640,15 +1689,19 @@ function listenChats() {
 
       const weekStart = getCurrentWeekStart();
       const msgScores = {};
+      let weeklyMsgCount = 0;
       snapshot.docs.forEach(doc => {
         const data = doc.data();
         if (data.from && data.createdAt && data.createdAt >= weekStart) {
           msgScores[data.from] = (msgScores[data.from] || 0) + 1;
+          weeklyMsgCount++;
         }
       });
 
       cachedMsgScores = msgScores;
+      weeklyMessagesCount = weeklyMsgCount;
       renderLeaderboard();
+      renderAnalytics();
     },
     err => console.error("Chats count error:", err)
   );
@@ -1660,6 +1713,7 @@ function listenStories() {
       const now = Date.now();
       const weekStart = getCurrentWeekStart();
       let activeCount = 0;
+      let weeklyStoryCount = 0;
       const storyScores = {};
 
       snapshot.docs.forEach(doc => {
@@ -1669,6 +1723,7 @@ function listenStories() {
         }
         if (data.uid && data.createdAt && data.createdAt >= weekStart) {
           storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
+          weeklyStoryCount++;
         }
       });
 
@@ -1677,7 +1732,9 @@ function listenStories() {
       if (el) el.textContent = activeStoriesCount;
 
       cachedStoryScores = storyScores;
+      weeklyStoriesCount = weeklyStoryCount;
       renderLeaderboard();
+      renderAnalytics();
     },
     err => console.error("Stories count error:", err)
   );
@@ -1869,6 +1926,55 @@ function render() {
   applyFiltersAndRender();
   renderChart();
   renderLeaderboard();
+  renderAnalytics();
+}
+
+/* =====================================================
+   APP ANALYTICS — engagement & health metrics
+   Computed live from users + presence + chats + status.
+   ===================================================== */
+function renderAnalytics() {
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+  const totalUsers = users.length;
+  const weekStart = getCurrentWeekStart();
+  const now = Date.now();
+  const weekMs = 7 * 86400000;
+
+  // Weekly-active (non-banned) and online-now counts, recomputed here so the
+  // analytics stay correct even when called from a listener (not render()).
+  let weeklyActive = 0;
+  let onlineNow = 0;
+  users.forEach(u => {
+    const p = presenceData[u.uid] || {};
+    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
+    const isActive = lastSeen >= weekStart || u.createdAt >= weekStart
+      || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
+    if (isActive && !u.banned) weeklyActive++;
+    if (checkUserOnline(u)) onlineNow++;
+  });
+
+  // Engagement rate: weekly actives as a share of total users.
+  const engagement = totalUsers > 0 ? Math.round((weeklyActive / totalUsers) * 100) : 0;
+  setTxt("engagementRate", engagement + "%");
+
+  // Messages per active user this week.
+  const perUser = weeklyActive > 0 ? (weeklyMessagesCount / weeklyActive) : 0;
+  setTxt("msgsPerUser", perUser ? perUser.toFixed(1) : "0");
+
+  // Stories posted this week (all users).
+  setTxt("storiesThisWeek", weeklyStoriesCount.toLocaleString());
+
+  // New users in the last 7 days.
+  const new7 = users.filter(u => u.createdAt && u.createdAt >= (now - weekMs)).length;
+  setTxt("newUsers7d", new7.toLocaleString());
+
+  // Retention proxy: of the weekly-active users, how many are online right now.
+  const retention = weeklyActive > 0 ? Math.round((onlineNow / weeklyActive) * 100) : 0;
+  setTxt("retentionRate", retention + "%");
+
+  // Average messages per day over the last 7 days (weekly count / 7).
+  setTxt("msgsPerDay", Math.round(weeklyMessagesCount / 7).toLocaleString());
 }
 
 /* =====================================================
