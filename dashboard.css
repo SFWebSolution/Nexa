@@ -3574,11 +3574,47 @@ input[type="range"] {
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  background: rgba(22, 32, 46, 0.5);
+  background: var(--bg-2);
   border: 1px solid var(--border-md);
   border-radius: var(--radius-xs);
   gap: 12px;
 }
+
+/* ── Referral / Invite Friends card ── */
+.referral-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
+.referral-title { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.referral-sub { font-size: 12px; color: var(--text-3); margin-bottom: 12px; line-height: 1.5; }
+.referral-link-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.referral-link-input {
+  flex: 1; min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-md);
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-size: 12px;
+  font-family: monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.referral-copy-btn {
+  padding: 10px 16px; border: none; border-radius: var(--radius-xs);
+  background: var(--primary); color: #fff; font-weight: 700; font-size: 12.5px;
+  cursor: pointer; flex-shrink: 0; transition: opacity var(--tf);
+}
+.referral-copy-btn:hover { opacity: 0.9; }
+.referral-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.referral-share-btn {
+  padding: 10px 16px; border: 1px solid var(--border-md); border-radius: var(--radius-xs);
+  background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 12.5px;
+  cursor: pointer; transition: all var(--tf);
+}
+.referral-share-btn:hover { border-color: var(--primary); }
+.referral-count { font-size: 12.5px; font-weight: 700; color: var(--online); }
 
 .notif-item-info {
   flex: 1;
