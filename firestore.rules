@@ -16,13 +16,14 @@ service cloud.firestore {
 
     // ── User profiles ────────────────────────────────────────────────
     // Anyone signed in can read any profile (so the contact list works).
-    // A user can only create/edit their own profile.
+    // A user can only create/edit their own profile — including their own
+    // fcmToken/peerId. (Previously a carve-out let ANY signed-in user write
+    // fcmToken/peerId on OTHER users' docs — an attacker could hijack push
+    // tokens; that hole is now closed.)
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid);
-      allow update: if isOwner(uid)
-                    || (isSignedIn() && request.resource.data.diff(resource.data)
-                        .affectedKeys().hasOnly(['fcmToken', 'fcmTokens', 'peerId']));
+      allow update: if isOwner(uid);
       allow delete: if false;
     }
 
@@ -86,11 +87,15 @@ service cloud.firestore {
 
     // ── Multi-user voice rooms ──────────────────────────────────────
     // Room metadata: readable by any signed-in user (so invite links work).
-    // Created/updated by any signed-in user (host migration, invite grants).
+    // Created by the host (hostId must be the creator). Update keeps the host
+    // fixed (no one can hijack hostId) so only the real host controls the room.
     // Only the HOST may delete the room (host close ends it for everyone).
     match /voice_rooms/{roomId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.hostId == request.auth.uid;
+      allow update: if isSignedIn()
+                    && request.resource.data.hostId == resource.data.hostId;
       allow delete: if isSignedIn() && resource.data.hostId == request.auth.uid;
 
       // Each participant owns its own doc in the subcollection.
@@ -121,9 +126,14 @@ service cloud.firestore {
     // An invite is written INTO the invitee's doc (doc id = invitee uid) by
     // the inviter — so create/update is only allowed on SOMEONE ELSE's doc.
     // Only the invitee may delete their own invite doc (accept/decline).
+    // The invite must carry a room + the inviter, so arbitrary spam writes are
+    // rejected.
     match /voice_invites/{uid} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && uid != request.auth.uid;
+      allow create, update: if isSignedIn()
+        && uid != request.auth.uid
+        && request.resource.data.inviter.id == request.auth.uid
+        && request.resource.data.keys().hasAll(['room', 'targetUserId', 'inviter']);
       allow delete: if isSignedIn() && uid == request.auth.uid;
     }
 

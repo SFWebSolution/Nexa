@@ -1152,12 +1152,23 @@ td {
     <form class="login-form" onsubmit="handleLogin(event)">
       <div class="form-group">
         <label class="form-label">Admin Email</label>
-        <input 
-          id="emailInput" 
-          type="email" 
-          class="form-input" 
-          placeholder="neuro_stack@outlook.com" 
+        <input
+          id="emailInput"
+          type="email"
+          class="form-input"
+          placeholder="neuro_stack@outlook.com"
           required
+        >
+      </div>
+      <div class="form-group">
+        <label class="form-label">Admin Secret</label>
+        <input
+          id="secretInput"
+          type="password"
+          class="form-input"
+          placeholder="Enter admin secret"
+          required
+          autocomplete="off"
         >
       </div>
       <button type="submit" class="login-btn" id="loginBtn">Login</button>
@@ -1397,13 +1408,16 @@ const ADMIN_API_BASE = window.location.hostname === "localhost" || window.locati
   : "https://nexa-backend-e6pq.onrender.com";
 
 // The shared secret the backend checks via the X-Admin-Secret header.
-// Must match the ADMIN_SECRET env var on the backend. Anyone who can read
-// this page's source can see it — that's accepted for this admin panel
-// (the page itself is already gated by the admin-email login), but keep
-// the backend's copy in an env var, never in the repo.
-const ADMIN_SECRET = "108c6d07a4a34d4b6c90ea9c59513fe154e7550a76f2705d";
+// SECURITY: it is NO LONGER hardcoded here — anyone could read this page's
+// source (view-source works without logging in) and steal it to call the
+// admin backend directly. Instead the admin enters it at login and it lives
+// only in memory for the session. The backend's copy stays in an env var.
+let ADMIN_SECRET = sessionStorage.getItem("nexa_admin_secret") || "";
 
 function adminFetch(path, body) {
+  if (!ADMIN_SECRET) {
+    return Promise.reject(new Error("Admin secret not set — please log in again."));
+  }
   return fetch(ADMIN_API_BASE + path, {
     method: "POST",
     headers: {
@@ -1446,12 +1460,22 @@ auth.onAuthStateChanged(user => {
 function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById("emailInput").value.trim();
+  const secret = document.getElementById("secretInput").value.trim();
   const btn = document.getElementById("loginBtn");
 
   if (email !== ADMIN_EMAIL) {
     alert("❌ Access Denied - Invalid admin email");
     return;
   }
+  if (!secret) {
+    alert("❌ Enter the admin secret");
+    return;
+  }
+
+  // Store the secret for this session only (memory + sessionStorage, cleared
+  // when the tab closes). It is never written to the repo or page source.
+  ADMIN_SECRET = secret;
+  sessionStorage.setItem("nexa_admin_secret", secret);
 
   btn.disabled = true;
   btn.textContent = "Signing in...";
@@ -1478,9 +1502,13 @@ function handleLogout() {
   auth.signOut().then(() => {
     isDashboardInitialized = false;
     if (userListenerUnsubscribe) userListenerUnsubscribe();
+    // Clear the admin secret from memory + session storage on logout.
+    ADMIN_SECRET = "";
+    sessionStorage.removeItem("nexa_admin_secret");
     document.getElementById("dashboard").classList.add("hidden");
     document.getElementById("loginContainer").classList.remove("hidden");
     document.getElementById("emailInput").value = "";
+    document.getElementById("secretInput").value = "";
     users = [];
     presenceData = {};
     cachedMsgScores = {};
