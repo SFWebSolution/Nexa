@@ -239,6 +239,13 @@ if (urlParams.get("banned") === "1") {
   showMsg("❌ Your account has been deleted by an administrator.", "error");
 }
 
+// Referral persistence: stash ?ref=<username> so the inviter gets credit even
+// if the visitor browses to other pages before signing up.
+try {
+  const ref = urlParams.get("ref");
+  if (ref) localStorage.setItem("nexa_referral", ref.trim().toLowerCase());
+} catch (e) {}
+
 // AUTO-LOGIN LISTENER
 let isAutoLoggingIn = false;
 onAuthStateChanged(auth, async (user) => {

@@ -69,6 +69,14 @@
         window.location.replace('dashboard.html');
       }
     } catch (e) {}
+
+    // Referral persistence: stash ?ref=<username> in localStorage so the
+    // inviter still gets credit even if the visitor browses around before
+    // signing up. signup.html reads this when the URL has no ?ref=.
+    try {
+      const ref = new URLSearchParams(window.location.search).get('ref');
+      if (ref) localStorage.setItem('nexa_referral', ref.trim().toLowerCase());
+    } catch (e) {}
   </script>
 
   <style>

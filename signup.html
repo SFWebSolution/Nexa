@@ -73,6 +73,20 @@
     .brand-mark img { width: 100%; height: 100%; object-fit: cover; border-radius: 18px; position: relative; z-index: 1; display: block; }
     .brand-name { font-family: var(--nx-font-display); font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--nx-text); }
     .brand-sub { font-size: 13px; color: var(--nx-text-dim); margin-top: -8px; font-weight: 500; }
+    .referral-banner {
+      margin-top: 10px;
+      background: rgba(22, 111, 229, 0.10);
+      border: 1px solid rgba(22, 111, 229, 0.25);
+      color: var(--nx-primary);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 99px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .referral-banner strong { color: var(--nx-primary); }
 
     .input-group { position: relative; margin-bottom: 1rem; width: 100%; display: flex; align-items: center; }
 
@@ -133,6 +147,9 @@
     </div>
     <div class="brand-name">Nexa</div>
     <div class="brand-sub">Create your account to get started.</div>
+    <div class="referral-banner" id="referralBanner" style="display:none;">
+      🎉 Invited by <strong id="referralByName"></strong>
+    </div>
   </div>
 
   <div class="input-group">
@@ -209,6 +226,21 @@ const btn = document.getElementById("signupBtn");
 
 let isCreatingAccount = false;
 
+// Show an "Invited by @username" banner when the visitor arrived via a
+// referral link (?ref=...), or has one saved from an earlier visit.
+try {
+  let ref = new URLSearchParams(window.location.search).get("ref");
+  if (!ref) ref = localStorage.getItem("nexa_referral");
+  if (ref) {
+    const banner = document.getElementById("referralBanner");
+    const nameEl = document.getElementById("referralByName");
+    if (banner && nameEl) {
+      nameEl.textContent = "@" + ref.trim().toLowerCase();
+      banner.style.display = "inline-flex";
+    }
+  }
+} catch (e) {}
+
 // AUTO-LOGIN CHECK: If already logged in, redirect to dashboard
 onAuthStateChanged(auth, (user) => {
   if (user && !isCreatingAccount) {
@@ -279,11 +311,13 @@ async function signup() {
 
     const user = userCredential.user;
 
-    // Referral: if the visitor arrived via ?ref=<username>, record who referred
-    // them on their user doc (and bump the inviter's referralCount).
+    // Referral: read ?ref=<username> from the URL, falling back to the
+    // localStorage copy saved when they first opened the link (so the inviter
+    // still gets credit even if they browsed around before signing up).
     let referredBy = null;
     try {
-      const ref = new URLSearchParams(window.location.search).get("ref");
+      let ref = new URLSearchParams(window.location.search).get("ref");
+      if (!ref) ref = localStorage.getItem("nexa_referral");
       if (ref) referredBy = ref.trim().toLowerCase();
     } catch (e) {}
 

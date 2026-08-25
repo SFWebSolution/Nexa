@@ -1368,6 +1368,12 @@ auth.onAuthStateChanged(async (user) => {
   console.log("👤 User:", user.email);
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
+  // If this account was created via a referral link, greet them by their
+  // inviter's username so the referral feels personal.
+  db.collection("users").doc(user.uid).get().then(d => {
+    const rb = d.exists && d.data().referredBy;
+    if (rb) showNotifToast(`🎉 Welcome! You joined via @${rb}'s invite`, "success");
+  }).catch(() => {});
   loadLatestMsgState();
   loadDeletedChats();
   await initFCM(user.uid);
