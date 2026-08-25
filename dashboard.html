@@ -289,6 +289,22 @@
           </div>
 
           <div class="settings-group">
+            <div class="settings-group-title">🎁 Invite Friends</div>
+            <div class="referral-card">
+              <div class="referral-title">Share Nexa, grow your circle</div>
+              <div class="referral-sub">Invite friends with your personal link — you'll see how many joined.</div>
+              <div class="referral-link-row">
+                <input type="text" id="referralLinkInput" class="referral-link-input" readonly value="">
+                <button class="referral-copy-btn" onclick="copyReferralLink()">Copy</button>
+              </div>
+              <div class="referral-actions">
+                <button class="referral-share-btn" onclick="shareReferralLink()">📤 Share link</button>
+                <div class="referral-count">🎉 <span id="referralCount">0</span> joined</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group">
             <div class="settings-group-title">💾 Storage & Cache</div>
             <button class="settings-action-btn danger" onclick="clearAppCache()">
               <span>🗑️ Clear Local Cache</span>
@@ -2137,8 +2153,87 @@ function renderStoriesTab() {
   }
 }
 
+/* =========================================================================
+   REFERRAL / INVITE FRIENDS
+   Each user's personal invite link uses their username as the ref code:
+   <app-origin>/?ref=<username>. signup.html records referredBy on the new
+   account and increments the inviter's referralCount. We show the count live.
+   ========================================================================= */
+let _myUsername = null; // cached after first load (from the users doc)
+
+// Resolve the current user's username (from their Firestore users doc) for the
+// referral code. Firebase auth's currentUser has no username field.
+async function getMyUsername() {
+  if (_myUsername) return _myUsername;
+  if (!currentUser) return "user";
+  try {
+    const snap = await db.collection("users").doc(currentUser.uid).get();
+    const d = snap.exists ? snap.data() : {};
+    _myUsername = (d.username || d.displayName || currentUser.email?.split("@")[0] || "user")
+      .toLowerCase().replace(/[^a-z0-9_]/g, "");
+  } catch (e) {
+    _myUsername = (currentUser.email?.split("@")[0] || "user").toLowerCase().replace(/[^a-z0-9_]/g, "");
+  }
+  return _myUsername;
+}
+
+function getReferralLink(username) {
+  const u = username || _myUsername || "user";
+  return `${window.location.origin}/?ref=${encodeURIComponent(u)}`;
+}
+
+async function initReferralCard() {
+  const username = await getMyUsername();
+  const input = document.getElementById("referralLinkInput");
+  if (input) input.value = getReferralLink(username);
+  loadReferralCount();
+}
+
+async function loadReferralCount() {
+  const el = document.getElementById("referralCount");
+  if (!el || !currentUser) return;
+  try {
+    const snap = await db.collection("users").doc(currentUser.uid).get();
+    const count = snap.exists ? (snap.data().referralCount || 0) : 0;
+    el.textContent = count;
+  } catch (e) {
+    console.warn("Referral count load failed:", e);
+  }
+}
+
+function copyReferralLink() {
+  const link = getReferralLink();
+  const done = () => showNotifToast("🔗 Invite link copied!", "success");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(() => fallbackCopy(link, done));
+  } else {
+    fallbackCopy(link, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { showNotifToast("Copy failed", "error"); }
+  document.body.removeChild(ta);
+}
+
+function shareReferralLink() {
+  const link = getReferralLink();
+  const text = "Join me on Nexa Messenger — fast, private chat with voice notes, stories & more. Sign up with my link:";
+  if (navigator.share) {
+    navigator.share({ title: "Nexa Messenger", text, url: link }).catch(() => {});
+  } else {
+    copyReferralLink();
+  }
+}
+
 function renderSettingsTab() {
   loadNotificationSettings();
+  initReferralCard();
   const msgToggle = document.getElementById("tabNotifMessages");
   if (msgToggle) msgToggle.classList.toggle("active", notificationSettings.messages);
   const stToggle = document.getElementById("tabNotifStories");

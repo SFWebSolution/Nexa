@@ -20,10 +20,15 @@ service cloud.firestore {
     // fcmToken/peerId. (Previously a carve-out let ANY signed-in user write
     // fcmToken/peerId on OTHER users' docs — an attacker could hijack push
     // tokens; that hole is now closed.)
+    // Exception: referral credit — a brand-new signup may increment the
+    // referrer's referralCount/referrals ONLY (no other fields), so the
+    // "invite friends" count works cross-user.
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid);
-      allow update: if isOwner(uid);
+      allow update: if isOwner(uid)
+        || (isSignedIn() && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['referralCount', 'referrals']));
       allow delete: if false;
     }
 

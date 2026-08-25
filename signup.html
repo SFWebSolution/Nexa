@@ -178,7 +178,13 @@ import {
 import {
   getFirestore,
   setDoc,
-  doc
+  doc,
+  getDocs,
+  query,
+  where,
+  collection,
+  updateDoc,
+  increment
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 const firebaseConfig = {
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
@@ -273,6 +279,14 @@ async function signup() {
 
     const user = userCredential.user;
 
+    // Referral: if the visitor arrived via ?ref=<username>, record who referred
+    // them on their user doc (and bump the inviter's referralCount).
+    let referredBy = null;
+    try {
+      const ref = new URLSearchParams(window.location.search).get("ref");
+      if (ref) referredBy = ref.trim().toLowerCase();
+    } catch (e) {}
+
     // 🗄️ SAVE PROFILE
     await setDoc(doc(db, "users", user.uid), {
       uid: user.uid,
@@ -286,8 +300,24 @@ async function signup() {
       lastSeen: Date.now(),
       banned: false,
       profileSetupComplete: true,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      ...(referredBy ? { referredBy } : {})
     });
+
+    // Credit the referrer (best-effort — don't block signup if it fails).
+    if (referredBy) {
+      try {
+        const q = query(collection(db, "users"), where("username", "==", referredBy));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const refDoc = snap.docs[0];
+          await updateDoc(doc(db, "users", refDoc.id), {
+            referralCount: increment(1),
+            referrals: (refDoc.data().referrals || []).concat([user.uid])
+          });
+        }
+      } catch (e) { console.warn("Referral credit failed:", e); }
+    }
 
     // ✅ SUCCESS POPUP
     showPopup("Account created successfully 🚀");
