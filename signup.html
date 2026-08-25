@@ -227,9 +227,10 @@ const btn = document.getElementById("signupBtn");
 let isCreatingAccount = false;
 
 // Show an "Invited by @username" banner when the visitor arrived via a
-// referral link (?ref=...), so the person sees who invited them.
+// referral link (?ref=...), or has one saved from an earlier visit.
 try {
-  const ref = new URLSearchParams(window.location.search).get("ref");
+  let ref = new URLSearchParams(window.location.search).get("ref");
+  if (!ref) ref = localStorage.getItem("nexa_referral");
   if (ref) {
     const banner = document.getElementById("referralBanner");
     const nameEl = document.getElementById("referralByName");
@@ -310,11 +311,13 @@ async function signup() {
 
     const user = userCredential.user;
 
-    // Referral: if the visitor arrived via ?ref=<username>, record who referred
-    // them on their user doc (and bump the inviter's referralCount).
+    // Referral: read ?ref=<username> from the URL, falling back to the
+    // localStorage copy saved when they first opened the link (so the inviter
+    // still gets credit even if they browsed around before signing up).
     let referredBy = null;
     try {
-      const ref = new URLSearchParams(window.location.search).get("ref");
+      let ref = new URLSearchParams(window.location.search).get("ref");
+      if (!ref) ref = localStorage.getItem("nexa_referral");
       if (ref) referredBy = ref.trim().toLowerCase();
     } catch (e) {}
 
