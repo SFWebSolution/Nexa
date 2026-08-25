@@ -1688,6 +1688,40 @@ select:focus-visible {
   transform: scale(1.02);
 }
 
+/* Universal file/document attachment card */
+.file-attach {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-md);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background var(--tf), border-color var(--tf), transform var(--tf);
+  max-width: 320px;
+}
+.file-attach:hover { background: rgba(0, 0, 0, 0.07); border-color: var(--primary); }
+.file-attach-icon {
+  width: 40px; height: 40px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; border-radius: 10px;
+  background: var(--primary-soft); color: var(--primary);
+}
+.file-attach-info { flex: 1; min-width: 0; }
+.file-attach-name {
+  font-size: 13.5px; font-weight: 600; color: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.file-attach-size { font-size: 11.5px; opacity: 0.7; margin-top: 2px; }
+.file-attach-open { font-size: 18px; opacity: 0.7; flex-shrink: 0; }
+/* Dark themes: keep the card readable on dark bubbles */
+[data-theme] .file-attach { background: rgba(255, 255, 255, 0.06); border-color: var(--border-md); }
+[data-theme] .file-attach:hover { background: rgba(255, 255, 255, 0.10); }
+
 @media (max-width: 768px) {
   .media-container {
     max-width: 200px;
