@@ -1011,6 +1011,29 @@ function linkify(text) {
   return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
+// Human-readable file size for attachments.
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+}
+
+// Pick an emoji icon for an attachment based on its extension.
+function fileIconFor(name) {
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext)) return "🖼️";
+  if (["mp4", "mov", "webm", "mkv", "avi"].includes(ext)) return "🎥";
+  if (["mp3", "wav", "ogg", "m4a", "aac"].includes(ext)) return "🎵";
+  if (ext === "pdf") return "📕";
+  if (["doc", "docx", "txt", "rtf"].includes(ext)) return "📄";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "📊";
+  if (["ppt", "pptx"].includes(ext)) return "📽️";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "🗜️";
+  return "📎";
+}
+
 
 
 async function showProfileSetupModal() {
@@ -3441,11 +3464,6 @@ function renderMessageList() {
     if (msg.createdAt > maxTime) maxTime = msg.createdAt;
     const fromMe = msg.from === currentUser.uid;
 
-    if (!fromMe && !msg.isViewOnce) {
-      if (msg.image) autoSaveMedia(msg.image, 'photo', msg.id);
-      if (msg.video) autoSaveMedia(msg.video, 'video', msg.id);
-    }
-
     const dateKey = new Date(msg.createdAt).toDateString();
     const senderKey = fromMe ? 'me' : 'them';
     const isGrouped = dateKey === lastDateKey && prevSender === senderKey;
@@ -3836,6 +3854,23 @@ function buildMessage(id, msg, fromMe) {
         ${cap}
       </div>` : "";
     }
+
+    // Universal file/document attachment — any file type (PDF, doc, zip, audio,
+    // etc.). Renders a tappable card with name + size + a save/open action.
+    if (msg.fileUrl) {
+      const fUrl = safeMediaUrl(msg.fileUrl);
+      const fname = escapeHtml(msg.fileName || "Attachment");
+      const fsize = msg.fileSize ? formatFileSize(msg.fileSize) : "";
+      const ficon = fileIconFor(msg.fileName || "");
+      inner += fUrl ? `<a class="file-attach" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}">
+        <div class="file-attach-icon">${ficon}</div>
+        <div class="file-attach-info">
+          <div class="file-attach-name">${fname}</div>
+          ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
+        </div>
+        <div class="file-attach-open">⤓</div>
+      </a>` : "";
+    }
   }
 
   inner += buildReactionsHTML(id, msg.reactions);
@@ -4066,60 +4101,9 @@ window.toggleReact = toggleReact;
 window.addQuickReact = addQuickReact;
 window.renderMessages = renderMessageList;
 
-/* =========================================================================
-   AUTO-SAVE MEDIA TO USER DEVICE (Photos & Videos)
-   ========================================================================= */
-let _autoSavedMediaCache = null; // parsed once, not per message per render
-
-function autoSaveMedia(mediaUrl, mediaType, msgId) {
-  if (!msgId || !mediaUrl) return;
-  if (_autoSavedMediaCache === null) {
-    try {
-      _autoSavedMediaCache = JSON.parse(localStorage.getItem("nexa_autosaved_media") || "{}");
-    } catch (e) {
-      _autoSavedMediaCache = {};
-    }
-  }
-  const saved = _autoSavedMediaCache;
-  if (saved[msgId]) return; // Already auto-saved to device
-
-  saved[msgId] = Date.now();
-  // Keep the marker map bounded so it never grows without limit.
-  const keys = Object.keys(saved);
-  if (keys.length > 500) {
-    keys.sort((a, b) => saved[a] - saved[b]);
-    keys.slice(0, keys.length - 500).forEach(k => delete saved[k]);
-  }
-  try {
-    localStorage.setItem("nexa_autosaved_media", JSON.stringify(saved));
-  } catch (e) {}
-
-  fetch(mediaUrl)
-    .then(res => res.blob())
-    .then(blob => {
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      const ext = mediaType === "video" ? "mp4" : "png";
-      a.download = `nexa_${mediaType}_${Date.now()}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-      showNotifToast(`💾 Auto-saved ${mediaType} to device`, "success");
-    })
-    .catch(err => {
-      // Fallback direct link download
-      const a = document.createElement("a");
-      a.href = mediaUrl;
-      a.target = "_blank";
-      a.download = `nexa_${mediaType}_${Date.now()}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    });
-}
-
+// (Auto-save removed: media/files are only saved when the user explicitly
+// chooses to — via the image viewer, video player, or the attachment card's
+// download action.)
 
 
 async function scrollToMsg(msgId) {
@@ -4204,7 +4188,11 @@ document.getElementById("fileInput").addEventListener("change", async e => {
     showNotifToast("📎 Uploading file...", "info");
     const url = await uploadFile(file);
     if (url) {
-      await db.collection("chats").add(baseMsg({ text: `📎 ${file.name}`, fileUrl: url }));
+      await db.collection("chats").add(baseMsg({
+        fileUrl: url,
+        fileName: file.name,
+        fileSize: file.size
+      }));
       clearReply();
       showNotifToast("✓ File sent!", "success");
       sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
@@ -5175,12 +5163,6 @@ function listenIncoming() {
           const name = senderUser ? (senderUser.displayName || "User") : "Nexa User";
           showNotifToast(`${name}: You have received a new message`, 'info');
         }
-      }
-
-      // Auto-save incoming photo or video automatically to user device
-      if (!msg.isViewOnce) {
-        if (msg.image) autoSaveMedia(msg.image, 'photo', change.doc.id);
-        if (msg.video) autoSaveMedia(msg.video, 'video', change.doc.id);
       }
 
       db.collection("chats").doc(change.doc.id).update({ status: "delivered" });

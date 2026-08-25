@@ -1733,9 +1733,15 @@ function renderLeaderboard() {
     const isOnline = checkUserOnline(u);
     const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
-    const activeBonus = isWeeklyActive ? 5 : 0;
-    const onlineBonus = isOnline ? 3 : 0;
-    const totalScore = msgs + stories + activeBonus + onlineBonus;
+    // Points: reward real engagement. Messages are the core activity (2 pts
+    // each). Stories get a bigger boost (5 pts each — cachedStoryScores already
+    // counts 2 per story, so we scale to 5). Being online right now and being
+    // active this week add presence bonuses.
+    const msgPoints = msgs * 2;
+    const storyPoints = stories * 2.5; // stories cached at 2/story → ~5/story
+    const onlineBonus = isOnline ? 10 : 0;
+    const weeklyActiveBonus = isWeeklyActive ? 5 : 0;
+    const totalScore = Math.round(msgPoints + storyPoints + onlineBonus + weeklyActiveBonus);
 
     return {
       uid: u.uid,
