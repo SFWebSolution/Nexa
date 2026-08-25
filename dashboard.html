@@ -463,6 +463,7 @@
     <div class="story-pause-indicator" id="storyPauseIndicator">
       <i data-lucide="pause" style="width: 16px; height: 16px;"></i> PAUSED
     </div>
+    <div class="story-loading" id="storyLoading"><div class="story-loading-spin"></div></div>
     <div class="story-progress-row" id="storyProgressRow"></div>
     <div class="story-viewer-header" id="storyViewerHeader">
       <img class="story-user-av" id="storyUserAv" src="https://i.imgur.com/HeIi0wU.png">
@@ -6445,6 +6446,12 @@ function renderStorySlide(idx) {
   const content = document.getElementById("storyViewerContent");
   content.innerHTML = "";
 
+  // Story media loading indicator — show while the image/video buffers so the
+  // viewer never looks frozen, hide the moment it's ready to display.
+  const loadingEl = document.getElementById("storyLoading");
+  const showLoading = () => { if (loadingEl) loadingEl.classList.add("show"); };
+  const hideLoading = () => { if (loadingEl) loadingEl.classList.remove("show"); };
+
   if (storyAudioElement) {
     storyAudioElement.pause();
     storyAudioElement = null;
@@ -6484,6 +6491,9 @@ function renderStorySlide(idx) {
 
   if (story.type === "image" && story.url) {
     const img = document.createElement("img");
+    showLoading();
+    img.onload = hideLoading;
+    img.onerror = hideLoading;
     img.src = story.url;
     img.alt = "story";
     img.style.cssText = "width: 100%; height: 100%; object-fit: contain;";
@@ -6508,6 +6518,9 @@ function renderStorySlide(idx) {
     startStoryAnimation(duration);
   } else if (story.type === "video" && story.url) {
     const vid = document.createElement("video");
+    showLoading();
+    vid.addEventListener("canplay", hideLoading);
+    vid.addEventListener("error", hideLoading);
     vid.src = story.url;
     vid.autoplay = true;
     vid.playsInline = true;
@@ -6556,6 +6569,7 @@ function renderStorySlide(idx) {
       content.appendChild(txt);
     }
   } else if (story.type === "text" || story.text) {
+    hideLoading();
     const div = document.createElement("div");
     div.className = "story-text-slide";
     div.textContent = story.text || "";
@@ -6572,6 +6586,7 @@ function renderStorySlide(idx) {
     }
     startStoryAnimation(duration);
   } else if (story.type === "music" && story.musicData) {
+    hideLoading();
     const overlay = document.createElement("div");
     overlay.style.cssText = "position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 40px; text-align: center; z-index: 5;";
 
@@ -6893,6 +6908,8 @@ function closeStoryViewer() {
   if (replyInput) replyInput.value = "";
   const musicBadge = document.getElementById("musicBadge");
   if (musicBadge) musicBadge.style.display = "none";
+  const loadingEl = document.getElementById("storyLoading");
+  if (loadingEl) loadingEl.classList.remove("show");
   storyViewerData = null;
   viewingStoryUid = null;
   isStoryPaused = false;
@@ -7696,6 +7713,12 @@ async function shareStatus() {
   shareBtn.disabled = true;
   shareBtn.textContent = "Sharing...";
 
+  // Close the composer right away so it feels instant — the story posts in the
+  // background. (Uploading media still takes a moment on slow networks, but the
+  // user isn't stuck watching the button.)
+  const fileToUpload = statusFile;
+  const textVal = document.getElementById("statusTextInput").value.trim();
+
   try {
     let statusData = {
       uid: currentUser.uid,
@@ -7708,10 +7731,10 @@ async function shareStatus() {
     };
 
     if (statusTab === "image" && statusFile) {
-      const url = await uploadFile(statusFile);
+      showNotifToast("📤 Uploading photo...", "info");
+      const url = await uploadFile(fileToUpload);
       statusData.url = url;
-      const text = document.getElementById("statusTextInput").value.trim();
-      if (text) statusData.text = text;
+      if (textVal) statusData.text = textVal;
       if (selectedMusicData) {
         statusData.musicData = {
           title: selectedMusicData.title,
@@ -7722,10 +7745,10 @@ async function shareStatus() {
         };
       }
     } else if (statusTab === "video" && statusFile) {
-      const url = await uploadFile(statusFile);
+      showNotifToast("📤 Uploading video...", "info");
+      const url = await uploadFile(fileToUpload);
       statusData.url = url;
-      const text = document.getElementById("statusTextInput").value.trim();
-      if (text) statusData.text = text;
+      if (textVal) statusData.text = textVal;
       if (selectedMusicData) {
         statusData.musicData = {
           title: selectedMusicData.title,
@@ -7736,14 +7759,13 @@ async function shareStatus() {
         };
       }
     } else if (statusTab === "text") {
-      const text = document.getElementById("statusTextInput").value.trim();
-      if (!text) {
+      if (!textVal) {
         showNotifToast("Please enter some text", "error");
         shareBtn.disabled = false;
         shareBtn.textContent = "Share";
         return;
       }
-      statusData.text = text;
+      statusData.text = textVal;
       if (selectedMusicData) {
         statusData.musicData = {
           title: selectedMusicData.title,
@@ -7768,8 +7790,7 @@ async function shareStatus() {
         previewUrl: selectedMusicData.previewUrl,
         duration: selectedMusicData.duration || 30
       };
-      const text = document.getElementById("statusTextInput").value.trim();
-      if (text) statusData.text = text;
+      if (textVal) statusData.text = textVal;
     }
 
     // Attach an interactive sticker (WhatsApp-style) onto the photo/video/text

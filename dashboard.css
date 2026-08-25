@@ -1974,6 +1974,27 @@ select:focus-visible {
   display: flex;
 }
 
+/* Loading spinner shown while a story's media buffers, so the viewer never
+   looks frozen before the image/video appears. */
+.story-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  display: none;
+}
+.story-loading.show { display: block; }
+.story-loading-spin {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: storySpin 0.8s linear infinite;
+}
+@keyframes storySpin { to { transform: rotate(360deg); } }
+
 .story-viewer-bg {
   position: absolute;
   inset: 0;
