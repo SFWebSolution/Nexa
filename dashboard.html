@@ -3858,20 +3858,33 @@ function buildMessage(id, msg, fromMe) {
     }
 
     // Universal file/document attachment — any file type (PDF, doc, zip, audio,
-    // etc.). Renders a tappable card with name + size + a save/open action.
+    // etc.). Audio files render an inline player so they can be listened to in
+    // the chat; everything else renders a tappable card to open/download.
     if (msg.fileUrl) {
       const fUrl = safeMediaUrl(msg.fileUrl);
       const fname = escapeHtml(msg.fileName || "Attachment");
       const fsize = msg.fileSize ? formatFileSize(msg.fileSize) : "";
       const ficon = fileIconFor(msg.fileName || "");
-      inner += fUrl ? `<a class="file-attach" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}">
-        <div class="file-attach-icon">${ficon}</div>
-        <div class="file-attach-info">
-          <div class="file-attach-name">${fname}</div>
-          ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
-        </div>
-        <div class="file-attach-open">⤓</div>
-      </a>` : "";
+      const isAudioFile = /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(msg.fileName || "");
+      if (fUrl && isAudioFile) {
+        inner += `<div class="file-attach file-attach-audio">
+          <div class="file-attach-icon">${ficon}</div>
+          <div class="file-attach-info">
+            <div class="file-attach-name">${fname}</div>
+            ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
+            <audio controls preload="metadata" src="${fUrl}" style="width:100%;margin-top:8px;"></audio>
+          </div>
+        </div>`;
+      } else if (fUrl) {
+        inner += `<a class="file-attach" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}">
+          <div class="file-attach-icon">${ficon}</div>
+          <div class="file-attach-info">
+            <div class="file-attach-name">${fname}</div>
+            ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
+          </div>
+          <div class="file-attach-open">⤓</div>
+        </a>`;
+      }
     }
   }
 
@@ -4239,18 +4252,32 @@ function openMediaComposer(file, type) {
   } else if (type === "video") {
     preview.innerHTML = `<video src="${mcObjectURL}" controls playsinline></video>`;
   } else {
-    // Generic file: show an icon + name + size preview card (no raw preview).
+    // Generic file: show an icon + name + size preview card. For audio and
+    // video files, embed a playable element so the user can listen/watch
+    // before sending. Everything else gets the icon card.
+    const isAudio = file.type.startsWith("audio/");
+    const isVideo = file.type.startsWith("video/");
+    let playerHtml = "";
+    if (isAudio) {
+      playerHtml = `<audio src="${mcObjectURL}" controls style="width:100%;max-width:320px;"></audio>`;
+    } else if (isVideo) {
+      playerHtml = `<video src="${mcObjectURL}" controls playsinline style="max-width:100%;max-height:46vh;border-radius:12px;"></video>`;
+    }
     preview.innerHTML = `
       <div class="mc-file-preview">
         <div class="mc-file-icon">${fileIconFor(file.name)}</div>
         <div class="mc-file-name">${escapeHtml(file.name)}</div>
         <div class="mc-file-size">${formatFileSize(file.size)}</div>
+        ${playerHtml}
       </div>`;
   }
 
   document.getElementById("mcCaption").value = "";
   document.getElementById("mcTitle").textContent =
-    type === "image" ? "Send photo" : type === "video" ? "Send video" : "Send file";
+    type === "image" ? "Send photo"
+    : type === "video" ? "Send video"
+    : (mcPendingFile && mcPendingFile.type.startsWith("audio/")) ? "Send audio"
+    : "Send file";
 
   // View-once only applies to image/video, not documents.
   const voBtn = document.getElementById("mcVOToggle");
