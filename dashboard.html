@@ -404,7 +404,7 @@
       <div class="input-wrap">
         <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
-        <button class="iact-btn" id="imgBtn" onclick="pickImage()" title="Image"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
@@ -896,6 +896,7 @@
 
 <!-- FILE INPUTS -->
 <input type="file" id="img" hidden accept="image/*">
+<input type="file" id="vid" hidden accept="video/*">
 <input type="file" id="fileInput" hidden accept="*">
 <input type="file" id="profileUpload" hidden accept="image/*">
 
@@ -4158,6 +4159,31 @@ function pickImage() {
   document.getElementById("img").click();
 }
 
+// WhatsApp-style: the media button lets the user CHOOSE Photo or Video.
+function pickMedia() {
+  if (!selectedUser) { alert("Select a user first"); return; }
+  // If the device supports a combined image+video picker, use one input that
+  // accepts both and route by the picked type — simplest, most native feel.
+  const inp = document.getElementById("mediaPickerInput") || (() => {
+    const i = document.createElement("input");
+    i.type = "file";
+    i.id = "mediaPickerInput";
+    i.hidden = true;
+    i.accept = "image/*,video/*";
+    document.body.appendChild(i);
+    i.addEventListener("change", e => {
+      const f = e.target.files[0];
+      e.target.value = "";
+      if (!f || !selectedUser) return;
+      if (f.type.startsWith("image/")) openMediaComposer(f, "image");
+      else if (f.type.startsWith("video/")) openMediaComposer(f, "video");
+      else showNotifToast("Please pick a photo or video", "error");
+    });
+    return i;
+  })();
+  inp.click();
+}
+
 function pickFile() {
   if (!selectedUser) { alert("Select a user first"); return; }
   document.getElementById("fileInput").click();
@@ -4179,28 +4205,14 @@ document.getElementById("fileInput").addEventListener("change", async e => {
   e.target.value = "";
   if (!file || !selectedUser) return;
 
-  if (file.type.startsWith("video/")) {
+  // Always preview before sending — route every file through the composer so
+  // the user sees what they're about to send (image, video, or any document).
+  if (file.type.startsWith("image/")) {
+    openMediaComposer(file, "image");
+  } else if (file.type.startsWith("video/")) {
     openMediaComposer(file, "video");
-    return;
-  }
-
-  const senderName = document.getElementById('myName').textContent || 'Nexa User';
-  try {
-    showNotifToast("📎 Uploading file...", "info");
-    const url = await uploadFile(file);
-    if (url) {
-      await db.collection("chats").add(baseMsg({
-        fileUrl: url,
-        fileName: file.name,
-        fileSize: file.size
-      }));
-      clearReply();
-      showNotifToast("✓ File sent!", "success");
-      sendPushNotification(senderName, `You have received a new message (📎 ${file.name})`, selectedUser.uid);
-    }
-  } catch (err) {
-    showNotifToast("Upload failed: " + err.message, "error");
-    console.error(err);
+  } else {
+    openMediaComposer(file, "file");
   }
 });
 
@@ -4224,15 +4236,26 @@ function openMediaComposer(file, type) {
   preview.innerHTML = "";
   if (type === "image") {
     preview.innerHTML = `<img src="${mcObjectURL}" alt="preview">`;
-  } else {
+  } else if (type === "video") {
     preview.innerHTML = `<video src="${mcObjectURL}" controls playsinline></video>`;
+  } else {
+    // Generic file: show an icon + name + size preview card (no raw preview).
+    preview.innerHTML = `
+      <div class="mc-file-preview">
+        <div class="mc-file-icon">${fileIconFor(file.name)}</div>
+        <div class="mc-file-name">${escapeHtml(file.name)}</div>
+        <div class="mc-file-size">${formatFileSize(file.size)}</div>
+      </div>`;
   }
 
   document.getElementById("mcCaption").value = "";
-  document.getElementById("mcTitle").textContent = type === "image" ? "Send photo" : "Send video";
+  document.getElementById("mcTitle").textContent =
+    type === "image" ? "Send photo" : type === "video" ? "Send video" : "Send file";
 
+  // View-once only applies to image/video, not documents.
   const voBtn = document.getElementById("mcVOToggle");
   voBtn.classList.remove("active");
+  voBtn.style.display = (type === "image" || type === "video") ? "" : "none";
 
   document.getElementById("mediaComposer").classList.add("active");
   if (window.lucide) lucide.createIcons();
@@ -4260,19 +4283,38 @@ async function sendMediaComposer() {
   const btn = document.querySelector("#mediaComposer .mc-send-btn");
   btn.disabled = true;
 
+  const isFile = mcPendingType !== "image" && mcPendingType !== "video";
   try {
-    showNotifToast(mcPendingType === "image" ? "📷 Uploading image..." : "🎥 Uploading video...", "info");
+    showNotifToast(
+      mcPendingType === "image" ? "📷 Uploading image..."
+      : mcPendingType === "video" ? "🎥 Uploading video..."
+      : "📎 Uploading file...",
+      "info"
+    );
     const url = await uploadFile(mcPendingFile);
     if (url) {
-      const extras = { caption, isViewOnce: mcViewOnce, viewOnceOpened: false };
-      if (mcPendingType === "image") extras.image = url;
-      else extras.video = url;
+      let extras;
+      if (isFile) {
+        // Generic file/document — store as an attachment card.
+        extras = {
+          fileUrl: url,
+          fileName: mcPendingFile.name,
+          fileSize: mcPendingFile.size
+        };
+        if (caption) extras.text = caption;
+      } else {
+        extras = { caption, isViewOnce: mcViewOnce, viewOnceOpened: false };
+        if (mcPendingType === "image") extras.image = url;
+        else extras.video = url;
+      }
       await db.collection("chats").add(baseMsg(extras));
       clearReply();
       showNotifToast("✓ Sent!", "success");
       sendPushNotification(
         document.getElementById('myName').textContent || 'Nexa User',
-        mcPendingType === "image" ? "You have received a new message (📷 Photo)" : "You have received a new message (🎥 Video)",
+        mcPendingType === "image" ? "You have received a new message (📷 Photo)"
+        : mcPendingType === "video" ? "You have received a new message (🎥 Video)"
+        : `You have received a new message (📎 ${mcPendingFile.name})`,
         selectedUser.uid
       );
     }
