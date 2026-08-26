@@ -201,7 +201,8 @@ import {
   where,
   collection,
   updateDoc,
-  increment
+  increment,
+  arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 const firebaseConfig = {
   apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
@@ -361,7 +362,7 @@ async function signup() {
           const newReferral = { uid: user.uid, username: username, displayName: displayName, at: Date.now() };
           await updateDoc(doc(db, "users", refDoc.id), {
             referralCount: increment(1),
-            referrals: (refDoc.data().referrals || []).concat([newReferral])
+            referrals: arrayUnion(newReferral)
           });
         }
       } catch (e) { console.warn("Referral credit failed:", e); }
