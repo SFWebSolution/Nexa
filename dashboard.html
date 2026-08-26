@@ -309,6 +309,7 @@
                 <button class="referral-share-btn" onclick="shareReferralLink()">📤 Share link</button>
                 <div class="referral-count"><span class="referral-count-num" id="referralCount">0</span> friends joined</div>
               </div>
+              <div class="referral-list" id="referralList" style="display:none;"></div>
             </div>
           </div>
 
@@ -2208,11 +2209,33 @@ async function initReferralCard() {
 
 async function loadReferralCount() {
   const el = document.getElementById("referralCount");
-  if (!el || !currentUser) return;
+  const listEl = document.getElementById("referralList");
+  if (!currentUser) return;
   try {
     const snap = await db.collection("users").doc(currentUser.uid).get();
-    const count = snap.exists ? (snap.data().referralCount || 0) : 0;
-    el.textContent = count;
+    const d = snap.exists ? snap.data() : {};
+    // Count from the referrals array when present (most reliable), else the counter.
+    const refs = Array.isArray(d.referrals) ? d.referrals : [];
+    const count = refs.length || (d.referralCount || 0);
+    if (el) el.textContent = count;
+
+    // Show the list of people you invited (their usernames).
+    if (listEl) {
+      if (refs.length) {
+        const items = refs.map(r => {
+          const un = (typeof r === "string") ? "" : (r.username || r.displayName || "");
+          return un ? `<span class="referral-chip">@${escapeHtml(un)}</span>` : "";
+        }).filter(Boolean).join("");
+        if (items) {
+          listEl.innerHTML = `<div class="referral-list-title">People you invited</div><div class="referral-chips">${items}</div>`;
+          listEl.style.display = "block";
+        } else {
+          listEl.style.display = "none";
+        }
+      } else {
+        listEl.style.display = "none";
+      }
+    }
   } catch (e) {
     console.warn("Referral count load failed:", e);
   }
