@@ -339,15 +339,29 @@ async function signup() {
     });
 
     // Credit the referrer (best-effort — don't block signup if it fails).
+    // Case-insensitive username match: the ref code is lowercased but stored
+    // usernames may have any casing, so match on a lowercase field or fall back
+    // to a case-insensitive scan.
     if (referredBy) {
       try {
-        const q = query(collection(db, "users"), where("username", "==", referredBy));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          const refDoc = snap.docs[0];
+        let refDoc = null;
+        let q = query(collection(db, "users"), where("username", "==", referredBy));
+        let snap = await getDocs(q);
+        if (snap.empty) {
+          // Case-insensitive fallback: scan users and compare lowercased.
+          const all = await getDocs(collection(db, "users"));
+          all.forEach(d => {
+            const un = (d.data().username || "").toLowerCase();
+            if (un === referredBy && !refDoc) refDoc = d;
+          });
+        } else {
+          refDoc = snap.docs[0];
+        }
+        if (refDoc) {
+          const newReferral = { uid: user.uid, username: username, displayName: displayName, at: Date.now() };
           await updateDoc(doc(db, "users", refDoc.id), {
             referralCount: increment(1),
-            referrals: (refDoc.data().referrals || []).concat([user.uid])
+            referrals: (refDoc.data().referrals || []).concat([newReferral])
           });
         }
       } catch (e) { console.warn("Referral credit failed:", e); }

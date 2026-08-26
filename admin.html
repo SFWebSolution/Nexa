@@ -1348,6 +1348,9 @@ td {
       <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
         🔄 Reload Weekly Stats
       </button>
+      <button class="action-btn" id="backfillReferralsBtn" onclick="backfillReferrals()" title="Recompute referral counts from referredBy fields" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
+        🔗 Backfill Referrals
+      </button>
     </div>
 
     <div class="leaderboard-grid" id="leaderboardGrid">
@@ -1785,6 +1788,56 @@ function updateSyncIndicator(isSyncing) {
 /* =====================================================
    WEEKLY LEADERBOARD RENDERER & RELOAD
    ===================================================== */
+// One-time referral backfill: scan every user for a `referredBy` field, group
+// by the inviter's username, and rewrite each inviter's referralCount +
+// referrals list so past referrals (recorded before counting worked) show up.
+async function backfillReferrals() {
+  const btn = document.getElementById("backfillReferralsBtn");
+  if (!confirm("Recompute all referral counts from each user's referredBy field? This rewrites referralCount + referrals on inviter accounts.")) return;
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Backfilling..."; }
+  log("🔗 Starting referral backfill...", "info");
+  try {
+    const snap = await db.collection("users").get();
+    const byReferrer = {}; // username -> [{uid, username, displayName, at}]
+    const usernames = {};  // lowercase username -> user doc id
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.username) usernames[data.username.toLowerCase()] = d.id;
+    });
+    snap.forEach(d => {
+      const data = d.data();
+      const rb = (data.referredBy || "").toLowerCase();
+      if (!rb) return;
+      if (!byReferrer[rb]) byReferrer[rb] = [];
+      byReferrer[rb].push({
+        uid: d.id,
+        username: data.username || "",
+        displayName: data.displayName || data.name || "",
+        at: data.createdAt || Date.now()
+      });
+    });
+    let updated = 0;
+    for (const refName of Object.keys(byReferrer)) {
+      const inviterId = usernames[refName];
+      if (!inviterId) continue;
+      const refs = byReferrer[refName];
+      await db.collection("users").doc(inviterId).update({
+        referralCount: refs.length,
+        referrals: refs
+      });
+      updated++;
+      log(`  ✅ @${refName}: ${refs.length} referral(s)`, "success");
+    }
+    log(`🔗 Backfill complete — updated ${updated} inviter account(s).`, "success");
+    alert(`✅ Referral backfill complete! Updated ${updated} inviter account(s).`);
+  } catch (e) {
+    console.error(e);
+    log("❌ Backfill failed: " + e.message, "error");
+    alert("❌ Backfill failed: " + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = "🔗 Backfill Referrals"; }
+}
+
 function reloadWeeklyStats() {
   const btn = document.getElementById("reloadWeeklyBtn");
   if (btn) {

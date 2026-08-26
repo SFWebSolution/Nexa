@@ -3649,6 +3649,20 @@ input[type="range"] {
 .referral-count { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
 .referral-count-num { color: var(--online); font-size: 14px; }
 
+/* List of people you invited */
+.referral-list { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-dk); }
+.referral-list-title { font-size: 11.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+.referral-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.referral-chip {
+  padding: 5px 12px;
+  border-radius: 99px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border-md);
+}
+
 .notif-item-info {
   flex: 1;
 }
