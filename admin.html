@@ -1342,11 +1342,11 @@ td {
     <!-- Weekly Leaderboard -->
     <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <div class="section-title">🏆 Weekly Most Active Users</div>
-        <div class="section-subtitle" id="weeklySubtitle">Top active contributors <span class="week-indicator" id="weekIndicator">Mon-Sun</span> • Auto-resets Monday</div>
+        <div class="section-title">🏆 Top Users on Nexa</div>
+        <div class="section-subtitle" id="weeklySubtitle">Top 5 most active users of all time — by messages &amp; stories since launch</div>
       </div>
       <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
-        🔄 Reload Weekly Stats
+        🔄 Refresh Top Users
       </button>
       <button class="action-btn" id="backfillReferralsBtn" onclick="backfillReferrals()" title="Recompute referral counts from referredBy fields" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
         🔗 Backfill Referrals
@@ -1355,7 +1355,7 @@ td {
 
     <div class="leaderboard-grid" id="leaderboardGrid">
       <div class="leaderboard-card">
-        <div style="color: var(--text-3); font-size: 13px;">Analyzing weekly user activity...</div>
+        <div style="color: var(--text-3); font-size: 13px;">Analyzing user activity...</div>
       </div>
     </div>
 
@@ -1439,6 +1439,8 @@ let weeklyMessagesCount = 0;
 let weeklyStoriesCount = 0;
 let cachedMsgScores = {};
 let cachedStoryScores = {};
+let cachedAllTimeMsgScores = {};
+let cachedAllTimeStoryScores = {};
 let currentWeekStart = null;
 let chart = null;
 let currentUser = null;
@@ -1563,13 +1565,14 @@ function initWeeklyAutoRefresh() {
   currentWeekStart = getCurrentWeekStart();
   updateWeekIndicator();
   
-  // Check every minute if we've crossed into a new week (Monday)
+  // Check every minute if we've crossed into a new week (Monday) — refreshes
+  // the weekly analytics (msgs/stories this week). The Top Users board is
+  // all-time now, so it is unaffected by the week rollover.
   setInterval(() => {
     const now = getCurrentWeekStart();
     if (now !== currentWeekStart) {
       currentWeekStart = now;
       updateWeekIndicator();
-      log("📅 New calendar week started! Leaderboard reset", "success");
       render();
     }
   }, 60000); // Check every minute
@@ -1720,9 +1723,13 @@ function listenChats() {
 
       const weekStart = getCurrentWeekStart();
       const msgScores = {};
+      const allTimeMsgScores = {};
       let weeklyMsgCount = 0;
       snapshot.docs.forEach(doc => {
         const data = doc.data();
+        if (data.from) {
+          allTimeMsgScores[data.from] = (allTimeMsgScores[data.from] || 0) + 1;
+        }
         if (data.from && data.createdAt && data.createdAt >= weekStart) {
           msgScores[data.from] = (msgScores[data.from] || 0) + 1;
           weeklyMsgCount++;
@@ -1730,6 +1737,7 @@ function listenChats() {
       });
 
       cachedMsgScores = msgScores;
+      cachedAllTimeMsgScores = allTimeMsgScores;
       weeklyMessagesCount = weeklyMsgCount;
       renderLeaderboard();
       renderAnalytics();
@@ -1746,11 +1754,15 @@ function listenStories() {
       let activeCount = 0;
       let weeklyStoryCount = 0;
       const storyScores = {};
+      const allTimeStoryScores = {};
 
       snapshot.docs.forEach(doc => {
         const data = doc.data();
         if (data.createdAt && (now - data.createdAt < 86400000)) {
           activeCount++;
+        }
+        if (data.uid) {
+          allTimeStoryScores[data.uid] = (allTimeStoryScores[data.uid] || 0) + 1;
         }
         if (data.uid && data.createdAt && data.createdAt >= weekStart) {
           storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
@@ -1763,6 +1775,7 @@ function listenStories() {
       if (el) el.textContent = activeStoriesCount;
 
       cachedStoryScores = storyScores;
+      cachedAllTimeStoryScores = allTimeStoryScores;
       weeklyStoriesCount = weeklyStoryCount;
       renderLeaderboard();
       renderAnalytics();
@@ -1845,13 +1858,13 @@ function reloadWeeklyStats() {
     btn.innerHTML = "⏳ Reloading...";
   }
 
-  log("🔄 Weekly stats manually reloaded by admin", "info");
+  log("🔄 Top Users refreshed by admin", "info");
 
   setTimeout(() => {
     render();
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = "🔄 Reload Weekly Stats";
+      btn.innerHTML = "🔄 Refresh Top Users";
     }
   }, 400);
 }
@@ -1861,25 +1874,16 @@ function renderLeaderboard() {
   if (!leaderboardGrid || !users.length) return;
 
   const now = Date.now();
-  const weekStart = getCurrentWeekStart();
 
   const userRankList = users.map(u => {
-    const msgs = cachedMsgScores[u.uid] || 0;
-    const stories = cachedStoryScores[u.uid] || 0;
-    const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
+    const msgs = cachedAllTimeMsgScores[u.uid] || 0;
+    const stories = cachedAllTimeStoryScores[u.uid] || 0;
     const isOnline = checkUserOnline(u);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || msgs > 0 || stories > 0;
 
-    // Points: reward real engagement. Messages are the core activity (2 pts
-    // each). Stories get a bigger boost (5 pts each — cachedStoryScores already
-    // counts 2 per story, so we scale to 5). Being online right now and being
-    // active this week add presence bonuses.
-    const msgPoints = msgs * 2;
-    const storyPoints = stories * 2.5; // stories cached at 2/story → ~5/story
-    const onlineBonus = isOnline ? 10 : 0;
-    const weeklyActiveBonus = isWeeklyActive ? 5 : 0;
-    const totalScore = Math.round(msgPoints + storyPoints + onlineBonus + weeklyActiveBonus);
+    // All-time activity score: messages (2 pts) + stories (3 pts) + a small
+    // bonus for being online right now. No weekly window — this ranks the top
+    // users on Nexa since the app launched.
+    const totalScore = Math.round(msgs * 2 + stories * 3 + (isOnline ? 5 : 0));
 
     return {
       uid: u.uid,
@@ -1888,9 +1892,8 @@ function renderLeaderboard() {
       email: u.email || "",
       banned: u.banned === true,
       msgs: msgs,
-      stories: Math.floor(stories / 2),
+      stories: stories,
       isOnline: isOnline,
-      isWeeklyActive: isWeeklyActive,
       score: totalScore
     };
   }).filter(u => !u.banned);
@@ -1903,7 +1906,7 @@ function renderLeaderboard() {
   if (!topUsers.length || topUsers[0].score === 0) {
     leaderboardGrid.innerHTML = `
       <div class="leaderboard-card" style="grid-column: 1 / -1;">
-        <div style="color: var(--text-3); font-size: 13px;">No user activity recorded this calendar week.</div>
+        <div style="color: var(--text-3); font-size: 13px;">No user activity recorded yet.</div>
       </div>
     `;
     return;
