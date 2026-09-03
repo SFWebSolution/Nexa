@@ -431,9 +431,32 @@
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
         <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn" id="stickerBtn" onclick="toggleStickerPanel()" title="Stickers"><i data-lucide="smile" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
       <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
+    </div>
+
+    <!-- STICKER PANEL — WhatsApp-style sticker picker with packs, a curated
+         store, and a built-in Sticker Maker. -->
+    <div class="sticker-panel" id="stickerPanel">
+      <div class="sticker-panel-header">
+        <div class="sticker-panel-title">Stickers</div>
+        <button class="sticker-panel-close" onclick="closeStickerPanel()" title="Close">✕</button>
+      </div>
+      <div class="sticker-panel-tabs">
+        <button class="sticker-tab active" id="stickerTabPacks" onclick="switchStickerTab('packs')">😀 Packs</button>
+        <button class="sticker-tab" id="stickerTabStore" onclick="switchStickerTab('store')">🛍️ Store</button>
+        <button class="sticker-tab" id="stickerTabMaker" onclick="switchStickerTab('maker')">🛠️ Maker</button>
+      </div>
+      <div class="sticker-panel-body">
+        <!-- PACKS TAB -->
+        <div class="sticker-packs-view" id="stickerPacksView"></div>
+        <!-- STORE TAB -->
+        <div class="sticker-store-view" id="stickerStoreView" style="display:none;"></div>
+        <!-- MAKER TAB -->
+        <div class="sticker-maker-view" id="stickerMakerView" style="display:none;"></div>
+      </div>
     </div>
 
     <div class="ai-panel" id="aiPanel">
@@ -1289,7 +1312,7 @@ async function loadInitialChatTimestamps() {
       if (d.to && d.createdAt) {
         if (!latestMsgTime[d.to] || d.createdAt > latestMsgTime[d.to]) {
           latestMsgTime[d.to] = d.createdAt;
-          latestMsgText[d.to] = d.text || (d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
+          latestMsgText[d.to] = d.text || (d.sticker ? "🖼️ Sticker" : d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
         }
       }
     });
@@ -1299,7 +1322,7 @@ async function loadInitialChatTimestamps() {
       if (d.from && d.createdAt) {
         if (!latestMsgTime[d.from] || d.createdAt > latestMsgTime[d.from]) {
           latestMsgTime[d.from] = d.createdAt;
-          latestMsgText[d.from] = d.text || (d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
+          latestMsgText[d.from] = d.text || (d.sticker ? "🖼️ Sticker" : d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
         }
       }
     });
@@ -2289,6 +2312,7 @@ function renderSettingsTab() {
     { id: 'light', name: 'Nexa Light', color: '#eef2f7' },
     { id: 'nexa', name: 'Nexa Blue (Dark)', color: '#2b8fff' },
     { id: 'midnight', name: 'Midnight', color: '#3b82f6' },
+    { id: 'black', name: 'Nexa Black', color: '#0a0a0a' },
     { id: 'rose', name: 'Rose', color: '#e11d48' },
     { id: 'lavender', name: 'Lavender', color: '#a855f7' }
   ];
@@ -3693,7 +3717,7 @@ function renderMessageList() {
     const lastM = allMessages[allMessages.length - 1];
     if (lastM.createdAt) {
       latestMsgTime[selectedUser.uid] = lastM.createdAt;
-      latestMsgText[selectedUser.uid] = lastM.text || (lastM.image ? "📷 Photo" : lastM.video ? "🎥 Video" : lastM.audio ? "🎤 Voice" : "Message");
+      latestMsgText[selectedUser.uid] = lastM.text || (lastM.sticker ? "🖼️ Sticker" : lastM.image ? "📷 Photo" : lastM.video ? "🎥 Video" : lastM.audio ? "🎤 Voice" : "Message");
     }
     // Keep the instant-open cache for this chat fresh (newest windowed msgs).
     saveChatMsgCache(selectedUser.uid);
@@ -3727,7 +3751,7 @@ function renderMessageList() {
     const last = allMessages[allMessages.length - 1];
     const prevEl = document.getElementById(`prev-${selectedUser.uid}`);
     if (prevEl) {
-      const preview = last.text || (last.image ? "📷 Photo" : last.video ? "🎥 Video" : last.audio ? "🎤 Voice" : "📎 File");
+      const preview = last.text || (last.sticker ? "🖼️ Sticker" : last.image ? "📷 Photo" : last.video ? "🎥 Video" : last.audio ? "🎤 Voice" : "📎 File");
       prevEl.textContent = (last.from === currentUser.uid ? "You: " : "") + preview;
     }
   }
@@ -3930,7 +3954,7 @@ function buildMessage(id, msg, fromMe) {
     const replied = allMessages.find(m => m.id === msg.replyTo);
     // Prefer the loaded original; fall back to the denormalized fields stored
     // on the reply message itself so the preview shows on both sides.
-    const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
+    const rText = replied ? (replied.text || (replied.sticker ? "(Sticker)" : replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
     const rFrom = replied ? replied.from : (msg.replyToFrom || null);
     const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
     inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
@@ -3978,6 +4002,11 @@ function buildMessage(id, msg, fromMe) {
              draggable="false">
         ${cap}
       </div>` : "";
+    }
+
+    if (msg.sticker) {
+      const stUrl = safeMediaUrl(msg.sticker);
+      inner += stUrl ? `<img src="${stUrl}" class="msg-sticker" alt="sticker" loading="lazy" draggable="false">` : "";
     }
 
     if (msg.video) {
@@ -4531,7 +4560,7 @@ async function sendMessage() {
     // Denormalize the quoted message so the reply preview renders on BOTH
     // sides (sender + receiver) even when the original isn't loaded in the
     // viewer's allMessages (e.g. older/lazily-loaded messages).
-    extras.replyToText = messageRepliedTo.text || (messageRepliedTo.image ? "(Photo)" : messageRepliedTo.video ? "(Video)" : messageRepliedTo.audio ? "(Voice note)" : "(message)");
+    extras.replyToText = messageRepliedTo.text || (messageRepliedTo.sticker ? "(Sticker)" : messageRepliedTo.image ? "(Photo)" : messageRepliedTo.video ? "(Video)" : messageRepliedTo.audio ? "(Voice note)" : "(message)");
     extras.replyToFrom = messageRepliedTo.from || null;
   }
   const tempMsgObj = baseMsg(extras);
@@ -4589,6 +4618,7 @@ function baseMsg(extras = {}) {
     image: "",
     video: "",
     audio: "",
+    sticker: "",
     caption: "",
     status: "sent",
     edited: false,
@@ -4823,6 +4853,7 @@ const THEMES = {
   light: { label: '☀️ Nexa Light', attr: 'light', tier: 'classic' },
   nexa: { label: '🔵 Nexa Blue (Dark)', attr: 'nexa', tier: 'classic' },
   midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
+  black: { label: '🖤 Nexa Black', attr: 'black', tier: 'premium' },
   rose: { label: '🌹 Rose', attr: 'rose', tier: 'classic' },
   lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' }
 };
@@ -5356,7 +5387,7 @@ function listenIncoming() {
         delete deletedChats[uid];
         saveDeletedChats();
       }
-      const preview = msg.text || (msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
+      const preview = msg.text || (msg.sticker ? "🖼️ Sticker" : msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
       if (!latestMsgTime[uid] || msg.createdAt > latestMsgTime[uid]) {
         latestMsgTime[uid] = msg.createdAt;
         latestMsgText[uid] = preview;
@@ -8223,6 +8254,567 @@ function profilePicGoBack() {
     if (infoPanel) infoPanel.classList.add('active');
   }
 }
+
+/* =========================================================================
+   STICKERS — WhatsApp-style sticker packs, store, and sticker maker
+   ========================================================================= */
+const STICKER_STORAGE_KEY = "nexa_sticker_packs_v1";
+const STICKER_EMOJI_PACKS = [
+  {
+    id: "emoji-classic",
+    name: "Classic Emoji",
+    emoji: "😊",
+    accent: "#f59e0b",
+    stickers: [
+      { emoji: "😂" }, { emoji: "😍" }, { emoji: "😭" }, { emoji: "😅" },
+      { emoji: "🤣" }, { emoji: "😘" }, { emoji: "😊" }, { emoji: "🥰" },
+      { emoji: "😎" }, { emoji: "🤔" }, { emoji: "😴" }, { emoji: "😢" }
+    ]
+  },
+  {
+    id: "emoji-hearts",
+    name: "Hearts & Love",
+    emoji: "❤️",
+    accent: "#ef4444",
+    stickers: [
+      { emoji: "❤️" }, { emoji: "🧡" }, { emoji: "💛" }, { emoji: "💚" },
+      { emoji: "💙" }, { emoji: "💜" }, { emoji: "🖤" }, { emoji: "🤍" },
+      { emoji: "💖" }, { emoji: "💘" }, { emoji: "💝" }, { emoji: "💗" }
+    ]
+  },
+  {
+    id: "emoji-hands",
+    name: "Hands & Gestures",
+    emoji: "👋",
+    accent: "#3b82f6",
+    stickers: [
+      { emoji: "👋" }, { emoji: "🙌" }, { emoji: "👏" }, { emoji: "👍" },
+      { emoji: "👎" }, { emoji: "🤝" }, { emoji: "✌️" }, { emoji: "🤞" },
+      { emoji: "👌" }, { emoji: "🙏" }, { emoji: "💪" }, { emoji: "🤙" }
+    ]
+  },
+  {
+    id: "emoji-animals",
+    name: "Cute Animals",
+    emoji: "🐶",
+    accent: "#10b981",
+    stickers: [
+      { emoji: "🐶" }, { emoji: "🐱" }, { emoji: "🐭" }, { emoji: "🐹" },
+      { emoji: "🐰" }, { emoji: "🦊" }, { emoji: "🐻" }, { emoji: "🐼" },
+      { emoji: "🐨" }, { emoji: "🐯" }, { emoji: "🦁" }, { emoji: "🐸" }
+    ]
+  },
+  {
+    id: "emoji-food",
+    name: "Food & Drink",
+    emoji: "🍕",
+    accent: "#f97316",
+    stickers: [
+      { emoji: "🍕" }, { emoji: "🍔" }, { emoji: "🍟" }, { emoji: "🌭" },
+      { emoji: "🍿" }, { emoji: "🍩" }, { emoji: "🍪" }, { emoji: "🍫" },
+      { emoji: "🍎" }, { emoji: "🍉" }, { emoji: "🍇" }, { emoji: "🍓" }
+    ]
+  },
+  {
+    id: "emoji-party",
+    name: "Party & Fun",
+    emoji: "🎉",
+    accent: "#8b5cf6",
+    stickers: [
+      { emoji: "🎉" }, { emoji: "🎊" }, { emoji: "🎂" }, { emoji: "🎁" },
+      { emoji: "🎈" }, { emoji: "🎵" }, { emoji: "🎶" }, { emoji: "🔥" },
+      { emoji: "✨" }, { emoji: "⭐" }, { emoji: "🌟" }, { emoji: "💫" }
+    ]
+  }
+];
+
+let stickerPacks = null;        // { id, name, emoji, accent, stickers:[{id,url}] }
+let installedPacks = new Set(); // ids installed from the store
+let stickerMakerImage = null;   // Image object loaded in the maker
+
+function getStickerPacks() {
+  if (stickerPacks) return stickerPacks;
+  try {
+    const raw = localStorage.getItem(STICKER_STORAGE_KEY);
+    if (raw) {
+      stickerPacks = JSON.parse(raw);
+      installedPacks = new Set((stickerPacks || []).map(p => p.id));
+      return stickerPacks;
+    }
+  } catch (e) { console.warn("Sticker storage parse error", e); }
+  // First run: seed with a starter custom pack so the picker is never empty.
+  stickerPacks = [{ id: "my-stickers", name: "My Stickers", emoji: "✨", accent: "#0ea5e9", stickers: [] }];
+  installedPacks = new Set(["my-stickers"]);
+  saveStickerPacks();
+  return stickerPacks;
+}
+
+function saveStickerPacks() {
+  try {
+    localStorage.setItem(STICKER_STORAGE_KEY, JSON.stringify(stickerPacks || []));
+  } catch (e) { console.warn("Failed to save sticker packs", e); }
+}
+
+function getInstalledPackIds() {
+  return new Set(getStickerPacks().map(p => p.id));
+}
+
+// Render an emoji sticker to a square data-URL PNG via canvas.
+function emojiStickerURL(emoji, bg = null) {
+  try {
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (bg) {
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, size, size);
+    }
+    ctx.font = `${Math.floor(size * 0.74)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(emoji, size / 2, size / 2 + size * 0.04);
+    return canvas.toDataURL("image/png");
+  } catch (e) {
+    console.warn("emojiStickerURL error", e);
+    return null;
+  }
+}
+
+function stickerId() {
+  return "st_" + Date.now().toString(36) + "_" + Math.random().toString(36).substr(2, 6);
+}
+
+// Install a store pack (curated emoji pack) into the user's sticker list.
+function installStickerPack(packId) {
+  const def = STICKER_EMOJI_PACKS.find(p => p.id === packId);
+  if (!def) return false;
+  const packs = getStickerPacks();
+  if (packs.some(p => p.id === packId)) return true; // already installed
+  packs.push({
+    id: def.id,
+    name: def.name,
+    emoji: def.emoji,
+    accent: def.accent,
+    stickers: def.stickers.map(s => ({
+      id: stickerId(),
+      url: emojiStickerURL(s.emoji)
+    }))
+  });
+  installedPacks.add(packId);
+  saveStickerPacks();
+  return true;
+}
+
+function uninstallStickerPack(packId) {
+  if (packId === "my-stickers") return; // never allow removing the maker pack
+  const packs = getStickerPacks();
+  const idx = packs.findIndex(p => p.id === packId);
+  if (idx > -1) {
+    packs.splice(idx, 1);
+    installedPacks.delete(packId);
+    saveStickerPacks();
+  }
+  renderStickerPacks();
+}
+
+/* ── Sticker panel UI ─────────────────────────────────────────────────── */
+let stickerPanelOpen = false;
+
+function toggleStickerPanel() {
+  if (!selectedUser) { alert("Select a user first"); return; }
+  if (stickerPanelOpen) { closeStickerPanel(); return; }
+  const panel = document.getElementById("stickerPanel");
+  const btn = document.getElementById("stickerBtn");
+  if (!panel) return;
+  stickerPanelOpen = true;
+  panel.classList.add("active");
+  if (btn) btn.classList.add("active");
+  switchStickerTab("packs");
+  lucide.createIcons && lucide.createIcons();
+}
+
+function closeStickerPanel() {
+  stickerPanelOpen = false;
+  const panel = document.getElementById("stickerPanel");
+  const btn = document.getElementById("stickerBtn");
+  if (panel) panel.classList.remove("active");
+  if (btn) btn.classList.remove("active");
+}
+
+function switchStickerTab(tab) {
+  const tabs = { packs: "stickerTabPacks", store: "stickerTabStore", maker: "stickerTabMaker" };
+  const views = { packs: "stickerPacksView", store: "stickerStoreView", maker: "stickerMakerView" };
+  Object.entries(tabs).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("active", key === tab);
+  });
+  Object.entries(views).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = key === tab ? "" : "none";
+  });
+  if (tab === "packs") renderStickerPacks();
+  else if (tab === "store") renderStickerStore();
+  else renderStickerMaker();
+}
+
+function renderStickerPacks() {
+  const host = document.getElementById("stickerPacksView");
+  if (!host) return;
+  const packs = getStickerPacks();
+  if (!packs.length) {
+    host.innerHTML = '<div class="sticker-empty">No packs yet — grab some from the Store or make your own! 😉</div>';
+    return;
+  }
+  host.innerHTML = packs.map(pack => {
+    const count = (pack.stickers || []).length;
+    return `
+      <div class="stick-pack">
+        <div class="stick-pack-head">
+          <div class="stick-pack-icon">${pack.emoji || "🎨"}</div>
+          <div class="stick-pack-info">
+            <div class="stick-pack-name">${escapeHtml(pack.name || "Pack")}</div>
+            <div class="stick-pack-count">${count} sticker${count === 1 ? "" : "s"}</div>
+          </div>
+          <button class="stick-pack-manage" onclick="managePack('${pack.id}')" title="Repack & delete">⋯</button>
+        </div>
+        <div class="stick-pack-grid">
+          ${(pack.stickers || []).map(s => `
+            <button class="stick-cell" onclick="sendSticker('${escapeHtml(s.url)}')" title="Send sticker">
+              <img src="${safeMediaUrl(s.url)}" alt="sticker" draggable="false">
+            </button>
+          `).join("")}
+          <button class="stick-cell stick-cell-add" onclick="openStickerMaker('${pack.id}')" title="Add sticker to this pack">
+            <span>＋</span>
+          </button>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function managePack(packId) {
+  const pack = getStickerPacks().find(p => p.id === packId);
+  if (!pack) return;
+  const action = prompt(
+    `Manage "${pack.name}" (${pack.stickers.length} stickers)\n\nType "rename" to rename this pack, or "delete" to remove it.`,
+    "rename"
+  );
+  if (!action) return;
+  const a = action.trim().toLowerCase();
+  if (a === "rename" || a === "r") {
+    const newName = prompt("New pack name:", pack.name);
+    if (newName && newName.trim()) {
+      pack.name = newName.trim();
+      saveStickerPacks();
+      renderStickerPacks();
+      showNotifToast("✓ Pack renamed", "success");
+    }
+  } else if (a === "delete" || a === "d") {
+    if (packId === "my-stickers") {
+      showNotifToast("The My Stickers pack can't be deleted", "info");
+      return;
+    }
+    if (confirm(`Delete "${pack.name}" and all its stickers?`)) {
+      uninstallStickerPack(packId);
+      showNotifToast("Pack deleted", "success");
+    }
+  }
+}
+
+function renderStickerStore() {
+  const host = document.getElementById("stickerStoreView");
+  if (!host) return;
+  const installed = getInstalledPackIds();
+  host.innerHTML = `
+    <div class="store-powered">✨ Powered by Nexa Stickers</div>
+    ${STICKER_EMOJI_PACKS.map(def => `
+      <div class="store-pack">
+        <div class="store-pack-head" style="--pk-accent:${def.accent}">
+          <div class="store-pack-icon">${def.emoji}</div>
+          <div class="store-pack-info">
+            <div class="store-pack-name">${escapeHtml(def.name)}</div>
+            <div class="store-pack-desc">${def.stickers.length} premium stickers</div>
+          </div>
+          ${installed.has(def.id)
+            ? '<button class="store-pack-btn installed" onclick="uninstallStickerPack(\'' + def.id + '\')">Installed ✓</button>'
+            : '<button class="store-pack-btn" onclick="installStickerPack(\'' + def.id + '\')">Add</button>'}
+        </div>
+        <div class="store-pack-grid">
+          ${def.stickers.map(s => `
+            <div class="store-sticker">
+              <img src="${safeMediaUrl(emojiStickerURL(s.emoji))}" alt="sticker" draggable="false">
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `).join("")}
+  `;
+}
+
+/* ── Sticker Maker ────────────────────────────────────────────────────── */
+let makerTargetPackId = null; // pack the finished sticker is added to
+let makerSource = null;       // { img, sx, sy, size } current crop region
+let makerView = null;         // { scale, x, y } pan/zoom within the stage
+
+function renderStickerMaker() {
+  const host = document.getElementById("stickerMakerView");
+  if (!host) return;
+  const packs = getStickerPacks();
+  const packOptions = packs.map(p => `<option value="${p.id}">${escapeHtml(p.name || "Pack")}</option>`).join("") ||
+    '<option value="my-stickers">My Stickers</option>';
+  host.innerHTML = `
+    <div class="sm-hero">
+      <div class="sm-hero-icon">🛠️</div>
+      <div class="sm-hero-title">Create your own sticker</div>
+      <div class="sm-hero-sub">Turn any photo, meme, or picture into a sticker — better than WhatsApp.</div>
+    </div>
+    <div class="sm-controls">
+      <div class="sm-row">
+        <label class="sm-label">Add to pack</label>
+        <select id="smPackSelect" class="sm-select">${packOptions}</select>
+      </div>
+      <button class="sm-pick-btn" onclick="openStickerMakerFromLibrary()">📷 Pick an image</button>
+    </div>
+    <div class="sm-stage" id="smStage">
+      <div class="sm-stage-empty">Pick an image to begin — we'll crop and scale it into a perfect sticker.</div>
+    </div>
+  `;
+}
+
+function openStickerMakerFromLibrary() {
+  if (!selectedUser) return;
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = e => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => startStickerMakerFromData(ev.target.result);
+    reader.readAsDataURL(f);
+  };
+  input.click();
+}
+
+function openStickerMaker(packId) {
+  makerTargetPackId = packId || null;
+  switchStickerTab("maker");
+  openStickerMakerFromLibrary();
+}
+
+function closeStickerMaker() {
+  stickerMakerImage = null;
+  makerSource = null;
+  makerTargetPackId = null;
+  switchStickerTab("packs");
+}
+
+function startStickerMakerFromData(dataUrl) {
+  const img = new Image();
+  img.onload = () => {
+    stickerMakerImage = img;
+    const srcSize = Math.min(img.width, img.height);
+    makerSource = { img, sx: 0, sy: 0, size: srcSize };
+    // makerView holds the crop-region center (in source px) + zoom.
+    makerView = { cx: img.width / 2, cy: img.height / 2, zoom: 100 };
+    const host = document.getElementById("stickerMakerView");
+    const stage = document.getElementById("smStage") || host;
+    const packSel = document.getElementById("smPackSelect");
+    if (packSel && makerTargetPackId && [...packSel.options].some(o => o.value === makerTargetPackId)) {
+      packSel.value = makerTargetPackId;
+    }
+    stage.innerHTML = `
+      <div class="sm-stage-stage">
+        <canvas class="sm-canvas" id="smCanvas" width="512" height="512"></canvas>
+        <div class="sm-stage-tools">
+          <label class="sm-tool-label">Zoom</label>
+          <input type="range" class="sm-zoom" id="smZoom" min="50" max="300" value="100" oninput="onSmZoom()">
+          <button class="sm-tool-btn" onclick="smResetCrop()">↺ Reset</button>
+        </div>
+        <div class="sm-hint">Drag the image to position it • zoom to fit</div>
+      </div>
+      <div class="sm-actions">
+        <button class="sm-act-btn" onclick="smCancel()">Cancel</button>
+        <button class="sm-act-btn primary" onclick="saveStickerFromMaker()">✓ Save to pack</button>
+      </div>
+    `;
+    drawStickerMaker();
+    wireSmCanvasDrag();
+  };
+  img.src = dataUrl;
+}
+
+function onSmZoom() {
+  const zoom = document.getElementById("smZoom");
+  if (zoom && makerView) makerView.zoom = parseInt(zoom.value, 10) || 100;
+  drawStickerMaker();
+}
+
+function wireSmCanvasDrag() {
+  const canvas = document.getElementById("smCanvas");
+  if (!canvas || !stickerMakerImage) return;
+  let dragging = false, lastX = 0, lastY = 0;
+  canvas.addEventListener("pointerdown", e => {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    if (!makerView || !stickerMakerImage) return;
+    const zoom = (makerView.zoom || 100) / 100;
+    const srcSize = makerSource ? makerSource.size : Math.min(stickerMakerImage.width, stickerMakerImage.height);
+    // 512 canvas px = srcSize source px at 100% zoom → px-per-source-px ratio.
+    const ratio = srcSize / (512 * zoom);
+    makerView.cx -= dx * ratio;
+    makerView.cy -= dy * ratio;
+    clampSmCenter();
+    drawStickerMaker();
+  });
+  const end = () => { dragging = false; };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+}
+
+function clampSmCenter() {
+  if (!stickerMakerImage || !makerView || !makerSource) return;
+  const half = makerSource.size / 2;
+  makerView.cx = Math.max(half, Math.min(stickerMakerImage.width - half, makerView.cx));
+  makerView.cy = Math.max(half, Math.min(stickerMakerImage.height - half, makerView.cy));
+}
+
+function drawStickerMaker() {
+  const canvas = document.getElementById("smCanvas");
+  if (!canvas || !stickerMakerImage) return;
+  const ctx = canvas.getContext("2d");
+  const zoom = (makerView && makerView.zoom ? makerView.zoom : 100) / 100;
+  const size = 512;
+  ctx.clearRect(0, 0, size, size);
+  // White background (WhatsApp-style sticker look)
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, size, size);
+  const src = stickerMakerImage;
+  const srcSize = makerSource ? makerSource.size : Math.min(src.width, src.height);
+  const cx = makerView ? makerView.cx : src.width / 2;
+  const cy = makerView ? makerView.cy : src.height / 2;
+  const sx = cx - srcSize / 2;
+  const sy = cy - srcSize / 2;
+  const drawSize = size * zoom;
+  const offset = (size - drawSize) / 2;
+  ctx.drawImage(src, sx, sy, srcSize, srcSize, offset, offset, drawSize, drawSize);
+}
+
+function smResetCrop() {
+  if (!stickerMakerImage) return;
+  makerSource = { img: stickerMakerImage, sx: 0, sy: 0, size: Math.min(stickerMakerImage.width, stickerMakerImage.height) };
+  makerView = { cx: stickerMakerImage.width / 2, cy: stickerMakerImage.height / 2, zoom: 100 };
+  const zoom = document.getElementById("smZoom");
+  if (zoom) zoom.value = 100;
+  drawStickerMaker();
+}
+
+function smCancel() {
+  stickerMakerImage = null;
+  makerSource = null;
+  switchStickerTab("packs");
+}
+
+function saveStickerFromMaker() {
+  const canvas = document.getElementById("smCanvas");
+  if (!canvas) return;
+  try {
+    const url = canvas.toDataURL("image/png");
+    const packSel = document.getElementById("smPackSelect");
+    const packId = packSel ? packSel.value : "my-stickers";
+    const packs = getStickerPacks();
+    let pack = packs.find(p => p.id === packId);
+    if (!pack) {
+      pack = { id: packId || "my-stickers", name: "My Stickers", emoji: "✨", accent: "#0ea5e9", stickers: [] };
+      packs.push(pack);
+    }
+    pack.stickers.push({ id: stickerId(), url });
+    saveStickerPacks();
+    stickerMakerImage = null;
+    makerSource = null;
+    switchStickerTab("packs");
+    showNotifToast("✓ Sticker added to pack!", "success");
+  } catch (e) {
+    showNotifToast("Failed to create sticker: " + e.message, "error");
+  }
+}
+
+/* ── Send sticker as a chat message ───────────────────────────────────── */
+// Data-URI stickers are bulky for Firestore docs, so we upload the sticker
+// image to Cloudinary first (mirrors how photos/voice notes are sent) and
+// store the hosted URL on the message. This keeps chats docs tiny.
+async function sendSticker(url) {
+  if (!selectedUser) return;
+  if (!url) return;
+
+  if (!url.startsWith("data:")) {
+    // Already-hosted URL (imported / store / previously uploaded) — send straight.
+    db.collection("chats").add(baseMsg({ sticker: url })).then(() => {
+      if (!isSelfChat()) {
+        const senderName = document.getElementById('myName').textContent || 'Nexa User';
+        sendPushNotification(senderName, 'You have received a new message (🖼️ Sticker)', selectedUser.uid);
+      }
+    }).catch(err => showNotifToast("Failed to send sticker: " + err.message, "error"));
+    return;
+  }
+
+  // Data URI → upload to Cloudinary, then send the hosted URL.
+  const optimisticUrl = url; // optimistic bubble shows the data URI instantly
+  const temp = baseMsg({ sticker: optimisticUrl });
+  temp.id = "temp_st_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
+  latestMsgTime[selectedUser.uid] = Date.now();
+  latestMsgText[selectedUser.uid] = "🖼️ Sticker";
+  saveLatestMsgState();
+  renderUsers();
+  _msgsA.push(temp);
+  renderMessageList();
+  scrollMessagesToBottom();
+  closeStickerPanel();
+
+  try {
+    // Convert data URI → Blob → File so uploadFile() (Cloudinary) accepts it.
+    const [meta, b64] = url.split(",");
+    const mime = (meta.match(/data:([^;]+)/) || [])[1] || "image/png";
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const f = new File([blob], "sticker.png", { type: mime });
+    const hosted = await uploadFile(f);
+
+    await db.collection("chats").add(baseMsg({ sticker: hosted }));
+
+    // Swap the optimistic data-URI bubble for the hosted one.
+    const idx = _msgsA.findIndex(m => m.id === temp.id);
+    if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+    if (!isSelfChat()) {
+      const senderName = document.getElementById('myName').textContent || 'Nexa User';
+      sendPushNotification(senderName, 'You have received a new message (🖼️ Sticker)', selectedUser.uid);
+    }
+  } catch (err) {
+    const idx = _msgsA.findIndex(m => m.id === temp.id);
+    if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+    showNotifToast("Failed to send sticker: " + err.message, "error");
+  }
+}
+
+// Auto-close the sticker panel when clicking elsewhere in the chat.
+document.addEventListener("click", e => {
+  if (!stickerPanelOpen) return;
+  if (e.target.closest("#stickerPanel") || e.target.closest("#stickerBtn")) return;
+  closeStickerPanel();
+});
 
 </script>
 <div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
