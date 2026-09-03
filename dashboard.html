@@ -41,6 +41,17 @@
 </head>
 
 <body>
+  <!-- BRANDED SPLASH — instant branded first paint, fades to reveal the app.
+       Shown on every load; hidden when the app signals it's ready (or after a
+       hard timeout so the UI is never stuck behind it). -->
+  <div class="nexa-splash" id="nexaSplash" aria-hidden="true">
+    <div class="nexa-splash-inner">
+      <div class="nexa-splash-logo">N</div>
+      <div class="nexa-splash-name">Nexa</div>
+      <div class="nexa-splash-tag">Messenger</div>
+      <div class="nexa-splash-dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
 
 <div id="pwaInstallBanner">
   <div class="pwa-banner-text">📲 Install Nexa Messenger for instant access</div>
@@ -1394,8 +1405,50 @@ auth.onAuthStateChanged(async (user) => {
     await updateOnline(true);
     maybeReopenLastChat();
     console.log("✅ App fully ready");
+    revealNexaApp();
   }
 });
+
+/* ── Splash → app reveal ───────────────────────────────────────────────
+   The branded splash (first rendered element) fades out once the app
+   signals it's ready so the underlying UI is fully initialized behind it.
+   A hard timeout guarantees the interface is never hidden indefinitely,
+   even if an upstream init call hangs. */
+let _nexaSplashShown = false;
+function revealNexaApp() {
+  if (_nexaSplashShown) return;
+  _nexaSplashShown = true;
+  const splash = document.getElementById('nexaSplash');
+  if (!splash) return;
+  // Give the browser one frame to paint the ready app before fading.
+  requestAnimationFrame(() => {
+    splash.classList.add('nexa-done');
+    setTimeout(() => {
+      splash.style.display = 'none';
+    }, 650);
+  });
+}
+// Hard timeout: never trap the user behind the splash (8s, well past init).
+(function () {
+  setTimeout(() => {
+    try {
+      const splash = document.getElementById('nexaSplash');
+      if (splash && !_nexaSplashShown) revealNexaApp();
+    } catch (e) {}
+  }, 8000);
+})();
+
+/* Play the send button's "sent" pulse once — a tiny tactile confirmation
+   that the message left the composer. No-op when the button isn't visible. */
+function pulseSendButton() {
+  const btn = document.querySelector('.btn-send');
+  if (!btn) return;
+  btn.classList.remove('sent');
+  // Force reflow so a rapid double-send replays the animation.
+  void btn.offsetWidth;
+  btn.classList.add('sent');
+  setTimeout(() => btn.classList.remove('sent'), 600);
+}
 
 window.showNotifToast = function(message, type = 'info') {
   const toast = document.createElement('div');
@@ -4547,6 +4600,9 @@ async function sendMessage() {
   _msgsA.push(tempMsgObj);
   renderMessageList();
   clearReply();
+
+  // Premium touch: the send button does a quick "sent" pulse.
+  pulseSendButton();
 
   // Scroll fully to the latest message so the just-sent bubble is in view.
   scrollMessagesToBottom();
