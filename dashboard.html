@@ -293,7 +293,7 @@
 
           <div class="settings-group">
             <div class="settings-group-title">🤖 AI Assistant</div>
-            <button class="settings-action-btn" onclick="openAI()">
+            <button class="settings-action-btn" onclick="openAskifyComingSoon()">
               <span>🤖 Launch Askify AI</span>
               <span>→</span>
             </button>
@@ -468,6 +468,17 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ASKIFY AI — COMING SOON MODAL -->
+<div class="askify-coming-overlay" id="askifyComingModal" onclick="handleAskifyComingClick(event)">
+  <div class="askify-coming-modal">
+    <button class="askify-coming-close" onclick="closeAskifyComing()">✕</button>
+    <div class="askify-coming-icon">🚧</div>
+    <div class="askify-coming-title">Coming Soon</div>
+    <div class="askify-coming-desc">Askify AI is undergoing an update. We're working hard to bring it to you — stay tuned!</div>
+    <button class="askify-coming-btn" onclick="closeAskifyComing()">Got it</button>
   </div>
 </div>
 
