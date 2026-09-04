@@ -7144,18 +7144,35 @@ async function shareStatus() {
 }
 
 function openAI() {
-  const panel = document.getElementById("aiPanel");
-  if (panel) {
-    panel.classList.add("active");
-  } else {
-    window.open("https://askifyai.onrender.com/", "_blank");
-  }
+  openAskifyComingSoon();
 }
 
 function closeAI() {
   const panel = document.getElementById("aiPanel");
   if (panel) {
     panel.classList.remove("active");
+  }
+}
+
+function openAskifyComingSoon() {
+  const modal = document.getElementById("askifyComingModal");
+  if (modal) {
+    modal.classList.add("active");
+    return;
+  }
+  showNotifToast("Askify AI is coming soon!", "info");
+}
+
+function closeAskifyComing() {
+  const modal = document.getElementById("askifyComingModal");
+  if (modal) {
+    modal.classList.remove("active");
+  }
+}
+
+function handleAskifyComingClick(e) {
+  if (e.target === document.getElementById("askifyComingModal")) {
+    closeAskifyComing();
   }
 }
 
