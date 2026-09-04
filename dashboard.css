@@ -7877,8 +7877,8 @@ a:focus-visible, [tabindex]:focus-visible {
   font-size: 46px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #2e86de 0%, #1dd1a1 55%, #00cfe8 100%);
-  box-shadow: 0 18px 50px rgba(46, 134, 222, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  background: linear-gradient(135deg, #4a94f0 0%, #166fe5 50%, #0b5bd3 100%);
+  box-shadow: 0 18px 50px rgba(22, 111, 229, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
 }
 .nexa-splash-name {
   font-size: 30px;
