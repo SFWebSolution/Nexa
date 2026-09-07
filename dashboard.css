@@ -3897,6 +3897,9 @@ input[type="range"] {
   .header-actions {
     gap: 5px;
   }
+  .sidebar-tab-switcher {
+    display: none !important;
+  }
   .info-panel {
     width: 100%;
     right: -100%;
