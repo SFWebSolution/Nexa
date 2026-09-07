@@ -35,7 +35,8 @@
   
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script>if (typeof Peer === 'undefined') { document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>'); }</script>
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@0.469.0"></script>
+  <script>if (typeof lucide === "undefined") { document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"><\/script>'); }</script>
 <link rel="stylesheet" href="dashboard.css">
 <link rel="stylesheet" href="nexa-voice-room.css">
 </head>
@@ -82,7 +83,7 @@
     <span style="font-size: 14px; font-weight: 700; color: var(--cyan); display: flex; align-items: center; gap: 6px;">
       <i data-lucide="eye" style="width: 18px; height: 18px;"></i> View Once Media
     </span>
-    <button onclick="closeViewOnceModal()" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+    <button onclick="closeViewOnceModal()" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
   </div>
   <div class="view-once-content" id="viewOnceContent"></div>
 </div>
@@ -91,7 +92,7 @@
 <div class="mc-overlay" id="mediaComposer">
   <div class="mc-sheet">
     <div class="mc-top">
-      <button class="mc-icon-btn" onclick="cancelMediaComposer()" title="Back">←</button>
+      <button class="mc-icon-btn" onclick="cancelMediaComposer()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
       <span class="mc-title" id="mcTitle">Send photo</span>
       <button class="mc-icon-btn" id="mcVOToggle" onclick="toggleMcViewOnce()" title="Send as View Once (1)">1</button>
     </div>
@@ -391,7 +392,7 @@
     <div class="stories-bar" id="storiesBar" style="display: none;"></div>
 
     <div class="chat-header">
-      <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats">←</button>
+      <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats"><i data-lucide="arrow-left" style="width:20px;height:20px;"></i></button>
       <div class="chat-peer" onclick="openUserProfile()">
         <div class="chat-avatar-wrap">
           <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
@@ -406,9 +407,13 @@
         <button class="hdr-btn" onclick="openVoiceCall()" title="Voice Call"><i data-lucide="phone" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" onclick="openCallModal('video')" title="Video Call"><i data-lucide="video" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" onclick="openChatInfo()" title="Chat Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn starter-bell-btn" id="starterBellBtn" onclick="toggleStarterTray(event)" title="Starter"><i data-lucide="bell" style="width: 18px; height: 18px;"></i><span class="starter-bell-badge" id="starterBellBadge" style="display:none;"></span></button>
         <button class="hdr-btn" onclick="openSearchModal()" title="Search"><i data-lucide="search" style="width: 18px; height: 18px;"></i></button>
       </div>
     </div>
+
+    <div class="starter-tray-backdrop" id="starterTrayBackdrop" onclick="closeStarterTray()"></div>
+    <div class="starter-tray" id="starterTray"></div>
 
     <div id="disappearingNotice" class="disappearing-banner" style="display: none;">
       <span class="disappearing-banner-icon">⏱️</span>
@@ -449,7 +454,7 @@
 
     <div class="ai-panel" id="aiPanel">
       <div class="ai-header">
-        <button class="ai-back-btn" onclick="closeAI()">←</button>
+        <button class="ai-back-btn" onclick="closeAI()"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
         <div class="ai-header-info">
           <div class="ai-avatar-header">🤖<div class="ai-avatar-status"></div></div>
           <div class="ai-title-info">
@@ -474,7 +479,7 @@
 <!-- ASKIFY AI — COMING SOON MODAL -->
 <div class="askify-coming-overlay" id="askifyComingModal" onclick="handleAskifyComingClick(event)">
   <div class="askify-coming-modal">
-    <button class="askify-coming-close" onclick="closeAskifyComing()">✕</button>
+    <button class="askify-coming-close" onclick="closeAskifyComing()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     <div class="askify-coming-icon">🚧</div>
     <div class="askify-coming-title">Coming Soon</div>
     <div class="askify-coming-desc">Askify AI is undergoing an update. We're working hard to bring it to you — stay tuned!</div>
@@ -523,7 +528,7 @@
       </div>
       <div class="story-actions-top">
         <button class="story-delete-btn" id="storyDeleteBtn" style="display: none;" onclick="deleteStory()" title="Delete">🗑️</button>
-        <button class="story-close-btn" onclick="closeStoryViewer()">✕</button>
+        <button class="story-close-btn" onclick="closeStoryViewer()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
       </div>
     </div>
     <div class="story-viewer-content" id="storyViewerContent" onclick="handleStoryContentClick(event)"></div>
@@ -555,7 +560,7 @@
   <div class="notif-settings-modal story-analytics-modal">
     <div class="notif-hdr">
       <div class="notif-title">Story Views & Activity</div>
-      <button class="notif-close" onclick="closeStoryAnalyticsModal()">✕</button>
+      <button class="notif-close" onclick="closeStoryAnalyticsModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     
     <div class="analytics-tab-bar">
@@ -575,7 +580,7 @@
   <div class="status-modal" id="addYoursModalBox">
     <div class="status-modal-header">
       <div class="status-modal-title">➕ Add Yours</div>
-      <button class="status-modal-close" onclick="closeAddYoursModal()">✕</button>
+      <button class="status-modal-close" onclick="closeAddYoursModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     <div class="addyours-prompt-banner">
       <div class="addyours-prompt-label">Responding to</div>
@@ -602,7 +607,7 @@
   <div class="notif-settings-modal story-analytics-modal">
     <div class="notif-hdr">
       <div class="notif-title" id="promptResponsesTitle">Add Yours</div>
-      <button class="notif-close" onclick="closePromptResponsesModal()">✕</button>
+      <button class="notif-close" onclick="closePromptResponsesModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     <div class="analytics-list" id="promptResponsesList" style="display:block;">
       <div class="no-analytics">No responses yet</div>
@@ -615,7 +620,7 @@
   <div class="status-modal" id="statusModalBox">
     <div class="status-modal-header">
       <div class="status-modal-title">Share Story</div>
-      <button class="status-modal-close" onclick="closeStatusModal()">✕</button>
+      <button class="status-modal-close" onclick="closeStatusModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     
     <div class="status-tabs">
@@ -709,9 +714,9 @@
 <!-- CHAT INFO PANEL -->
 <div class="info-panel" id="infoPanel">
   <div class="info-hdr">
-    <button class="info-back" onclick="closeChatInfo()" title="Back">←</button>
+    <button class="info-back" onclick="closeChatInfo()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
     <div class="info-hdr-title">Chat Info</div>
-    <button class="info-close" onclick="closeChatInfo()">✕</button>
+    <button class="info-close" onclick="closeChatInfo()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
   </div>
   <!-- CONTACT PROFILE HEADER — avatar + name + status + 24h note, like
        WhatsApp's contact info. Avatar opens the full-profile-pic viewer. -->
@@ -771,12 +776,22 @@
   </div>
 </div>
 
+<!-- STARTER MINI PROFILE DRAWER -->
+<div class="starter-drawer-overlay" id="starterDrawerOverlay" onclick="closeStarterDrawer()"></div>
+<div class="starter-drawer" id="starterDrawer" aria-hidden="true">
+  <div class="starter-drawer-hdr">
+    <button class="starter-drawer-back" onclick="closeStarterDrawer()" title="Close"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    <span class="starter-drawer-title">Starter</span>
+  </div>
+  <div class="starter-drawer-body" id="starterDrawerBody"></div>
+</div>
+
 <!-- MESSAGE SEARCH MODAL -->
 <div class="modal-overlay" id="searchModal">
   <div class="modal">
     <div class="modal-hdr">
       <input type="text" id="searchInput" placeholder="Search messages…" onkeyup="searchMessages()">
-      <button class="modal-close" onclick="closeSearchModal()">✕</button>
+      <button class="modal-close" onclick="closeSearchModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     <div class="modal-body" id="searchResults"></div>
   </div>
@@ -787,7 +802,7 @@
   <div class="notif-settings-modal">
     <div class="notif-hdr">
       <div class="notif-title">Notification Settings</div>
-      <button class="notif-close" onclick="closeNotifSettings()">✕</button>
+      <button class="notif-close" onclick="closeNotifSettings()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     
     <div class="notif-item">
@@ -833,7 +848,7 @@
   <div class="delete-chat-modal">
     <div class="delete-chat-hdr">
       <div class="delete-chat-title">Delete Chat</div>
-      <button class="delete-chat-close" onclick="closeDeleteChatModal()">✕</button>
+      <button class="delete-chat-close" onclick="closeDeleteChatModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     <div class="delete-chat-body">
       Delete chat with <strong id="deleteChatTargetName">User</strong>?
@@ -949,7 +964,7 @@
 
 <script defer src="app-main.js?v=1"></script>
 <div class="modal-overlay" id="profilePicModal" onclick="closeProfilePicModal(event)">
-  <button class="profile-pic-back" onclick="profilePicGoBack()" title="Back">←</button>
+  <button class="profile-pic-back" onclick="profilePicGoBack()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
   <div class="profile-pic-viewer">
     <img id="modalProfileImg" src="" alt="Profile Picture">
     <div class="profile-pic-hint">Tap anywhere to close</div>
@@ -959,7 +974,7 @@
 <!-- USER PROFILE MODAL — click a contact's avatar to view their profile -->
 <div class="modal-overlay" id="userProfileModal" onclick="closeUserProfile(event)">
   <div class="user-profile-card" onclick="event.stopPropagation()">
-    <button class="user-profile-back" onclick="closeUserProfile()" title="Back">←</button>
+    <button class="user-profile-back" onclick="closeUserProfile()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
     <div class="user-profile-cover"></div>
     <div class="user-profile-avatar-wrap" onclick="openProfilePic(document.getElementById('userProfileAvatar').src, 'profile')">
       <img id="userProfileAvatar" src="" alt="Profile" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
@@ -993,7 +1008,7 @@
         <div class="wallpaper-modal-title" id="wpModalTitle">🖼️ Customize Chat Background</div>
         <div class="wallpaper-modal-sub" id="wpModalSub">Select or upload a wallpaper image and adjust lighting for crisp reading</div>
       </div>
-      <button class="wallpaper-modal-close" onclick="closeWallpaperModal()">✕</button>
+      <button class="wallpaper-modal-close" onclick="closeWallpaperModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
 
     <div class="wallpaper-modal-body">
@@ -1073,6 +1088,29 @@
       <button class="wp-modal-btn secondary" onclick="closeWallpaperModal()">Cancel</button>
       <button class="wp-modal-btn primary" onclick="saveWallpaperFromModal()">Save Wallpaper</button>
     </div>
+  </div>
+</div>
+
+<!-- RETURNING-USER WELCOME POPUP (fun re-engagement nudge for users who vanished 2-3+ days.
+     Non-blocking: the app loads normally beneath it,and it only appears once per 30 days
+     per device. "Invite friends" copies the user's personal referral link (the settings
+     referral card uses the same helper).) -->
+<div class="welcome-back-overlay" id="welcomeBackModal" aria-hidden="true">
+  <div class="welcome-back-card" role="dialog" aria-modal="true" aria-labelledby="welcomeBackTitle">
+    <button class="welcome-back-close" onclick="dismissReturningWelcome()" title="Close" aria-label="Close"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+    <div class="welcome-back-emoji">😂</div>
+    <div class="welcome-back-title" id="welcomeBackTitle">Ah ah, you don disappear o!</div>
+    <div class="welcome-back-msg">
+      You no dey online for like 2–3 days now 👀<br>
+      Why na? Abi you no see anybody to gist with? 😂<br><br>
+      Nexa dey more fun when your people dey here.<br>
+      Invite your friends make una chat, gist and catch cruise together. 🫂💬
+    </div>
+    <div class="welcome-back-cta">
+      <button class="welcome-back-btn secondary" onclick="dismissReturningWelcome()">Not now</button>
+      <button class="welcome-back-btn primary" onclick="returningWelcomeInvite()">📤 Invite friends</button>
+    </div>
+    <div class="welcome-back-foot">Help us grow Nexa by bringing your people along ❤️<br>We dey wait for you o! 😂⚔️</div>
   </div>
 </div>
 

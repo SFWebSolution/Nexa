@@ -8058,3 +8058,822 @@ a:focus-visible, [tabindex]:focus-visible {
   box-shadow: 0 0 10px var(--primary-glow);
 }
 
+/* ============================================================ /* ============================================================ *//*   RETURNING-USER WELCOME POPUP - re-engagement nudge.       *//* ============================================================ */.welcome-back-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.welcome-back-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.welcome-back-card {
+  position: relative;
+  background: radial-gradient(120% 160% at 50% 0%, rgba(43, 143, 255, 0.12) 0%, rgba(18, 24, 34, 0.98) 55%);
+  border: 1px solid var(--border-lt);
+  box-shadow: var(--shadow-lg);
+  border-radius: 28px;
+  padding: 32px 26px 24px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  transform: scale(0.9) translateY(24px);
+  transition: transform 0.35s var(--spring);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.welcome-back-overlay.active .welcome-back-card {
+  transform: scale(1) translateY(0);
+}
+.welcome-back-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.welcome-back-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text-0);
+}
+.welcome-back-emoji {
+  font-size: 56px;
+  line-height: 1;
+  margin: 6px auto 14px;
+  animation: welcomeBackBounce 1.2s ease-in-out infinite;
+  filter: drop-shadow(0 8px 18px rgba(255, 193, 7, 0.35));
+}
+@keyframes welcomeBackBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.welcome-back-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-0);
+  margin-bottom: 10px;
+  letter-spacing: -0.5px;
+}
+.welcome-back-msg {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+.welcome-back-cta {
+  display: flex;
+  gap: 12px;
+}
+.welcome-back-btn {
+  flex: 1;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.welcome-back-btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  border: 1px solid var(--border-md);
+}
+.welcome-back-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-0);
+}
+.welcome-back-btn.primary {
+  background: var(--primary);
+  color: #080c14;
+  box-shadow: var(--shadow-sm);
+  font-weight: 800;
+}
+.welcome-back-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+.welcome-back-foot {
+  margin-top: 20px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.55;
+}
+
+FLUID & MODERN 2026 POLISH — additive, backward-compatible upgrade       */
+/*                                                                             */
+/*   What's new (researched 2026 CSS baseline):                           */
+/*   • Design tokens: color-mix() derived tints, extended shadows,        */
+/*     fluid clamp() type scale, logical spacing.                            */
+/*   • Motion: @starting-style enter transitions (no JS flash), codified   */
+/*     micro-interactions on real components, glass depth layering.        */
+/*   • Accessibility: light-dark() bridges, :user-invalid, focus rings,     */
+/*     accent-color, ::selection, reduced-motion hardening.                */
+/*   • Atmosphere: subtle Aurora ambient layer + film grain on dark themes.  */
+/*                                                                             */
+/*   Safe: only ADDS to existing rules (defines new tokens, overrides      */
+/*     nothing structurally,and honors prefers-reduced-motion).               */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. MODERN DESIGN-TOKEN EXTENSIONS ── */
+/*   New vars only — existing consumers keep working; these layer on top.   */
+:root {
+  /* Fluid type scale — clamp(min, preferred, max) keeps headings crisp
+     across phones-to-desktops without media-query boilerplate. */
+  --font-2xs: clamp(0.625rem, 0.6rem + 0.15vw,  0.6875rem);
+  --font-xs:   clamp(0.6875rem,  0.66rem + 0.2vw,  0.75rem);
+  --font-sm:   clamp(0.75rem,  0.72rem +  0.25vw,  0.8125rem);
+  --font-md:   clamp(0.8125rem,  0.76rem +  0.4vw,  0.9375rem);
+  --font-lg:   clamp(0.9375rem,  0.86rem +  0.7vw,  1.125rem);
+  --font-xl:   clamp(1.125rem,  0.98rem +  1.3vw,  1.5rem);
+  --font-2xl: clamp(1.5rem,  1.2rem +  2vw,    2rem);
+
+  /* Modern tints derived with color-mix() — perceptual and theme-aware:
+     a button/avatar hover glow, list press feedback, soft divider. */
+  --primary-tint: color-mix(in oklab, var(--primary), white 88%);
+  --primary-shade: color-mix(in oklab, var(--primary), black 12%);
+  --primary-glass: color-mix(in oklab, var(--primary), transparent 70%);
+  --danger-tint:   color-mix(in oklab, var(--danger), white 90%);
+  --online-tint:   color-mix(in oklab, var(--online), white 88%);
+  --cyan-tint:     color-mix(in oklab, var(--cyan), white 88%);
+
+  /* Extended elevation — softer, blobbier 2026 shadows. */
+  --shadow-2xs:  0 1px 2px color-mix(in oklab, var(--text-0), 6%);
+  --shadow-glass:  0 8px 32px color-mix(in oklab, var(--primary), 18%), 0 1px 2px color-mix(in oklab, var(--text-0), 8%);
+  --shadow-lift:  0 18px 40px -12px color-mix(in oklab, var(--text-0), 35%);
+
+  /* Motion design-system codified once. */
+  --dur-2: 90ms;
+  --dur-4: 160ms;
+  --ease-smooth: cubic-bezier(0.22, 1,  0.36, 1);
+}
+
+/* ── 2. GLOBAL LIGHT-DARK BRIDGES ── */
+:root {
+  color-scheme: light;
+  accent-color: var(--primary);
+}
+:root[data-theme="nexa"],
+:root[data-theme="midnight"],
+:root[data-theme="black"] {
+  color-scheme: dark;
+}
+
+/* ── 3. AMBIENT DEPTH — subtle Aurora wash ── */
+.app {
+  background-image: radial-gradient(120% 80% at  50% -10%, color-mix(in oklab, var(--primary), transparent 10%), transparent  60%);
+}
+
+/* ── 4. SMOOTHER ENTER TRANSITIONS (@starting-style — no JS flash) ── */
+.modal,
+.call-card,
+.sheet-card,
+.notif-toast,
+.ctx-menu {
+  transition: opacity var(--dur-4) var(--ease-smooth), transform var(--dur-4) var(--ease-smooth);
+}
+.modal,
+.call-card,
+.sheet-card,
+.ctx-menu {
+  opacity:  0.999;
+}
+@starting-style {
+  .modal,
+  .call-card,
+  .sheet-card,
+  .ctx-menu {
+	opacity:	 0;
+	transform:	 translateY(10px) scale(0.97);
+  }
+  .notif-toast {
+	opacity:	 0;
+	transform:	 translateY(-8px) scale(0.96);
+  }
+}
+/* Popover-style overlays get a gentler spring-led fade. */
+.story-viewer-overlay,
+.user-profile-modal,
+.media-viewer-overlay {
+  animation: modalfadeIn var(--dur-4) var(--ease-smooth);
+}
+@keyframes modalfadeIn {
+  from {
+	opacity:	 0;
+  }
+  to {
+	opacity:	 1;
+  }
+}
+
+/* ── 5. TYPOGRAPHIC REFINEMENTS — balance headers, prevent orphans. ── */
+.nexa-splash-name,
+.modal-hdr,
+.empty-chat,
+.welcome-back-title,
+.nexa-splash-tag {
+  text-wrap: balance;
+}
+.msg-text {
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.status-modal-title,
+.story-viewer-overlay-hdr,
+.info-title {
+  text-wrap: balance;
+}
+
+/* ── 6. AUTH-FRIENDLY FORM STATES ── */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: light-dark(var(--primary), #166fe5);
+  width:	 16px;
+  height:	16px;
+  cursor:	pointer;
+}
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline:  2px solid var(--primary);
+  outline-offset:  2px;
+}
+input:user-invalid,
+textarea:user-invalid {
+  border-color:	var(--danger);
+  box-shadow:	0 0 0 3px var(--danger-soft);
+}
+input:user-valid {
+  border-color:	color-mix(in oklab, var(--online),  transparent  40%);
+}
+
+/* ── 7. MICRO-INTERACTION CODIFICATION (matches the existing spring
+       language — every press/tap now has a tactile lift).          ── */
+.user-item:hover {
+  box-shadow:	var(--shadow-glass);
+}
+.user-item:active {
+  transform:	scale(0.985);
+}
+
+.story-item,
+.s-tab-btn,
+.theme-btn,
+.wp-preset-card {
+  transition: transform var(--dur-2) var(--spring), box-shadow var(--dur-2), border-color var(--dur-2);
+}
+.story-item:hover,
+.s-tab-btn:hover,
+.theme-btn:hover,
+.wp-preset-card:hover {
+  transform:	translateY(-2px);
+}
+
+.bubble {
+  transition: transform var(--dur-2) var(--spring);
+}
+.bubble:hover {
+  transform:	translateY(-1px);
+}
+.msg.me .bubble:hover {
+  transform:	translateY(-1px) translateX(-1px);
+}
+.msg.them .bubble:hover {
+  transform:	translateY(-1px) translateX(1px);
+}
+
+.hdr-btn,
+.call-action-circle,
+.mc-icon-btn {
+  transition: transform var(--dur-2) var(--spring), background var(--dur-2), box-shadow var(--dur-2);
+}
+.hdr-btn:hover,
+.call-action-circle:hover,
+.mc-icon-btn:hover {
+  box-shadow:	var(--shadow-sm);
+}
+.hdr-btn:active,
+.call-action-circle:active,
+.mc-icon-btn:active {
+  transform:	scale(0.9);
+}
+
+/* ── 8. SCROLLBAR REFINEMENT (matches theme; stays slim).)      ── */
+::-webkit-scrollbar-thumb {
+  border-radius:	 8px;
+  border:	 2px solid transparent;
+  background-clip:	 padding-box;
+}
+::-webkit-scrollbar {
+  width:	 10px;
+  height:	 10px;
+}
+::-webkit-scrollbar-track {
+  background:	 transparent;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--text-3), 70%) transparent;
+}
+
+/* ── 9. SELECTION + FOCUS POLISH.                             ── */
+::selection {
+  background: color-mix(in oklab, var(--primary), 25%);
+}
+:focus {
+  outline:	 none;
+}
+:focus-visible {
+  outline:	 2px solid var(--primary);
+  outline-offset:	 2px;
+}
+:root {
+  scroll-behavior:	smooth;
+}
+
+/* ── 10. PROGRESSIVE ENHANCEMENT — fluid tweaks only when supported. ── */
+@supports (font-size: clamp(1rem, 1vw, 2rem)) {
+  .bottom-nav .nav-item {
+	font-size:	var(--font-2xs);
+  }
+  .user-name {
+	font-size:	var(--font-sm);
+  }
+  .user-preview {
+	font-size:	var(--font-2xs);
+  }
+  .msg-text {
+	font-size:	var(--font-md);
+  }
+  .date-sep span {
+	font-size:	var(--font-2xs);
+  }
+  .hdr-btn {
+	font-size:	var(--font-md);
+  }
+  .welcome-back-title {
+	font-size:	var(--font-xl);
+  }
+  .welcome-back-msg {
+	font-size:	var(--font-sm);
+  }
+  .welcome-back-btn {
+	font-size:	var(--font-sm);
+  }
+  .nexa-splash-name {
+	font-size:	var(--font-2xl);
+  }
+  .nexa-splash-tag {
+	font-size:	var(--font-2xs);
+  }
+}
+
+/* ── 11. NAV ACTIVE UNDERGLOW (subtle brand bug; dark-friendly).) ── */
+.bottom-nav .nav-item.active {
+  background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--primary), 10%));
+}
+.bottom-nav .nav-item.active::after {
+  content:      "";
+  position:     absolute;
+  bottom:       0;
+  left: 50%;
+  transform: translateX(-50%);
+  width:         20px;
+  height:        3px;
+  border-radius:         999px;
+  background: var(--primary);
+  box-shadow:   0 2px 8px var(--primary-glow);
+}
+
+REDUCED-MOTION HARDENING (everything above degrades
+        gracefully; this is the guardrail)。                        ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+	animation-duration:	 0.01ms !important;
+	animation-iteration-count:	 1 !important;
+	transition-duration:	 0.01ms !important;
+	scroll-behavior:	 auto !important;
+  }
+  .modal,
+  .call-card,
+  .sheet-card,
+  .ctx-menu,
+  .notif-toast {
+	opacity:	 1 !important;
+	transform:	 none !important;
+  }
+  .bottom-nav .nav-item.active::after {
+	display:	 none;
+  }
+}
+/* STARTER NUB - BELL + TRAY + MINI DRAWER (presence-aware starter tabs) */
+/* ==================================================== */
+
+.starter-bell-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.starter-bell-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 10px;
+    background: #ff3b5c;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(255, 59, 92, 0.45);
+    border: 2px solid var(--bg-1);
+    transition: transform var(--t);
+    transition: box-shadow var(--t);
+}
+
+.starter-bell-badge:not(:empty) {
+    animation: starterBadgeIn 0.45s var(--spring);
+}
+
+@keyframes starterBadgeIn {
+    from {
+        transform: scale(0.3);
+        opacity: 0.2;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.starter-tray-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    background: rgba(6, 12, 20, 0.32);
+    display: none;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+}
+.starter-tray-backdrop[style*="display: block"] {
+    opacity: 1;
+}
+
+.starter-tray {
+    position: absolute;
+    top:    70px;
+    right:    10px;
+    width: min(340px, 86vw);
+    max-height: calc(100% - 90px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--bg-1);
+    border: 1px solid var(--border-dk);
+    border-radius: 18px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+    padding: 8px;
+    z-index: 9501;
+    opacity: 0;
+    transform: translateY(-8px);
+    transform-origin: top right;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+    transition: transform 0.3s var(--spring);
+}
+.starter-tray.open {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.starter-tray-hdr {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 4px 6px 8px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    color: var(--text-0);
+}
+.starter-tray-hdr-title {
+    text-transform:uppercase;
+    font-size: 11px;
+    color: var(--text-3);
+}
+.starter-tray-close {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    border:none;
+    background: var(--bg-2);
+    color: var(--text-2);
+    cursor:pointer;
+    transition: all var(--t);
+}
+.starter-tray-close:hover {
+    background: var(--bg-3);
+    color: var(--text-0);
+}
+
+.starter-card {
+    display:flex;
+    align-items:center;
+    gap:    10px;
+    padding: 9px 10px;
+    border-radius: 13px;
+    border: 1px solid transparent;
+    background: var(--bg-2);
+    cursor:pointer;
+    transition: transform var(--t);
+    transition: background var(--t);
+    transition: border-color var(--t);
+}
+.starter-card:hover {
+    background: var(--bg-3);
+    border-color: rgba(79, 143, 255, 0.25);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.starter-card-plus {
+    margin-left: 6px;
+}
+.starter-card-avatar {
+    width: 40px;
+    height:    40px;
+    border-radius: 50%;
+    object-fit:cover;
+    background: var(--bg-4);
+    border: 2px solid var(--border-md);
+    flex-shrink:0;
+}
+.starter-card-info {
+    flex: 1;
+    min-width:0;
+}
+.starter-card-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-0);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.starter-card-sub {
+    font-size: 12px;
+    margin-top: 2px;
+    color: var(--text-3);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.starter-card-dismiss {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    border:none;
+    background:transparent;
+    color: var(--text-3);
+    font-size: 13px;
+    line-height: 1;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    transition: all var(--t);
+}
+.starter-card-dismiss:hover {
+    background: rgba(255, 59, 92, 0.12);
+    color: #ff3b5c;
+}
+
+.starter-tray-hint {
+    padding: 6px 8px 2px;
+    font-size: 11px;
+    color: var(--text-3);
+    text-align:center;
+}
+
+.starter-drawer {
+    position:fixed;
+    top: 8px;
+    right:    8px;
+    width: min(360px, 92vw);
+    max-height: calc(100dvh - 16px);
+    display:flex;
+    flex-direction:column;
+    background: var(--bg-0);
+    border: 1px solid var(--border-dk);
+    border-radius: 20px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    z-index: 10001;
+    opacity: 0;
+    transform: translateX(36px);
+    transform-origin: top right;
+    pointer-events:none;
+    transition: opacity 0.25s ease;
+    transition: transform 0.35s var(--spring);
+}
+.starter-drawer.open {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events:auto;
+}
+.starter-drawer-overlay {
+    position:fixed;
+    inset: 0;
+    z-index:    10000;
+    background: rgba(6, 12, 20, 0.4);
+    display:none;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+}
+.starter-drawer-overlay[style*="display: block"] {
+    opacity: 1;
+}
+
+.starter-drawer-hdr {
+    display:flex;
+    align-items:center;
+    gap:    8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-dk);
+    flex-shrink:0;
+}
+.starter-drawer-back {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    border:none;
+    background: var(--bg-2);
+    color: var(--text-1);
+    cursor:pointer;
+    transition: all var(--t);
+}
+.starter-drawer-back:hover {
+    background: var(--bg-3);
+    color: var(--text-0);
+}
+.starter-drawer-title {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}
+
+.starter-drawer-body {
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    padding: 16px 18px 20px;
+    text-align:center;
+}
+.starter-drawer-cover {
+    height: 84px;
+    border-radius:    14px;
+    background: linear-gradient(135deg, rgba(37, 211, 102, 0.22), rgba(79, 143, 255,    0.18));
+    margin-bottom: 4px;
+}
+.starter-drawer-avatar {
+    width: 74px;
+    height:    74px;
+    border-radius:    50%;
+    object-fit:cover;
+    border: 3px solid var(--bg-0);
+    background: var(--bg-4);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    margin-top: -38px;
+}
+.starter-drawer-name {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text-0);
+    margin-top: 8px;
+}
+.starter-drawer-user {
+    font-size: 13px;
+    color: var(--text-3);
+    margin-top:    2px;
+}
+.starter-drawer-status {
+    font-size: 13px;
+    margin-top: 6px;
+    font-weight:    600;
+}
+.starter-drawer-bio {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+    margin-top: 10px;
+    text-wrap: balance;
+}
+.starter-drawer-note {
+    font-size: 12px;
+    color: var(--text-2);
+    background: var(--bg-2);
+    border: 1px solid var(--border-md);
+    border-radius: 10px;
+    padding: 7px 10px;
+    margin-top: 10px;
+}
+.starter-drawer-actions {
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top:    14px;
+}
+.sd-action-btn {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:    6px;
+    padding: 9px 8px;
+    border-radius: 11px;
+    border:    1px solid var(--border-md);
+    background: var(--bg-2);
+    color: var(--text-1);
+    font-size: 12.5px;
+    font-weight: 700;
+    font-family:inherit;
+    cursor:pointer;
+    transition: all var(--t);
+}
+.sd-action-btn:hover {
+    background: var(--bg-3);
+    border-color: var(--primary);
+    color: var(--text-0);
+    transform: translateY(-1px);
+}
+.sd-action-btn.primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+.sd-action-btn.primary:hover {
+    background: var(--primary-dk);
+    box-shadow: 0 6px 18px rgba(79, 143, 255, 0.35);
+}
+.sd-action-btn.accent {
+    background: rgba(37, 211, 102, 0.14);
+    border-color: rgba(37, 211, 102, 0.45);
+    color: #25d366;
+}
+.sd-action-btn.accent:hover {
+    background: rgba(37, 211,    102,    0.22);
+    color: #28e070;
+}
+
+@media(max-width:    480px) {
+    .starter-drawer {
+        width: 94vw;
+        right: 3vw;
+    }
+    .starter-tray {
+        right:    6px;
+        width: min(320px, 92vw);
+    }
+}
+
+@media(prefers-reduced-motion: reduce) {
+    .starter-tray,
+    .starter-drawer,
+    .starter-bell-badge {
+        transition: none !important;
+        animation: none !important;
+    }
+}
