@@ -3895,7 +3895,7 @@ input[type="range"] {
     gap: 10px;
   }
   .header-actions {
-    display: none !important;
+    gap: 5px;
   }
   .info-panel {
     width: 100%;
