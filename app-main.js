@@ -470,9 +470,6 @@ auth.onAuthStateChanged(async (user) => {
     // Re-engagement nudge: pops a fun welcome-back popup when the user
     // returns after being offline for ~2.5+ days (once per 30 days).
     checkReturningUserWelcome();
-    // Starter nub: live bell tray + mini-drawer for your starter tabs
-    // (listens on your own users doc — zero extra reads).
-    loadStarterTray();
   }
 });
 
@@ -1473,261 +1470,6 @@ async function checkReturningUserWelcome() {
 
 window.showReturningWelcome = showReturningWelcome;
 window.dismissReturningWelcome = dismissReturningWelcome;
-window.returningWelcomeInvite = returningWelcomeInvite;
-
-/* =========================================================================
-   STARTER NUB — presence-aware "entry back" tabs (bell tray + mini drawer)
-   ========================================================================= */
-/* Model: `users/{uid}.starter` is the array of uids YOU are currently
-   "starting" (your outgoing nubs, newest first, cap 4). Starting
-   someone = batch write: YOUR doc += them (so your tray shows them) AND
-   THEIR doc += you (so their bell tray shows a card from you on THEIR next
-   visit — the "entry back" surface this feature is built for). Dismiss =
-   remove from your own doc only (local choice;their side clears itself via
-   the same 24h TTL). Compatibility: presence-aware labels (🔴 inside now /
-   🟡 active today / ⚪ away Xd) come from the shared presence cache(single
-   listener, no extra reads). */
-const NEXA_STARTER_CAP = 4;
-  const NEXA_STARTER_TTL_MS =  24 *  60 *  60 *  1000;
-let starterTabs = {}; // uid -> {t: epochMs} (local render cache)
-let starterUnsub = null;
-let starterDrawerUid = null;
-let starterDrawerLastUid = null;
-const starterDrawerEl = () => document.getElementById('starterDrawer');
-const starterDrawerOverlayEl = () => document.getElementById('starterDrawerOverlay');
-
-function getStarterTabsFromCache() {
-  const me = currentUser ? currentUser.uid : null;
-  if (!me) return [];
-  const u = (allUsersData || []).find(x => x.uid === me);
-  if (!u || !Array.isArray(u.starter)) return [];
-  // TTL guard: drop anything older than 24h (and cleanup once).
-  const now = Date.now();
-  const fresh = u.starter.filter(s => now - (s.t || 0) < NEXA_STARTER_TTL_MS);
-  if (fresh.length !== u.starter.length) {
-    const dedupe = [...new Map(fresh.map(s => [s.uid, s])).values()];
-    // Clean the stale refs on my own doc (cheap, write-own-doc only).
-    db.collection('users').doc(me).update({ starter: dedupe }).catch(() => {});
-  }
-  return (u.starter || []).filter(s => now - (s.t || 0) < NEXA_STARTER_TTL_MS) || [];
-}
-
-function starterStatusFor(uid) {
-  const p = userPresenceCache[uid] || {};
-  const ts = p.lastSeen || p.last_seen || 0;
-  if (!ts) return { key: 'away', label: 'last seen long ago', dot: '' };
-  const fresh = isUserOnline(p);
-  if (fresh) return { key: 'online', label: '● in Nexa now', dot: '#25d366' };
-  const day =  24 *  60 *  60 *  1000;
-  if (ts > Date.now() - day) return { key: 'today', label: '🟡 active today', dot: '#facc15' };
-  const days = Math.max(1, Math.floor((Date.now() - ts) / day));
-  return { key: 'away', label: '⚪ away ' + days + (days === 1 ? ' day' : ' days'), dot: '' };
-}
-
-function renderStarterTray() {
-  const me = currentUser ? currentUser.uid : null;
-  if (!me) return;
-  const list = getStarterTabsFromCache();
-  const bell = document.getElementById('starterBellBtn');
-  const badge = document.getElementById('starterBellBadge');
-  if (bell && badge) {
-    const n = list.length;
-    badge.style.display = n > 0 ? 'inline-flex' : 'none';
-    badge.textContent = n > 9 ? '9+' : String(n);
-  }
-  const tray = document.getElementById('starterTray');
-  if (!tray) return;
-  if (tray.classList.contains('open') || !list.length) {
-    if (!list.length) tray.innerHTML = '';
-    if (tray.classList.contains('open') && !list.length) closeStarterTray();
-    return;
-  }
-  // Find the user records (name/avatar) from the shared users cache.
-  const rows = [];
-  list.forEach(s => {
-    const u = (allUsersData || []).find(x => x.uid === s.uid);
-    if (!u) return;
-    const status = starterStatusFor(u.uid);
-    const photo = safeMediaUrl(u.photo || "https://i.imgur.com/HeIi0wU.png");
-    const name = escapeHtml(u.displayName || u.name || "User");
-    const sub = status.key === 'online' ? '<span style="color:#25d366">● in Nexa now</span>'
-      : status.key === 'today' ? '<span style="color:#facc15">● active today</span>'
-      : '<span style="color:var(--text-3)">' + escapeHtml(status.label) + '</span>';
-    rows.push(
-      '<div class="starter-card" data-uid="' + escapeHtml(u.uid) + '" onclick="openStarterDrawer(\'' + escapeHtml(u.uid) + '\')">' +
-        '<img class="starter-card-avatar" src="' + photo + '" loading="lazy" decoding="async" onerror="this.src=\'https://i.imgur.com/HeIi0wU.png\'">' +
-        '<div class="starter-card-info"><div class="starter-card-name">' + name + '</div><div class="starter-card-sub">' + sub + '</div></div>' +
-        '<button class="starter-card-dismiss" onclick="event.stopPropagation();dismissStarter(\'' + escapeHtml(u.uid) + '\')" title="Remove">✕</button>' +
-      '</div>'
-    );
-  });
-  tray.innerHTML = '<div class="starter-tray-hdr"><span>Starter</span><button class="starter-tray-close" onclick="closeStarterTray()"><i data-lucide="x" style="width:14px;height:14px;"></i></button></div>' +
-    (list.length > NEXA_STARTER_CAP ? '<div class="starter-tray-hint">Only the ' + NEXA_STARTER_CAP + ' most recent show</div>' : '') +
-    rows.join('');
-  if (list.length > NEXA_STARTER_CAP) tray.classList.add('overflow');
-  if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
-}
-
-function toggleStarterTray(ev) {
-  if (ev) ev.stopPropagation();
-  const tray = document.getElementById('starterTray');
-  if (!tray) return;
-  const willOpen = !tray.classList.contains('open');
-  if (willOpen) {
-    renderStarterTray();
-    tray.classList.add('open');
-    const backdrop = document.getElementById('starterTrayBackdrop');
-    if (backdrop) backdrop.style.display = 'block';
-  } else {
-    closeStarterTray();
-  }
-}
-
-function closeStarterTray() {
-  const tray = document.getElementById('starterTray');
-  if (tray) { tray.classList.remove('open'); tray.innerHTML = ''; }
-  const backdrop = document.getElementById('starterTrayBackdrop');
-  if (backdrop) backdrop.style.display = 'none';
-}
-
-async function toggleStarter(uid) {
-  if (!currentUser || typeof uid !== 'string') return;
-  const me = currentUser.uid;
-  if (uid === me) return;
-  const mine = [];
-  (allUsersData || []).forEach(x => { if (x.uid === me && Array.isArray(x.starter)) mine.push(...x.starter.map(s => s.uid)); });
-  const has = mine.includes(uid);
-  try {
-    const now = Date.now();
-    const myKept = [];
-    (allUsersData || []).forEach(x => {
-      if (x.uid === me && Array.isArray(x.starter)) x.starter.forEach(s => { if (s.uid !== uid) myKept.push(s); });
-    });
-    if (!has && myKept.length >= NEXA_STARTER_CAP) {
-      showNotifToast("You can only have " + NEXA_STARTER_CAP + " starter tabs — close one first", "info");
-      return;
-    }
-    const myNext = has ? myKept : [...myKept, { uid: uid, t: now }].slice(-NEXA_STARTER_CAP);
-    const batch = db.batch();
-    batch.update(db.collection('users').doc(me), { starter: myNext });
-    await batch.commit();
-    renderStarterTray();
-    if (starterDrawerUid === uid) fillStarterDrawer(uid);
-    showNotifToast(has ? "Removed " + (displayNameFor(uid) || "them") + " from Starter" : "✦ Starter tab saved — tap the bell to reach them anytime", has ? 'info' : 'success');
-  } catch (e) {
-    console.warn("Starter toggle failed:", e);
-    showNotifToast("Couldn't update Starter", "error");
-  }
-}
-
-function displayNameFor(uid) {
-  const u = (allUsersData || []).find(x => x.uid === uid);
-  return u ? (u.displayName || u.name || uid) : uid;
-}
-
-async function dismissStarter(uid) {
-  if (!currentUser) return;
-  const me = currentUser.uid;
-  const cur = getStarterTabs();
-  const next = cur.filter(x => x !== uid);
-  if (next.length === cur.length) { renderStarterTray(); return; }
-  try {
-    await db.collection('users').doc(me).update({ starter: next });
-    renderStarterTray();
-    showNotifToast(displayNameFor(uid) + " removed from Starter", "info");
-  } catch (e) {
-    console.warn("Starter dismiss failed:", e);
-    showNotifToast("Couldn't remove that Starter tab", "error");
-  }
-}
-
-function getStarterTabs() {
-  const me = currentUser ? currentUser.uid : null;
-  if (!me) return [];
-  const u = (allUsersData || []).find(x => x.uid === me);
-  return (u && Array.isArray(u.starter) ? u.starter.map(s => s.uid) : []);
-}
-
-function openStarterDrawer(uid) {
-  const u = (allUsersData || []).find(x => x.uid === uid);
-  if (!u) return;
-  starterDrawerUid = uid;
-  fillStarterDrawer(uid);
-  const el = starterDrawerEl();
-  const ov = starterDrawerOverlayEl();
-  if (el) { el.classList.add('open'); el.setAttribute('aria-hidden', 'false'); }
-  if (ov) ov.style.display = 'block';
-}
-
-function closeStarterDrawer() {
-  const el = starterDrawerEl();
-  const ov = starterDrawerOverlayEl();
-  if (el) { el.classList.remove('open'); el.setAttribute('aria-hidden', 'true'); }
-  if (ov) ov.style.display = 'none';
-}
-
-function fillStarterDrawer(uid) {
-  const u = (allUsersData || []).find(x => x.uid === uid);
-  const body = document.getElementById('starterDrawerBody');
-  if (!body || !u) return;
-  const status = starterStatusFor(u.uid);
-  const photo = safeMediaUrl(u.photo || "https://i.imgur.com/HeIi0wU.png");
-  const name = escapeHtml(u.displayName || u.name || "User");
-  const username = escapeHtml(u.username || '');
-  const bio = escapeHtml(u.bio || u.about || '');
-  const sub = status.key === 'online' ? '<span style="color:#25d366">● in Nexa now</span>'
-    : status.key === 'today' ? '<span style="color:#facc15">● active today</span>'
-    : '<span style="color:var(--text-3)">' + escapeHtml(status.label) + '</span>';
-  const mine = getStarterTabs();
-  const started = mine.includes(uid);
-  body.innerHTML =
-    '<div class="starter-drawer-cover"></div>' +
-    '<img class="starter-drawer-avatar" src="' + photo + '" loading="lazy" decoding="async" onerror="this.src=\'https://i.imgur.com/HeIi0wU.png\'">' +
-    '<div class="starter-drawer-name">' + name + '</div>' +
-    (username ? '<div class="starter-drawer-user">@' + username + '</div>' : '') +
-    '<div class="starter-drawer-status">' + sub + '</div>' +
-    (bio ? '<div class="starter-drawer-bio">' + bio + '</div>' : '') +
-    '<div class="starter-drawer-note" id="starterDrawerNote"></div>' +
-    '<div class="starter-drawer-actions">' +
-      '<button class="sd-action-btn primary" onclick="starterMessage(\'' + escapeHtml(u.uid) + '\')"><i data-lucide="message-square" style="width:16px;height:16px;"></i> Message</button>' +
-      '<button class="sd-action-btn" onclick="starterVoice(\'' + escapeHtml(u.uid) + '\')"><i data-lucide="phone" style="width:16px;height:16px;"></i> Voice</button>' +
-      '<button class="sd-action-btn" onclick="starterVideo(\'' + escapeHtml(u.uid) + '\')"><i data-lucide="video" style="width:16px;height:16px;"></i> Video</button>' +
-      '<button class="sd-action-btn accent" onclick="toggleStarter(\'' + escapeHtml(u.uid) + '\')">' + (started ? '✦ Started' : '✦ Start') + '</button>' +
-    '</div>';
-  const noteEl = document.getElementById('starterDrawerNote');
-  fetchUserNote(u.uid).then(nt => { if (noteEl && nt) noteEl.innerHTML = '📝 ' + escapeHtml(nt); });
-  if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
-}
-
-function starterMessage(uid) {
-  const u = (allUsersData || []).find(x => x.uid === uid);
-  if (!u) return;
-  closeStarterDrawer();
-  selectChat(u, null);
-}
-
-function starterVoice(uid) {
-  const u = (allUsersData || []).find(x => x.uid === uid);
-  if (!u) return;
-  closeStarterDrawer();
-  selectChat(u, null);
-  setTimeout(() => openVoiceCall(),   50);
-}
-
-function starterVideo(uid) {
-  const u = (allUsersData || []).find(x => x.uid === uid);
-  if (!u) return;
-  closeStarterDrawer();
-  selectChat(u, null);
-  setTimeout(() => openCallModal('video'), 50);
-}
-
-function loadStarterTray() {
-  const me = currentUser ? currentUser.uid : null;
-  if (!me) return;
-  if (starterUnsub) starterUnsub();
-  starterUnsub = db.collection('users').doc(me).onSnapshot(() => renderStarterTray());
-}
 
 function renderSettingsTab() {
   loadNotificationSettings();
@@ -3428,15 +3170,14 @@ function buildMessage(id, msg, fromMe) {
 
     if (msg.image) {
       const imgUrl = safeMediaUrl(msg.image);
-      const cap = msg.caption ? `<div class="media-caption">${escapeHtml(msg.caption)}</div>` : "";
-      inner += imgUrl ? `<div class="media-container ${msg.caption ? "has-caption" : ""}">
+      const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+      inner += imgUrl ? `<div class="media-container">
         <img src="${imgUrl}"
              onclick="viewImg('${imgUrl}')"
              loading="lazy"
              alt="shared image"
              draggable="false">
-        ${cap}
-      </div>` : "";
+      </div>` + (cap || "") : "";
     }
 
     if (msg.video) {
@@ -3447,8 +3188,7 @@ function buildMessage(id, msg, fromMe) {
           <source src="${vidUrl}" type="video/mp4">
           Your browser does not support video playback.
         </video>
-        ${cap}
-      </div>` : "";
+      </div>` + (cap || "") : "";
     }
 
     // Universal file/document attachment — any file type (PDF, doc, zip, audio,
