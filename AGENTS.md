@@ -311,7 +311,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   prompt viewers can tap into (WhatsApp-style). Don't drop these fields on
   reshare or the chain breaks.
 - **Chat Info contact header:** `#infoPanel` (Chat Info, opened from the chat
-  header ℹ️ button) now starts with a contact profile header
+  header ℹ button) now starts with a contact profile header
   (`.info-contact`: avatar + name + presence + 24h note) rendered by
   `renderInfoContact()` (called from `openChatInfo()`). The avatar opens the
   full-pic viewer with `returnTo='chatinfo'` so `profilePicGoBack()` returns
@@ -525,3 +525,23 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Scroll button: `scrollChatToBottom()` uses `scrollIntoView` on the last
   `.msg` + deferred re-scrolls (250/600ms) so late-loading media can't leave
   the view stranded above the latest message.
+
+
+## Recent modernization (2026-09)
+- **Modern CSS layer (dashboard.css, dashboard.html, app-main.js, styles.css):** ADDITIVE "FLUID & MODERN 2026 POLISH" block appended to dashboard.css + a matching "MODERN POLISH — AUTH PAGES" block appended to styles.css (login/signup only; index/admin use their own styling). Dashboard polish uses @starting-style, clamp(), color-mix(), light-dark(), prefers-reduced-motion guard, ::selection, text-wrap: balance/pretty. Keep it additive — do NOT restyle the whole file.
+- **Welcome popup (task 1):** Non-blocking re-engagement nudge. presence/{uid} lastSeen absence > RETURN_WELCOME_MIN_GAP_MS (2–3d) pops #welcomeBackModal (1200ms after load, once per RETURN_WELCOME_COOLDOWN_MS = 30d, mirrored in localStorage key nexa_return_welcome_seen storing epoch ms, no server writes))). "Invite friends" (returningWelcomeInvite) → getMyUsername() then copyReferralLink(. Markup at dashboard.html (~line 1084), JS at app-main.js (checkReturningUserWelcome, showReturningWelcome, dismissReturningWelcome), CSS in dashboard.css (welcome zone between "RETURNING-USER WELCOME" and "FLUID & MODERN"")). Do NOT delete interstitial </p> </div> closure lines in that zone — they're syntactic glue.
+- **Icons:** lucide pinned @0.469.0 with jsDelivr UMD fallback (was @latest — drift risk). Un-icode modal close/back glyphs swapped to <i data-lucide> (x 14–20px, arrow-left 18–20px): story-close, notif-close x3(analytics, prompt-responses, notif-settings), status-modal-close x2(add-yours, status-share), modal-close(search), delete-chat-close, wallpaper-modal-close, askify-coming-close, welcome-back-close, info-back+info-close, profile-pic-back, user-profile-back, ai-back-btn, chat-back-btn, mc-icon-btn-back, view-once close(inline styles, font-size→<i>x> 20px). Ensure any NEW modal close/back uses <i data-lucide> + pinned loader, never raw ✕/←. (Story-close differs: no title attr — exact-string matches must be per-line.)
+- **Toolchain quirk (critical for this repo):** heredocs + paren-dense python inline in terminal often get paren-dropped — author scripts via file_editor then run python3 script.py, never heredoc. Keep ONE action per line, use locals for nested prints (trailing ) corruption). Plain-ASCII marker )→() conversion + brace/paren audit scripts are the reliable authoring loop for CSS blocks. dashboard.html & dashboard.css use CRLF — preserve via the normalize step (python3 replace b'\r\n'→b'\n'→b'\r\n') after any file_editor edit or the whole file shows as changed in git diff.)
+
+## Starter tabs (bell + tray + drawer) — rule-safe design
+- Starter tabs are PERSONAL (WhatsApp-style). The array lives ONLY on `users/{me}.starter` as `[{uid, t}]`;toggle/dismiss/cleanup write THE OWN DOC ONLY. Firestore rules make `users` updates owner-only — NEVER batch-write `users/{theirUid}` (the old "mirror on their side" design would be DENIED → "Couldn't update Starter”). No new collections or rule deploys needed.
+- TTL: `NEXA_STARTER_TTL_MS` 24h;`getStarterTabsFromCache()` filters stale + garbage-collects on own doc (cheap,write-own-only。 `NEXA_STARTER_CAP` 4 most recent。
+- Presence tri-state via `starterStatusFor(uid)` reusing the shared `userPresenceCache` + `isUserOnline()` freshness: online(green dot), today(yellow,and away(days label。 Tray/drawer/bell markup lives in `dashboard.html`;styles `.starter-*` / `.sd-action-*` in `dashboard.css`;boot call `loadStarterTray()` right after `checkReturningUserWelcome()`。
+- Welcome popup logic verified headless in Node (stale-2.5d shows,30d cooldown,presence-fallback-to-last_login())` — 4/4 scenarios pass。
+
+
+
+## Toolchain quirk: authoring `)` parens get dropped/corrupted when authoring long blocks
+- Writing big JS/CSS blocks through the `file_editor` tool AND through heredoc-to-stdin repeatedly DROPS/converts `)` (plus `  ` / `,and `,1:` fragments(`. Node --check + brace/paren balance are the ground truth;comments containing parens also false-positive the paren count。
+- RELIABLE LOOP: author with placeholder chars `«`/`»` for parens in temp file → convert via `python3 -c` single-line → per-line brace/paren audit via bash `grep -o '('`/`')'` counts (subprocess-heavy on >8k lines.）→ append binary CRLF-safe via `python3 -c` (check `b'\r\n' in base` first）. For small patches prefer surgical `sed` line-delete/replace or file_editor on short unique strings,then node --check。
+- dashboard.css factual state: total parens are uneven ONLY inside comments(parser-fine);comment text with parens shifts the raw count — use brace balance(`{`==`}`) as the validity gate,not raw paren equalsofar。

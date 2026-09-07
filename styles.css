@@ -501,3 +501,120 @@ label {
   .grid-cols-2, .grid-cols-3 { grid-template-columns: 1fr; }
   .container { padding: 0 var(--spacing-md); }
 }
+
+
+/* ============================================================
+   MODERN POLISH — AUTH PAGES (login / signup)
+   Fluid type, tasteful animations, modern form/button states,
+   dark-aware bridges, accessibility guardrails.
+   Additive — respects all existing tokens and rules.
+   ============================================================ */
+
+/* Fluid type ramp (harmonize with dashboard). */
+.auth-shell, .auth-card, .container, body {
+  --text-fluid-md: clamp(0.875rem, 0.82rem + 0.25vw, 0.95rem);
+  --text-fluid-lg: clamp(1rem, 0.9rem + 0.4vw, 1.2rem);
+  --text-fluid-xl: clamp(1.4rem, 1.1rem + 0.9vw,  2rem);
+  --title-fluid: clamp(1.7rem,  1.2rem + 1.1vw,  2.6rem);
+  --gap-fluid: clamp(0.75rem,  0.6rem + 0.4vw,  1.15rem);
+}
+
+/* Text balance for headings + paragraph optical rhythm. */
+h1, h2, h3, .auth-title, .card-title {
+  text-wrap: balance;
+}
+p, .auth-sub, .form-hint, label {
+  text-wrap: pretty;
+}
+
+/* Ambient brand aurora wash — subtle, respects backgrounds. */
+body.auth-page, body.signup-page, .auth-bg {
+  background:
+    radial-gradient(900px 600px at 85% -10%, color-mix(in oklab, var(--color-primary), transparent 78%), transparent 60%),
+    radial-gradient(700px 500px at -10% 110%, color-mix(in oklab, var(--color-accent), transparent 82%), transparent 55%),
+    var(--bg-primary);
+  background-attachment: fixed;
+}
+
+/* Accent-colored form controls. */
+input, select, textarea, .form-control {
+  accent-color: var(--color-accent);
+  caret-color: var(--color-accent);
+}
+
+/* Tasteful :focus-visible ring boost. */
+a:focus-visible, button:focus-visible, input:focus-visible, .btn:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-primary), white 25%);
+  outline-offset: 2px;
+}
+
+/* Selection glow. */
+::selection {
+  background: color-mix(in oklab, var(--color-primary), white 18%);
+}
+
+/* Brand-tinted shadows for cards + raised surfaces. */
+.auth-card, .card, .panel, .glass {
+  box-shadow:
+    0 1px 2px rgba(255, 255, 255, 0.02),
+    0 12px 32px -8px color-mix(in oklab, var(--color-primary), transparent 78%),
+    0 24px 60px -16px rgba(0, 0, 0, 0.55);
+}
+
+/* Buttons get a soft lift + glow on hover. */
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -6px color-mix(in oklab, var(--color-primary), transparent 70%);
+}
+.btn:active {
+  transform: translateY(0) scale(0.98);
+}
+.btn {
+  transition: transform var(--transition-base) ease, box-shadow var(--transition-base) ease;
+}
+
+/* Modals + toasts enter smoothly (no JS needed). */
+.modal, .toast, .auth-card {
+  @starting-style {
+    opacity:  0;
+    transform: translateY(12px) scale(0.98);
+  }
+	opacity:  1;
+	transform:  none;
+	transition: opacity 0.25s ease, transform 0.3s var(--transition-base) ease;
+}
+
+/* Slim themed scrollbars(WebKit). */
+::-webkit-scrollbar {
+  width:  8px;
+	height:  8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-primary), transparent 78%);
+	background: color-mix(in oklab, var(--text-primary), transparent 82%);
+  border-radius:  var(--radius-full);
+}
+
+/* Dark-aware accent bridge: if a lighter scheme ever lands, keep CTAs legible. */
+@supports (color: light-dark(#000, #fff)) {
+  .btn-primary, .btn-accent, .btn-solid {
+    color: light-dark(#0b0f19, #fff);
+  }
+}
+
+/* Reduced-motion hardening: tone everything down. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count:  1 !important;
+    transition-duration:  0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .btn:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
