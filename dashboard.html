@@ -407,13 +407,10 @@
         <button class="hdr-btn" onclick="openVoiceCall()" title="Voice Call"><i data-lucide="phone" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" onclick="openCallModal('video')" title="Video Call"><i data-lucide="video" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" onclick="openChatInfo()" title="Chat Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
-        <button class="hdr-btn starter-bell-btn" id="starterBellBtn" onclick="toggleStarterTray(event)" title="Starter"><i data-lucide="bell" style="width: 18px; height: 18px;"></i><span class="starter-bell-badge" id="starterBellBadge" style="display:none;"></span></button>
         <button class="hdr-btn" onclick="openSearchModal()" title="Search"><i data-lucide="search" style="width: 18px; height: 18px;"></i></button>
       </div>
     </div>
 
-    <div class="starter-tray-backdrop" id="starterTrayBackdrop" onclick="closeStarterTray()"></div>
-    <div class="starter-tray" id="starterTray"></div>
 
     <div id="disappearingNotice" class="disappearing-banner" style="display: none;">
       <span class="disappearing-banner-icon">⏱️</span>
@@ -774,16 +771,6 @@
     <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon">⭐</span><span class="ia-text">Favourite Chat</span></div>
     <div class="info-action" onclick="clearChat()"><span class="ia-icon">🗑️</span><span class="ia-text">Clear Chat</span></div>
   </div>
-</div>
-
-<!-- STARTER MINI PROFILE DRAWER -->
-<div class="starter-drawer-overlay" id="starterDrawerOverlay" onclick="closeStarterDrawer()"></div>
-<div class="starter-drawer" id="starterDrawer" aria-hidden="true">
-  <div class="starter-drawer-hdr">
-    <button class="starter-drawer-back" onclick="closeStarterDrawer()" title="Close"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
-    <span class="starter-drawer-title">Starter</span>
-  </div>
-  <div class="starter-drawer-body" id="starterDrawerBody"></div>
 </div>
 
 <!-- MESSAGE SEARCH MODAL -->
