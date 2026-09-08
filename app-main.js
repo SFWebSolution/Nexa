@@ -4032,6 +4032,69 @@ const THEMES = {
 
 let currentTheme = 'light';
 
+/* =========================================================================
+   FONT FAMILIES (font-design picker)
+   ========================================================================= */
+const FONT_FAMILIES = [
+  { key: 'plus-jakarta', label: 'Font 1', sample: 'Ag', family: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { key: 'inter', label: 'Font 2', sample: 'Ag', family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { key: 'sora', label: 'Font 3', sample: 'Ag', family: "'Sora', 'Plus Jakarta Sans', sans-serif" },
+  { key: 'dm-sans', label: 'Font 4', sample: 'Ag', family: "'DM Sans', 'Plus Jakarta Sans', sans-serif" },
+  { key: 'poppins', label: 'Font 5', sample: 'Ag', family: "'Poppins', 'Plus Jakarta Sans', sans-serif" },
+  { key: 'space-grotesk', label: 'Font 6', sample: 'Ag', family: "'Space Grotesk', 'Plus Jakarta Sans', sans-serif" }
+];
+
+let fontFamily = 'plus-jakarta';
+
+function getFontStack(key) {
+  const f = FONT_FAMILIES.find(x => x.key === key);
+  return f ? f.family : FONT_FAMILIES[0].family;
+}
+
+function applyFontFamily(key) {
+  fontFamily = key;
+  const stack = getFontStack(key);
+  document.documentElement.style.setProperty('--font-body', stack);
+  if (document.body) document.body.style.fontFamily = stack;
+}
+
+function setFontFamily(key) {
+  if (!FONT_FAMILIES.some(x => x.key === key)) return;
+  applyFontFamily(key);
+  savePrefs();
+  renderFontPickerGrid();
+}
+
+function renderFontPickerGrid() {
+  const grid = document.getElementById('fontPickerGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  FONT_FAMILIES.forEach(f => {
+    const card = document.createElement('button');
+    card.className = 'font-picker-card' + (fontFamily === f.key ? ' active' : '');
+    card.innerHTML = '<div class="fp-card-name">' + f.label + '</div>' +
+                      '<div class="fp-card-sample" style="font-family:' + f.family + '">' + f.sample + '</div>' +
+                      (fontFamily === f.key ? '<div class="fp-card-check">✓ Applied</div>' : '');
+    card.onclick = () => setFontFamily(f.key);
+    grid.appendChild(card);
+  });
+}
+
+function openFontPickerModal() {
+  renderFontPickerGrid();
+  const m = document.getElementById('fontPickerModal');
+  if (m) m.classList.add('active');
+}
+
+function closeFontPickerModal() {
+  const m = document.getElementById('fontPickerModal');
+  if (m) m.classList.remove('active');
+}
+
+function handleFontPickerOverlayClick(ev) {
+  if (ev.target === ev.currentTarget) closeFontPickerModal();
+}
+
 function setTheme(themeName) {
   const theme = THEMES[themeName];
   if (!theme) return;
@@ -7302,6 +7365,7 @@ function formatTime(ts) {
 function savePrefs() {
   const prefs = {
     theme: currentTheme,
+    fontFamily: fontFamily,
     muted: mutedChats,
     favorited: favoritedChats,
     blocked: blockedUsers,
@@ -7318,6 +7382,9 @@ function loadPrefs() {
     // Fallback: if a saved theme was removed from the picker, reset to the
     // default so the user isn't left with no theme applied.
     if (!THEMES[currentTheme]) currentTheme = 'light';
+    fontFamily = prefs.fontFamily || 'plus-jakarta';
+    if (!FONT_FAMILIES.some(x => x.key === fontFamily)) fontFamily = 'plus-jakarta';
+    applyFontFamily(fontFamily);
     mutedChats = prefs.muted || {};
     favoritedChats = prefs.favorited || {};
     blockedUsers = prefs.blocked || {};
