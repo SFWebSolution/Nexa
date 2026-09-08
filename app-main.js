@@ -4036,12 +4036,12 @@ let currentTheme = 'light';
    FONT FAMILIES (font-design picker)
    ========================================================================= */
 const FONT_FAMILIES = [
-  { key: 'plus-jakarta', label: 'Nexa Modern', sample: 'Ag', family: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-  { key: 'inter', label: 'WhatsApp Clean', sample: 'Ag', family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-  { key: 'sora', label: 'Nexa Display', sample: 'Ag', family: "'Sora', 'Plus Jakarta Sans', sans-serif" },
-  { key: 'dm-sans', label: 'DM Sans', sample: 'Ag', family: "'DM Sans', 'Plus Jakarta Sans', sans-serif" },
-  { key: 'poppins', label: 'Poppins Pop', sample: 'Ag', family: "'Poppins', 'Plus Jakarta Sans', sans-serif" },
-  { key: 'space-grotesk', label: 'Space Grotesk', sample: 'Ag', family: "'Space Grotesk', 'Plus Jakarta Sans', sans-serif" }
+  { key: 'plus-jakarta', label: 'Font 1', sample: 'Ag', family: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { key: 'inter', label: 'Font 2', sample: 'Ag', family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { key: 'sora', label: 'Font 3', sample: 'Ag', family: "'Sora', 'Plus Jakarta Sans', sans-serif" },
+  { key: 'dm-sans', label: 'Font 4', sample: 'Ag', family: "'DM Sans', 'Plus Jakarta Sans', sans-serif" },
+  { key: 'poppins', label: 'Font 5', sample: 'Ag', family: "'Poppins', 'Plus Jakarta Sans', sans-serif" },
+  { key: 'space-grotesk', label: 'Font 6', sample: 'Ag', family: "'Space Grotesk', 'Plus Jakarta Sans', sans-serif" }
 ];
 
 let fontFamily = 'plus-jakarta';
