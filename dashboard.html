@@ -26,7 +26,7 @@
   <link rel="preconnect" href="https://res.cloudinary.com">
   <link rel="preconnect" href="https://firebasestorage.googleapis.com">
   <link rel="preconnect" href="https://lh3.googleusercontent.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -277,6 +277,10 @@
             <div class="theme-picker-grid" id="settingsThemeGrid">
               <!-- Themes rendered by JS -->
             </div>
+            <button class="settings-action-btn" id="fontPickerBtn" onclick="openFontPickerModal()" style="margin-top: 10px;">
+              <span>✍️ Font Style</span>
+              <span>→</span>
+            </button>
           </div>
 
           <div class="settings-group">
@@ -771,6 +775,17 @@
     <div class="info-action" onclick="muteChat()"><span class="ia-icon">🔕</span><span class="ia-text" id="muteText">Mute Notifications</span></div>
     <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon">⭐</span><span class="ia-text">Favourite Chat</span></div>
     <div class="info-action" onclick="clearChat()"><span class="ia-icon">🗑️</span><span class="ia-text">Clear Chat</span></div>
+  </div>
+</div>
+
+<!-- FONT STYLE PICKER MODAL -->
+<div class="notif-settings-overlay" id="fontPickerModal" onclick="handleFontPickerOverlayClick(event)">
+  <div class="notif-settings-modal">
+    <div class="notif-hdr">
+      <div class="notif-title">✍️ Font Style</div>
+      <button class="notif-close" onclick="closeFontPickerModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    </div>
+    <div class="font-picker-grid" id="fontPickerGrid"></div>
   </div>
 </div>
 
