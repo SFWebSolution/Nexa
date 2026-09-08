@@ -3898,7 +3898,14 @@ input[type="range"] {
     gap: 5px;
   }
   .sidebar-tab-switcher {
+    display:flex !important;
+    gap:2px;
+  }
+  .s-tab-btn {
     display: none !important;
+  }
+  .nx-brand-mobile {
+    display:flex !important;
   }
   .info-panel {
     width: 100%;
@@ -4084,6 +4091,32 @@ input[type="range"] {
   padding: 3px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-dk);
+}
+.nx-brand-mobile {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  padding:   2px 10px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: var(--text-0);
+  white-space: nowrap;
+  border-radius: var(--radius-xs);
+  user-select: none;
+}
+.nx-brand-dot {
+  width:   7px;
+  height:   7px;
+  border-radius: 50%;
+  background: var(--online);
+  box-shadow: 0 0 8px var(--online);
+  animation: nxBlink 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes nxBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
 }
 .s-tab-btn {
   width: 34px;
@@ -4838,7 +4871,7 @@ input[type="range"] {
 }
 
 .msg-row::before {
-  content: '↩️';
+  content: '↩';
   position: absolute;
   left: -30px;
   top: 50%;
