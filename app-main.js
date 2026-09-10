@@ -8900,6 +8900,8 @@ async function submitCreateChannel() {
 
     const createdChan = { id: docRef.id, ...chanDoc };
     selectChannelFeed(createdChan);
+    // Switch to Channels tab so the new channel appears in the following list
+    switchCommunitySubTab('channels');
   } catch (err) {
     showNotifToast('Failed to create channel: ' + err.message, 'error');
     console.error(err);
