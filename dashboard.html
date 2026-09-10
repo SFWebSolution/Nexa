@@ -522,6 +522,20 @@
       <span id="disappearingBannerText">Disappearing messages are turned on</span>
     </div>
 
+    <!-- Pinned Message / Announcement Banner for Groups & Channels (WhatsApp Style) -->
+    <div id="commPinnedBanner" class="comm-pinned-banner" style="display: none;" onclick="jumpToPinnedMessage()">
+      <div class="comm-pinned-content">
+        <i data-lucide="pin" style="width: 14px; height: 14px; color: var(--primary);"></i>
+        <div class="comm-pinned-text-wrap">
+          <span class="comm-pinned-title" id="commPinnedTitle">Pinned message</span>
+          <span class="comm-pinned-snippet" id="commPinnedSnippet">Snippet</span>
+        </div>
+      </div>
+      <button class="comm-pinned-unpin-btn" id="commPinnedUnpinBtn" onclick="event.stopPropagation(); unpinCurrentCommMessage()" title="Unpin message" style="display: none;">
+        <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+      </button>
+    </div>
+
     <div class="messages" id="messages" onscroll="updateScrollDownBtn(); maybeLoadOlderMessages()">
       <div class="empty-chat">
         <div class="empty-chat-icon">💬</div>
@@ -1267,6 +1281,7 @@
       </div>
       <div class="comm-form-group">
         <label>Add Members (<span id="selectedGroupMembersCount">0</span> selected)</label>
+        <input type="text" id="createGroupMemberSearch" class="comm-inline-search" placeholder="🔍 Search contacts to add…" oninput="filterCreateGroupContacts(this.value)">
         <div class="comm-contacts-picker" id="groupContactsPicker">
           <!-- Populated dynamically with user contacts -->
         </div>
@@ -1344,10 +1359,39 @@
     </div>
     <div class="comm-info-scroll">
       <div class="comm-info-hero">
-        <img id="groupInfoAvatar" src="https://i.imgur.com/HeIi0wU.png" class="comm-info-avatar" alt="Group Icon">
-        <div class="comm-info-title" id="groupInfoName">Group Name</div>
+        <div class="comm-info-avatar-wrap" id="groupInfoAvatarWrap" onclick="triggerChangeGroupAvatar()" title="Change group icon">
+          <img id="groupInfoAvatar" src="https://i.imgur.com/HeIi0wU.png" class="comm-info-avatar" alt="Group Icon">
+          <div class="comm-avatar-edit-badge" id="groupAvatarEditBadge" style="display: none;">
+            <i data-lucide="camera" style="width:14px;height:14px;"></i>
+          </div>
+          <input type="file" id="groupChangeAvatarInput" hidden accept="image/*" onchange="handleUpdateGroupAvatar(this)">
+        </div>
+        <div class="comm-info-name-wrap">
+          <div class="comm-info-title" id="groupInfoName">Group Name</div>
+          <button class="comm-icon-btn-xs" id="groupEditNameBtn" onclick="editGroupName()" title="Edit Name" style="display:none;">
+            <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+          </button>
+        </div>
         <div class="comm-info-subtitle" id="groupInfoMeta">0 members</div>
-        <div class="comm-info-desc" id="groupInfoDesc"></div>
+        <div class="comm-info-desc-wrap">
+          <div class="comm-info-desc" id="groupInfoDesc"></div>
+          <button class="comm-icon-btn-xs" id="groupEditDescBtn" onclick="editGroupDesc()" title="Edit Description" style="display:none;">
+            <i data-lucide="edit-2" style="width:13px;height:13px;"></i>
+          </button>
+        </div>
+        <button class="comm-action-btn-sm" onclick="shareGroupInviteLink()" style="margin-top: 10px;">
+          <i data-lucide="link" style="width: 14px; height: 14px;"></i> Invite via Link
+        </button>
+      </div>
+
+      <!-- Mute & Starred quick actions -->
+      <div class="comm-info-section" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="comm-action-btn-sm" id="groupMuteToggleBtn" onclick="toggleMuteGroup()" style="flex: 1; justify-content: center;">
+          <i data-lucide="bell" style="width: 14px; height: 14px;"></i> <span id="groupMuteLabel">Mute</span>
+        </button>
+        <button class="comm-action-btn-sm" onclick="openStarredDrawer()" style="flex: 1; justify-content: center;">
+          <i data-lucide="star" style="width: 14px; height: 14px;"></i> Starred
+        </button>
       </div>
 
       <div class="comm-info-section" id="groupAdminControlsSection" style="display: none;">
@@ -1358,11 +1402,22 @@
         </label>
       </div>
 
+      <!-- WhatsApp-style Shared Media, Links & Docs Section -->
+      <div class="comm-info-section" id="groupSharedMediaSection">
+        <div class="comm-section-header">
+          <div class="comm-section-title">Media, Links & Docs (<span id="groupMediaCount">0</span>)</div>
+        </div>
+        <div class="comm-media-grid" id="groupMediaGrid">
+          <!-- Populated dynamically with recent group photos, videos & docs -->
+        </div>
+      </div>
+
       <div class="comm-info-section">
         <div class="comm-section-header">
           <div class="comm-section-title">Members (<span id="groupInfoMemberCount">0</span>)</div>
           <button class="comm-link-btn" id="groupAddMemberBtn" onclick="openAddMemberModal()" style="display: none;">+ Add Member</button>
         </div>
+        <input type="text" id="groupMemberSearchInput" class="comm-inline-search" placeholder="🔍 Search members…" oninput="filterGroupInfoMembers(this.value)">
         <div class="comm-members-list" id="groupInfoMembersList"></div>
       </div>
 
@@ -1386,6 +1441,7 @@
       <button class="comm-modal-close" onclick="closeAddMemberModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
     </div>
     <div class="comm-modal-body">
+      <input type="text" id="addMemberSearchInput" class="comm-inline-search" placeholder="🔍 Search contacts to add…" oninput="filterAddMemberContacts(this.value)">
       <div class="comm-contacts-picker" id="addMemberContactsPicker">
         <!-- Populated dynamically -->
       </div>
@@ -1406,11 +1462,48 @@
     </div>
     <div class="comm-info-scroll">
       <div class="comm-info-hero">
-        <img id="channelInfoAvatar" src="https://i.imgur.com/HeIi0wU.png" class="comm-info-avatar" alt="Channel Icon">
-        <div class="comm-info-title" id="channelInfoName">Channel Name</div>
+        <div class="comm-info-avatar-wrap" id="channelInfoAvatarWrap" onclick="triggerChangeChannelAvatar()" title="Change channel icon">
+          <img id="channelInfoAvatar" src="https://i.imgur.com/HeIi0wU.png" class="comm-info-avatar" alt="Channel Icon">
+          <div class="comm-avatar-edit-badge" id="channelAvatarEditBadge" style="display: none;">
+            <i data-lucide="camera" style="width:14px;height:14px;"></i>
+          </div>
+          <input type="file" id="channelChangeAvatarInput" hidden accept="image/*" onchange="handleUpdateChannelAvatar(this)">
+        </div>
+        <div class="comm-info-name-wrap">
+          <div class="comm-info-title" id="channelInfoName">Channel Name</div>
+          <button class="comm-icon-btn-xs" id="channelEditNameBtn" onclick="editChannelName()" title="Edit Name" style="display:none;">
+            <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+          </button>
+        </div>
         <div class="comm-info-handle" id="channelInfoHandle">@handle</div>
         <div class="comm-info-subtitle" id="channelInfoMeta">0 subscribers • General</div>
-        <div class="comm-info-desc" id="channelInfoDesc"></div>
+        <div class="comm-info-desc-wrap">
+          <div class="comm-info-desc" id="channelInfoDesc"></div>
+          <button class="comm-icon-btn-xs" id="channelEditDescBtn" onclick="editChannelDesc()" title="Edit Description" style="display:none;">
+            <i data-lucide="edit-2" style="width:13px;height:13px;"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="comm-info-section" id="channelSettingsSection" style="display: none;">
+        <div class="comm-section-title">Channel Settings</div>
+        <label class="comm-checkbox-label" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 4px 0;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-1);">Post Comments</span>
+            <span style="font-size: 11.5px; color: var(--text-3);">Allow subscribers to comment on broadcast posts</span>
+          </div>
+          <input type="checkbox" id="channelCommentsToggle" onchange="toggleChannelCommentsSetting(this.checked)" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);">
+        </label>
+      </div>
+
+      <!-- WhatsApp-style Shared Media, Links & Docs Section for Channels -->
+      <div class="comm-info-section" id="channelSharedMediaSection">
+        <div class="comm-section-header">
+          <div class="comm-section-title">Media & Links (<span id="channelMediaCount">0</span>)</div>
+        </div>
+        <div class="comm-media-grid" id="channelMediaGrid">
+          <!-- Populated dynamically with recent broadcast media -->
+        </div>
       </div>
 
       <div class="comm-info-section" id="channelAdminSection" style="display: none;">
@@ -1422,7 +1515,10 @@
         <div class="comm-members-list" id="channelAdminsList" style="margin-top: 10px;"></div>
       </div>
 
-      <div class="comm-info-section" style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <div class="comm-info-section" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="comm-action-btn-sm" id="channelMuteToggleBtn" onclick="toggleMuteChannel()" style="flex: 1; justify-content: center;">
+          <i data-lucide="bell" style="width: 14px; height: 14px;"></i> <span id="channelMuteLabel">Mute</span>
+        </button>
         <button class="comm-action-btn-sm" onclick="shareCurrentChannel()" style="flex: 1; justify-content: center;">
           <i data-lucide="share-2" style="width: 15px; height: 15px;"></i> Share Channel
         </button>
@@ -1456,6 +1552,66 @@
     <textarea id="channelCommentInput" placeholder="Write a comment…" rows="1" maxlength="1000" onkeydown="handleCommentInputKey(event)"></textarea>
     <button class="comments-send-btn" onclick="submitChannelComment()" title="Send"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
   </div>
+</div>
+
+<!-- POLL CREATION MODAL (Groups) -->
+<div class="comm-modal-overlay" id="pollCreateModal" onclick="handleCommModalOverlayClick(event, 'pollCreateModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 420px;">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">📊 Create Poll</div>
+      <button class="comm-modal-close" onclick="closePollModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-modal-body" style="max-height: 55vh; overflow-y: auto;">
+      <input type="text" id="pollQuestionInput" class="nexa-poll-input" placeholder="Ask a question…" maxlength="300">
+      <div id="pollOptionsContainer">
+        <input type="text" class="nexa-poll-option-input" placeholder="Option 1" maxlength="100">
+        <input type="text" class="nexa-poll-option-input" placeholder="Option 2" maxlength="100">
+      </div>
+      <button class="nexa-poll-add-option-btn" id="pollAddOptionBtn" onclick="addPollOption()">+ Add option</button>
+      <label class="comm-checkbox-label" style="margin-top: 10px;">
+        <input type="checkbox" id="pollMultiVoteCheck">
+        <span>Allow multiple answers</span>
+      </label>
+    </div>
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closePollModal()">Cancel</button>
+      <button class="comm-btn primary" onclick="submitPoll()">Send Poll</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORWARD MESSAGE MODAL -->
+<div class="comm-modal-overlay" id="forwardModal" onclick="handleCommModalOverlayClick(event, 'forwardModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 420px;">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">⤳ Forward To</div>
+      <button class="comm-modal-close" onclick="closeForwardModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-modal-body" style="max-height: 55vh; overflow-y: auto;">
+      <input type="text" id="forwardSearchInput" class="comm-inline-search" placeholder="🔍 Search contacts or groups…" oninput="filterForwardTargets(this.value)">
+      <div id="forwardTargetsList" class="forward-targets-list"></div>
+    </div>
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closeForwardModal()">Cancel</button>
+      <button class="comm-btn primary" id="forwardSendBtn" onclick="executeForward()" disabled>Forward</button>
+    </div>
+  </div>
+</div>
+
+<!-- STARRED MESSAGES DRAWER -->
+<div class="starred-drawer" id="starredDrawer">
+  <div class="starred-drawer-header">
+    <div class="starred-drawer-title">⭐ Starred Messages</div>
+    <button class="comments-drawer-close" onclick="closeStarredDrawer()"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+  </div>
+  <div class="starred-list" id="starredMessagesList">
+    <div class="comments-empty">No starred messages yet. Long-press or right-click a message and tap ⭐ Star to save it here.</div>
+  </div>
+</div>
+
+<!-- @MENTIONS POPUP (Groups) -->
+<div class="mentions-popup" id="mentionsPopup" style="display: none;">
+  <div class="mentions-list" id="mentionsList"></div>
 </div>
 
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->

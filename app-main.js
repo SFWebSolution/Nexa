@@ -3143,6 +3143,11 @@ function buildMessage(id, msg, fromMe) {
     inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
+  // Forwarded label for 1:1
+  if (msg.forwarded) {
+    inner += `<div class="forwarded-label">⤳ Forwarded</div>`;
+  }
+
   // Handle View Once Media
   if (msg.isViewOnce && (msg.image || msg.video || msg.audio)) {
     const isOpened = msg.viewOnceOpened;
@@ -3300,10 +3305,16 @@ function buildMessage(id, msg, fromMe) {
 }
 
 function replyMsg(msgId) {
-  const msg = allMessages.find(m => m.id === msgId);
+  let msg = null;
+  if (currentChatMode === 'group') {
+    msg = currentGroupMessages.find(m => m.id === msgId);
+  } else {
+    msg = allMessages.find(m => m.id === msgId);
+  }
   if (!msg) return;
   messageRepliedTo = msg;
-  const author = msg.from === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
+  const isMine = (msg.from || msg.senderUid) === currentUser.uid;
+  const author = isMine ? "You" : escapeHtml(msg.senderName || selectedUser?.displayName || "User");
   document.getElementById("replyStripWrap").innerHTML = `
     <div class="reply-strip">
       <div class="reply-strip-info">
@@ -3353,22 +3364,24 @@ function saveEditMessage() {
 
 function showCtxMenu(e, id, msg) {
   const menu = document.getElementById("ctxMenu");
-  const fromMe = msg.from === currentUser.uid;
+  const fromMe = (msg.from || msg.senderUid) === currentUser.uid;
+  const isGroup = currentChatMode === 'group';
   menu.innerHTML = `
     <div class="ctx-reaction-bar">
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '❤')">❤</button>
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '😂')">😂</button>
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '😮')">😮</button>
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '😢')">😢</button>
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '🙏')">🙏</button>
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '👍')">👍</button>
-      <button class="ctx-emoji-btn" onclick="addQuickReact('${id}', '🔥')">🔥</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '❤')` : `addQuickReact('${id}', '❤')`}">❤</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '😂')` : `addQuickReact('${id}', '😂')`}">😂</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '😮')` : `addQuickReact('${id}', '😮')`}">😮</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '😢')` : `addQuickReact('${id}', '😢')`}">😢</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🙏')` : `addQuickReact('${id}', '🙏')`}">🙏</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '👍')` : `addQuickReact('${id}', '👍')`}">👍</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🔥')` : `addQuickReact('${id}', '🔥')`}">🔥</button>
     </div>
     <div class="ctx-divider"></div>
     <div class="ctx-item" onclick="replyMsg('${id}')">↩ Reply</div>
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
-    ${fromMe && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
-    ${fromMe ? `<div class="ctx-item danger" onclick="deleteMsg('${id}')">🗑 Delete</div>` : ''}
+    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
+    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
+    ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
   `;
   menu.classList.add("active");
   menu.style.top = Math.min(e.clientY, window.innerHeight - 240) + "px";
@@ -3381,12 +3394,50 @@ function closeCtxMenu() {
 }
 
 function copyMsg(id) {
-  const msg = allMessages.find(m => m.id === id);
+  const msg = (currentChatMode === 'group')
+    ? (currentGroupMessages.find(m => m.id === id))
+    : (allMessages.find(m => m.id === id));
   if (msg && msg.text) {
     navigator.clipboard.writeText(msg.text);
     showNotifToast("✓ Copied", "success");
   }
   closeCtxMenu();
+}
+
+function deleteGroupMsg(id) {
+  if (!selectedGroup) return;
+  if (confirm("Delete this group message?")) {
+    db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id).delete()
+      .catch(e => console.error("deleteGroupMsg error:", e));
+  }
+  closeCtxMenu();
+}
+
+async function toggleGroupMsgReact(msgId, emoji) {
+  closeCtxMenu();
+  if (!selectedGroup || !currentUser) return;
+  const msg = currentGroupMessages.find(m => m.id === msgId);
+  if (!msg) return;
+
+  const r = { ...(msg.reactions || {}) };
+  r[emoji] = r[emoji] ? [...r[emoji]] : [];
+  const i = r[emoji].indexOf(currentUser.uid);
+
+  if (i > -1) {
+    r[emoji].splice(i, 1);
+    if (!r[emoji].length) delete r[emoji];
+  } else {
+    r[emoji].push(currentUser.uid);
+  }
+
+  msg.reactions = r;
+  renderGroupMessageList(currentGroupMessages);
+
+  try {
+    await db.collection("groups").doc(selectedGroup.id).collection("messages").doc(msgId).update({ reactions: r });
+  } catch (err) {
+    console.error("Error updating group reaction:", err);
+  }
 }
 
 function deleteMsg(id) {
@@ -3410,6 +3461,10 @@ function addQuickReact(msgId, emoji) {
 
 async function toggleReact(msgId, emoji) {
   if (!currentUser) return;
+  if (currentChatMode === 'group') {
+    await toggleGroupMsgReact(msgId, emoji);
+    return;
+  }
   const msg = allMessages.find(m => m.id === msgId);
   if (!msg) return;
 
@@ -7568,12 +7623,15 @@ let currentChatMode = 'direct'; // 'direct' | 'group' | 'channel'
 let selectedGroup = null;
 let selectedChannel = null;
 let myGroups = [];
+let currentGroupMessages = [];
 let myChannels = [];
 let discoverChannels = [];
 let unsubMyGroups = null;
 let unsubGroupMessages = null;
+let unsubGroupDoc = null;
 let unsubChannelPosts = null;
 let unsubChannelComments = null;
+let unsubChannelDoc = null;
 let activeCommunitySubTab = 'groups';
 let activeChannelSubPill = 'following';
 let pendingGroupAvatar = null;
@@ -7677,29 +7735,43 @@ function openCreateGroupModal() {
   selectedGroupMemberUids = new Set();
   updateSelectedGroupCount();
 
-  // Populate contacts picker
-  const picker = document.getElementById('groupContactsPicker');
-  if (picker) {
-    const contacts = (allUsersData || []).filter(u => u.uid !== currentUser.uid);
-    if (!contacts.length) {
-      picker.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px;">No contacts found yet.</div>';
-    } else {
-      picker.innerHTML = contacts.map(u => {
-        const photo = u.photo || 'https://i.imgur.com/HeIi0wU.png';
-        const name = escapeHtml(u.displayName || 'Nexa User');
-        return `
-          <div class="comm-contact-row" onclick="toggleGroupContactSelect('${u.uid}', this)">
-            <input type="checkbox" id="chk_grp_${u.uid}" style="pointer-events:none;">
-            <img src="${escapeHtml(photo)}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-            <span class="comm-contact-name">${name}</span>
-          </div>
-        `;
-      }).join('');
-    }
-  }
+  // Reset and populate contacts picker
+  const searchInput = document.getElementById('createGroupMemberSearch');
+  if (searchInput) searchInput.value = '';
+  renderCreateGroupContacts('');
 
   modal.classList.add('active');
   if (window.lucide) lucide.createIcons();
+}
+
+function renderCreateGroupContacts(filterText = '') {
+  const picker = document.getElementById('groupContactsPicker');
+  if (!picker) return;
+  const q = (filterText || '').toLowerCase().trim();
+  let contacts = (allUsersData || []).filter(u => u.uid !== currentUser?.uid);
+  if (q) {
+    contacts = contacts.filter(u => (u.displayName || u.name || '').toLowerCase().includes(q));
+  }
+  if (!contacts.length) {
+    picker.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px;">${q ? `No contacts match "${escapeHtml(q)}"` : 'No contacts found yet.'}</div>`;
+    return;
+  }
+  picker.innerHTML = contacts.map(u => {
+    const photo = u.photo || 'https://i.imgur.com/HeIi0wU.png';
+    const name = escapeHtml(u.displayName || u.name || 'Nexa User');
+    const checked = selectedGroupMemberUids.has(u.uid);
+    return `
+      <div class="comm-contact-row" onclick="toggleGroupContactSelect('${u.uid}', this)">
+        <input type="checkbox" id="chk_grp_${u.uid}" ${checked ? 'checked' : ''} style="pointer-events:none;">
+        <img src="${escapeHtml(photo)}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <span class="comm-contact-name">${name}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterCreateGroupContacts(query) {
+  renderCreateGroupContacts(query);
 }
 
 function closeCreateGroupModal() {
@@ -7968,6 +8040,30 @@ function selectGroupChat(group) {
     if (bNav) bNav.classList.add('hidden');
   }
 
+  // Live listener for group document updates (pinned message, name, avatar, membersCount, settings)
+  if (unsubGroupDoc) { unsubGroupDoc(); unsubGroupDoc = null; }
+  unsubGroupDoc = db.collection('groups').doc(group.id).onSnapshot(docSnap => {
+    if (!docSnap.exists) return;
+    selectedGroup = { id: docSnap.id, ...docSnap.data() };
+    document.getElementById('chatName').textContent = selectedGroup.name || 'Group';
+    document.getElementById('chatPic').src = selectedGroup.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+    document.getElementById('status').textContent = `${selectedGroup.membersCount || 1} members`;
+
+    // Sync pinned announcement banner
+    syncCommPinnedBanner();
+
+    // Re-check announcement mode
+    const nowAdmin = (selectedGroup.admins || []).includes(currentUser.uid) || selectedGroup.ownerUid === currentUser.uid;
+    const nowBroadcastOnly = selectedGroup.settings?.onlyAdminsCanPost && !nowAdmin;
+    if (nowBroadcastOnly) {
+      if (inputArea) inputArea.style.display = 'none';
+      if (noticeEl) noticeEl.style.display = 'block';
+    } else {
+      if (inputArea) inputArea.style.display = 'flex';
+      if (noticeEl) noticeEl.style.display = 'none';
+    }
+  }, err => console.warn('Group doc sync error:', err));
+
   loadGroupMessages(group.id);
   if (window.lucide) lucide.createIcons();
 }
@@ -7993,6 +8089,7 @@ function loadGroupMessages(groupId) {
 }
 
 function renderGroupMessageList(messages) {
+  currentGroupMessages = messages || [];
   const box = document.getElementById('messages');
   if (!box) return;
 
@@ -8008,53 +8105,187 @@ function renderGroupMessageList(messages) {
   }
 
   box.innerHTML = '';
+  let lastDateKey = null;
+
   messages.forEach(msg => {
     if (msg.isSystem) {
       const sysEl = document.createElement('div');
-      sysEl.style.cssText = 'text-align:center;margin:10px 0;';
-      sysEl.innerHTML = `<span style="font-size:11.5px;padding:3px 12px;border-radius:10px;background:rgba(255,255,255,0.06);color:var(--text-3);">${escapeHtml(msg.text)}</span>`;
+      sysEl.className = 'date-sep';
+      sysEl.innerHTML = `<span>${escapeHtml(msg.text)}</span>`;
       box.appendChild(sysEl);
       return;
     }
 
-    const isMine = msg.senderUid === currentUser.uid;
-    const bubble = document.createElement('div');
-    bubble.className = `msg ${isMine ? 'outgoing' : 'incoming'}`;
-    bubble.dataset.msgId = msg.id;
-
-    let mediaHtml = '';
-    if (msg.image) {
-      mediaHtml = `<div class="msg-media-wrap" onclick="openProfilePic('${msg.image}')"><img src="${escapeHtml(msg.image)}" class="msg-img" loading="lazy"></div>`;
-    } else if (msg.video) {
-      mediaHtml = `<div class="msg-media-wrap"><video src="${escapeHtml(msg.video)}" controls class="msg-video"></video></div>`;
-    } else if (msg.audio) {
-      mediaHtml = `<audio controls src="${escapeHtml(msg.audio)}" style="max-width:240px;height:36px;margin:4px 0;"></audio>`;
-    } else if (msg.fileUrl) {
-      mediaHtml = `<div class="file-card"><a href="${escapeHtml(msg.fileUrl)}" target="_blank" style="color:var(--primary-lt);font-weight:600;text-decoration:none;">📄 ${escapeHtml(msg.fileName || 'Attachment')}</a></div>`;
+    const dateKey = msg.createdAt ? new Date(msg.createdAt).toDateString() : null;
+    if (dateKey && dateKey !== lastDateKey) {
+      lastDateKey = dateKey;
+      const sep = document.createElement("div");
+      sep.className = "date-sep";
+      sep.innerHTML = `<span>${fmtDateSep(msg.createdAt)}</span>`;
+      box.appendChild(sep);
     }
 
-    let textHtml = '';
-    if (msg.text) {
-      textHtml = `<div class="msg-text">${formatMessageText(msg.text)}</div>`;
-    }
-
-    let senderHeader = '';
-    if (!isMine) {
-      senderHeader = `
-        <div class="group-sender-header">
-          <span class="group-sender-name">${escapeHtml(msg.senderName || 'Member')}</span>
-        </div>
-      `;
-    }
-
-    const timeStr = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const metaHtml = `<div class="msg-meta"><span class="msg-time">${timeStr}</span></div>`;
-
-    bubble.innerHTML = `${senderHeader}${mediaHtml}${textHtml}${metaHtml}`;
-    box.appendChild(bubble);
+    const fromMe = msg.senderUid === currentUser.uid;
+    const msgEl = buildGroupMessage(msg.id, msg, fromMe);
+    box.appendChild(msgEl);
   });
 
   scrollMessagesToBottom();
+}
+
+function buildGroupMessage(id, msg, fromMe) {
+  const el = document.createElement("div");
+  el.className = `msg ${fromMe ? "me" : "them"}`;
+  el.dataset.msgId = id;
+
+  const row = document.createElement("div");
+  row.className = "msg-row";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  let inner = "";
+
+  // 1. WhatsApp Group Sender Name for incoming messages
+  if (!fromMe) {
+    const senderName = escapeHtml(msg.senderName || "Member");
+    inner += `<div class="group-msg-sender" style="font-size: 12px; font-weight: 700; color: #53bdeb; margin-bottom: 4px; line-height: 1.2;">${senderName}</div>`;
+  }
+
+  // 2. Reply Quote Card
+  if (msg.replyTo) {
+    const rAuthor = escapeHtml(msg.replyToName || (msg.replyToFrom === currentUser.uid ? "You" : "Member"));
+    const rText = escapeHtml(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
+    inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+  }
+
+  // 2b. Forwarded label
+  if (msg.forwarded) {
+    inner += `<div class="forwarded-label">⤳ Forwarded</div>`;
+  }
+
+  // 2c. Poll card
+  if (msg.type === 'poll' && msg.pollOptions) {
+    inner += buildPollHTML(id, msg);
+  }
+
+  // 3. Text (skip raw text for polls since poll card shows the question)
+  if (msg.text && msg.type !== 'poll') {
+    const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text)) : linkify(msg.text);
+    inner += `<div class="msg-text">${textHtml}</div>`;
+  }
+
+  // 4. Image
+  if (msg.image) {
+    const imgUrl = safeMediaUrl(msg.image);
+    const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+    if (imgUrl) {
+      inner += `<div class="media-container"><img src="${imgUrl}" onclick="viewImg('${imgUrl}')" loading="lazy" alt="shared image" draggable="false"></div>${cap}`;
+    }
+  }
+
+  // 5. Video
+  if (msg.video) {
+    const vidUrl = safeMediaUrl(msg.video);
+    const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+    if (vidUrl) {
+      inner += `<div class="media-container"><video controls preload="metadata" controlslist="nodownload"><source src="${vidUrl}" type="video/mp4"></video></div>${cap}`;
+    }
+  }
+
+  // 6. Generic File / Document Attachment
+  if (msg.fileUrl) {
+    const fUrl = safeMediaUrl(msg.fileUrl);
+    const fname = escapeHtml(msg.fileName || "Attachment");
+    const fsize = msg.fileSize ? formatFileSize(msg.fileSize) : "";
+    const ficon = fileIconFor(msg.fileName || "");
+    const isAudioFile = /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(msg.fileName || "");
+    if (fUrl && isAudioFile) {
+      inner += `<div class="file-attach file-attach-audio">
+        <div class="file-attach-icon">${ficon}</div>
+        <div class="file-attach-info">
+          <div class="file-attach-name">${fname}</div>
+          ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
+          <audio controls preload="metadata" src="${fUrl}" style="width:100%;margin-top:8px;"></audio>
+        </div>
+      </div>`;
+    } else if (fUrl) {
+      inner += `<a class="file-attach" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}">
+        <div class="file-attach-icon">${ficon}</div>
+        <div class="file-attach-info">
+          <div class="file-attach-name">${fname}</div>
+          ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
+        </div>
+        <div class="file-attach-open">⤓</div>
+      </a>`;
+    }
+  }
+
+  // 7. Reactions
+  inner += buildReactionsHTML(id, msg.reactions);
+
+  // 8. Timestamp & Sent Tick
+  const tick = fromMe ? "✓" : "";
+  inner += `<div class="msg-meta"><span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""}</div>`;
+
+  bubble.innerHTML = inner;
+
+  // 9. Voice Note Player
+  if (msg.audio) {
+    const vnNode = renderVoiceNotePlayer(id, msg.audio, msg.duration || 0, fromMe);
+    const metaEl = bubble.querySelector(".msg-meta");
+    if (metaEl) {
+      bubble.insertBefore(vnNode, metaEl);
+    } else {
+      bubble.appendChild(vnNode);
+    }
+  }
+
+  row.appendChild(bubble);
+
+  // 10. Swipe right to reply (WhatsApp style)
+  let startX = 0, startY = 0, currentX = 0, isSwiping = false;
+
+  row.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    currentX = 0;
+    isSwiping = false;
+    row.style.transition = 'none';
+  }, { passive: true });
+
+  row.addEventListener("touchmove", (e) => {
+    if (!startX) return;
+    const touchX = e.touches[0].clientX;
+    const touchY = e.touches[0].clientY;
+    const diffX = touchX - startX;
+    const diffY = Math.abs(touchY - startY);
+
+    if (diffX > 8 && diffY < diffX) {
+      isSwiping = true;
+      currentX = Math.min(diffX * 0.55, 75);
+      row.style.transform = `translateX(${currentX}px)`;
+    }
+  }, { passive: true });
+
+  row.addEventListener("touchend", () => {
+    if (isSwiping && currentX > 40) {
+      if (navigator.vibrate) navigator.vibrate(25);
+      replyMsg(id);
+    }
+    row.style.transition = 'transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    row.style.transform = 'translateX(0)';
+    startX = 0;
+    currentX = 0;
+    isSwiping = false;
+  });
+
+  // 11. Context menu
+  el.appendChild(row);
+  el.addEventListener("contextmenu", e => { e.preventDefault(); showCtxMenu(e, id, msg); });
+
+  return el;
 }
 
 async function sendGroupMessage() {
@@ -8066,7 +8297,16 @@ async function sendGroupMessage() {
   ta.style.height = 'auto';
   toggleActionButtons();
 
-  await sendGroupMessageWithExtras({ text });
+  const extras = { text };
+  if (messageRepliedTo) {
+    extras.replyTo = messageRepliedTo.id;
+    extras.replyToText = messageRepliedTo.text || (messageRepliedTo.image ? "(Photo)" : messageRepliedTo.video ? "(Video)" : messageRepliedTo.audio ? "(Voice note)" : "(message)");
+    extras.replyToFrom = messageRepliedTo.from || messageRepliedTo.senderUid || null;
+    extras.replyToName = messageRepliedTo.senderName || (extras.replyToFrom === currentUser.uid ? 'You' : 'Member');
+    clearReply();
+  }
+
+  await sendGroupMessageWithExtras(extras);
 }
 
 async function sendGroupMessageWithExtras(extras) {
@@ -8097,6 +8337,8 @@ async function sendGroupMessageWithExtras(extras) {
   }
 }
 
+let currentGroupMembersList = [];
+
 // ── Group Info Modal & Member Management ───────────────────────────────────
 async function openGroupInfo() {
   if (!selectedGroup) return;
@@ -8110,6 +8352,19 @@ async function openGroupInfo() {
 
   const isOwner = selectedGroup.ownerUid === currentUser.uid;
   const isAdmin = isOwner || (selectedGroup.admins || []).includes(currentUser.uid);
+
+  // Edit avatar & details visibility for admins
+  const avatarBadge = document.getElementById('groupAvatarEditBadge');
+  if (avatarBadge) avatarBadge.style.display = isAdmin ? 'flex' : 'none';
+
+  const editNameBtn = document.getElementById('groupEditNameBtn');
+  if (editNameBtn) editNameBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+
+  const editDescBtn = document.getElementById('groupEditDescBtn');
+  if (editDescBtn) editDescBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+
+  const searchInput = document.getElementById('groupMemberSearchInput');
+  if (searchInput) searchInput.value = '';
 
   // Admin controls visibility
   const adminSection = document.getElementById('groupAdminControlsSection');
@@ -8126,38 +8381,11 @@ async function openGroupInfo() {
     membersList.innerHTML = '<div style="color:var(--text-3);padding:10px;text-align:center;">Loading members…</div>';
     try {
       const snap = await db.collection('groups').doc(selectedGroup.id).collection('members').get();
-      const members = [];
-      snap.forEach(d => members.push({ id: d.id, ...d.data() }));
+      currentGroupMembersList = [];
+      snap.forEach(d => currentGroupMembersList.push({ id: d.id, ...d.data() }));
 
-      document.getElementById('groupInfoMemberCount').textContent = members.length;
-
-      membersList.innerHTML = members.map(m => {
-        const uData = (allUsersData || []).find(u => u.uid === m.uid) || {};
-        const name = m.uid === currentUser.uid ? 'You' : escapeHtml(uData.displayName || 'Member');
-        const photo = uData.photo || 'https://i.imgur.com/HeIi0wU.png';
-        const role = m.role || 'member';
-        const canManage = isAdmin && m.uid !== currentUser.uid && role !== 'owner';
-
-        let actionMenu = '';
-        if (canManage) {
-          actionMenu = `
-            <button class="comm-member-menu-btn" onclick="openMemberActionsMenu('${m.uid}', '${role}')" title="Manage member">
-              <i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i>
-            </button>
-          `;
-        }
-
-        return `
-          <div class="comm-member-row">
-            <img src="${escapeHtml(photo)}" class="comm-member-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-            <div class="comm-member-name">${name}</div>
-            <div class="comm-role-chip ${role}">${role}</div>
-            ${actionMenu}
-          </div>
-        `;
-      }).join('');
-
-      if (window.lucide) lucide.createIcons();
+      document.getElementById('groupInfoMemberCount').textContent = currentGroupMembersList.length;
+      renderGroupInfoMembers('');
     } catch (err) {
       console.error(err);
     }
@@ -8167,8 +8395,166 @@ async function openGroupInfo() {
   const deleteBtn = document.getElementById('groupDeleteBtn');
   if (deleteBtn) deleteBtn.style.display = isOwner ? 'inline-flex' : 'none';
 
+  // Load WhatsApp-style Shared Media
+  loadGroupSharedMedia();
+
   modal.classList.add('active');
   if (window.lucide) lucide.createIcons();
+}
+
+function renderGroupInfoMembers(filterText = '') {
+  const membersList = document.getElementById('groupInfoMembersList');
+  if (!membersList || !selectedGroup) return;
+
+  const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+  const q = (filterText || '').toLowerCase().trim();
+
+  let filtered = currentGroupMembersList;
+  if (q) {
+    filtered = filtered.filter(m => {
+      const uData = (allUsersData || []).find(u => u.uid === m.uid) || {};
+      const name = (uData.displayName || uData.name || '').toLowerCase();
+      return name.includes(q) || (m.role || '').toLowerCase().includes(q);
+    });
+  }
+
+  if (!filtered.length) {
+    membersList.innerHTML = `<div style="color:var(--text-3);padding:14px;text-align:center;font-size:12px;">${q ? `No members match "${escapeHtml(q)}"` : 'No members found'}</div>`;
+    return;
+  }
+
+  membersList.innerHTML = filtered.map(m => {
+    const uData = (allUsersData || []).find(u => u.uid === m.uid) || {};
+    const name = m.uid === currentUser.uid ? 'You' : escapeHtml(uData.displayName || 'Member');
+    const photo = uData.photo || 'https://i.imgur.com/HeIi0wU.png';
+    const role = m.role || 'member';
+    const canManage = isAdmin && m.uid !== currentUser.uid && role !== 'owner';
+
+    let actionMenu = '';
+    if (canManage) {
+      actionMenu = `
+        <button class="comm-member-menu-btn" onclick="openMemberActionsMenu('${m.uid}', '${role}')" title="Manage member">
+          <i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i>
+        </button>
+      `;
+    }
+
+    return `
+      <div class="comm-member-row">
+        <img src="${escapeHtml(photo)}" class="comm-member-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="comm-member-name">${name}</div>
+        <div class="comm-role-chip ${role}">${role}</div>
+        ${actionMenu}
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function filterGroupInfoMembers(query) {
+  renderGroupInfoMembers(query);
+}
+
+function triggerChangeGroupAvatar() {
+  if (!selectedGroup) return;
+  const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only group admins can change the group icon', 'info');
+    return;
+  }
+  const input = document.getElementById('groupChangeAvatarInput');
+  if (input) input.click();
+}
+
+async function handleUpdateGroupAvatar(input) {
+  const file = input.files[0];
+  if (!file || !selectedGroup) return;
+  if (!file.type.startsWith('image/')) {
+    showNotifToast('Please choose an image file', 'error');
+    return;
+  }
+  try {
+    showNotifToast('Uploading group icon…', 'info');
+    const url = await uploadFile(file);
+    if (!url) throw new Error('Upload failed');
+    await db.collection('groups').doc(selectedGroup.id).update({ avatarUrl: url, updatedAt: Date.now() });
+    selectedGroup.avatarUrl = url;
+    document.getElementById('groupInfoAvatar').src = url;
+    document.getElementById('chatPic').src = url;
+    renderMyGroups();
+    showNotifToast('✓ Group icon updated!', 'success');
+  } catch (e) {
+    showNotifToast('Failed to update icon: ' + e.message, 'error');
+  }
+}
+
+async function editGroupName() {
+  if (!selectedGroup) return;
+  const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only group admins can edit the name', 'info');
+    return;
+  }
+  const newName = prompt('Enter new group subject:', selectedGroup.name || '');
+  if (!newName || !newName.trim() || newName.trim() === selectedGroup.name) return;
+  try {
+    const val = newName.trim().slice(0, 50);
+    await db.collection('groups').doc(selectedGroup.id).update({ name: val, updatedAt: Date.now() });
+    selectedGroup.name = val;
+    document.getElementById('groupInfoName').textContent = val;
+    document.getElementById('chatName').textContent = val;
+    renderMyGroups();
+    showNotifToast('✓ Group name updated', 'success');
+  } catch (e) {
+    showNotifToast('Error updating name: ' + e.message, 'error');
+  }
+}
+
+async function editGroupDesc() {
+  if (!selectedGroup) return;
+  const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only group admins can edit the description', 'info');
+    return;
+  }
+  const newDesc = prompt('Enter group description:', selectedGroup.description || '');
+  if (newDesc === null) return;
+  try {
+    const val = newDesc.trim().slice(0, 300);
+    await db.collection('groups').doc(selectedGroup.id).update({ description: val, updatedAt: Date.now() });
+    selectedGroup.description = val;
+    document.getElementById('groupInfoDesc').textContent = val || 'No description provided';
+    showNotifToast('✓ Description updated', 'success');
+  } catch (e) {
+    showNotifToast('Error updating description: ' + e.message, 'error');
+  }
+}
+
+async function shareGroupInviteLink() {
+  if (!selectedGroup) return;
+  const inviteText = `Join my Nexa group "${selectedGroup.name}":`;
+  const shareData = {
+    title: selectedGroup.name,
+    text: inviteText,
+    url: window.location.href.split('#')[0]
+  };
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      showNotifToast('✓ Shared group invite', 'success');
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  const copyStr = `${shareData.text}\n${shareData.url}`;
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(copyStr);
+    showNotifToast('✓ Group invite link copied to clipboard!', 'success');
+  } else {
+    showNotifToast('Link: ' + copyStr, 'info');
+  }
 }
 
 function closeGroupInfo() {
@@ -8184,14 +8570,15 @@ async function deleteCurrentGroup() {
     return;
   }
 
-  if (!confirm(`Permanently delete "${selectedGroup.name}" and remove all messages? This cannot be undone.`)) return;
+  const groupName = selectedGroup.name || 'Group';
+  if (!confirm(`Permanently delete "${groupName}" and remove all messages? This cannot be undone.`)) return;
 
   try {
     const groupId = selectedGroup.id;
     await db.collection('groups').doc(groupId).delete();
     closeGroupInfo();
     resetCommunityChatMode();
-    showNotifToast(`✓ Group "${selectedGroup.name}" deleted`, 'success');
+    showNotifToast(`✓ Group "${groupName}" deleted`, 'success');
   } catch (err) {
     showNotifToast('Error deleting group: ' + err.message, 'error');
   }
@@ -8241,26 +8628,46 @@ function openAddMemberModal() {
   const modal = document.getElementById('addMemberModal');
   if (!modal) return;
 
-  const currentUids = new Set(selectedGroup.memberUids || []);
-  const availableContacts = (allUsersData || []).filter(u => !currentUids.has(u.uid));
-
-  const picker = document.getElementById('addMemberContactsPicker');
-  if (picker) {
-    if (!availableContacts.length) {
-      picker.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-3);">All your contacts are already in this group!</div>';
-    } else {
-      picker.innerHTML = availableContacts.map(u => `
-        <div class="comm-contact-row" onclick="toggleAddMemberSelect('${u.uid}', this)">
-          <input type="checkbox" id="add_chk_${u.uid}" style="pointer-events:none;">
-          <img src="${escapeHtml(u.photo || 'https://i.imgur.com/HeIi0wU.png')}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-          <span class="comm-contact-name">${escapeHtml(u.displayName || 'User')}</span>
-        </div>
-      `).join('');
-    }
-  }
+  const searchInput = document.getElementById('addMemberSearchInput');
+  if (searchInput) searchInput.value = '';
 
   selectedGroupMemberUids = new Set();
+  renderAddMemberContacts('');
+
   modal.classList.add('active');
+}
+
+function renderAddMemberContacts(filterText = '') {
+  if (!selectedGroup) return;
+  const picker = document.getElementById('addMemberContactsPicker');
+  if (!picker) return;
+
+  const currentUids = new Set(selectedGroup.memberUids || []);
+  let availableContacts = (allUsersData || []).filter(u => !currentUids.has(u.uid) && u.uid !== currentUser?.uid);
+  const q = (filterText || '').toLowerCase().trim();
+  if (q) {
+    availableContacts = availableContacts.filter(u => (u.displayName || u.name || '').toLowerCase().includes(q));
+  }
+
+  if (!availableContacts.length) {
+    picker.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">${q ? `No contacts match "${escapeHtml(q)}"` : 'All your contacts are already in this group!'}</div>`;
+    return;
+  }
+
+  picker.innerHTML = availableContacts.map(u => {
+    const checked = selectedGroupMemberUids.has(u.uid);
+    return `
+      <div class="comm-contact-row" onclick="toggleAddMemberSelect('${u.uid}', this)">
+        <input type="checkbox" id="add_chk_${u.uid}" ${checked ? 'checked' : ''} style="pointer-events:none;">
+        <img src="${escapeHtml(u.photo || 'https://i.imgur.com/HeIi0wU.png')}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <span class="comm-contact-name">${escapeHtml(u.displayName || 'User')}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterAddMemberContacts(query) {
+  renderAddMemberContacts(query);
 }
 
 function closeAddMemberModal() {
@@ -8764,6 +9171,29 @@ function selectChannelFeed(channel) {
     if (bNav) bNav.classList.add('hidden');
   }
 
+  // Live listener for channel document updates (settings, subscriber count, avatar, admins)
+  if (unsubChannelDoc) { unsubChannelDoc(); unsubChannelDoc = null; }
+  unsubChannelDoc = db.collection('channels').doc(channel.id).onSnapshot(docSnap => {
+    if (!docSnap.exists) return;
+    selectedChannel = { id: docSnap.id, ...docSnap.data() };
+    document.getElementById('chatName').textContent = selectedChannel.name || 'Channel';
+    document.getElementById('chatPic').src = selectedChannel.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+    document.getElementById('status').textContent = `${formatCount(selectedChannel.subscribersCount || 1)} subscribers • ${selectedChannel.handle || ''}`;
+
+    // Sync pinned announcement banner for channel
+    syncCommPinnedBanner();
+
+    // Update input area if admin status changed
+    const nowAdmin = (selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid;
+    if (nowAdmin) {
+      if (inputArea) inputArea.style.display = 'flex';
+      if (noticeEl) noticeEl.style.display = 'none';
+    } else {
+      if (inputArea) inputArea.style.display = 'none';
+      if (noticeEl) noticeEl.style.display = 'block';
+    }
+  }, err => console.warn('Channel doc sync error:', err));
+
   loadChannelPosts(channel.id);
   if (window.lucide) lucide.createIcons();
 }
@@ -8828,7 +9258,14 @@ function renderChannelPostsList(posts) {
           <div class="channel-post-author-box">
             <span class="channel-post-author-name">${escapeHtml(post.authorName || selectedChannel.name)}</span>
           </div>
-          <span class="channel-post-time">${timeStr}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="channel-post-time">${timeStr}</span>
+            ${((selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid) ? `
+              <button class="comm-icon-btn-xs" onclick="pinChannelPost('${post.id}')" title="Pin / Unpin post" style="opacity: 0.65;">
+                <i data-lucide="pin" style="width: 12px; height: 12px;"></i>
+              </button>
+            ` : ''}
+          </div>
         </div>
         ${mediaHtml}
         <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
@@ -8838,9 +9275,30 @@ function renderChannelPostsList(posts) {
             <span>${views}</span>
           </div>
           <div class="channel-post-actions">
-            <button class="channel-reaction-pill" onclick="toggleChannelPostReaction('${post.id}', '❤️')">
-              <span>❤️</span> <span>${(post.reactions && post.reactions['❤️']) || 0}</span>
-            </button>
+            ${(() => {
+              const rMap = post.reactions || {};
+              const myUid = currentUser ? currentUser.uid : '';
+              return Object.keys(rMap).map(em => {
+                const val = rMap[em];
+                const count = Array.isArray(val) ? val.length : (typeof val === 'number' ? val : 0);
+                const hasReacted = Array.isArray(val) && myUid && val.includes(myUid);
+                if (count <= 0) return '';
+                return `<button class="channel-reaction-pill ${hasReacted ? 'me-reacted' : ''}" onclick="toggleChannelPostReaction('${post.id}', '${em}')"><span>${em}</span> <span>${count}</span></button>`;
+              }).join('');
+            })()}
+            <div style="position: relative; display: inline-flex;">
+              <button class="channel-reaction-pill" onclick="toggleChannelQuickReactMenu('${post.id}')" title="React with emoji">
+                <i data-lucide="smile-plus" style="width:13px;height:13px;"></i>
+              </button>
+              <div class="channel-quick-react-popup" id="quickReact_${post.id}">
+                <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '❤️')">❤️</button>
+                <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '👍')">👍</button>
+                <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '🔥')">🔥</button>
+                <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '👏')">👏</button>
+                <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '😂')">😂</button>
+                <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '😮')">😮</button>
+              </div>
+            </div>
             <button class="channel-comments-btn" onclick="openChannelComments('${post.id}')">
               <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
               <span>${commentsCount} Comments</span>
@@ -8925,7 +9383,7 @@ async function sendChannelPostWithExtras(extras) {
       createdAt: Date.now(),
       viewsCount: 1,
       commentsCount: 0,
-      reactions: { '❤️': 0 },
+      reactions: {},
       ...extras
     };
 
@@ -8938,14 +9396,57 @@ async function sendChannelPostWithExtras(extras) {
   }
 }
 
+function toggleChannelQuickReactMenu(postId) {
+  const popup = document.getElementById(`quickReact_${postId}`);
+  if (!popup) return;
+  const isShown = popup.classList.contains('active');
+  document.querySelectorAll('.channel-quick-react-popup.active').forEach(p => p.classList.remove('active'));
+  if (!isShown) {
+    popup.classList.add('active');
+    const dismissHandler = (e) => {
+      if (!popup.contains(e.target)) {
+        popup.classList.remove('active');
+        document.removeEventListener('click', dismissHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', dismissHandler), 10);
+  }
+}
+
 async function toggleChannelPostReaction(postId, emoji) {
-  if (!selectedChannel) return;
+  if (!selectedChannel || !currentUser) return;
+  const popup = document.getElementById(`quickReact_${postId}`);
+  if (popup) popup.classList.remove('active');
+
   try {
     const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
-    await postRef.update({
-      [`reactions.${emoji}`]: firebase.firestore.FieldValue.increment(1)
+    await db.runTransaction(async (transaction) => {
+      const postDoc = await transaction.get(postRef);
+      if (!postDoc.exists) return;
+      const data = postDoc.data() || {};
+      const reactions = data.reactions || {};
+      const currentVal = reactions[emoji];
+      let userList = [];
+      if (Array.isArray(currentVal)) {
+        userList = [...currentVal];
+      } else if (typeof currentVal === 'number' && currentVal > 0) {
+        userList = [];
+      }
+
+      const idx = userList.indexOf(currentUser.uid);
+      if (idx >= 0) {
+        userList.splice(idx, 1); // remove reaction
+      } else {
+        userList.push(currentUser.uid); // add reaction
+      }
+
+      transaction.update(postRef, {
+        [`reactions.${emoji}`]: userList
+      });
     });
-  } catch (e) {}
+  } catch (e) {
+    console.error('Toggle reaction error:', e);
+  }
 }
 
 // ── Channel Post Discussion Comments Drawer ────────────────────────────────
@@ -8958,6 +9459,29 @@ function openChannelComments(postId) {
   const postEl = document.getElementById(`post_${postId}`);
   const postText = postEl ? postEl.querySelector('.channel-post-text')?.textContent || 'Discussion' : 'Discussion';
   document.getElementById('commentsOriginalPostSnippet').textContent = postText;
+
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  const commentsAllowed = selectedChannel.settings?.allowComments !== false;
+
+  // Toggle input bar or notice depending on channel setting
+  const inputBar = drawer.querySelector('.comments-input-bar');
+  let disabledNotice = document.getElementById('channelCommentsDisabledNotice');
+  if (!commentsAllowed && !isAdmin) {
+    if (inputBar) inputBar.style.display = 'none';
+    if (!disabledNotice) {
+      disabledNotice = document.createElement('div');
+      disabledNotice.id = 'channelCommentsDisabledNotice';
+      disabledNotice.className = 'comm-broadcast-notice';
+      disabledNotice.style.cssText = 'padding: 14px; text-align: center; color: var(--text-3); font-size: 12.5px; border-top: 1px solid var(--border-dk);';
+      drawer.appendChild(disabledNotice);
+    }
+    disabledNotice.innerHTML = '🔒 <span>Comments are disabled by the channel admin.</span>';
+    disabledNotice.style.display = 'block';
+  } else {
+    if (inputBar) inputBar.style.display = 'flex';
+    if (disabledNotice) disabledNotice.style.display = 'none';
+  }
 
   loadChannelComments(postId);
   drawer.classList.add('open');
@@ -8994,16 +9518,31 @@ function renderChannelComments(comments) {
     return;
   }
 
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+
   list.innerHTML = comments.map(c => {
     const avatar = c.authorAvatar || 'https://i.imgur.com/HeIi0wU.png';
     const timeStr = c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const canDelete = c.authorUid === currentUser.uid || isAdmin;
+
+    let deleteBtn = '';
+    if (canDelete) {
+      deleteBtn = `
+        <button class="comm-icon-btn-xs" style="opacity: 0.6; margin-left: auto;" onclick="deleteChannelComment('${c.id}')" title="Delete comment">
+          <i data-lucide="trash" style="width: 12px; height: 12px; color: var(--danger);"></i>
+        </button>
+      `;
+    }
+
     return `
-      <div class="comment-card">
+      <div class="comment-card" id="comment_${c.id}">
         <img src="${escapeHtml(avatar)}" class="comment-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
         <div class="comment-body">
           <div class="comment-author-row">
             <span class="comment-author-name">${escapeHtml(c.authorName || 'User')}</span>
             <span class="comment-time">${timeStr}</span>
+            ${deleteBtn}
           </div>
           <div class="comment-text">${formatMessageText(c.text || '')}</div>
         </div>
@@ -9012,6 +9551,22 @@ function renderChannelComments(comments) {
   }).join('');
 
   list.scrollTop = list.scrollHeight;
+  if (window.lucide) lucide.createIcons();
+}
+
+async function deleteChannelComment(commentId) {
+  if (!selectedChannel || !activeCommentPostId) return;
+  if (!confirm('Delete this comment?')) return;
+  try {
+    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(activeCommentPostId);
+    await postRef.collection('comments').doc(commentId).delete();
+    await postRef.update({
+      commentsCount: firebase.firestore.FieldValue.increment(-1)
+    });
+    showNotifToast('✓ Comment deleted', 'info');
+  } catch (e) {
+    showNotifToast('Failed to delete comment: ' + e.message, 'error');
+  }
 }
 
 function handleCommentInputKey(e) {
@@ -9023,6 +9578,15 @@ function handleCommentInputKey(e) {
 
 async function submitChannelComment() {
   if (!selectedChannel || !activeCommentPostId) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  const commentsAllowed = selectedChannel.settings?.allowComments !== false;
+
+  if (!commentsAllowed && !isAdmin) {
+    showNotifToast('Comments are disabled on this channel', 'error');
+    return;
+  }
+
   const input = document.getElementById('channelCommentInput');
   const text = input.value.trim();
   if (!text) return;
@@ -9059,8 +9623,30 @@ function openChannelInfo() {
   document.getElementById('channelInfoDesc').textContent = selectedChannel.description || 'No description';
 
   const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+
+  // Edit avatar and metadata visibility for admins/owners
+  const avatarBadge = document.getElementById('channelAvatarEditBadge');
+  if (avatarBadge) avatarBadge.style.display = isAdmin ? 'flex' : 'none';
+
+  const editNameBtn = document.getElementById('channelEditNameBtn');
+  if (editNameBtn) editNameBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+
+  const editDescBtn = document.getElementById('channelEditDescBtn');
+  if (editDescBtn) editDescBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+
   const adminSec = document.getElementById('channelAdminSection');
   if (adminSec) adminSec.style.display = isOwner ? 'block' : 'none';
+
+  // Channel settings (e.g. comments toggle)
+  const settingsSec = document.getElementById('channelSettingsSection');
+  if (settingsSec) settingsSec.style.display = isAdmin ? 'block' : 'none';
+
+  const commentsToggle = document.getElementById('channelCommentsToggle');
+  if (commentsToggle) {
+    const commentsAllowed = selectedChannel.settings?.allowComments !== false;
+    commentsToggle.checked = commentsAllowed;
+  }
 
   const isSubscribed = (selectedChannel.subscriberUids || []).includes(currentUser.uid);
   const subBtn = document.getElementById('channelSubToggleBtn');
@@ -9073,8 +9659,157 @@ function openChannelInfo() {
   const deleteBtn = document.getElementById('channelDeleteBtn');
   if (deleteBtn) deleteBtn.style.display = isOwner ? 'inline-flex' : 'none';
 
+  // Render channel admins list
+  const adminsList = document.getElementById('channelAdminsList');
+  if (adminsList) {
+    const adminUids = selectedChannel.admins || [selectedChannel.ownerUid];
+    adminsList.innerHTML = adminUids.map(uid => {
+      const uData = (allUsersData || []).find(u => u.uid === uid) || {};
+      const name = uid === currentUser.uid ? 'You' : escapeHtml(uData.displayName || 'Admin');
+      const photo = uData.photo || 'https://i.imgur.com/HeIi0wU.png';
+      const isCreator = uid === selectedChannel.ownerUid;
+      const roleText = isCreator ? 'Owner' : 'Admin';
+
+      let dismissBtn = '';
+      if (isOwner && !isCreator && uid !== currentUser.uid) {
+        dismissBtn = `
+          <button class="comm-icon-btn-xs" onclick="dismissChannelAdmin('${uid}')" title="Dismiss as admin" style="margin-left:auto;">
+            <i data-lucide="user-x" style="width:13px;height:13px;color:var(--danger);"></i>
+          </button>
+        `;
+      }
+
+      return `
+        <div class="comm-member-row">
+          <img src="${escapeHtml(photo)}" class="comm-member-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <div class="comm-member-name">${name}</div>
+          <div class="comm-role-chip ${isCreator ? 'owner' : 'admin'}">${roleText}</div>
+          ${dismissBtn}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Load WhatsApp-style Shared Media
+  loadChannelSharedMedia();
+
   modal.classList.add('active');
   if (window.lucide) lucide.createIcons();
+}
+
+async function dismissChannelAdmin(targetUid) {
+  if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  if (!isOwner) return;
+  if (!confirm('Dismiss this user as channel admin?')) return;
+
+  try {
+    await db.collection('channels').doc(selectedChannel.id).update({
+      admins: firebase.firestore.FieldValue.arrayRemove(targetUid)
+    });
+    selectedChannel.admins = (selectedChannel.admins || []).filter(u => u !== targetUid);
+    showNotifToast('✓ Admin dismissed', 'info');
+    openChannelInfo();
+  } catch (e) {
+    showNotifToast('Failed to dismiss admin: ' + e.message, 'error');
+  }
+}
+
+async function toggleChannelCommentsSetting(allow) {
+  if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can change this setting', 'error');
+    return;
+  }
+  try {
+    await db.collection('channels').doc(selectedChannel.id).update({
+      'settings.allowComments': allow,
+      updatedAt: Date.now()
+    });
+    selectedChannel.settings = selectedChannel.settings || {};
+    selectedChannel.settings.allowComments = allow;
+    showNotifToast(`✓ Comments ${allow ? 'enabled' : 'disabled'} for this channel`, 'success');
+  } catch (err) {
+    showNotifToast('Failed to update setting: ' + err.message, 'error');
+  }
+}
+
+function triggerChangeChannelAvatar() {
+  if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can change the channel icon', 'info');
+    return;
+  }
+  const input = document.getElementById('channelChangeAvatarInput');
+  if (input) input.click();
+}
+
+async function handleUpdateChannelAvatar(input) {
+  const file = input.files[0];
+  if (!file || !selectedChannel) return;
+  if (!file.type.startsWith('image/')) {
+    showNotifToast('Please choose an image file', 'error');
+    return;
+  }
+  try {
+    showNotifToast('Uploading channel icon…', 'info');
+    const url = await uploadFile(file);
+    if (!url) throw new Error('Upload failed');
+    await db.collection('channels').doc(selectedChannel.id).update({ avatarUrl: url, updatedAt: Date.now() });
+    selectedChannel.avatarUrl = url;
+    document.getElementById('channelInfoAvatar').src = url;
+    document.getElementById('chatPic').src = url;
+    showNotifToast('✓ Channel icon updated!', 'success');
+  } catch (e) {
+    showNotifToast('Failed to update icon: ' + e.message, 'error');
+  }
+}
+
+async function editChannelName() {
+  if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can edit the name', 'info');
+    return;
+  }
+  const newName = prompt('Enter new channel name:', selectedChannel.name || '');
+  if (!newName || !newName.trim() || newName.trim() === selectedChannel.name) return;
+  try {
+    const val = newName.trim().slice(0, 50);
+    await db.collection('channels').doc(selectedChannel.id).update({ name: val, updatedAt: Date.now() });
+    selectedChannel.name = val;
+    document.getElementById('channelInfoName').textContent = val;
+    document.getElementById('chatName').textContent = val;
+    showNotifToast('✓ Channel name updated', 'success');
+  } catch (e) {
+    showNotifToast('Error updating name: ' + e.message, 'error');
+  }
+}
+
+async function editChannelDesc() {
+  if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can edit description', 'info');
+    return;
+  }
+  const newDesc = prompt('Enter channel description:', selectedChannel.description || '');
+  if (newDesc === null) return;
+  try {
+    const val = newDesc.trim().slice(0, 300);
+    await db.collection('channels').doc(selectedChannel.id).update({ description: val, updatedAt: Date.now() });
+    selectedChannel.description = val;
+    document.getElementById('channelInfoDesc').textContent = val || 'No description';
+    showNotifToast('✓ Description updated', 'success');
+  } catch (e) {
+    showNotifToast('Error updating description: ' + e.message, 'error');
+  }
 }
 
 function closeChannelInfo() {
@@ -9090,14 +9825,15 @@ async function deleteCurrentChannel() {
     return;
   }
 
-  if (!confirm(`Permanently delete channel "${selectedChannel.name}"? All posts and subscriber records will be removed. This cannot be undone.`)) return;
+  const channelName = selectedChannel.name || 'Channel';
+  if (!confirm(`Permanently delete channel "${channelName}"? All posts and subscriber records will be removed. This cannot be undone.`)) return;
 
   try {
     const channelId = selectedChannel.id;
     await db.collection('channels').doc(channelId).delete();
     closeChannelInfo();
     resetCommunityChatMode();
-    showNotifToast(`✓ Channel "${selectedChannel.name}" deleted`, 'success');
+    showNotifToast(`✓ Channel "${channelName}" deleted`, 'success');
   } catch (err) {
     showNotifToast('Error deleting channel: ' + err.message, 'error');
   }
@@ -9160,9 +9896,41 @@ function resetCommunityChatMode() {
   currentChatMode = 'direct';
   selectedGroup = null;
   selectedChannel = null;
+  currentGroupMessages = [];
 
   if (unsubGroupMessages) { unsubGroupMessages(); unsubGroupMessages = null; }
+  if (unsubGroupDoc) { unsubGroupDoc(); unsubGroupDoc = null; }
   if (unsubChannelPosts) { unsubChannelPosts(); unsubChannelPosts = null; }
+  if (unsubChannelComments) { unsubChannelComments(); unsubChannelComments = null; }
+  if (unsubChannelDoc) { unsubChannelDoc(); unsubChannelDoc = null; }
+
+  // Hide pinned banner
+  const pinnedBanner = document.getElementById('commPinnedBanner');
+  if (pinnedBanner) pinnedBanner.style.display = 'none';
+
+  // Clear messages area
+  const box = document.getElementById("messages");
+  if (box) {
+    box.innerHTML = `
+      <div class="empty-chat">
+        <div class="empty-chat-icon">💬</div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Select a conversation</div>
+        <div style="font-size: 13px; color: var(--text-3);">Choose a chat or group from the left to start messaging.</div>
+      </div>
+    `;
+  }
+  document.getElementById("chatName").textContent = "Nexa Messenger";
+  document.getElementById("chatPic").src = "https://i.imgur.com/HeIi0wU.png";
+  document.getElementById("status").textContent = "";
+
+  // Close mobile drawer if open
+  if (window.innerWidth <= 768) {
+    const app = document.getElementById('app');
+    if (app) app.classList.remove('chat-open-mobile');
+    document.body.classList.remove('chat-open-mobile');
+    const bNav = document.getElementById('mobileBottomNav');
+    if (bNav) bNav.classList.remove('hidden');
+  }
 
   // Restore call buttons for direct chat
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -9184,11 +9952,1021 @@ function resetCommunityChatMode() {
   if (ta) ta.placeholder = 'Type a message…';
 }
 
+// ── WhatsApp-Style Pinned Messages & Shared Media ───────────────────────────
+function syncCommPinnedBanner() {
+  const banner = document.getElementById('commPinnedBanner');
+  if (!banner) return;
+
+  const currentObj = currentChatMode === 'group' ? selectedGroup : selectedChannel;
+  if (!currentObj || !currentObj.pinnedMessage) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const pin = currentObj.pinnedMessage;
+  const isOwnerOrAdmin = currentChatMode === 'group'
+    ? (selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid))
+    : (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
+
+  document.getElementById('commPinnedTitle').textContent = `Pinned by ${pin.authorName || 'Admin'}`;
+  document.getElementById('commPinnedSnippet').textContent = pin.text || (pin.hasImage ? '📷 Photo' : pin.hasVideo ? '📹 Video' : 'Attachment');
+
+  const unpinBtn = document.getElementById('commPinnedUnpinBtn');
+  if (unpinBtn) unpinBtn.style.display = isOwnerOrAdmin ? 'flex' : 'none';
+
+  banner.style.display = 'flex';
+  if (window.lucide) lucide.createIcons();
+}
+
+function jumpToPinnedMessage() {
+  const currentObj = currentChatMode === 'group' ? selectedGroup : selectedChannel;
+  if (!currentObj || !currentObj.pinnedMessage) return;
+  const targetId = currentObj.pinnedMessage.id;
+  
+  const el = currentChatMode === 'group'
+    ? document.querySelector(`[data-msg-id="${targetId}"]`)
+    : document.getElementById(`post_${targetId}`);
+
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('msg-highlight');
+    setTimeout(() => el.classList.remove('msg-highlight'), 1800);
+  } else {
+    showNotifToast('Pinned message is earlier in history', 'info');
+  }
+}
+
+async function unpinCurrentCommMessage() {
+  if (!selectedGroup && !selectedChannel) return;
+  const isGroup = currentChatMode === 'group';
+  const coll = isGroup ? 'groups' : 'channels';
+  const id = isGroup ? selectedGroup.id : selectedChannel.id;
+
+  try {
+    await db.collection(coll).doc(id).update({
+      pinnedMessage: firebase.firestore.FieldValue.delete()
+    });
+    if (isGroup && selectedGroup) delete selectedGroup.pinnedMessage;
+    if (!isGroup && selectedChannel) delete selectedChannel.pinnedMessage;
+    syncCommPinnedBanner();
+    showNotifToast('✓ Message unpinned', 'info');
+  } catch (e) {
+    showNotifToast('Failed to unpin message: ' + e.message, 'error');
+  }
+}
+
+async function pinGroupMsg(msgId) {
+  closeCtxMenu();
+  if (!selectedGroup) return;
+  const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only group admins can pin messages', 'error');
+    return;
+  }
+
+  const msg = currentGroupMessages.find(m => m.id === msgId);
+  if (!msg) return;
+
+  const payload = {
+    id: msgId,
+    authorName: msg.senderName || 'Member',
+    text: msg.text || '',
+    hasImage: !!msg.image,
+    hasVideo: !!msg.video,
+    pinnedAt: Date.now(),
+    pinnedBy: currentUser.uid
+  };
+
+  try {
+    await db.collection('groups').doc(selectedGroup.id).update({
+      pinnedMessage: payload
+    });
+    selectedGroup.pinnedMessage = payload;
+    syncCommPinnedBanner();
+    showNotifToast('📌 Message pinned to group!', 'success');
+  } catch (e) {
+    showNotifToast('Failed to pin message: ' + e.message, 'error');
+  }
+}
+
+async function pinChannelPost(postId) {
+  if (!selectedChannel) return;
+  const isAdmin = selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can pin posts', 'error');
+    return;
+  }
+
+  const isCurrentlyPinned = selectedChannel.pinnedMessage?.id === postId;
+  if (isCurrentlyPinned) {
+    await unpinCurrentCommMessage();
+    return;
+  }
+
+  const card = document.getElementById(`post_${postId}`);
+  const postText = card ? (card.querySelector('.channel-post-text')?.textContent || '').trim() : '';
+
+  const payload = {
+    id: postId,
+    authorName: selectedChannel.name || 'Channel',
+    text: postText,
+    pinnedAt: Date.now(),
+    pinnedBy: currentUser.uid
+  };
+
+  try {
+    await db.collection('channels').doc(selectedChannel.id).update({
+      pinnedMessage: payload
+    });
+    selectedChannel.pinnedMessage = payload;
+    syncCommPinnedBanner();
+    showNotifToast('📌 Post pinned to channel!', 'success');
+  } catch (e) {
+    showNotifToast('Failed to pin post: ' + e.message, 'error');
+  }
+}
+
+async function loadGroupSharedMedia() {
+  if (!selectedGroup) return;
+  const grid = document.getElementById('groupMediaGrid');
+  const countEl = document.getElementById('groupMediaCount');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="comm-media-empty">Loading media…</div>';
+  try {
+    const snap = await db.collection('groups').doc(selectedGroup.id).collection('messages')
+      .orderBy('createdAt', 'desc')
+      .limit(60)
+      .get();
+
+    const mediaList = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.image || d.video) {
+        mediaList.push({ id: doc.id, ...d });
+      }
+    });
+
+    if (countEl) countEl.textContent = mediaList.length;
+    if (!mediaList.length) {
+      grid.innerHTML = '<div class="comm-media-empty">No photos or videos shared yet</div>';
+      return;
+    }
+
+    grid.innerHTML = mediaList.slice(0, 8).map(m => {
+      if (m.image) {
+        return `
+          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.image)}')">
+            <img src="${escapeHtml(m.image)}" loading="lazy">
+          </div>
+        `;
+      } else if (m.video) {
+        return `
+          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.video)}')">
+            <video src="${escapeHtml(m.video)}" preload="metadata"></video>
+          </div>
+        `;
+      }
+      return '';
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = '<div class="comm-media-empty">Failed to load media</div>';
+  }
+}
+
+async function loadChannelSharedMedia() {
+  if (!selectedChannel) return;
+  const grid = document.getElementById('channelMediaGrid');
+  const countEl = document.getElementById('channelMediaCount');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="comm-media-empty">Loading media…</div>';
+  try {
+    const snap = await db.collection('channels').doc(selectedChannel.id).collection('posts')
+      .orderBy('createdAt', 'desc')
+      .limit(40)
+      .get();
+
+    const mediaList = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.image || d.video) {
+        mediaList.push({ id: doc.id, ...d });
+      }
+    });
+
+    if (countEl) countEl.textContent = mediaList.length;
+    if (!mediaList.length) {
+      grid.innerHTML = '<div class="comm-media-empty">No media broadcast yet</div>';
+      return;
+    }
+
+    grid.innerHTML = mediaList.slice(0, 8).map(m => {
+      if (m.image) {
+        return `
+          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.image)}')">
+            <img src="${escapeHtml(m.image)}" loading="lazy">
+          </div>
+        `;
+      } else if (m.video) {
+        return `
+          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.video)}')">
+            <video src="${escapeHtml(m.video)}" preload="metadata"></video>
+          </div>
+        `;
+      }
+      return '';
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = '<div class="comm-media-empty">Failed to load media</div>';
+  }
+}
+
 function formatCount(num) {
   if (!num) return '0';
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
   return String(num);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE 1: INTERACTIVE POLLS (Groups)
+// ═══════════════════════════════════════════════════════════════════════
+
+function openPollModal() {
+  if (currentChatMode !== 'group' || !selectedGroup) {
+    showNotifToast('Polls are available in groups only', 'info');
+    return;
+  }
+  const modal = document.getElementById('pollCreateModal');
+  if (!modal) return;
+  document.getElementById('pollQuestionInput').value = '';
+  const container = document.getElementById('pollOptionsContainer');
+  container.innerHTML = `
+    <input type="text" class="nexa-poll-option-input" placeholder="Option 1" maxlength="100">
+    <input type="text" class="nexa-poll-option-input" placeholder="Option 2" maxlength="100">
+  `;
+  document.getElementById('pollMultiVoteCheck').checked = false;
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closePollModal() {
+  const modal = document.getElementById('pollCreateModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function addPollOption() {
+  const container = document.getElementById('pollOptionsContainer');
+  const count = container.querySelectorAll('.nexa-poll-option-input').length;
+  if (count >= 10) {
+    showNotifToast('Maximum 10 options allowed', 'info');
+    return;
+  }
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'nexa-poll-option-input';
+  inp.placeholder = `Option ${count + 1}`;
+  inp.maxLength = 100;
+  container.appendChild(inp);
+  inp.focus();
+}
+
+async function submitPoll() {
+  if (!selectedGroup || currentChatMode !== 'group') return;
+  const question = (document.getElementById('pollQuestionInput').value || '').trim();
+  if (!question) {
+    showNotifToast('Please enter a question', 'error');
+    return;
+  }
+  const optInputs = document.querySelectorAll('#pollOptionsContainer .nexa-poll-option-input');
+  const options = [];
+  optInputs.forEach(inp => {
+    const v = (inp.value || '').trim();
+    if (v) options.push(v);
+  });
+  if (options.length < 2) {
+    showNotifToast('At least 2 options are required', 'error');
+    return;
+  }
+  const multiVote = document.getElementById('pollMultiVoteCheck').checked;
+
+  closePollModal();
+
+  // Build poll options with empty vote arrays
+  const pollOptions = {};
+  options.forEach((opt, i) => {
+    pollOptions[`opt_${i}`] = { text: opt, voters: [] };
+  });
+
+  await sendGroupMessageWithExtras({
+    type: 'poll',
+    pollQuestion: question,
+    pollOptions: pollOptions,
+    pollMultiVote: multiVote,
+    text: `📊 Poll: ${question}`
+  });
+}
+
+async function votePollOption(msgId, optKey) {
+  if (!selectedGroup || !currentUser) return;
+  const msgRef = db.collection('groups').doc(selectedGroup.id).collection('messages').doc(msgId);
+
+  try {
+    await db.runTransaction(async tx => {
+      const doc = await tx.get(msgRef);
+      if (!doc.exists) return;
+      const data = doc.data();
+      if (data.type !== 'poll') return;
+      const opts = data.pollOptions || {};
+      const multiVote = !!data.pollMultiVote;
+      const uid = currentUser.uid;
+
+      // Check if already voted on this option -> toggle off
+      if (opts[optKey] && Array.isArray(opts[optKey].voters) && opts[optKey].voters.includes(uid)) {
+        opts[optKey].voters = opts[optKey].voters.filter(u => u !== uid);
+      } else {
+        // If single vote, remove from all other options first
+        if (!multiVote) {
+          for (const k of Object.keys(opts)) {
+            if (opts[k] && Array.isArray(opts[k].voters)) {
+              opts[k].voters = opts[k].voters.filter(u => u !== uid);
+            }
+          }
+        }
+        if (!opts[optKey]) opts[optKey] = { text: '', voters: [] };
+        if (!Array.isArray(opts[optKey].voters)) opts[optKey].voters = [];
+        opts[optKey].voters.push(uid);
+      }
+
+      tx.update(msgRef, { pollOptions: opts });
+    });
+  } catch (err) {
+    console.error('votePollOption error:', err);
+    showNotifToast('Vote failed: ' + err.message, 'error');
+  }
+}
+
+function buildPollHTML(id, msg) {
+  const opts = msg.pollOptions || {};
+  const question = escapeHtml(msg.pollQuestion || '');
+  const multiVote = !!msg.pollMultiVote;
+  const uid = currentUser ? currentUser.uid : '';
+
+  let totalVotes = 0;
+  for (const k of Object.keys(opts)) {
+    totalVotes += (Array.isArray(opts[k]?.voters) ? opts[k].voters.length : 0);
+  }
+
+  let optionsHtml = '';
+  const sortedKeys = Object.keys(opts).sort();
+  for (const k of sortedKeys) {
+    const opt = opts[k];
+    if (!opt || !opt.text) continue;
+    const voters = Array.isArray(opt.voters) ? opt.voters : [];
+    const voted = uid && voters.includes(uid);
+    const count = voters.length;
+    const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+
+    optionsHtml += `
+      <div class="poll-option-row ${voted ? 'voted' : ''}" onclick="votePollOption('${id}', '${k}')">
+        <div class="poll-option-bar" style="width: ${pct}%;"></div>
+        <div class="poll-option-check"></div>
+        <div class="poll-option-text">${escapeHtml(opt.text)}</div>
+        <div class="poll-option-pct">${pct}%</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="poll-card">
+      <div class="poll-type-badge">📊 ${multiVote ? 'Select multiple' : 'Select one'}</div>
+      <div class="poll-question">${question}</div>
+      ${optionsHtml}
+      <div class="poll-total-votes">${totalVotes} vote${totalVotes !== 1 ? 's' : ''}</div>
+    </div>
+  `;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE 2: FORWARD MESSAGES
+// ═══════════════════════════════════════════════════════════════════════
+
+let forwardingMessage = null;
+let forwardSelectedTargets = [];
+
+function openForwardModal(msgId) {
+  closeCtxMenu();
+  // Find message
+  let msg = null;
+  if (currentChatMode === 'group') {
+    msg = currentGroupMessages.find(m => m.id === msgId);
+  } else {
+    msg = allMessages.find(m => m.id === msgId);
+  }
+  if (!msg) { showNotifToast('Message not found', 'error'); return; }
+
+  forwardingMessage = { ...msg, id: msgId };
+  forwardSelectedTargets = [];
+
+  const modal = document.getElementById('forwardModal');
+  if (!modal) return;
+
+  const searchInput = document.getElementById('forwardSearchInput');
+  if (searchInput) searchInput.value = '';
+
+  renderForwardTargets('');
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeForwardModal() {
+  const modal = document.getElementById('forwardModal');
+  if (modal) modal.classList.remove('active');
+  forwardingMessage = null;
+  forwardSelectedTargets = [];
+}
+
+function renderForwardTargets(filterText) {
+  const list = document.getElementById('forwardTargetsList');
+  if (!list) return;
+  const q = (filterText || '').toLowerCase().trim();
+
+  let targets = [];
+
+  // Add contacts
+  (allUsersData || []).forEach(u => {
+    if (u.uid === currentUser.uid) return;
+    const name = u.displayName || u.name || 'User';
+    if (q && !name.toLowerCase().includes(q)) return;
+    targets.push({
+      id: u.uid,
+      name: name,
+      photo: u.photo || 'https://i.imgur.com/HeIi0wU.png',
+      type: 'contact'
+    });
+  });
+
+  // Add groups the user is in
+  if (window._userGroups) {
+    window._userGroups.forEach(g => {
+      const name = g.name || 'Group';
+      if (q && !name.toLowerCase().includes(q)) return;
+      targets.push({
+        id: g.id,
+        name: name,
+        photo: g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
+        type: 'group'
+      });
+    });
+  }
+
+  if (!targets.length) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">No contacts or groups found</div>';
+    return;
+  }
+
+  list.innerHTML = targets.map(t => {
+    const selected = forwardSelectedTargets.includes(t.id + '_' + t.type);
+    return `
+      <div class="forward-target-row ${selected ? 'selected' : ''}" onclick="toggleForwardTarget('${t.id}', '${t.type}')">
+        <img src="${escapeHtml(t.photo)}" class="forward-target-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="forward-target-name">${escapeHtml(t.name)}</div>
+        <div class="forward-target-type">${t.type === 'group' ? '👥 Group' : '👤 Contact'}</div>
+        <div class="forward-check"></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterForwardTargets(val) {
+  renderForwardTargets(val);
+}
+
+function toggleForwardTarget(id, type) {
+  const key = id + '_' + type;
+  const idx = forwardSelectedTargets.indexOf(key);
+  if (idx >= 0) {
+    forwardSelectedTargets.splice(idx, 1);
+  } else {
+    forwardSelectedTargets.push(key);
+  }
+
+  const btn = document.getElementById('forwardSendBtn');
+  if (btn) btn.disabled = forwardSelectedTargets.length === 0;
+
+  // Re-render to reflect selection state
+  const searchVal = document.getElementById('forwardSearchInput')?.value || '';
+  renderForwardTargets(searchVal);
+}
+
+async function executeForward() {
+  if (!forwardingMessage || !forwardSelectedTargets.length) return;
+  const msg = forwardingMessage;
+
+  closeForwardModal();
+
+  let successCount = 0;
+  for (const key of forwardSelectedTargets) {
+    const [targetId, targetType] = key.split('_');
+    try {
+      if (targetType === 'group') {
+        // Forward to group
+        const senderName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';
+        const payload = {
+          senderUid: currentUser.uid,
+          senderName: senderName,
+          senderAvatar: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+          createdAt: Date.now(),
+          forwarded: true,
+          forwardedFrom: msg.senderName || msg.from || 'Unknown'
+        };
+        if (msg.text) payload.text = msg.text;
+        if (msg.image) payload.image = msg.image;
+        if (msg.video) payload.video = msg.video;
+        if (msg.audio) payload.audio = msg.audio;
+        if (msg.fileUrl) { payload.fileUrl = msg.fileUrl; payload.fileName = msg.fileName; payload.fileSize = msg.fileSize; }
+        if (msg.caption) payload.caption = msg.caption;
+        if (msg.type === 'poll') {
+          payload.type = 'poll';
+          payload.pollQuestion = msg.pollQuestion;
+          // Reset voters on forward
+          const newOpts = {};
+          for (const k of Object.keys(msg.pollOptions || {})) {
+            newOpts[k] = { text: msg.pollOptions[k].text, voters: [] };
+          }
+          payload.pollOptions = newOpts;
+          payload.pollMultiVote = msg.pollMultiVote;
+        }
+
+        await db.collection('groups').doc(targetId).collection('messages').add(payload);
+        const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : 'Attachment');
+        await db.collection('groups').doc(targetId).update({
+          lastMessage: '⤳ ' + snippet,
+          lastMessageTime: Date.now(),
+          lastSenderName: senderName,
+          updatedAt: Date.now()
+        });
+      } else {
+        // Forward to 1:1 contact
+        const payload = {
+          from: currentUser.uid,
+          to: targetId,
+          createdAt: Date.now(),
+          read: false,
+          forwarded: true,
+          forwardedFrom: msg.senderName || msg.from || 'Unknown'
+        };
+        if (msg.text) payload.text = msg.text;
+        if (msg.image) payload.image = msg.image;
+        if (msg.video) payload.video = msg.video;
+        if (msg.audio) payload.audio = msg.audio;
+        if (msg.fileUrl) { payload.fileUrl = msg.fileUrl; payload.fileName = msg.fileName; payload.fileSize = msg.fileSize; }
+        if (msg.caption) payload.caption = msg.caption;
+
+        await db.collection('chats').add(payload);
+      }
+      successCount++;
+    } catch (err) {
+      console.error('Forward error:', err);
+    }
+  }
+
+  if (successCount > 0) {
+    showNotifToast(`✓ Forwarded to ${successCount} chat${successCount > 1 ? 's' : ''}`, 'success');
+  } else {
+    showNotifToast('Forward failed', 'error');
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE 3: STARRED MESSAGES
+// ═══════════════════════════════════════════════════════════════════════
+
+function getStarredMsgsKey() {
+  return `nexa_starred_${currentUser?.uid || 'anon'}`;
+}
+
+function getStarredMessages() {
+  try {
+    return JSON.parse(localStorage.getItem(getStarredMsgsKey()) || '[]');
+  } catch { return []; }
+}
+
+function saveStarredMessages(arr) {
+  localStorage.setItem(getStarredMsgsKey(), JSON.stringify(arr));
+}
+
+function isMessageStarred(msgId) {
+  return getStarredMessages().some(s => s.id === msgId);
+}
+
+function toggleStarMessage(msgId) {
+  closeCtxMenu();
+  let msg = null;
+  if (currentChatMode === 'group') {
+    msg = currentGroupMessages.find(m => m.id === msgId);
+  } else {
+    msg = allMessages.find(m => m.id === msgId);
+  }
+  if (!msg) return;
+
+  const starred = getStarredMessages();
+  const idx = starred.findIndex(s => s.id === msgId);
+
+  if (idx >= 0) {
+    starred.splice(idx, 1);
+    saveStarredMessages(starred);
+    showNotifToast('Unstarred', 'info');
+  } else {
+    starred.push({
+      id: msgId,
+      text: msg.text || (msg.image ? '📷 Photo' : msg.video ? '🎥 Video' : msg.audio ? '🎤 Voice' : 'Attachment'),
+      from: msg.from || msg.senderUid || '',
+      fromName: msg.senderName || (msg.from === currentUser.uid ? 'You' : 'User'),
+      createdAt: msg.createdAt || Date.now(),
+      chatMode: currentChatMode,
+      groupId: selectedGroup?.id || null,
+      channelId: selectedChannel?.id || null,
+      targetUid: selectedUser?.uid || null
+    });
+    // Cap at 200
+    if (starred.length > 200) starred.splice(0, starred.length - 200);
+    saveStarredMessages(starred);
+    showNotifToast('⭐ Starred', 'success');
+  }
+}
+
+function openStarredDrawer() {
+  const drawer = document.getElementById('starredDrawer');
+  if (!drawer) return;
+  renderStarredMessages();
+  drawer.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeStarredDrawer() {
+  const drawer = document.getElementById('starredDrawer');
+  if (drawer) drawer.classList.remove('active');
+}
+
+function renderStarredMessages() {
+  const list = document.getElementById('starredMessagesList');
+  if (!list) return;
+
+  const starred = getStarredMessages();
+  if (!starred.length) {
+    list.innerHTML = '<div class="comments-empty">No starred messages yet. Long-press or right-click a message and tap ⭐ Star to save it here.</div>';
+    return;
+  }
+
+  list.innerHTML = starred.slice().reverse().map(s => {
+    const authorName = s.fromName || (s.from === currentUser?.uid ? 'You' : 'User');
+    const time = s.createdAt ? new Date(s.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const snippet = escapeHtml(typeof s.text === 'string' ? s.text.substring(0, 120) : 'Attachment');
+
+    return `
+      <div class="starred-msg-card" onclick="jumpToStarredMsg('${s.id}', '${s.chatMode || ''}', '${s.groupId || ''}', '${s.targetUid || ''}')">
+        <div class="starred-msg-header">
+          <span class="starred-msg-author">${escapeHtml(authorName)}</span>
+          <span>
+            <span class="starred-msg-time">${time}</span>
+            <button class="starred-msg-unstar" onclick="event.stopPropagation(); unstarFromDrawer('${s.id}')" title="Unstar">✕</button>
+          </span>
+        </div>
+        <div class="starred-msg-text">${snippet}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function unstarFromDrawer(msgId) {
+  const starred = getStarredMessages();
+  const idx = starred.findIndex(s => s.id === msgId);
+  if (idx >= 0) {
+    starred.splice(idx, 1);
+    saveStarredMessages(starred);
+    renderStarredMessages();
+    showNotifToast('Unstarred', 'info');
+  }
+}
+
+function jumpToStarredMsg(msgId, chatMode, groupId, targetUid) {
+  closeStarredDrawer();
+  // Try to scroll to it if in current chat
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('pinned-target-flash');
+    setTimeout(() => el.classList.remove('pinned-target-flash'), 2000);
+  } else {
+    showNotifToast('Message is in another chat', 'info');
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE 4: @MENTIONS IN GROUPS
+// ═══════════════════════════════════════════════════════════════════════
+
+let mentionActive = false;
+let mentionStartPos = -1;
+
+function handleMentionInput(e) {
+  if (currentChatMode !== 'group' || !selectedGroup) {
+    hideMentionsPopup();
+    return;
+  }
+  const ta = document.getElementById('text');
+  if (!ta) return;
+
+  const val = ta.value;
+  const cursorPos = ta.selectionStart;
+
+  // Find the @ nearest before cursor
+  let atIdx = -1;
+  for (let i = cursorPos - 1; i >= 0; i--) {
+    if (val[i] === '@') { atIdx = i; break; }
+    if (val[i] === ' ' || val[i] === '\n') break;
+  }
+
+  if (atIdx >= 0) {
+    const query = val.substring(atIdx + 1, cursorPos).toLowerCase();
+    mentionActive = true;
+    mentionStartPos = atIdx;
+    showMentionsPopup(query);
+  } else {
+    hideMentionsPopup();
+  }
+}
+
+function showMentionsPopup(query) {
+  const popup = document.getElementById('mentionsPopup');
+  const list = document.getElementById('mentionsList');
+  if (!popup || !list) return;
+
+  const members = currentGroupMembersList || [];
+  const filtered = members.filter(m => {
+    if (m.uid === currentUser.uid) return false;
+    const uData = (allUsersData || []).find(u => u.uid === m.uid) || {};
+    const name = (uData.displayName || uData.name || '').toLowerCase();
+    return !query || name.includes(query);
+  });
+
+  if (!filtered.length) {
+    hideMentionsPopup();
+    return;
+  }
+
+  list.innerHTML = filtered.slice(0, 8).map(m => {
+    const uData = (allUsersData || []).find(u => u.uid === m.uid) || {};
+    const name = uData.displayName || uData.name || 'Member';
+    const photo = uData.photo || 'https://i.imgur.com/HeIi0wU.png';
+    return `
+      <div class="mention-row" onclick="insertMention('${escapeHtml(name)}', '${m.uid}')">
+        <img src="${escapeHtml(photo)}" class="mention-row-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="mention-row-name">${escapeHtml(name)}</div>
+      </div>
+    `;
+  }).join('');
+
+  popup.style.display = 'block';
+}
+
+function hideMentionsPopup() {
+  mentionActive = false;
+  mentionStartPos = -1;
+  const popup = document.getElementById('mentionsPopup');
+  if (popup) popup.style.display = 'none';
+}
+
+function insertMention(name, uid) {
+  const ta = document.getElementById('text');
+  if (!ta) return;
+
+  const val = ta.value;
+  const cursorPos = ta.selectionStart;
+  const before = val.substring(0, mentionStartPos);
+  const after = val.substring(cursorPos);
+  const mentionText = `@${name} `;
+
+  ta.value = before + mentionText + after;
+  const newPos = before.length + mentionText.length;
+  ta.setSelectionRange(newPos, newPos);
+  ta.focus();
+
+  hideMentionsPopup();
+}
+
+// Render @mention highlights in message text
+function renderMentionText(text) {
+  if (!text) return '';
+  // Match @Name patterns and highlight them
+  return text.replace(/@(\w[\w\s]{0,30}?)(?=\s|$|[,.])/g, '<span class="mention-highlight">@$1</span>');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE 5: MUTE NOTIFICATIONS (Per Group & Channel)
+// ═══════════════════════════════════════════════════════════════════════
+
+function getMutedChatsKey() {
+  return `nexa_muted_${currentUser?.uid || 'anon'}`;
+}
+
+function getMutedChats() {
+  try {
+    return JSON.parse(localStorage.getItem(getMutedChatsKey()) || '{}');
+  } catch { return {}; }
+}
+
+function saveMutedChats(obj) {
+  localStorage.setItem(getMutedChatsKey(), JSON.stringify(obj));
+}
+
+function isChatMuted(chatId) {
+  return !!getMutedChats()[chatId];
+}
+
+function toggleMuteGroup() {
+  if (!selectedGroup) return;
+  const muted = getMutedChats();
+  const id = selectedGroup.id;
+  if (muted[id]) {
+    delete muted[id];
+    showNotifToast('🔔 Group unmuted', 'success');
+  } else {
+    muted[id] = true;
+    showNotifToast('🔕 Group muted', 'success');
+  }
+  saveMutedChats(muted);
+  updateGroupMuteUI();
+}
+
+function toggleMuteChannel() {
+  if (!selectedChannel) return;
+  const muted = getMutedChats();
+  const id = selectedChannel.id;
+  if (muted[id]) {
+    delete muted[id];
+    showNotifToast('🔔 Channel unmuted', 'success');
+  } else {
+    muted[id] = true;
+    showNotifToast('🔕 Channel muted', 'success');
+  }
+  saveMutedChats(muted);
+  updateChannelMuteUI();
+}
+
+function updateGroupMuteUI() {
+  if (!selectedGroup) return;
+  const isMuted = isChatMuted(selectedGroup.id);
+  const label = document.getElementById('groupMuteLabel');
+  if (label) label.textContent = isMuted ? 'Unmute' : 'Mute';
+}
+
+function updateChannelMuteUI() {
+  if (!selectedChannel) return;
+  const isMuted = isChatMuted(selectedChannel.id);
+  const label = document.getElementById('channelMuteLabel');
+  if (label) label.textContent = isMuted ? 'Unmute' : 'Mute';
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE 6: GROUP INVITE LINK (Enhanced — generate unique code)
+// ═══════════════════════════════════════════════════════════════════════
+
+function generateInviteCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let code = '';
+  for (let i = 0; i < 12; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return code;
+}
+
+async function getOrCreateGroupInviteLink() {
+  if (!selectedGroup) return '';
+  const groupRef = db.collection('groups').doc(selectedGroup.id);
+  const doc = await groupRef.get();
+  const data = doc.data();
+
+  if (data.inviteCode) {
+    return `${window.location.origin}${window.location.pathname}?joinGroup=${data.inviteCode}`;
+  }
+
+  // Generate and save
+  const code = generateInviteCode();
+  await groupRef.update({ inviteCode: code });
+  return `${window.location.origin}${window.location.pathname}?joinGroup=${code}`;
+}
+
+async function resetGroupInviteLink() {
+  if (!selectedGroup) return;
+  const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+  if (!isAdmin) { showNotifToast('Only admins can reset the invite link', 'error'); return; }
+
+  if (!confirm('Reset the invite link? The old link will stop working.')) return;
+
+  const code = generateInviteCode();
+  await db.collection('groups').doc(selectedGroup.id).update({ inviteCode: code });
+  showNotifToast('✓ Invite link reset', 'success');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// INTEGRATION: Wire features into existing UI
+// ═══════════════════════════════════════════════════════════════════════
+
+// --- Enhanced showCtxMenu with Forward, Star, Poll items ---
+const _origShowCtxMenu = showCtxMenu;
+showCtxMenu = function(e, id, msg) {
+  const menu = document.getElementById("ctxMenu");
+  const fromMe = (msg.from || msg.senderUid) === currentUser.uid;
+  const isGroup = currentChatMode === 'group';
+  const starred = isMessageStarred(id);
+  menu.innerHTML = `
+    <div class="ctx-reaction-bar">
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '❤')` : `addQuickReact('${id}', '❤')`}">❤</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '😂')` : `addQuickReact('${id}', '😂')`}">😂</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '😮')` : `addQuickReact('${id}', '😮')`}">😮</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '😢')` : `addQuickReact('${id}', '😢')`}">😢</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🙏')` : `addQuickReact('${id}', '🙏')`}">🙏</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '👍')` : `addQuickReact('${id}', '👍')`}">👍</button>
+      <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🔥')` : `addQuickReact('${id}', '🔥')`}">🔥</button>
+    </div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" onclick="replyMsg('${id}')">↩ Reply</div>
+    <div class="ctx-item" onclick="openForwardModal('${id}')">⤳ Forward</div>
+    <div class="ctx-item" onclick="toggleStarMessage('${id}')">${starred ? '★ Unstar' : '⭐ Star'}</div>
+    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
+    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
+    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
+    ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
+  `;
+  menu.classList.add("active");
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + "px";
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + "px";
+  setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
+};
+
+// --- Wire @mentions into textarea ---
+(function wireMentions() {
+  const ta = document.getElementById('text');
+  if (!ta) return;
+  ta.addEventListener('input', handleMentionInput);
+  ta.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && mentionActive) {
+      e.preventDefault();
+      hideMentionsPopup();
+    }
+  });
+})();
+
+// --- Wire poll button: add a 📊 button next to attachment buttons for group mode ---
+(function wirePollButton() {
+  const inputWrap = document.querySelector('.input-wrap');
+  if (!inputWrap) return;
+  const pollBtn = document.createElement('button');
+  pollBtn.className = 'iact-btn';
+  pollBtn.id = 'pollBtn';
+  pollBtn.title = 'Create Poll';
+  pollBtn.style.display = 'none';
+  pollBtn.innerHTML = '<span style="font-size: 18px;">📊</span>';
+  pollBtn.onclick = openPollModal;
+  const recordBtn = document.getElementById('recordBtn');
+  if (recordBtn) {
+    inputWrap.insertBefore(pollBtn, recordBtn);
+  } else {
+    inputWrap.appendChild(pollBtn);
+  }
+})();
+
+// --- Show/hide poll button based on chat mode ---
+const _origToggleActionButtons = typeof toggleActionButtons === 'function' ? toggleActionButtons : null;
+// We'll patch the poll button visibility from the enterGroupChat/enterChannelChat flows instead.
+
+// --- Update mute UI when opening group/channel info ---
+const _origOpenGroupInfo = openGroupInfo;
+openGroupInfo = async function() {
+  await _origOpenGroupInfo();
+  updateGroupMuteUI();
+};
+
+const _origOpenChannelInfo = openChannelInfo;
+openChannelInfo = function() {
+  _origOpenChannelInfo();
+  updateChannelMuteUI();
+};
+
+// --- Show poll button when entering group chat ---
+function showPollButtonForGroup() {
+  const btn = document.getElementById('pollBtn');
+  if (btn) btn.style.display = currentChatMode === 'group' ? '' : 'none';
+}
+
+// Expose groups list for forward feature
+window._userGroups = window._userGroups || [];
 
 
