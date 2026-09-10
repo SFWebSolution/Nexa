@@ -1205,6 +1205,8 @@ function switchTab(tabName) {
     renderSettingsTab();
   } else if (tabName === 'profile') {
     renderProfileTab();
+  } else if (tabName === 'community') {
+    renderCommunityTab();
   }
 
   if (window.lucide) lucide.createIcons();
@@ -1750,6 +1752,7 @@ async function changeDisappearingSetting(value) {
 }
 
 function selectChat(user, el) {
+  if (currentChatMode !== 'direct') resetCommunityChatMode();
   // Persist the chat we're LEAVING so it reopens instantly next app-open,
   // then remember the newly selected chat as the last-open one.
   if (selectedUser && selectedUser.uid !== user.uid) saveChatMsgCache(selectedUser.uid);
@@ -3511,7 +3514,7 @@ function pickImage() {
 
 // WhatsApp-style: the media button lets the user CHOOSE Photo or Video.
 function pickMedia() {
-  if (!selectedUser) { alert("Select a user first"); return; }
+  if (!selectedUser && !selectedGroup && !selectedChannel) { alert("Select a conversation first"); return; }
   // If the device supports a combined image+video picker, use one input that
   // accepts both and route by the picked type — simplest, most native feel.
   const inp = document.getElementById("mediaPickerInput") || (() => {
@@ -3524,7 +3527,7 @@ function pickMedia() {
     i.addEventListener("change", e => {
       const f = e.target.files[0];
       e.target.value = "";
-      if (!f || !selectedUser) return;
+      if (!f || (!selectedUser && !selectedGroup && !selectedChannel)) return;
       if (f.type.startsWith("image/")) openMediaComposer(f, "image");
       else if (f.type.startsWith("video/")) openMediaComposer(f, "video");
       else showNotifToast("Please pick a photo or video", "error");
@@ -3535,7 +3538,7 @@ function pickMedia() {
 }
 
 function pickFile() {
-  if (!selectedUser) { alert("Select a user first"); return; }
+  if (!selectedUser && !selectedGroup && !selectedChannel) { alert("Select a conversation first"); return; }
   document.getElementById("fileInput").click();
 }
 
@@ -3642,7 +3645,7 @@ function closeMediaComposer() {
 }
 
 async function sendMediaComposer() {
-  if (!mcPendingFile || !selectedUser) return;
+  if (!mcPendingFile || (!selectedUser && !selectedGroup && !selectedChannel)) return;
   const caption = document.getElementById("mcCaption").value.trim();
   const btn = document.querySelector("#mediaComposer .mc-send-btn");
   btn.disabled = true;
@@ -3671,16 +3674,24 @@ async function sendMediaComposer() {
         if (mcPendingType === "image") extras.image = url;
         else extras.video = url;
       }
-      await db.collection("chats").add(baseMsg(extras));
-      clearReply();
-      showNotifToast("✓ Sent!", "success");
-      sendPushNotification(
-        document.getElementById('myName').textContent || 'Nexa User',
-        mcPendingType === "image" ? "You have received a new message (📷 Photo)"
-        : mcPendingType === "video" ? "You have received a new message (🎥 Video)"
-        : `You have received a new message (📎 ${mcPendingFile.name})`,
-        selectedUser.uid
-      );
+      if (currentChatMode === 'group') {
+        await sendGroupMessageWithExtras(extras);
+        showNotifToast("✓ Sent to group!", "success");
+      } else if (currentChatMode === 'channel') {
+        await sendChannelPostWithExtras(extras);
+        showNotifToast("✓ Broadcasted!", "success");
+      } else {
+        await db.collection("chats").add(baseMsg(extras));
+        clearReply();
+        showNotifToast("✓ Sent!", "success");
+        sendPushNotification(
+          document.getElementById('myName').textContent || 'Nexa User',
+          mcPendingType === "image" ? "You have received a new message (📷 Photo)"
+          : mcPendingType === "video" ? "You have received a new message (🎥 Video)"
+          : `You have received a new message (📎 ${mcPendingFile.name})`,
+          selectedUser.uid
+        );
+      }
     }
     closeMediaComposer();
   } catch (err) {
@@ -3715,6 +3726,14 @@ function toggleActionButtons() {
 }
 
 async function sendMessage() {
+  if (currentChatMode === 'group') {
+    await sendGroupMessage();
+    return;
+  }
+  if (currentChatMode === 'channel') {
+    await sendChannelPost();
+    return;
+  }
   if (!selectedUser) { alert("Select a user first"); return; }
   if (deletedChats[selectedUser.uid]) {
     delete deletedChats[selectedUser.uid];
@@ -3838,8 +3857,8 @@ document.addEventListener("mouseup", () => { if (isRecording) stopRec(); });
 document.addEventListener("touchend", () => { if (isRecording) stopRec(); });
 
 async function startRec(e) {
-  if (isRecording || !selectedUser) {
-    if (!selectedUser) alert("Select a user first");
+  if (isRecording || (!selectedUser && !selectedGroup)) {
+    if (!selectedUser && !selectedGroup) alert("Select a conversation first");
     return;
   }
   try {
@@ -3920,12 +3939,17 @@ async function sendVoice() {
     const f = new File([blob], `voice.${ext}`, { type: mime });
     const url = await uploadFile(f);
     if (url) {
-      await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
-      // Replace the optimistic local-blob bubble with the stored one.
-      const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
-      if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
-      const senderName = document.getElementById('myName').textContent || 'Nexa User';
-      sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
+      if (currentChatMode === 'group') {
+        await sendGroupMessageWithExtras({ audio: url, duration: dur });
+        showNotifToast("✓ Voice note sent to group!", "success");
+      } else {
+        await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
+        // Replace the optimistic local-blob bubble with the stored one.
+        const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
+        if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+        const senderName = document.getElementById('myName').textContent || 'Nexa User';
+        sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
+      }
     }
   } catch (e) {
     const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
@@ -7535,4 +7559,1630 @@ function profilePicGoBack() {
     if (infoPanel) infoPanel.classList.add('active');
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEXA COMMUNITY MODULE: GROUPS & CHANNELS
+// ═══════════════════════════════════════════════════════════════════════════
+
+let currentChatMode = 'direct'; // 'direct' | 'group' | 'channel'
+let selectedGroup = null;
+let selectedChannel = null;
+let myGroups = [];
+let myChannels = [];
+let discoverChannels = [];
+let unsubMyGroups = null;
+let unsubGroupMessages = null;
+let unsubChannelPosts = null;
+let unsubChannelComments = null;
+let activeCommunitySubTab = 'groups';
+let activeChannelSubPill = 'following';
+let pendingGroupAvatar = null;
+let pendingChannelAvatar = null;
+let selectedGroupMemberUids = new Set();
+let activeCommentPostId = null;
+let currentDiscoverCategory = 'All';
+
+// ── Entry point when Community tab is clicked ──────────────────────────────
+function renderCommunityTab() {
+  if (!currentUser) return;
+  listenMyGroups();
+  listenMyChannels();
+  loadDiscoverChannels();
+  if (window.lucide) lucide.createIcons();
+}
+
+// ── Sub-tab switcher: Groups vs Channels ───────────────────────────────────
+function switchCommunitySubTab(tab) {
+  activeCommunitySubTab = tab;
+  const btnGroups = document.getElementById('commSubTabGroups');
+  const btnChannels = document.getElementById('commSubTabChannels');
+  const paneGroups = document.getElementById('commGroupsContainer');
+  const paneChannels = document.getElementById('commChannelsContainer');
+
+  if (btnGroups) btnGroups.classList.toggle('active', tab === 'groups');
+  if (btnChannels) btnChannels.classList.toggle('active', tab === 'channels');
+
+  if (paneGroups) paneGroups.style.display = tab === 'groups' ? 'flex' : 'none';
+  if (paneChannels) paneChannels.style.display = tab === 'channels' ? 'flex' : 'none';
+
+  if (tab === 'groups') {
+    renderMyGroups();
+  } else {
+    renderChannelsFollowing();
+    renderChannelsDiscover();
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+// ── Channels sub-pill: Following vs Discover ───────────────────────────────
+function switchChannelSubPill(pill) {
+  activeChannelSubPill = pill;
+  const pillFollowing = document.getElementById('commPillFollowing');
+  const pillDiscover = document.getElementById('commPillDiscover');
+  const viewFollowing = document.getElementById('commChannelsFollowingList');
+  const viewDiscover = document.getElementById('commChannelsDiscoverView');
+
+  if (pillFollowing) pillFollowing.classList.toggle('active', pill === 'following');
+  if (pillDiscover) pillDiscover.classList.toggle('active', pill === 'discover');
+
+  if (viewFollowing) viewFollowing.style.display = pill === 'following' ? 'flex' : 'none';
+  if (viewDiscover) viewDiscover.style.display = pill === 'discover' ? 'flex' : 'none';
+
+  if (pill === 'discover') {
+    renderChannelsDiscover();
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+// ── Community Create Menu Dropdown ─────────────────────────────────────────
+function toggleCommunityCreateMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('commCreateMenu');
+  if (!menu) return;
+  const isOpen = menu.style.display === 'flex';
+  menu.style.display = isOpen ? 'none' : 'flex';
+  if (!isOpen) {
+    setTimeout(() => document.addEventListener('click', closeCommunityCreateMenu, { once: true }), 50);
+  }
+}
+
+function closeCommunityCreateMenu() {
+  const menu = document.getElementById('commCreateMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+function handleCommModalOverlayClick(event, modalId) {
+  if (event.target === document.getElementById(modalId)) {
+    document.getElementById(modalId).classList.remove('active');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GROUPS IMPLEMENTATION (WHATSAPP + TELEGRAM STYLE)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function openCreateGroupModal() {
+  closeCommunityCreateMenu();
+  const modal = document.getElementById('createGroupModal');
+  if (!modal) return;
+  document.getElementById('groupSubjectInput').value = '';
+  document.getElementById('groupDescInput').value = '';
+  document.getElementById('groupOnlyAdminsCanPost').checked = false;
+  document.getElementById('groupAvatarPreview').innerHTML = '<i data-lucide="camera" style="width:24px;height:24px;"></i>';
+  pendingGroupAvatar = null;
+  selectedGroupMemberUids = new Set();
+  updateSelectedGroupCount();
+
+  // Populate contacts picker
+  const picker = document.getElementById('groupContactsPicker');
+  if (picker) {
+    const contacts = (allUsersData || []).filter(u => u.uid !== currentUser.uid);
+    if (!contacts.length) {
+      picker.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px;">No contacts found yet.</div>';
+    } else {
+      picker.innerHTML = contacts.map(u => {
+        const photo = u.photo || 'https://i.imgur.com/HeIi0wU.png';
+        const name = escapeHtml(u.displayName || 'Nexa User');
+        return `
+          <div class="comm-contact-row" onclick="toggleGroupContactSelect('${u.uid}', this)">
+            <input type="checkbox" id="chk_grp_${u.uid}" style="pointer-events:none;">
+            <img src="${escapeHtml(photo)}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+            <span class="comm-contact-name">${name}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeCreateGroupModal() {
+  const modal = document.getElementById('createGroupModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function handleGroupAvatarSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showNotifToast('Please choose an image file', 'error');
+    return;
+  }
+  pendingGroupAvatar = file;
+  const preview = document.getElementById('groupAvatarPreview');
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function toggleGroupContactSelect(uid, rowEl) {
+  const chk = rowEl.querySelector('input[type="checkbox"]');
+  if (selectedGroupMemberUids.has(uid)) {
+    selectedGroupMemberUids.delete(uid);
+    if (chk) chk.checked = false;
+  } else {
+    selectedGroupMemberUids.add(uid);
+    if (chk) chk.checked = true;
+  }
+  updateSelectedGroupCount();
+}
+
+function updateSelectedGroupCount() {
+  const cnt = document.getElementById('selectedGroupMembersCount');
+  if (cnt) cnt.textContent = selectedGroupMemberUids.size;
+}
+
+async function submitCreateGroup() {
+  const name = document.getElementById('groupSubjectInput').value.trim();
+  if (!name) {
+    showNotifToast('Please enter a group subject', 'error');
+    return;
+  }
+  const desc = document.getElementById('groupDescInput').value.trim();
+  const onlyAdminsCanPost = document.getElementById('groupOnlyAdminsCanPost').checked;
+  const btn = document.getElementById('btnSubmitCreateGroup');
+  btn.disabled = true;
+  btn.innerHTML = '<span>Creating…</span>';
+
+  try {
+    let avatarUrl = '';
+    if (pendingGroupAvatar) {
+      showNotifToast('Uploading group icon…', 'info');
+      avatarUrl = await uploadFile(pendingGroupAvatar);
+    }
+
+    const memberUids = [currentUser.uid, ...Array.from(selectedGroupMemberUids)];
+    const groupDoc = {
+      name,
+      description: desc,
+      avatarUrl: avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
+      createdBy: currentUser.uid,
+      ownerUid: currentUser.uid,
+      admins: [currentUser.uid],
+      memberUids,
+      membersCount: memberUids.length,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastMessage: 'Group created',
+      lastMessageTime: Date.now(),
+      lastSenderName: document.getElementById('myName').textContent || currentUser.displayName || 'Creator',
+      settings: {
+        onlyAdminsCanPost,
+        onlyAdminsCanEditInfo: true
+      }
+    };
+
+    const docRef = await db.collection('groups').add(groupDoc);
+
+    // Write initial membership documents
+    const batch = db.batch();
+    const membersColl = docRef.collection('members');
+
+    // Owner doc
+    batch.set(membersColl.doc(currentUser.uid), {
+      uid: currentUser.uid,
+      role: 'owner',
+      joinedAt: Date.now(),
+      addedBy: currentUser.uid
+    });
+
+    // Member docs
+    selectedGroupMemberUids.forEach(uid => {
+      batch.set(membersColl.doc(uid), {
+        uid,
+        role: 'member',
+        joinedAt: Date.now(),
+        addedBy: currentUser.uid
+      });
+    });
+
+    // Initial system message
+    const msgRef = docRef.collection('messages').doc();
+    batch.set(msgRef, {
+      senderUid: 'system',
+      senderName: 'Nexa',
+      text: `${currentUser.displayName || 'You'} created group "${name}"`,
+      createdAt: Date.now(),
+      isSystem: true
+    });
+
+    await batch.commit();
+
+    closeCreateGroupModal();
+    showNotifToast('✓ Group created!', 'success');
+
+    const createdGroup = { id: docRef.id, ...groupDoc };
+    selectGroupChat(createdGroup);
+  } catch (err) {
+    showNotifToast('Failed to create group: ' + err.message, 'error');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>Create Group</span>';
+  }
+}
+
+// ── Listen to user's joined groups ─────────────────────────────────────────
+function listenMyGroups() {
+  if (unsubMyGroups) unsubMyGroups();
+  unsubMyGroups = db.collection('groups')
+    .where('memberUids', 'array-contains', currentUser.uid)
+    .onSnapshot(snap => {
+      myGroups = [];
+      snap.forEach(doc => {
+        myGroups.push({ id: doc.id, ...doc.data() });
+      });
+      myGroups.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
+      renderMyGroups();
+    }, err => {
+      console.error('Groups listener error:', err);
+    });
+}
+
+function renderMyGroups() {
+  const container = document.getElementById('commGroupsList');
+  if (!container) return;
+
+  const query = (document.getElementById('commGroupSearchInput')?.value || '').toLowerCase().trim();
+  const filtered = myGroups.filter(g => (g.name || '').toLowerCase().includes(query));
+
+  if (!filtered.length) {
+    container.innerHTML = `
+      <div class="comm-empty-state">
+        <div class="comm-empty-icon">👥</div>
+        <div class="comm-empty-title">${myGroups.length ? 'No Matching Groups' : 'No Groups Yet'}</div>
+        <div class="comm-empty-desc">Groups are private and invite-only. Create your own group or ask an admin to add you.</div>
+        <button class="comm-action-btn-sm" onclick="openCreateGroupModal()">
+          <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Create Group
+        </button>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  container.innerHTML = filtered.map(g => {
+    const activeClass = (selectedGroup && selectedGroup.id === g.id) ? ' active' : '';
+    const avatar = g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+    const timeStr = g.lastMessageTime ? new Date(g.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const sender = g.lastSenderName ? `${escapeHtml(g.lastSenderName)}: ` : '';
+    const preview = escapeHtml(g.lastMessage || 'No messages yet');
+
+    return `
+      <div class="comm-group-item${activeClass}" onclick="handleSelectGroupItem('${g.id}')">
+        <img src="${escapeHtml(avatar)}" class="comm-group-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="comm-group-info">
+          <div class="comm-group-name-row">
+            <div class="comm-group-name">${escapeHtml(g.name || 'Group')}</div>
+            <div class="comm-group-time">${timeStr}</div>
+          </div>
+          <div class="comm-group-preview-row">
+            <div class="comm-group-preview">${sender}${preview}</div>
+            <div class="comm-group-members-badge">${g.membersCount || 1} members</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function filterMyGroups() {
+  renderMyGroups();
+}
+
+function handleSelectGroupItem(groupId) {
+  const grp = myGroups.find(g => g.id === groupId);
+  if (grp) selectGroupChat(grp);
+}
+
+// ── Select and Open Group Chat Room ────────────────────────────────────────
+function selectGroupChat(group) {
+  if (unsubChatA) { unsubChatA(); unsubChatA = null; }
+  if (unsubChatB) { unsubChatB(); unsubChatB = null; }
+  if (unsubTyping) { unsubTyping(); unsubTyping = null; }
+  if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
+  if (unsubChannelPosts) { unsubChannelPosts(); unsubChannelPosts = null; }
+
+  currentChatMode = 'group';
+  selectedGroup = group;
+  selectedUser = null;
+  selectedChannel = null;
+
+  // Header configuration: strictly hide call buttons
+  const voiceBtn = document.getElementById('headerVoiceCallBtn');
+  const videoBtn = document.getElementById('headerVideoCallBtn');
+  const chatInfoBtn = document.getElementById('headerChatInfoBtn');
+  const commInfoBtn = document.getElementById('headerCommunityInfoBtn');
+
+  if (voiceBtn) voiceBtn.style.display = 'none';
+  if (videoBtn) videoBtn.style.display = 'none';
+  if (chatInfoBtn) chatInfoBtn.style.display = 'none';
+  if (commInfoBtn) commInfoBtn.style.display = 'flex';
+
+  document.getElementById('chatName').textContent = group.name || 'Group';
+  document.getElementById('chatPic').src = group.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+  document.getElementById('chatStatusDot').style.display = 'none';
+  document.getElementById('status').textContent = `${group.membersCount || 1} members`;
+
+  // Permission check for announcement mode
+  const isAdmin = (group.admins || []).includes(currentUser.uid) || group.ownerUid === currentUser.uid;
+  const isBroadcastOnly = group.settings?.onlyAdminsCanPost && !isAdmin;
+
+  const inputArea = document.querySelector('.input-area');
+  let noticeEl = document.getElementById('commBroadcastNotice');
+  if (isBroadcastOnly) {
+    if (inputArea) inputArea.style.display = 'none';
+    if (!noticeEl) {
+      noticeEl = document.createElement('div');
+      noticeEl.id = 'commBroadcastNotice';
+      noticeEl.className = 'comm-broadcast-notice';
+      inputArea.parentNode.insertBefore(noticeEl, inputArea);
+    }
+    noticeEl.textContent = 'Only admins can send messages to this group';
+    noticeEl.style.display = 'block';
+  } else {
+    if (inputArea) inputArea.style.display = 'flex';
+    if (noticeEl) noticeEl.style.display = 'none';
+  }
+
+  // Active state in sidebar
+  document.querySelectorAll('.comm-group-item').forEach(e => e.classList.remove('active'));
+
+  // Mobile drawer
+  if (window.innerWidth <= 768) {
+    const app = document.getElementById('app');
+    if (app) app.classList.add('chat-open-mobile');
+    document.body.classList.add('chat-open-mobile');
+    const bNav = document.getElementById('mobileBottomNav');
+    if (bNav) bNav.classList.add('hidden');
+  }
+
+  loadGroupMessages(group.id);
+  if (window.lucide) lucide.createIcons();
+}
+
+function loadGroupMessages(groupId) {
+  if (unsubGroupMessages) unsubGroupMessages();
+  const box = document.getElementById('messages');
+  if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading group messages…</div>';
+
+  unsubGroupMessages = db.collection('groups').doc(groupId).collection('messages')
+    .orderBy('createdAt', 'desc')
+    .limit(60)
+    .onSnapshot(snap => {
+      const msgs = [];
+      snap.forEach(doc => {
+        msgs.push({ id: doc.id, ...doc.data() });
+      });
+      msgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      renderGroupMessageList(msgs);
+    }, err => {
+      console.error('Group messages error:', err);
+    });
+}
+
+function renderGroupMessageList(messages) {
+  const box = document.getElementById('messages');
+  if (!box) return;
+
+  if (!messages.length) {
+    box.innerHTML = `
+      <div class="empty-chat">
+        <div class="empty-chat-icon">👥</div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">${escapeHtml(selectedGroup?.name || 'Group')}</div>
+        <div style="font-size: 13px; color: var(--text-3);">This is the start of your group. Send a message to say hello!</div>
+      </div>
+    `;
+    return;
+  }
+
+  box.innerHTML = '';
+  messages.forEach(msg => {
+    if (msg.isSystem) {
+      const sysEl = document.createElement('div');
+      sysEl.style.cssText = 'text-align:center;margin:10px 0;';
+      sysEl.innerHTML = `<span style="font-size:11.5px;padding:3px 12px;border-radius:10px;background:rgba(255,255,255,0.06);color:var(--text-3);">${escapeHtml(msg.text)}</span>`;
+      box.appendChild(sysEl);
+      return;
+    }
+
+    const isMine = msg.senderUid === currentUser.uid;
+    const bubble = document.createElement('div');
+    bubble.className = `msg ${isMine ? 'outgoing' : 'incoming'}`;
+    bubble.dataset.msgId = msg.id;
+
+    let mediaHtml = '';
+    if (msg.image) {
+      mediaHtml = `<div class="msg-media-wrap" onclick="openProfilePic('${msg.image}')"><img src="${escapeHtml(msg.image)}" class="msg-img" loading="lazy"></div>`;
+    } else if (msg.video) {
+      mediaHtml = `<div class="msg-media-wrap"><video src="${escapeHtml(msg.video)}" controls class="msg-video"></video></div>`;
+    } else if (msg.audio) {
+      mediaHtml = `<audio controls src="${escapeHtml(msg.audio)}" style="max-width:240px;height:36px;margin:4px 0;"></audio>`;
+    } else if (msg.fileUrl) {
+      mediaHtml = `<div class="file-card"><a href="${escapeHtml(msg.fileUrl)}" target="_blank" style="color:var(--primary-lt);font-weight:600;text-decoration:none;">📄 ${escapeHtml(msg.fileName || 'Attachment')}</a></div>`;
+    }
+
+    let textHtml = '';
+    if (msg.text) {
+      textHtml = `<div class="msg-text">${formatMessageText(msg.text)}</div>`;
+    }
+
+    let senderHeader = '';
+    if (!isMine) {
+      senderHeader = `
+        <div class="group-sender-header">
+          <span class="group-sender-name">${escapeHtml(msg.senderName || 'Member')}</span>
+        </div>
+      `;
+    }
+
+    const timeStr = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const metaHtml = `<div class="msg-meta"><span class="msg-time">${timeStr}</span></div>`;
+
+    bubble.innerHTML = `${senderHeader}${mediaHtml}${textHtml}${metaHtml}`;
+    box.appendChild(bubble);
+  });
+
+  scrollMessagesToBottom();
+}
+
+async function sendGroupMessage() {
+  if (!selectedGroup) return;
+  const ta = document.getElementById('text');
+  const text = ta.value.trim();
+  if (!text) return;
+  ta.value = '';
+  ta.style.height = 'auto';
+  toggleActionButtons();
+
+  await sendGroupMessageWithExtras({ text });
+}
+
+async function sendGroupMessageWithExtras(extras) {
+  if (!selectedGroup) return;
+  try {
+    const senderName = document.getElementById('myName').textContent || currentUser.displayName || 'Member';
+    const payload = {
+      senderUid: currentUser.uid,
+      senderName,
+      senderAvatar: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+      createdAt: Date.now(),
+      ...extras
+    };
+
+    await db.collection('groups').doc(selectedGroup.id).collection('messages').add(payload);
+
+    // Update group recency snippet
+    const snippet = extras.text || (extras.image ? '📷 Photo' : extras.video ? '🎥 Video' : extras.audio ? '🎤 Voice note' : 'Attachment');
+    await db.collection('groups').doc(selectedGroup.id).update({
+      lastMessage: snippet,
+      lastMessageTime: Date.now(),
+      lastSenderName: senderName,
+      updatedAt: Date.now()
+    });
+  } catch (err) {
+    showNotifToast('Failed to send: ' + err.message, 'error');
+    console.error(err);
+  }
+}
+
+// ── Group Info Modal & Member Management ───────────────────────────────────
+async function openGroupInfo() {
+  if (!selectedGroup) return;
+  const modal = document.getElementById('groupInfoModal');
+  if (!modal) return;
+
+  document.getElementById('groupInfoAvatar').src = selectedGroup.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+  document.getElementById('groupInfoName').textContent = selectedGroup.name || 'Group';
+  document.getElementById('groupInfoMeta').textContent = `${selectedGroup.membersCount || 1} members`;
+  document.getElementById('groupInfoDesc').textContent = selectedGroup.description || 'No description provided';
+
+  const isOwner = selectedGroup.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedGroup.admins || []).includes(currentUser.uid);
+
+  // Admin controls visibility
+  const adminSection = document.getElementById('groupAdminControlsSection');
+  const addMemberBtn = document.getElementById('groupAddMemberBtn');
+  if (adminSection) adminSection.style.display = isAdmin ? 'block' : 'none';
+  if (addMemberBtn) addMemberBtn.style.display = isAdmin ? 'block' : 'none';
+
+  const onlyAdminsCheck = document.getElementById('groupInfoOnlyAdminsCanPost');
+  if (onlyAdminsCheck) onlyAdminsCheck.checked = !!selectedGroup.settings?.onlyAdminsCanPost;
+
+  // Load members
+  const membersList = document.getElementById('groupInfoMembersList');
+  if (membersList) {
+    membersList.innerHTML = '<div style="color:var(--text-3);padding:10px;text-align:center;">Loading members…</div>';
+    try {
+      const snap = await db.collection('groups').doc(selectedGroup.id).collection('members').get();
+      const members = [];
+      snap.forEach(d => members.push({ id: d.id, ...d.data() }));
+
+      document.getElementById('groupInfoMemberCount').textContent = members.length;
+
+      membersList.innerHTML = members.map(m => {
+        const uData = (allUsersData || []).find(u => u.uid === m.uid) || {};
+        const name = m.uid === currentUser.uid ? 'You' : escapeHtml(uData.displayName || 'Member');
+        const photo = uData.photo || 'https://i.imgur.com/HeIi0wU.png';
+        const role = m.role || 'member';
+        const canManage = isAdmin && m.uid !== currentUser.uid && role !== 'owner';
+
+        let actionMenu = '';
+        if (canManage) {
+          actionMenu = `
+            <button class="comm-member-menu-btn" onclick="openMemberActionsMenu('${m.uid}', '${role}')" title="Manage member">
+              <i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i>
+            </button>
+          `;
+        }
+
+        return `
+          <div class="comm-member-row">
+            <img src="${escapeHtml(photo)}" class="comm-member-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+            <div class="comm-member-name">${name}</div>
+            <div class="comm-role-chip ${role}">${role}</div>
+            ${actionMenu}
+          </div>
+        `;
+      }).join('');
+
+      if (window.lucide) lucide.createIcons();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // Owner delete button
+  const deleteBtn = document.getElementById('groupDeleteBtn');
+  if (deleteBtn) deleteBtn.style.display = isOwner ? 'inline-flex' : 'none';
+
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeGroupInfo() {
+  const modal = document.getElementById('groupInfoModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function deleteCurrentGroup() {
+  if (!selectedGroup) return;
+  const isOwner = selectedGroup.ownerUid === currentUser.uid;
+  if (!isOwner) {
+    showNotifToast('Only the group creator can delete this group', 'error');
+    return;
+  }
+
+  if (!confirm(`Permanently delete "${selectedGroup.name}" and remove all messages? This cannot be undone.`)) return;
+
+  try {
+    const groupId = selectedGroup.id;
+    await db.collection('groups').doc(groupId).delete();
+    closeGroupInfo();
+    resetCommunityChatMode();
+    showNotifToast(`✓ Group "${selectedGroup.name}" deleted`, 'success');
+  } catch (err) {
+    showNotifToast('Error deleting group: ' + err.message, 'error');
+  }
+}
+
+async function toggleGroupOnlyAdminsCanPost(checked) {
+  if (!selectedGroup) return;
+  try {
+    await db.collection('groups').doc(selectedGroup.id).update({
+      'settings.onlyAdminsCanPost': checked
+    });
+    selectedGroup.settings = selectedGroup.settings || {};
+    selectedGroup.settings.onlyAdminsCanPost = checked;
+    showNotifToast(`✓ Permissions updated`, 'success');
+  } catch (err) {
+    showNotifToast('Failed to update permission: ' + err.message, 'error');
+  }
+}
+
+async function leaveCurrentGroup() {
+  if (!selectedGroup) return;
+  if (!confirm(`Are you sure you want to leave "${selectedGroup.name}"?`)) return;
+
+  try {
+    const groupId = selectedGroup.id;
+    const batch = db.batch();
+    const groupRef = db.collection('groups').doc(groupId);
+    const memberRef = groupRef.collection('members').doc(currentUser.uid);
+
+    batch.delete(memberRef);
+    batch.update(groupRef, {
+      memberUids: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+      membersCount: firebase.firestore.FieldValue.increment(-1)
+    });
+
+    await batch.commit();
+    closeGroupInfo();
+    resetCommunityChatMode();
+    showNotifToast('You left the group', 'info');
+  } catch (err) {
+    showNotifToast('Error leaving group: ' + err.message, 'error');
+  }
+}
+
+function openAddMemberModal() {
+  if (!selectedGroup) return;
+  const modal = document.getElementById('addMemberModal');
+  if (!modal) return;
+
+  const currentUids = new Set(selectedGroup.memberUids || []);
+  const availableContacts = (allUsersData || []).filter(u => !currentUids.has(u.uid));
+
+  const picker = document.getElementById('addMemberContactsPicker');
+  if (picker) {
+    if (!availableContacts.length) {
+      picker.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-3);">All your contacts are already in this group!</div>';
+    } else {
+      picker.innerHTML = availableContacts.map(u => `
+        <div class="comm-contact-row" onclick="toggleAddMemberSelect('${u.uid}', this)">
+          <input type="checkbox" id="add_chk_${u.uid}" style="pointer-events:none;">
+          <img src="${escapeHtml(u.photo || 'https://i.imgur.com/HeIi0wU.png')}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+          <span class="comm-contact-name">${escapeHtml(u.displayName || 'User')}</span>
+        </div>
+      `).join('');
+    }
+  }
+
+  selectedGroupMemberUids = new Set();
+  modal.classList.add('active');
+}
+
+function closeAddMemberModal() {
+  const modal = document.getElementById('addMemberModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function toggleAddMemberSelect(uid, rowEl) {
+  const chk = rowEl.querySelector('input[type="checkbox"]');
+  if (selectedGroupMemberUids.has(uid)) {
+    selectedGroupMemberUids.delete(uid);
+    if (chk) chk.checked = false;
+  } else {
+    selectedGroupMemberUids.add(uid);
+    if (chk) chk.checked = true;
+  }
+}
+
+async function submitAddMembersToGroup() {
+  if (!selectedGroup || !selectedGroupMemberUids.size) {
+    closeAddMemberModal();
+    return;
+  }
+  try {
+    const groupId = selectedGroup.id;
+    const batch = db.batch();
+    const groupRef = db.collection('groups').doc(groupId);
+    const membersColl = groupRef.collection('members');
+
+    selectedGroupMemberUids.forEach(uid => {
+      batch.set(membersColl.doc(uid), {
+        uid,
+        role: 'member',
+        joinedAt: Date.now(),
+        addedBy: currentUser.uid
+      });
+      batch.update(groupRef, {
+        memberUids: firebase.firestore.FieldValue.arrayUnion(uid),
+        membersCount: firebase.firestore.FieldValue.increment(1)
+      });
+    });
+
+    await batch.commit();
+    closeAddMemberModal();
+    showNotifToast(`✓ Added ${selectedGroupMemberUids.size} member(s)`, 'success');
+    openGroupInfo();
+  } catch (err) {
+    showNotifToast('Failed to add members: ' + err.message, 'error');
+  }
+}
+
+async function openMemberActionsMenu(targetUid, currentRole) {
+  if (!selectedGroup) return;
+  const targetUser = (allUsersData || []).find(u => u.uid === targetUid) || {};
+  const name = targetUser.displayName || 'Member';
+  const isTargetAdmin = currentRole === 'admin';
+
+  const action = prompt(
+    `Manage ${name}:\n1. ${isTargetAdmin ? 'Dismiss as Admin' : 'Make Group Admin'}\n2. Remove from Group\n\nEnter 1 or 2 (or Cancel):`
+  );
+
+  if (action === '1') {
+    try {
+      const newRole = isTargetAdmin ? 'member' : 'admin';
+      const batch = db.batch();
+      const groupRef = db.collection('groups').doc(selectedGroup.id);
+      const memberRef = groupRef.collection('members').doc(targetUid);
+
+      batch.update(memberRef, { role: newRole });
+      if (newRole === 'admin') {
+        batch.update(groupRef, { admins: firebase.firestore.FieldValue.arrayUnion(targetUid) });
+      } else {
+        batch.update(groupRef, { admins: firebase.firestore.FieldValue.arrayRemove(targetUid) });
+      }
+      await batch.commit();
+      showNotifToast(`✓ Updated role for ${name}`, 'success');
+      openGroupInfo();
+    } catch (e) {
+      showNotifToast('Failed to update role: ' + e.message, 'error');
+    }
+  } else if (action === '2') {
+    if (!confirm(`Remove ${name} from this group?`)) return;
+    try {
+      const batch = db.batch();
+      const groupRef = db.collection('groups').doc(selectedGroup.id);
+      const memberRef = groupRef.collection('members').doc(targetUid);
+
+      batch.delete(memberRef);
+      batch.update(groupRef, {
+        memberUids: firebase.firestore.FieldValue.arrayRemove(targetUid),
+        admins: firebase.firestore.FieldValue.arrayRemove(targetUid),
+        membersCount: firebase.firestore.FieldValue.increment(-1)
+      });
+      await batch.commit();
+      showNotifToast(`✓ Removed ${name}`, 'success');
+      openGroupInfo();
+    } catch (e) {
+      showNotifToast('Failed to remove member: ' + e.message, 'error');
+    }
+  }
+}
+
+async function openAddChannelAdminModal() {
+  if (!selectedChannel) return;
+  const subs = (selectedChannel.subscriberUids || []).filter(u => u !== currentUser.uid && !(selectedChannel.admins || []).includes(u));
+  if (!subs.length) {
+    showNotifToast('No eligible subscribers found to promote to admin', 'info');
+    return;
+  }
+  const promptList = subs.map((u, i) => {
+    const user = (allUsersData || []).find(usr => usr.uid === u) || {};
+    return `${i + 1}. ${user.displayName || 'Subscriber'} (${user.email || u})`;
+  }).join('\n');
+
+  const pickedIndex = prompt(`Select subscriber to make Admin:\n${promptList}\n\nEnter number:`);
+  if (!pickedIndex) return;
+  const idx = parseInt(pickedIndex) - 1;
+  if (idx >= 0 && idx < subs.length) {
+    const targetUid = subs[idx];
+    try {
+      await db.collection('channels').doc(selectedChannel.id).update({
+        admins: firebase.firestore.FieldValue.arrayUnion(targetUid)
+      });
+      selectedChannel.admins = [...(selectedChannel.admins || []), targetUid];
+      showNotifToast('✓ Admin added!', 'success');
+      openChannelInfo();
+    } catch (e) {
+      showNotifToast('Failed to add admin: ' + e.message, 'error');
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHANNELS IMPLEMENTATION (TELEGRAM + WHATSAPP CHANNELS STYLE)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function openCreateChannelModal() {
+  closeCommunityCreateMenu();
+  const modal = document.getElementById('createChannelModal');
+  if (!modal) return;
+  document.getElementById('channelNameInput').value = '';
+  document.getElementById('channelHandleInput').value = '';
+  document.getElementById('channelDescInput').value = '';
+  document.getElementById('channelCategorySelect').value = 'General';
+  document.getElementById('channelAvatarPreview').innerHTML = '<i data-lucide="camera" style="width:24px;height:24px;"></i>';
+  pendingChannelAvatar = null;
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeCreateChannelModal() {
+  const modal = document.getElementById('createChannelModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function handleChannelAvatarSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showNotifToast('Please choose an image file', 'error');
+    return;
+  }
+  pendingChannelAvatar = file;
+  const preview = document.getElementById('channelAvatarPreview');
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function sanitizeChannelHandle(input) {
+  input.value = input.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+}
+
+async function submitCreateChannel() {
+  const name = document.getElementById('channelNameInput').value.trim();
+  const rawHandle = document.getElementById('channelHandleInput').value.trim();
+  const desc = document.getElementById('channelDescInput').value.trim();
+  const category = document.getElementById('channelCategorySelect').value;
+
+  if (!name) { showNotifToast('Please enter channel name', 'error'); return; }
+  if (!rawHandle) { showNotifToast('Please enter a unique channel handle', 'error'); return; }
+
+  const handle = '@' + rawHandle.replace(/^@/, '');
+  const btn = document.getElementById('btnSubmitCreateChannel');
+  btn.disabled = true;
+  btn.innerHTML = '<span>Creating…</span>';
+
+  try {
+    // Check if handle taken
+    const existing = await db.collection('channels').where('handle', '==', handle).get();
+    if (!existing.empty) {
+      showNotifToast('Handle is already taken. Please pick another.', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<span>Create Channel</span>';
+      return;
+    }
+
+    let avatarUrl = '';
+    if (pendingChannelAvatar) {
+      showNotifToast('Uploading channel icon…', 'info');
+      avatarUrl = await uploadFile(pendingChannelAvatar);
+    }
+
+    const chanDoc = {
+      name,
+      handle,
+      description: desc,
+      category,
+      avatarUrl: avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
+      ownerUid: currentUser.uid,
+      admins: [currentUser.uid],
+      subscribersCount: 1,
+      subscriberUids: [currentUser.uid],
+      isPublic: true,
+      createdAt: Date.now(),
+      lastPostTime: Date.now()
+    };
+
+    const docRef = await db.collection('channels').add(chanDoc);
+    await docRef.collection('subscribers').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      joinedAt: Date.now(),
+      role: 'owner'
+    });
+
+    closeCreateChannelModal();
+    showNotifToast('✓ Channel created!', 'success');
+
+    const createdChan = { id: docRef.id, ...chanDoc };
+    selectChannelFeed(createdChan);
+  } catch (err) {
+    showNotifToast('Failed to create channel: ' + err.message, 'error');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>Create Channel</span>';
+  }
+}
+
+// ── Listen to user's subscribed channels ───────────────────────────────────
+function listenMyChannels() {
+  db.collection('channels')
+    .where('subscriberUids', 'array-contains', currentUser.uid)
+    .onSnapshot(snap => {
+      myChannels = [];
+      snap.forEach(doc => {
+        myChannels.push({ id: doc.id, ...doc.data() });
+      });
+      myChannels.sort((a, b) => (b.lastPostTime || 0) - (a.lastPostTime || 0));
+
+      const countBadge = document.getElementById('commFollowingCount');
+      if (countBadge) countBadge.textContent = myChannels.length;
+
+      if (activeCommunitySubTab === 'channels') {
+        renderChannelsFollowing();
+      }
+    }, err => console.error('Channels listener error:', err));
+}
+
+function renderChannelsFollowing() {
+  const container = document.getElementById('commChannelsFollowingList');
+  if (!container) return;
+
+  if (!myChannels.length) {
+    container.innerHTML = `<div class="comm-ws-empty-hint">Channels you create or follow will appear here.</div>`;
+    return;
+  }
+
+  container.innerHTML = myChannels.map(c => {
+    const avatar = c.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+    const activeClass = (selectedChannel && selectedChannel.id === c.id) ? ' active' : '';
+    const subs = formatCount(c.subscribersCount || 1);
+
+    return `
+      <div class="comm-group-item${activeClass}" onclick="handleSelectChannelItem('${c.id}')">
+        <img src="${escapeHtml(avatar)}" class="comm-group-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="comm-group-info">
+          <div class="comm-group-name-row">
+            <div class="comm-group-name">${escapeHtml(c.name || 'Channel')}</div>
+            <div class="comm-group-time">${escapeHtml(c.category || 'General')}</div>
+          </div>
+          <div class="comm-group-preview-row">
+            <div class="comm-group-preview" style="color:var(--primary-lt);font-weight:600;">${escapeHtml(c.handle || '')}</div>
+            <div class="comm-group-members-badge">${subs} subscribers</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function handleSelectChannelItem(channelId) {
+  const chan = myChannels.find(c => c.id === channelId) || discoverChannels.find(c => c.id === channelId);
+  if (chan) selectChannelFeed(chan);
+}
+
+// ── Public Discover Channels Directory ─────────────────────────────────────
+async function loadDiscoverChannels() {
+  try {
+    const snap = await db.collection('channels')
+      .where('isPublic', '==', true)
+      .orderBy('subscribersCount', 'desc')
+      .limit(40)
+      .get();
+
+    discoverChannels = [];
+    snap.forEach(d => discoverChannels.push({ id: d.id, ...d.data() }));
+    if (activeCommunitySubTab === 'channels') {
+      renderChannelsDiscover();
+    }
+  } catch (err) {
+    console.warn('Load discover channels error:', err);
+  }
+}
+
+function filterDiscoverChannels() {
+  renderChannelsDiscover();
+}
+
+function renderChannelsDiscover() {
+  const carousel = document.getElementById('commDiscoverCarousel');
+  const listContainer = document.getElementById('commDiscoverList');
+  if (!listContainer) return;
+
+  const query = (document.getElementById('commDiscoverSearchInput')?.value || '').toLowerCase().trim();
+  let filtered = discoverChannels;
+
+  if (query) {
+    filtered = filtered.filter(c => 
+      (c.name || '').toLowerCase().includes(query) || 
+      (c.handle || '').toLowerCase().includes(query) ||
+      (c.description || '').toLowerCase().includes(query)
+    );
+  }
+
+  // 1. WhatsApp-Style Horizontal Recommended Channels Carousel
+  if (carousel) {
+    const recommended = discoverChannels.slice(0, 10);
+    if (!recommended.length) {
+      carousel.innerHTML = '<div style="padding:10px 16px;color:var(--text-3);font-size:12px;">No channels found</div>';
+    } else {
+      carousel.innerHTML = recommended.map(c => {
+        const isSubscribed = (c.subscriberUids || []).includes(currentUser.uid);
+        const subs = formatCount(c.subscribersCount || 1);
+        const avatar = c.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+
+        return `
+          <div class="ws-channel-card" onclick="handleSelectChannelItem('${c.id}')">
+            <div class="ws-channel-card-avatar-wrap">
+              <img src="${escapeHtml(avatar)}" class="ws-channel-card-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+              <div class="ws-channel-verified-badge">✓</div>
+            </div>
+            <div class="ws-channel-card-title">${escapeHtml(c.name)}</div>
+            <div class="ws-channel-card-followers">${subs} followers</div>
+            <button class="ws-channel-card-btn ${isSubscribed ? 'following' : 'follow'}" onclick="event.stopPropagation(); toggleSubscribeChannel('${c.id}')">
+              ${isSubscribed ? 'Following' : 'Follow'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 2. Full Explore More List (WhatsApp Style)
+  if (!filtered.length) {
+    listContainer.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-3);font-size:13px;">No channels found matching your search.</div>';
+    return;
+  }
+
+  listContainer.innerHTML = filtered.map(c => {
+    const isSubscribed = (c.subscriberUids || []).includes(currentUser.uid);
+    const subs = formatCount(c.subscribersCount || 1);
+    const avatar = c.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+
+    return `
+      <div class="comm-discover-card" onclick="handleSelectChannelItem('${c.id}')">
+        <img src="${escapeHtml(avatar)}" class="comm-discover-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="comm-discover-info">
+          <div class="comm-discover-title-row">
+            <span class="comm-discover-name">${escapeHtml(c.name)}</span>
+            <span class="comm-discover-handle">${escapeHtml(c.handle || '')}</span>
+          </div>
+          <div class="comm-discover-subline">
+            <span>👥 ${subs} followers</span>
+          </div>
+        </div>
+        <button class="comm-sub-btn ${isSubscribed ? 'following' : 'follow'}" onclick="event.stopPropagation(); toggleSubscribeChannel('${c.id}')">
+          ${isSubscribed ? 'Following' : '+ Follow'}
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+async function toggleSubscribeChannel(channelId) {
+  const chan = discoverChannels.find(c => c.id === channelId) || myChannels.find(c => c.id === channelId);
+  if (!chan) return;
+
+  const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
+  try {
+    const chanRef = db.collection('channels').doc(channelId);
+    const subRef = chanRef.collection('subscribers').doc(currentUser.uid);
+
+    if (isSubscribed) {
+      await subRef.delete();
+      await chanRef.update({
+        subscriberUids: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+        subscribersCount: firebase.firestore.FieldValue.increment(-1)
+      });
+      chan.subscriberUids = (chan.subscriberUids || []).filter(u => u !== currentUser.uid);
+      chan.subscribersCount = Math.max(0, (chan.subscribersCount || 1) - 1);
+      showNotifToast('Unsubscribed from ' + chan.name, 'info');
+    } else {
+      await subRef.set({
+        uid: currentUser.uid,
+        joinedAt: Date.now()
+      });
+      await chanRef.update({
+        subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+        subscribersCount: firebase.firestore.FieldValue.increment(1)
+      });
+      chan.subscriberUids = [...(chan.subscriberUids || []), currentUser.uid];
+      chan.subscribersCount = (chan.subscribersCount || 0) + 1;
+      showNotifToast('✓ Subscribed to ' + chan.name, 'success');
+    }
+
+    renderChannelsDiscover();
+    renderChannelsFollowing();
+    if (selectedChannel && selectedChannel.id === channelId) {
+      document.getElementById('status').textContent = `${formatCount(chan.subscribersCount)} subscribers • ${chan.handle || ''}`;
+    }
+  } catch (err) {
+    showNotifToast('Subscription error: ' + err.message, 'error');
+  }
+}
+
+// ── Select and Open Channel Broadcast Feed ─────────────────────────────────
+function selectChannelFeed(channel) {
+  if (unsubChatA) { unsubChatA(); unsubChatA = null; }
+  if (unsubChatB) { unsubChatB(); unsubChatB = null; }
+  if (unsubTyping) { unsubTyping(); unsubTyping = null; }
+  if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
+  if (unsubGroupMessages) { unsubGroupMessages(); unsubGroupMessages = null; }
+
+  currentChatMode = 'channel';
+  selectedChannel = channel;
+  selectedGroup = null;
+  selectedUser = null;
+
+  // Header configuration: strictly hide call buttons
+  const voiceBtn = document.getElementById('headerVoiceCallBtn');
+  const videoBtn = document.getElementById('headerVideoCallBtn');
+  const chatInfoBtn = document.getElementById('headerChatInfoBtn');
+  const commInfoBtn = document.getElementById('headerCommunityInfoBtn');
+
+  if (voiceBtn) voiceBtn.style.display = 'none';
+  if (videoBtn) videoBtn.style.display = 'none';
+  if (chatInfoBtn) chatInfoBtn.style.display = 'none';
+  if (commInfoBtn) commInfoBtn.style.display = 'flex';
+
+  document.getElementById('chatName').textContent = channel.name || 'Channel';
+  document.getElementById('chatPic').src = channel.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+  document.getElementById('chatStatusDot').style.display = 'none';
+  document.getElementById('status').textContent = `${formatCount(channel.subscribersCount || 1)} subscribers • ${channel.handle || ''}`;
+
+  // Broadcast-only input bar logic
+  const isAdmin = (channel.admins || []).includes(currentUser.uid) || channel.ownerUid === currentUser.uid;
+  const inputArea = document.querySelector('.input-area');
+  let noticeEl = document.getElementById('commBroadcastNotice');
+
+  if (isAdmin) {
+    if (inputArea) inputArea.style.display = 'flex';
+    if (noticeEl) noticeEl.style.display = 'none';
+    const ta = document.getElementById('text');
+    if (ta) ta.placeholder = 'Broadcast an announcement to subscribers…';
+  } else {
+    if (inputArea) inputArea.style.display = 'none';
+    if (!noticeEl) {
+      noticeEl = document.createElement('div');
+      noticeEl.id = 'commBroadcastNotice';
+      noticeEl.className = 'comm-broadcast-notice';
+      inputArea.parentNode.insertBefore(noticeEl, inputArea);
+    }
+    noticeEl.innerHTML = '📢 <span>This channel is broadcast-only. You can comment on individual posts.</span>';
+    noticeEl.style.display = 'block';
+  }
+
+  // Mobile drawer
+  if (window.innerWidth <= 768) {
+    const app = document.getElementById('app');
+    if (app) app.classList.add('chat-open-mobile');
+    document.body.classList.add('chat-open-mobile');
+    const bNav = document.getElementById('mobileBottomNav');
+    if (bNav) bNav.classList.add('hidden');
+  }
+
+  loadChannelPosts(channel.id);
+  if (window.lucide) lucide.createIcons();
+}
+
+function loadChannelPosts(channelId) {
+  if (unsubChannelPosts) unsubChannelPosts();
+  const box = document.getElementById('messages');
+  if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading broadcast posts…</div>';
+
+  unsubChannelPosts = db.collection('channels').doc(channelId).collection('posts')
+    .orderBy('createdAt', 'desc')
+    .limit(40)
+    .onSnapshot(snap => {
+      const posts = [];
+      snap.forEach(doc => {
+        posts.push({ id: doc.id, ...doc.data() });
+      });
+      posts.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      renderChannelPostsList(posts);
+    }, err => {
+      console.error('Channel posts error:', err);
+    });
+}
+
+function renderChannelPostsList(posts) {
+  const box = document.getElementById('messages');
+  if (!box) return;
+
+  if (!posts.length) {
+    box.innerHTML = `
+      <div class="empty-chat">
+        <div class="empty-chat-icon">📢</div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">${escapeHtml(selectedChannel?.name || 'Channel')}</div>
+        <div style="font-size: 13px; color: var(--text-3);">No posts have been broadcast yet. Stay tuned for announcements!</div>
+      </div>
+    `;
+    return;
+  }
+
+  box.innerHTML = '';
+  posts.forEach(post => {
+    // Record view impression once per session
+    recordPostView(post.id);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'channel-post-wrap';
+
+    let mediaHtml = '';
+    if (post.image) {
+      mediaHtml = `<div class="channel-post-media" onclick="openProfilePic('${post.image}')"><img src="${escapeHtml(post.image)}" loading="lazy"></div>`;
+    } else if (post.video) {
+      mediaHtml = `<div class="channel-post-media"><video src="${escapeHtml(post.video)}" controls></video></div>`;
+    }
+
+    const views = formatCount(post.viewsCount || 1);
+    const commentsCount = post.commentsCount || 0;
+    const timeStr = post.createdAt ? new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+    wrap.innerHTML = `
+      <div class="channel-post-card" id="post_${post.id}">
+        <div class="channel-post-header">
+          <div class="channel-post-author-box">
+            <span class="channel-post-author-name">${escapeHtml(post.authorName || selectedChannel.name)}</span>
+          </div>
+          <span class="channel-post-time">${timeStr}</span>
+        </div>
+        ${mediaHtml}
+        <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
+        <div class="channel-post-footer">
+          <div class="channel-post-views">
+            <i data-lucide="eye" style="width:13px;height:13px;"></i>
+            <span>${views}</span>
+          </div>
+          <div class="channel-post-actions">
+            <button class="channel-reaction-pill" onclick="toggleChannelPostReaction('${post.id}', '❤️')">
+              <span>❤️</span> <span>${(post.reactions && post.reactions['❤️']) || 0}</span>
+            </button>
+            <button class="channel-comments-btn" onclick="openChannelComments('${post.id}')">
+              <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
+              <span>${commentsCount} Comments</span>
+            </button>
+            <button class="channel-reaction-pill" onclick="shareChannelPost('${post.id}')" title="Forward / Share Post">
+              <i data-lucide="share-2" style="width:12px;height:12px;"></i>
+              <span>Share</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    box.appendChild(wrap);
+  });
+
+  scrollMessagesToBottom();
+  if (window.lucide) lucide.createIcons();
+}
+
+async function recordPostView(postId) {
+  if (!selectedChannel) return;
+  const key = `nexa_view_${selectedChannel.id}_${postId}`;
+  if (sessionStorage.getItem(key)) return;
+  sessionStorage.setItem(key, '1');
+
+  try {
+    await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId).update({
+      viewsCount: firebase.firestore.FieldValue.increment(1)
+    });
+  } catch (e) {}
+}
+
+async function shareChannelPost(postId) {
+  if (!selectedChannel) return;
+  const card = document.getElementById(`post_${postId}`);
+  const text = card ? (card.querySelector('.channel-post-text')?.textContent || '').trim() : '';
+  const shareData = {
+    title: `${selectedChannel.name} broadcast on Nexa`,
+    text: `"${text}" — via ${selectedChannel.name} (${selectedChannel.handle || ''})`,
+    url: window.location.href
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      showNotifToast('✓ Shared broadcast post', 'success');
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+
+  // Fallback to clipboard
+  const copyStr = `${shareData.text}\n${shareData.url}`;
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(copyStr);
+    showNotifToast('✓ Post text copied to clipboard to share!', 'success');
+  } else {
+    showNotifToast('Sharing not supported on this browser', 'info');
+  }
+}
+
+async function sendChannelPost() {
+  if (!selectedChannel) return;
+  const ta = document.getElementById('text');
+  const text = ta.value.trim();
+  if (!text) return;
+  ta.value = '';
+  ta.style.height = 'auto';
+  toggleActionButtons();
+
+  await sendChannelPostWithExtras({ text });
+}
+
+async function sendChannelPostWithExtras(extras) {
+  if (!selectedChannel) return;
+  try {
+    const authorName = document.getElementById('myName').textContent || currentUser.displayName || selectedChannel.name;
+    const postPayload = {
+      authorUid: currentUser.uid,
+      authorName,
+      createdAt: Date.now(),
+      viewsCount: 1,
+      commentsCount: 0,
+      reactions: { '❤️': 0 },
+      ...extras
+    };
+
+    await db.collection('channels').doc(selectedChannel.id).collection('posts').add(postPayload);
+    await db.collection('channels').doc(selectedChannel.id).update({
+      lastPostTime: Date.now()
+    });
+  } catch (err) {
+    showNotifToast('Failed to broadcast: ' + err.message, 'error');
+  }
+}
+
+async function toggleChannelPostReaction(postId, emoji) {
+  if (!selectedChannel) return;
+  try {
+    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
+    await postRef.update({
+      [`reactions.${emoji}`]: firebase.firestore.FieldValue.increment(1)
+    });
+  } catch (e) {}
+}
+
+// ── Channel Post Discussion Comments Drawer ────────────────────────────────
+function openChannelComments(postId) {
+  if (!selectedChannel) return;
+  activeCommentPostId = postId;
+  const drawer = document.getElementById('channelCommentsDrawer');
+  if (!drawer) return;
+
+  const postEl = document.getElementById(`post_${postId}`);
+  const postText = postEl ? postEl.querySelector('.channel-post-text')?.textContent || 'Discussion' : 'Discussion';
+  document.getElementById('commentsOriginalPostSnippet').textContent = postText;
+
+  loadChannelComments(postId);
+  drawer.classList.add('open');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeChannelComments() {
+  if (unsubChannelComments) { unsubChannelComments(); unsubChannelComments = null; }
+  activeCommentPostId = null;
+  const drawer = document.getElementById('channelCommentsDrawer');
+  if (drawer) drawer.classList.remove('open');
+}
+
+function loadChannelComments(postId) {
+  if (unsubChannelComments) unsubChannelComments();
+  const list = document.getElementById('channelCommentsList');
+  if (list) list.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:20px;">Loading comments…</div>';
+
+  unsubChannelComments = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId).collection('comments')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      const comments = [];
+      snap.forEach(d => comments.push({ id: d.id, ...d.data() }));
+      renderChannelComments(comments);
+    }, err => console.error(err));
+}
+
+function renderChannelComments(comments) {
+  const list = document.getElementById('channelCommentsList');
+  if (!list) return;
+
+  if (!comments.length) {
+    list.innerHTML = '<div class="comments-empty">No comments yet. Start the conversation!</div>';
+    return;
+  }
+
+  list.innerHTML = comments.map(c => {
+    const avatar = c.authorAvatar || 'https://i.imgur.com/HeIi0wU.png';
+    const timeStr = c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    return `
+      <div class="comment-card">
+        <img src="${escapeHtml(avatar)}" class="comment-avatar" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="comment-body">
+          <div class="comment-author-row">
+            <span class="comment-author-name">${escapeHtml(c.authorName || 'User')}</span>
+            <span class="comment-time">${timeStr}</span>
+          </div>
+          <div class="comment-text">${formatMessageText(c.text || '')}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.scrollTop = list.scrollHeight;
+}
+
+function handleCommentInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    submitChannelComment();
+  }
+}
+
+async function submitChannelComment() {
+  if (!selectedChannel || !activeCommentPostId) return;
+  const input = document.getElementById('channelCommentInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  try {
+    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(activeCommentPostId);
+    await postRef.collection('comments').add({
+      authorUid: currentUser.uid,
+      authorName: document.getElementById('myName').textContent || currentUser.displayName || 'Subscriber',
+      authorAvatar: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+      text,
+      createdAt: Date.now()
+    });
+
+    await postRef.update({
+      commentsCount: firebase.firestore.FieldValue.increment(1)
+    });
+  } catch (err) {
+    showNotifToast('Failed to comment: ' + err.message, 'error');
+  }
+}
+
+// ── Channel Info & Management Modal ────────────────────────────────────────
+function openChannelInfo() {
+  if (!selectedChannel) return;
+  const modal = document.getElementById('channelInfoModal');
+  if (!modal) return;
+
+  document.getElementById('channelInfoAvatar').src = selectedChannel.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+  document.getElementById('channelInfoName').textContent = selectedChannel.name || 'Channel';
+  document.getElementById('channelInfoHandle').textContent = selectedChannel.handle || '';
+  document.getElementById('channelInfoMeta').textContent = `${formatCount(selectedChannel.subscribersCount || 1)} subscribers • ${selectedChannel.category || 'General'}`;
+  document.getElementById('channelInfoDesc').textContent = selectedChannel.description || 'No description';
+
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const adminSec = document.getElementById('channelAdminSection');
+  if (adminSec) adminSec.style.display = isOwner ? 'block' : 'none';
+
+  const isSubscribed = (selectedChannel.subscriberUids || []).includes(currentUser.uid);
+  const subBtn = document.getElementById('channelSubToggleBtn');
+  if (subBtn) {
+    subBtn.innerHTML = isSubscribed ? '<i data-lucide="bell-off" style="width:16px;height:16px;"></i> Unsubscribe' : '<i data-lucide="bell" style="width:16px;height:16px;"></i> Subscribe';
+    subBtn.className = isSubscribed ? 'comm-btn-danger' : 'comm-action-btn-sm';
+  }
+
+  // Owner delete button
+  const deleteBtn = document.getElementById('channelDeleteBtn');
+  if (deleteBtn) deleteBtn.style.display = isOwner ? 'inline-flex' : 'none';
+
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeChannelInfo() {
+  const modal = document.getElementById('channelInfoModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function deleteCurrentChannel() {
+  if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  if (!isOwner) {
+    showNotifToast('Only the channel creator can delete this channel', 'error');
+    return;
+  }
+
+  if (!confirm(`Permanently delete channel "${selectedChannel.name}"? All posts and subscriber records will be removed. This cannot be undone.`)) return;
+
+  try {
+    const channelId = selectedChannel.id;
+    await db.collection('channels').doc(channelId).delete();
+    closeChannelInfo();
+    resetCommunityChatMode();
+    showNotifToast(`✓ Channel "${selectedChannel.name}" deleted`, 'success');
+  } catch (err) {
+    showNotifToast('Error deleting channel: ' + err.message, 'error');
+  }
+}
+
+async function toggleChannelSubscriptionFromInfo() {
+  if (!selectedChannel) return;
+  await toggleSubscribeChannel(selectedChannel.id);
+  openChannelInfo();
+}
+
+async function shareCurrentChannel() {
+  if (!selectedChannel) return;
+  const shareData = {
+    title: `Follow ${selectedChannel.name} on Nexa`,
+    text: `Check out ${selectedChannel.name} (${selectedChannel.handle || ''}) on Nexa Messenger: ${selectedChannel.description || ''}`,
+    url: window.location.href
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      showNotifToast('✓ Shared channel invite', 'success');
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+
+  const copyStr = `${shareData.text}\n${shareData.url}`;
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(copyStr);
+    showNotifToast('✓ Channel link copied to clipboard!', 'success');
+  } else {
+    showNotifToast('Sharing not supported on this browser', 'info');
+  }
+}
+
+// ── Universal Community Info Router ────────────────────────────────────────
+function openActiveCommunityInfo() {
+  if (currentChatMode === 'group') {
+    openGroupInfo();
+  } else if (currentChatMode === 'channel') {
+    openChannelInfo();
+  }
+}
+
+function handleChatPeerClick() {
+  if (currentChatMode === 'group') {
+    openGroupInfo();
+  } else if (currentChatMode === 'channel') {
+    openChannelInfo();
+  } else {
+    openUserProfile();
+  }
+}
+
+// ── Reset from Community mode to 1:1 Direct Chat ───────────────────────────
+function resetCommunityChatMode() {
+  currentChatMode = 'direct';
+  selectedGroup = null;
+  selectedChannel = null;
+
+  if (unsubGroupMessages) { unsubGroupMessages(); unsubGroupMessages = null; }
+  if (unsubChannelPosts) { unsubChannelPosts(); unsubChannelPosts = null; }
+
+  // Restore call buttons for direct chat
+  const voiceBtn = document.getElementById('headerVoiceCallBtn');
+  const videoBtn = document.getElementById('headerVideoCallBtn');
+  const chatInfoBtn = document.getElementById('headerChatInfoBtn');
+  const commInfoBtn = document.getElementById('headerCommunityInfoBtn');
+
+  if (voiceBtn) voiceBtn.style.display = 'flex';
+  if (videoBtn) videoBtn.style.display = 'flex';
+  if (chatInfoBtn) chatInfoBtn.style.display = 'flex';
+  if (commInfoBtn) commInfoBtn.style.display = 'none';
+
+  // Restore input area
+  const inputArea = document.querySelector('.input-area');
+  const noticeEl = document.getElementById('commBroadcastNotice');
+  if (inputArea) inputArea.style.display = 'flex';
+  if (noticeEl) noticeEl.style.display = 'none';
+  const ta = document.getElementById('text');
+  if (ta) ta.placeholder = 'Type a message…';
+}
+
+function formatCount(num) {
+  if (!num) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return String(num);
+}
+
 

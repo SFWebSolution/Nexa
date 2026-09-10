@@ -1,8 +1,6 @@
 rules_version = '2';
 
 // Nexa Messenger — Firestore security rules
-// Allows cross-device presence, 1:1 voice/video calls, multi-user voice rooms,
-// messaging, and stories. Auth is required for all reads/writes.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -14,15 +12,9 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // ── User profiles ────────────────────────────────────────────────
-    // Anyone signed in can read any profile (so the contact list works).
-    // A user can only create/edit their own profile — including their own
-    // fcmToken/peerId. (Previously a carve-out let ANY signed-in user write
-    // fcmToken/peerId on OTHER users' docs — an attacker could hijack push
-    // tokens; that hole is now closed.)
-    // Exception: referral credit — a brand-new signup may increment the
-    // referrer's referralCount/referrals ONLY (no other fields), so the
-    // "invite friends" count works cross-user.
+    // ── User profiles ──
+    // Owner-only edits, EXCEPT a new signup may credit the referrer's
+    // referralCount/referrals (invite system) — nothing else cross-user.
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid);
@@ -32,18 +24,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── Presence / online status ─────────────────────────────────────
-    // Anyone signed in can read everyone's presence (online dots, last seen).
-    // A user only writes their own presence doc.
+    // ── Presence ──
     match /presence/{uid} {
       allow read: if isSignedIn();
       allow create, update, delete: if isOwner(uid);
     }
 
-    // ── Direct messages & call log entries ──────────────────────────
-    // A message is readable by either the sender or the recipient.
-    // Only the sender may create it — `from` MUST equal the caller's uid,
-    // so nobody can send a message impersonating another user.
+    // ── Direct messages & call log ──
     match /chats/{msgId} {
       function isParty(data) {
         return isSignedIn()
@@ -57,8 +44,6 @@ service cloud.firestore {
                     && (!request.resource.data.keys().hasAny(['text'])
                         || (request.resource.data.text is string
                             && request.resource.data.text.size() <= 10000));
-      // Recipient may only mark read/react/open view-once; the sender may
-      // additionally edit their own text. Neither may touch other fields.
       allow update: if isSignedIn() && (
         (request.auth.uid == resource.data.to
          && request.resource.data.diff(resource.data).affectedKeys()
@@ -74,9 +59,7 @@ service cloud.firestore {
       allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
     }
 
-    // ── 1:1 voice/video call signaling ──────────────────────────────
-    // Caller writes {from,to,status:ringing}. Callee reads & updates
-    // status to answered/declined/ended. Either party can read.
+    // ── 1:1 calls ──
     match /calls/{callId} {
       function isCallParty(data) {
         return isSignedIn()
@@ -90,11 +73,7 @@ service cloud.firestore {
       allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
     }
 
-    // ── Multi-user voice rooms ──────────────────────────────────────
-    // Room metadata: readable by any signed-in user (so invite links work).
-    // Created by the host (hostId must be the creator). Update keeps the host
-    // fixed (no one can hijack hostId) so only the real host controls the room.
-    // Only the HOST may delete the room (host close ends it for everyone).
+    // ── Voice rooms ──
     match /voice_rooms/{roomId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -103,10 +82,6 @@ service cloud.firestore {
                     && request.resource.data.hostId == resource.data.hostId;
       allow delete: if isSignedIn() && resource.data.hostId == request.auth.uid;
 
-      // Each participant owns its own doc in the subcollection.
-      // Anyone in the room can read all participants; a client writes only its own.
-      // Delete: a participant deletes their OWN doc (leaving), OR the room HOST
-      // deletes ANY participant doc (host-close tears the room down for everyone).
       match /participants/{uid} {
         allow read: if isSignedIn();
         allow create, update: if isOwner(uid);
@@ -115,8 +90,6 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/voice_rooms/$(roomId)).data.hostId == request.auth.uid);
       }
 
-      // In-room text chat messages. Any signed-in user may read; only the
-      // sender may create or delete their own message.
       match /messages/{messageId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn()
@@ -127,12 +100,7 @@ service cloud.firestore {
       }
     }
 
-    // ── Voice room invites ──────────────────────────────────────────
-    // An invite is written INTO the invitee's doc (doc id = invitee uid) by
-    // the inviter — so create/update is only allowed on SOMEONE ELSE's doc.
-    // Only the invitee may delete their own invite doc (accept/decline).
-    // The invite must carry a room + the inviter, so arbitrary spam writes are
-    // rejected.
+    // ── Voice room invites ──
     match /voice_invites/{uid} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -142,14 +110,7 @@ service cloud.firestore {
       allow delete: if isSignedIn() && uid == request.auth.uid;
     }
 
-    // ── Stories / status ────────────────────────────────────────────
-    // Stories auto-expire 24h after posting. Each doc carries an `expireAt`
-    // Firestore Timestamp (posted time + 24h); legacy docs use `createdAt`
-    // (ms epoch) + 24h. Anyone signed in may DELETE a story once it is past
-    // its expiry, so any open client garbage-collects expired stories — they
-    // truly disappear after 24h regardless of who posted them. The owner may
-    // always delete/update their own story. Non-owners may only update the
-    // views/likes/reshares arrays (view/like/reshare recording).
+    // ── Stories / status ──
     function storyExpired(data) {
       return (data.expireAt is timestamp && request.time > data.expireAt)
           || (data.createdAt is int && request.time.toMillis() > data.createdAt + 86400000);
@@ -172,9 +133,7 @@ service cloud.firestore {
       );
     }
 
-    // ── Profile Notes (24h note shown on a user's profile) ────────────
-    // Anyone signed-in can read (to render on profile). Only the owner
-    // can write/delete their own note.
+    // ── Profile notes ──
     match /profile_notes/{uid} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
@@ -185,22 +144,67 @@ service cloud.firestore {
       allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
-    // ── Per-chat disappearing-message settings ──────────────────────
-    // The doc id is the two participants' uids joined with "_" (sorted).
-    // Only a member of that pair may read/write the doc.
+    // ── Disappearing settings ──
     match /disappearingSettings/{keyId} {
       allow read, write: if isSignedIn() && request.auth.uid in keyId.split('_');
     }
 
-    // ── Typing indicators ───────────────────────────────────────────
-    // Doc id is the TYPER's uid. Anyone signed in may read (to show the
-    // "typing…" bar); a user can only write their own typing state.
+    // ── Typing ──
     match /typing/{uid} {
       allow read: if isSignedIn();
       allow write: if isOwner(uid);
     }
 
-    // Deny everything else by default.
+    // ── Community Groups ──
+    match /groups/{groupId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+
+      match /members/{uid} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn();
+      }
+
+      match /messages/{msgId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+                      && (request.resource.data.senderUid == request.auth.uid
+                          || request.resource.data.senderUid == 'system');
+        allow update: if isSignedIn();
+        allow delete: if isSignedIn() && resource.data.senderUid == request.auth.uid;
+      }
+    }
+
+    // ── Community Channels ──
+    match /channels/{channelId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+
+      match /subscribers/{uid} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn() && (request.auth.uid == uid || request.auth.uid == get(/databases/$(database)/documents/channels/$(channelId)).data.ownerUid);
+      }
+
+      match /posts/{postId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update: if isSignedIn();
+        allow delete: if isSignedIn();
+
+        match /comments/{commentId} {
+          allow read: if isSignedIn();
+          allow create: if isSignedIn() && request.resource.data.authorUid == request.auth.uid;
+          allow update, delete: if isSignedIn() && resource.data.authorUid == request.auth.uid;
+        }
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

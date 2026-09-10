@@ -136,7 +136,7 @@
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
         <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
-        <button class="s-tab-btn" id="sTabCommunity" onclick="openCommunityComingSoon()" title="Community"><i data-lucide="users"></i></button>
+        <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
         <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
       </div>
@@ -386,6 +386,104 @@
           </button>
         </div>
       </div>
+
+      <!-- 5. COMMUNITY TAB (WHATSAPP STYLE) -->
+      <div class="tab-pane" id="tabPaneCommunity">
+        <div class="tab-pane-header community-pane-header">
+          <h2>Community</h2>
+          <div class="comm-hdr-actions">
+            <button class="comm-create-btn" id="commCreateTriggerBtn" onclick="toggleCommunityCreateMenu(event)" title="Create New">
+              <i data-lucide="plus" style="width: 15px; height: 15px;"></i>
+              <span>New</span>
+            </button>
+            <div class="comm-create-menu" id="commCreateMenu" style="display: none;">
+              <div class="comm-menu-item" onclick="openCreateGroupModal()">
+                <div class="comm-menu-icon-wrap"><i data-lucide="users" style="width: 17px; height: 17px;"></i></div>
+                <div class="comm-menu-text">
+                  <div class="comm-menu-title">New Group</div>
+                  <div class="comm-menu-desc">Private group for members only</div>
+                </div>
+              </div>
+              <div class="comm-menu-item" onclick="openCreateChannelModal()">
+                <div class="comm-menu-icon-wrap"><i data-lucide="megaphone" style="width: 17px; height: 17px;"></i></div>
+                <div class="comm-menu-text">
+                  <div class="comm-menu-title">New Channel</div>
+                  <div class="comm-menu-desc">Broadcast updates to followers</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WhatsApp-Style Segmented Tabs (Groups | Channels) -->
+        <div class="comm-ws-tabs">
+          <button class="comm-ws-tab active" id="commSubTabGroups" onclick="switchCommunitySubTab('groups')">
+            <span>Groups</span>
+          </button>
+          <button class="comm-ws-tab" id="commSubTabChannels" onclick="switchCommunitySubTab('channels')">
+            <span>Channels</span>
+          </button>
+        </div>
+
+        <!-- GROUPS CONTAINER (WhatsApp Style) -->
+        <div class="comm-groups-container" id="commGroupsContainer">
+          <div class="search-wrap">
+            <input type="text" id="commGroupSearchInput" placeholder="🔍  Search groups…" oninput="filterMyGroups()">
+          </div>
+
+          <!-- WhatsApp-style "New group" shortcut row -->
+          <div class="comm-ws-action-row" onclick="openCreateGroupModal()">
+            <div class="comm-ws-action-icon">
+              <i data-lucide="users" style="width: 20px; height: 20px;"></i>
+            </div>
+            <div class="comm-ws-action-text">New group</div>
+          </div>
+
+          <div class="comm-list-scroll" id="commGroupsList">
+            <div class="comm-empty-state">
+              <div class="comm-empty-icon">👥</div>
+              <div class="comm-empty-title">No groups yet</div>
+              <div class="comm-empty-desc">Groups are private and invite-only. Tap "New group" above to create your first group.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHANNELS CONTAINER (WhatsApp Style) -->
+        <div class="comm-channels-container" id="commChannelsContainer" style="display: none;">
+          <div class="search-wrap">
+            <input type="text" id="commDiscoverSearchInput" placeholder="🔍  Search channels…" oninput="filterDiscoverChannels()">
+          </div>
+
+          <div class="comm-list-scroll" id="commChannelsMainScroll">
+            <!-- Followed Channels Section -->
+            <div class="comm-ws-section-header">
+              <span>Your Channels</span>
+              <button class="comm-ws-header-action" onclick="openCreateChannelModal()">+ New</button>
+            </div>
+            <div class="comm-followed-channels-list" id="commChannelsFollowingList">
+              <div class="comm-ws-empty-hint">Channels you create or follow will appear here.</div>
+            </div>
+
+            <!-- WhatsApp-style "Find Channels to follow" Horizontal Carousel -->
+            <div class="comm-ws-section-header" style="margin-top: 18px;">
+              <span>Find channels</span>
+            </div>
+            <div class="comm-ws-sub-hint">Stay updated on topics that matter to you</div>
+            
+            <div class="comm-ws-cards-carousel" id="commDiscoverCarousel">
+              <!-- Dynamically populated with WhatsApp-style round channel cards -->
+            </div>
+
+            <!-- Full Discover Directory List (WhatsApp Style) -->
+            <div class="comm-ws-section-header" style="margin-top: 18px;">
+              <span>Explore more</span>
+            </div>
+            <div class="comm-discover-vertical-list" id="commDiscoverList">
+              <div style="padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">Loading channels…</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -399,7 +497,7 @@
 
     <div class="chat-header">
       <button class="hdr-btn chat-back-btn" id="chatBackBtn" onclick="closeMobileChat()" title="Back to chats"><i data-lucide="arrow-left" style="width:20px;height:20px;"></i></button>
-      <div class="chat-peer" onclick="openUserProfile()">
+      <div class="chat-peer" onclick="handleChatPeerClick()">
         <div class="chat-avatar-wrap">
           <img src="https://i.imgur.com/HeIi0wU.png" id="chatPic" class="chat-avatar">
           <div class="chat-status-dot" id="chatStatusDot"></div>
@@ -410,9 +508,10 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="hdr-btn" onclick="openVoiceCall()" title="Voice Call"><i data-lucide="phone" style="width: 18px; height: 18px;"></i></button>
-        <button class="hdr-btn" onclick="openCallModal('video')" title="Video Call"><i data-lucide="video" style="width: 18px; height: 18px;"></i></button>
-        <button class="hdr-btn" onclick="openChatInfo()" title="Chat Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" id="headerVoiceCallBtn" onclick="openVoiceCall()" title="Voice Call"><i data-lucide="phone" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" id="headerVideoCallBtn" onclick="openCallModal('video')" title="Video Call"><i data-lucide="video" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" id="headerChatInfoBtn" onclick="openChatInfo()" title="Chat Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" id="headerCommunityInfoBtn" onclick="openActiveCommunityInfo()" title="Community Info" style="display: none;"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" onclick="openSearchModal()" title="Search"><i data-lucide="search" style="width: 18px; height: 18px;"></i></button>
       </div>
     </div>
@@ -512,7 +611,7 @@
     <span class="nav-label">Stories</span>
     <span class="story-tab-dot" id="storyTabDotMobile" style="display:none;"></span>
   </button>
-  <button class="nav-item" id="navBtnCommunity" onclick="openCommunityComingSoon()">
+  <button class="nav-item" id="navBtnCommunity" onclick="switchTab('community')">
     <span class="nav-icon"><i data-lucide="users" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Community</span>
   </button>
@@ -1130,6 +1229,231 @@
       <button class="welcome-back-btn primary" onclick="returningWelcomeInvite()">📤 Invite friends</button>
     </div>
     <div class="welcome-back-foot">Help us grow Nexa by bringing your people along ❤️<br>We dey wait for you o! 😂⚔️</div>
+  </div>
+<!-- ============================================================ -->
+<!-- COMMUNITY MODALS: GROUP & CHANNEL CREATION, INFO & COMMENTS  -->
+<!-- ============================================================ -->
+
+<!-- CREATE GROUP MODAL -->
+<div class="comm-modal-overlay" id="createGroupModal" onclick="handleCommModalOverlayClick(event, 'createGroupModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">Create New Group</div>
+      <button class="comm-modal-close" onclick="closeCreateGroupModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-modal-body">
+      <div class="comm-avatar-picker-wrap">
+        <div class="comm-avatar-preview" id="groupAvatarPreview" onclick="document.getElementById('groupAvatarFileInput').click()">
+          <i data-lucide="camera" style="width:24px;height:24px;"></i>
+        </div>
+        <input type="file" id="groupAvatarFileInput" hidden accept="image/*" onchange="handleGroupAvatarSelected(this)">
+        <div class="comm-avatar-label">Group Icon (Optional)</div>
+      </div>
+      <div class="comm-form-group">
+        <label>Group Subject</label>
+        <input type="text" id="groupSubjectInput" placeholder="Enter group name…" maxlength="50">
+      </div>
+      <div class="comm-form-group">
+        <label>Description (Optional)</label>
+        <textarea id="groupDescInput" placeholder="What is this group about?" maxlength="250" rows="2"></textarea>
+      </div>
+      <div class="comm-form-group">
+        <label>Permissions</label>
+        <label class="comm-checkbox-label">
+          <input type="checkbox" id="groupOnlyAdminsCanPost">
+          <span>Only Admins can send messages (Announcement Mode)</span>
+        </label>
+      </div>
+      <div class="comm-form-group">
+        <label>Add Members (<span id="selectedGroupMembersCount">0</span> selected)</label>
+        <div class="comm-contacts-picker" id="groupContactsPicker">
+          <!-- Populated dynamically with user contacts -->
+        </div>
+      </div>
+    </div>
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closeCreateGroupModal()">Cancel</button>
+      <button class="comm-btn primary" id="btnSubmitCreateGroup" onclick="submitCreateGroup()">
+        <span>Create Group</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE CHANNEL MODAL -->
+<div class="comm-modal-overlay" id="createChannelModal" onclick="handleCommModalOverlayClick(event, 'createChannelModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">Create New Channel</div>
+      <button class="comm-modal-close" onclick="closeCreateChannelModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-modal-body">
+      <div class="comm-avatar-picker-wrap">
+        <div class="comm-avatar-preview" id="channelAvatarPreview" onclick="document.getElementById('channelAvatarFileInput').click()">
+          <i data-lucide="camera" style="width:24px;height:24px;"></i>
+        </div>
+        <input type="file" id="channelAvatarFileInput" hidden accept="image/*" onchange="handleChannelAvatarSelected(this)">
+        <div class="comm-avatar-label">Channel Icon (Optional)</div>
+      </div>
+      <div class="comm-form-group">
+        <label>Channel Name</label>
+        <input type="text" id="channelNameInput" placeholder="e.g. Nexa Announcements" maxlength="50">
+      </div>
+      <div class="comm-form-group">
+        <label>Channel Handle (@)</label>
+        <div class="comm-handle-input-wrap">
+          <span class="comm-handle-prefix">@</span>
+          <input type="text" id="channelHandleInput" placeholder="unique_handle" maxlength="30" oninput="sanitizeChannelHandle(this)">
+        </div>
+        <div class="comm-input-hint">Public handle used for discovery and sharing.</div>
+      </div>
+      <div class="comm-form-group">
+        <label>Category</label>
+        <select id="channelCategorySelect" class="comm-select">
+          <option value="General">General</option>
+          <option value="Tech">Tech</option>
+          <option value="News">News</option>
+          <option value="Crypto">Crypto</option>
+          <option value="Community">Community</option>
+          <option value="Entertainment">Entertainment</option>
+          <option value="Lifestyle">Lifestyle</option>
+          <option value="Education">Education</option>
+        </select>
+      </div>
+      <div class="comm-form-group">
+        <label>Description</label>
+        <textarea id="channelDescInput" placeholder="Describe what subscribers can expect…" maxlength="300" rows="3"></textarea>
+      </div>
+    </div>
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closeCreateChannelModal()">Cancel</button>
+      <button class="comm-btn primary" id="btnSubmitCreateChannel" onclick="submitCreateChannel()">
+        <span>Create Channel</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- GROUP INFO MODAL -->
+<div class="comm-modal-overlay" id="groupInfoModal" onclick="handleCommModalOverlayClick(event, 'groupInfoModal')">
+  <div class="comm-modal-card comm-info-card" onclick="event.stopPropagation()">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">Group Details</div>
+      <button class="comm-modal-close" onclick="closeGroupInfo()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-info-scroll">
+      <div class="comm-info-hero">
+        <img id="groupInfoAvatar" src="https://i.imgur.com/HeIi0wU.png" class="comm-info-avatar" alt="Group Icon">
+        <div class="comm-info-title" id="groupInfoName">Group Name</div>
+        <div class="comm-info-subtitle" id="groupInfoMeta">0 members</div>
+        <div class="comm-info-desc" id="groupInfoDesc"></div>
+      </div>
+
+      <div class="comm-info-section" id="groupAdminControlsSection" style="display: none;">
+        <div class="comm-section-title">Admin Permissions</div>
+        <label class="comm-checkbox-label">
+          <input type="checkbox" id="groupInfoOnlyAdminsCanPost" onchange="toggleGroupOnlyAdminsCanPost(this.checked)">
+          <span>Only Admins can send messages</span>
+        </label>
+      </div>
+
+      <div class="comm-info-section">
+        <div class="comm-section-header">
+          <div class="comm-section-title">Members (<span id="groupInfoMemberCount">0</span>)</div>
+          <button class="comm-link-btn" id="groupAddMemberBtn" onclick="openAddMemberModal()" style="display: none;">+ Add Member</button>
+        </div>
+        <div class="comm-members-list" id="groupInfoMembersList"></div>
+      </div>
+
+      <div class="comm-info-section" style="display: flex; gap: 10px;">
+        <button class="comm-btn-danger" id="groupLeaveBtn" onclick="leaveCurrentGroup()" style="flex: 1;">
+          <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Leave Group
+        </button>
+        <button class="comm-btn-danger" id="groupDeleteBtn" onclick="deleteCurrentGroup()" style="flex: 1; display: none; background: rgba(255, 69, 58, 0.2); border: 1px solid rgba(255, 69, 58, 0.4);">
+          <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Delete Group
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD MEMBER TO GROUP MODAL -->
+<div class="comm-modal-overlay" id="addMemberModal" onclick="handleCommModalOverlayClick(event, 'addMemberModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">Add Members to Group</div>
+      <button class="comm-modal-close" onclick="closeAddMemberModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-modal-body">
+      <div class="comm-contacts-picker" id="addMemberContactsPicker">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closeAddMemberModal()">Cancel</button>
+      <button class="comm-btn primary" onclick="submitAddMembersToGroup()">Add Selected</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHANNEL INFO MODAL -->
+<div class="comm-modal-overlay" id="channelInfoModal" onclick="handleCommModalOverlayClick(event, 'channelInfoModal')">
+  <div class="comm-modal-card comm-info-card" onclick="event.stopPropagation()">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title">Channel Details</div>
+      <button class="comm-modal-close" onclick="closeChannelInfo()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-info-scroll">
+      <div class="comm-info-hero">
+        <img id="channelInfoAvatar" src="https://i.imgur.com/HeIi0wU.png" class="comm-info-avatar" alt="Channel Icon">
+        <div class="comm-info-title" id="channelInfoName">Channel Name</div>
+        <div class="comm-info-handle" id="channelInfoHandle">@handle</div>
+        <div class="comm-info-subtitle" id="channelInfoMeta">0 subscribers • General</div>
+        <div class="comm-info-desc" id="channelInfoDesc"></div>
+      </div>
+
+      <div class="comm-info-section" id="channelAdminSection" style="display: none;">
+        <div class="comm-section-title">Channel Admins</div>
+        <div style="font-size: 12px; color: var(--text-3); margin-bottom: 8px;">Admins can broadcast posts to this channel.</div>
+        <button class="comm-action-btn-sm" onclick="openAddChannelAdminModal()">
+          <i data-lucide="user-plus" style="width: 14px; height: 14px;"></i> Add Admin
+        </button>
+        <div class="comm-members-list" id="channelAdminsList" style="margin-top: 10px;"></div>
+      </div>
+
+      <div class="comm-info-section" style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="comm-action-btn-sm" onclick="shareCurrentChannel()" style="flex: 1; justify-content: center;">
+          <i data-lucide="share-2" style="width: 15px; height: 15px;"></i> Share Channel
+        </button>
+        <button class="comm-btn-danger" id="channelSubToggleBtn" onclick="toggleChannelSubscriptionFromInfo()" style="flex: 1;">
+          <i data-lucide="bell-off" style="width: 16px; height: 16px;"></i> Unsubscribe
+        </button>
+        <button class="comm-btn-danger" id="channelDeleteBtn" onclick="deleteCurrentChannel()" style="width: 100%; display: none; justify-content: center; background: rgba(255, 69, 58, 0.2); border: 1px solid rgba(255, 69, 58, 0.4);">
+          <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Delete Channel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHANNEL COMMENTS / DISCUSSION DRAWER -->
+<div class="channel-comments-drawer" id="channelCommentsDrawer">
+  <div class="comments-drawer-header">
+    <div class="comments-drawer-title-wrap">
+      <div class="comments-drawer-title">Post Discussion</div>
+      <div class="comments-drawer-sub" id="commentsDrawerSub">Comments</div>
+    </div>
+    <button class="comments-drawer-close" onclick="closeChannelComments()"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+  </div>
+  <div class="comments-original-post" id="commentsOriginalPostSnippet">
+    <!-- Original post snippet -->
+  </div>
+  <div class="comments-list" id="channelCommentsList">
+    <div class="comments-empty">No comments yet. Start the conversation!</div>
+  </div>
+  <div class="comments-input-bar">
+    <textarea id="channelCommentInput" placeholder="Write a comment…" rows="1" maxlength="1000" onkeydown="handleCommentInputKey(event)"></textarea>
+    <button class="comments-send-btn" onclick="submitChannelComment()" title="Send"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
   </div>
 </div>
 
