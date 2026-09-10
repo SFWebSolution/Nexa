@@ -7582,6 +7582,10 @@ let selectedGroupMemberUids = new Set();
 let activeCommentPostId = null;
 let currentDiscoverCategory = 'All';
 
+function formatMessageText(text) {
+  return linkify(text);
+}
+
 // ── Entry point when Community tab is clicked ──────────────────────────────
 function renderCommunityTab() {
   if (!currentUser) return;
@@ -7903,10 +7907,11 @@ function handleSelectGroupItem(groupId) {
 
 // ── Select and Open Group Chat Room ────────────────────────────────────────
 function selectGroupChat(group) {
-  if (unsubChatA) { unsubChatA(); unsubChatA = null; }
-  if (unsubChatB) { unsubChatB(); unsubChatB = null; }
+  if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
+  if (unsubMessagesB) { unsubMessagesB(); unsubMessagesB = null; }
   if (unsubTyping) { unsubTyping(); unsubTyping = null; }
   if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
+  if (unsubGroupMessages) { unsubGroupMessages(); unsubGroupMessages = null; }
   if (unsubChannelPosts) { unsubChannelPosts(); unsubChannelPosts = null; }
 
   currentChatMode = 'group';
@@ -8700,11 +8705,12 @@ async function toggleSubscribeChannel(channelId) {
 
 // ── Select and Open Channel Broadcast Feed ─────────────────────────────────
 function selectChannelFeed(channel) {
-  if (unsubChatA) { unsubChatA(); unsubChatA = null; }
-  if (unsubChatB) { unsubChatB(); unsubChatB = null; }
+  if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
+  if (unsubMessagesB) { unsubMessagesB(); unsubMessagesB = null; }
   if (unsubTyping) { unsubTyping(); unsubTyping = null; }
   if (unsubChatPresence) { unsubChatPresence(); unsubChatPresence = null; }
   if (unsubGroupMessages) { unsubGroupMessages(); unsubGroupMessages = null; }
+  if (unsubChannelPosts) { unsubChannelPosts(); unsubChannelPosts = null; }
 
   currentChatMode = 'channel';
   selectedChannel = channel;
