@@ -993,7 +993,10 @@ function renderUsers() {
   if (!q) {
     list = list.filter(u => !deletedChats[u.uid]);
   } else {
-    list = list.filter(u => (u.displayName || "").toLowerCase().includes(q));
+    list = list.filter(u =>
+      (u.displayName || "").toLowerCase().includes(q) ||
+      ((u.phone || "").replace(/\D/g, "").includes(q.replace(/\D/g, "")) && q.replace(/\D/g, "") !== "")
+  );
   }
 
   const userMetrics = new Map();
