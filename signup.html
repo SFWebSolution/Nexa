@@ -165,6 +165,10 @@
   </div>
 
   <div class="input-group">
+    <input id="phone" type="tel" placeholder="Phone Number (e.g. +234 812 3456)">
+  </div>
+
+  <div class="input-group">
     <input id="password" type="password" placeholder="Password" style="padding-right: 48px;">
     <button type="button" class="password-toggle-btn" id="togglePasswordBtn" title="Toggle password visibility">
       <svg id="eyeIcon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -267,7 +271,7 @@ if (togglePasswordBtn && passwordInput && eyeIcon) {
   });
 }
 
-["username", "displayName", "email", "password"].forEach(id => {
+["username", "displayName", "email", "phone", "password"].forEach(id => {
   const inp = document.getElementById(id);
   if (inp) {
     inp.addEventListener("keydown", (e) => {
@@ -290,9 +294,11 @@ async function signup() {
   const username = document.getElementById("username").value.trim();
   const displayName = document.getElementById("displayName").value.trim();
   const email = document.getElementById("email").value.trim();
+  const phoneRaw = document.getElementById("phone").value.trim();
   const password = document.getElementById("password").value;
 
-  if (!username || !displayName || !email || !password) {
+  const phone = phoneRaw.replace(/[^\d+]/g, "");
+  if (!username || !displayName || !email || !phone || !password) {
     showMsg("Please fill all fields", "error");
     return;
   }
@@ -302,6 +308,19 @@ async function signup() {
   btn.innerText = "Creating account...";
 
   try {
+
+    // Phone must be unique — so a search by number resolves exactly one person.
+    try {
+      const q = query(collection(db, "users"), where("phone", "==", phone));
+      const snap = await getDocs(q;
+      if (!snap.empty) {
+        showMsg("This phone number is already registered", "error");
+        isCreatingAccount = false;
+        btn.disabled = false;
+        btn.innerText = "Sign Up";
+        return;
+      }
+    } catch (e) { console.warn("Phone check failed:", e); }
 
     // 🔐 CREATE USER
     const userCredential = await createUserWithEmailAndPassword(
@@ -329,6 +348,7 @@ async function signup() {
       displayName,
       name: displayName,
       email,
+      phone,
       photo: "https://i.imgur.com/HeIi0wU.png",
       photoUrl: "https://i.imgur.com/HeIi0wU.png",
       status: "online",
