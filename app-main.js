@@ -7304,6 +7304,28 @@ function closeAI() {
   }
 }
 
+function openCommunityComingSoon() {
+  const modal = document.getElementById("communityComingModal");
+  if (modal) {
+    modal.classList.add("active");
+    return;
+  }
+  showNotifToast("Community is coming soon!", "info");
+}
+
+function closeCommunityComing() {
+  const modal = document.getElementById("communityComingModal");
+  if (modal) {
+    modal.classList.remove("active");
+  }
+}
+
+function handleCommunityComingClick(e) {
+  if (e.target === document.getElementById("communityComingModal")) {
+    closeCommunityComing();
+  }
+}
+
 function openAskifyComingSoon() {
   const modal = document.getElementById("askifyComingModal");
   if (modal) {

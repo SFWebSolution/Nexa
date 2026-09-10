@@ -136,6 +136,7 @@
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
         <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
+        <button class="s-tab-btn" id="sTabCommunity" onclick="openCommunityComingSoon()" title="Community"><i data-lucide="users"></i></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
         <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
       </div>
@@ -489,6 +490,17 @@
   </div>
 </div>
 
+<!-- COMMUNITY — COMING SOON MODAL -->
+<div class="community-coming-overlay" id="communityComingModal" onclick="handleCommunityComingClick(event)">
+  <div class="community-coming-modal">
+    <button class="community-coming-close" onclick="closeCommunityComing()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    <div class="community-coming-icon">🚧</div>
+    <div class="community-coming-title">Coming Soon</div>
+    <div class="community-coming-desc">Groups &amp; Channels are on the way — create and join communities with everything WhatsApp and Telegram have, and even better. Stay tuned!</div>
+    <button class="community-coming-btn" onclick="closeCommunityComing()">Got it</button>
+  </div>
+</div>
+
 <!-- MOBILE BOTTOM NAVIGATION BAR -->
 <div class="mobile-bottom-nav" id="mobileBottomNav">
   <button class="nav-item active" id="navBtnChats" onclick="switchTab('chats')">
@@ -499,6 +511,10 @@
     <span class="nav-icon"><i data-lucide="circle-dot" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Stories</span>
     <span class="story-tab-dot" id="storyTabDotMobile" style="display:none;"></span>
+  </button>
+  <button class="nav-item" id="navBtnCommunity" onclick="openCommunityComingSoon()">
+    <span class="nav-icon"><i data-lucide="users" style="width: 20px; height: 20px;"></i></span>
+    <span class="nav-label">Community</span>
   </button>
   <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
     <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
