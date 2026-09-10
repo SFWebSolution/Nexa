@@ -10,7 +10,6 @@
 
   <meta name="description" content="Nexa Messenger — secure messaging with real-time chat, voice notes, media sharing, stories, and an AI assistant. Private by default, fast by design.">
   <meta name="keywords" content="Nexa Messenger, Nexa, Messaging App, Chat App, Instant Messaging, Secure Chat, Voice Notes, Media Sharing, Real-Time Messaging, Social Network">
-  <meta name="author" content="NeuroStack">
   <meta name="application-name" content="Nexa Messenger">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#166fe5">
@@ -281,17 +280,6 @@ section{padding:84px 0}
 .feature-card.hl{border-color:rgba(34,181,115,.35);background:linear-gradient(180deg,#fff, rgba(34,181,115,.05))}
 .feature-card.hl .feature-icon{background:rgba(34,181,115,.14);color:var(--green)}
 
-/* ---------- Team ---------- */
-.team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
-.team-member{background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);padding:30px 26px;text-align:center;transition:transform .2s, box-shadow .25s}
-.team-member:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
-.team-avatar{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;
-  font-family:var(--font-display);font-weight:800;font-size:1.25rem;letter-spacing:.5px;color:#fff;
-  box-shadow:inset 0 0 0 2px rgba(255,255,255,.25), var(--shadow-sm)}
-.team-member h3{font-family:var(--font-display);font-size:1.05rem;color:var(--ink);font-weight:700;letter-spacing:-.2px}
-.team-member .role{color:var(--blue);font-weight:700;font-size:.82rem;margin:4px 0 12px}
-.team-member p:last-child{font-size:.88rem;color:var(--muted)}
-
 /* ---------- FAQ ---------- */
 .faq{background:var(--bg-soft)}
 .faq-container{max-width:760px;margin:0 auto}
@@ -347,7 +335,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
 @media(max-width:980px){
   .hero-inner{grid-template-columns:1fr;gap:48px}
   .hero-visual{order:-1}
-  .features-grid,.steps,.team-grid{grid-template-columns:repeat(2,1fr)}
+  .features-grid,.steps{grid-template-columns:repeat(2,1fr)}
   .footer-top{grid-template-columns:1fr 1fr}
   .stats-inner{grid-template-columns:repeat(2,1fr)}
 }
@@ -355,7 +343,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
   .nav-links{display:none}
   .hamburger{display:flex}
   section{padding:64px 0}
-  .features-grid,.steps,.team-grid,.footer-top{grid-template-columns:1fr}
+  .features-grid,.steps,.footer-top{grid-template-columns:1fr}
   .hero{padding:48px 0 24px}
   .hero-cta .btn{flex:1;justify-content:center}
   .float-card{display:none}
@@ -375,10 +363,8 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
 
   <!-- MOBILE MENU -->
   <div class="mobile-menu" id="mobileMenu">
-    <a href="#preview" onclick="closeMobileMenu()">Preview</a>
     <a href="#features" onclick="closeMobileMenu()">Features</a>
     <a href="#how-it-works" onclick="closeMobileMenu()">How It Works</a>
-    <a href="#team" onclick="closeMobileMenu()">Team</a>
     <a href="#faq" onclick="closeMobileMenu()">FAQ</a>
     <a href="login.html" onclick="closeMobileMenu()">Login</a>
     <a href="signup.html" class="mobile-cta" onclick="closeMobileMenu()">Get started</a>
@@ -392,10 +378,8 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
         <span class="logo-text">Nexa</span>
       </a>
       <ul class="nav-links">
-        <li><a href="#preview" class="nav-link">Preview</a></li>
         <li><a href="#features" class="nav-link">Features</a></li>
         <li><a href="#how-it-works" class="nav-link">How It Works</a></li>
-        <li><a href="#team" class="nav-link">Team</a></li>
         <li><a href="#faq" class="nav-link">FAQ</a></li>
         <li><a href="login.html" class="nav-link">Login</a></li>
         <li><a href="signup.html" class="btn btn-primary nav-cta">Get Started</a></li>
@@ -417,7 +401,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
         </div>
         <div class="hero-points">
           <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Free forever</div>
-          <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> No phone number needed</div>
+          <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Find friends by phone number</div>
           <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Works on any device</div>
         </div>
       </div>
@@ -542,7 +526,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
           <div class="step-num">1</div>
           <div class="step-icon">📝</div>
           <h3>Create your account</h3>
-          <p>Sign up with your email in seconds. No phone number required, and free to use.</p>
+          <p>Sign up with your email and phone in seconds, and messaging stays free forever.</p>
         </div>
         <div class="step-card reveal reveal-delay-2">
           <div class="step-num">2</div>
@@ -579,26 +563,6 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
         <div class="feature-card reveal reveal-delay-2"><div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10a2.5 2.5 0 0 0 2.5-2.5c0-.6-.24-1.2-.65-1.66-.4-.46-.62-1.07-.62-1.68A2.5 2.5 0 0 1 15.7 13H19a3 3 0 0 0 3-3c0-4.42-4.5-8-10-8z"/></svg></div><h3>Thoughtful design</h3><p>A clean interface with smooth motion, multiple themes, and attention to detail.</p></div>
         <div class="feature-card reveal reveal-delay-3"><div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></div><h3>Built for speed</h3><p>Optimized to stay lightweight while delivering the features you use every day.</p></div>
         <div class="feature-card hl reveal reveal-delay-1"><div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div><h3>Voice rooms</h3><p>Start a voice room, invite friends, and talk with multiple people at once — with real-time speaking indicators.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- TEAM -->
-  <section class="team" id="team">
-    <div class="container">
-      <div class="section-header reveal">
-        <div class="section-tag">Team</div>
-        <h2>Meet the team</h2>
-        <p>The people building Nexa.</p>
-      </div>
-      <div class="team-grid">
-        <div class="team-member reveal reveal-delay-1"><div class="team-avatar" style="background:linear-gradient(135deg,#166fe5,#4aa3ff)">SO</div><h3>Salami Oluwafemi</h3><p class="role">Founder &amp; CEO</p><p>Visionary leader shaping Nexa's future and driving innovation across the platform.</p></div>
-        <div class="team-member reveal reveal-delay-2"><div class="team-avatar" style="background:linear-gradient(135deg,#22b573,#4ade80)">SA</div><h3>Sharafa Abdulhaleem</h3><p class="role">Co-Founder &amp; CTO</p><p>Leads backend architecture and infrastructure ensuring speed, scale, and reliability.</p></div>
-        <div class="team-member reveal reveal-delay-3"><div class="team-avatar" style="background:linear-gradient(135deg,#8b5cf6,#a78bfa)">SA</div><h3>Salawudeen Abdulhameed</h3><p class="role">Lead Software Engineer</p><p>Crafts high-performance applications and optimizes system architecture daily.</p></div>
-        <div class="team-member reveal reveal-delay-1"><div class="team-avatar" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)">MF</div><h3>Mustapha Fakiyah</h3><p class="role">Lead Designer</p><p>Designs intuitive interfaces and creates premium user experiences across Nexa.</p></div>
-        <div class="team-member reveal reveal-delay-2"><div class="team-avatar" style="background:linear-gradient(135deg,#ec4899,#f472b6)">MO</div><h3>Michelle Ogeneochuke</h3><p class="role">Head of Community</p><p>Builds relationships with users and grows the Nexa community with passion.</p></div>
-        <div class="team-member reveal reveal-delay-2"><div class="team-avatar" style="background:linear-gradient(135deg,#06b6d4,#22d3ee)">OB</div><h3>Ogeneochuke Blossom</h3><p class="role">Executive Secretary</p><p>Supports administrative operations, coordinates communications, and assists with onboarding.</p></div>
-        <div class="team-member reveal reveal-delay-3"><div class="team-avatar" style="background:linear-gradient(135deg,#ef4444,#f87171)">KG</div><h3>Kolade Gideon</h3><p class="role">Growth Manager</p><p>Drives user acquisition and expands Nexa's presence globally through strategy.</p></div>
       </div>
     </div>
   </section>
@@ -675,10 +639,10 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
         </div>
         <div class="footer-section">
           <h4>Company</h4>
-          <a href="#team">About NeuroStack</a>
-          <a href="#team">Meet the Team</a>
+          <a href="signup.html">Get Started</a>
+          <a href="login.html">Sign In</a>
           <a href="#faq">FAQ</a>
-          <a href="#">Contact</a>
+          <a href="index.html#download">Download</a>
         </div>
         <div class="footer-section">
           <h4>Legal</h4>
@@ -689,7 +653,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
       </div>
       <div class="footer-divider"></div>
       <div class="footer-bottom">
-        <p>© 2026 <strong>Nexa Messenger</strong>. Built by <strong>NeuroStack</strong></p>
+        <p>© 2026 <strong>Nexa Messenger</strong>. Made with ❤️ for fast, private, and effortless messaging</p>
         <div class="footer-bottom-links">
           <a href="#">Privacy</a>
           <a href="#">Terms</a>
