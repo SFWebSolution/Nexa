@@ -1174,6 +1174,11 @@ function searchUsers() {
 let currentTab = 'chats';
 
 function switchTab(tabName) {
+  // Community tab is currently a "Coming Soon" placeholder
+  if (tabName === 'community') {
+    openCommunityComingSoon();
+    return;
+  }
   closeStoryViewer();
   currentTab = tabName;
 
