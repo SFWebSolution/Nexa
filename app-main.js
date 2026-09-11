@@ -11974,39 +11974,6 @@ async function sendInAppCommunityInvites() {
     showNotifToast('Failed to send invites: ' + err.message, 'error');
   }
 }
-  if (!selectedCommunityInviteUids.size) return;
-  const isGroup = activeCommunityInviteType === 'group';
-  const targetObj = isGroup ? selectedGroup : selectedChannel;
-  if (!targetObj) return;
-
-  const count = selectedCommunityInviteUids.size;
-  closeCommunityInviteModal();
-
-  try {
-    const link = await (isGroup ? getOrCreateGroupInviteLink() : `${window.location.origin}${window.location.pathname}?joinChannel=${targetObj.id}`);
-    const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Friend';
-    const inviteMsgText = isGroup 
-      ? `📩 *Group Invitation*\nHey! ${myName} invited you to join "*${targetObj.name}*".\nTap link to join:\n${link}`
-      : `📢 *Channel Invitation*\nHey! Follow "*${targetObj.name}*" on Nexa for broadcast updates.\nTap link to follow:\n${link}`;
-
-    for (const targetUid of selectedCommunityInviteUids) {
-      await db.collection('chats').add({
-        from: currentUser.uid,
-        to: targetUid,
-        text: inviteMsgText,
-        createdAt: Date.now(),
-        read: false
-      });
-      latestMsgTime[targetUid] = Date.now();
-      latestMsgText[targetUid] = inviteMsgText;
-    }
-    saveLatestMsgState();
-    renderUsers();
-    showNotifToast(`Sent invite to ${count} contact${count > 1 ? "s" : ""}`, "success");
-  } catch (err) {
-    showNotifToast('Failed to send invites: ' + err.message, 'error');
-  }
-}
 
 async function copyCommunityInviteLink() {
   const input = document.getElementById('inviteShareLinkInput');

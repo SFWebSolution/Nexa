@@ -11589,3 +11589,51 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 
+/* Invite message bubble (sent via community invite: groups/channels) */
+.invite-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, rgba(43, 143, 255, 0.14), rgba(120, 80, 255, 0.12));
+  border: 1px solid rgba(43, 143, 255, 0.35);
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin: 4px 0;
+}
+
+.invite-avatar img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.invite-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1;
+}
+
+.invite-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+
+.invite-action button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invite-action button:hover {
+  filter: brightness(1.1);
+}
