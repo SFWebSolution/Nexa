@@ -420,6 +420,11 @@ auth.onAuthStateChanged(async (user) => {
   if (!user) {
     if (accountStatusUnsub) accountStatusUnsub();
     try { localStorage.removeItem("nexa_signed_in"); } catch (e) {}
+    try {
+      if (window.location.search && (window.location.search.includes('joinGroup') || window.location.search.includes('joinChannel') || window.location.search.includes('channel'))) {
+        sessionStorage.setItem('nexa_pending_invite', window.location.search);
+      }
+    } catch (e) {}
     window.location.href = "login.html";
     return;
   }
@@ -469,6 +474,7 @@ auth.onAuthStateChanged(async (user) => {
     listenMyChannels();
     listenDiscoverChannels();
     checkGroupInviteUrlParam();
+    checkChannelInviteUrlParam();
     console.log("✅ App fully ready");
     revealNexaApp();
     // Re-engagement nudge: pops a fun welcome-back popup when the user
@@ -3440,13 +3446,54 @@ function copyMsg(id) {
   closeCtxMenu();
 }
 
-function deleteGroupMsg(id) {
-  if (!selectedGroup) return;
-  if (confirm("Delete this group message?")) {
-    db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id).delete()
-      .catch(e => console.error("deleteGroupMsg error:", e));
-  }
+async function deleteGroupMsg(id) {
+  if (!selectedGroup || !currentUser) return;
   closeCtxMenu();
+  const msg = currentGroupMessages.find(m => m.id === id);
+  if (!msg) return;
+  const fromMe = msg.senderUid === currentUser.uid;
+  const isGroupAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
+
+  if (!fromMe && !isGroupAdmin) {
+    showNotifToast("You cannot delete this message", "error");
+    return;
+  }
+
+  const promptText = (!fromMe && isGroupAdmin)
+    ? "Delete this message as admin? It will show 'This message was deleted by an admin' for all members."
+    : "Delete this message?";
+
+  if (!confirm(promptText)) return;
+
+  try {
+    const msgRef = db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id);
+    if (!fromMe && isGroupAdmin) {
+      // WhatsApp-Style Admin Deletion
+      const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Admin';
+      await msgRef.update({
+        isDeleted: true,
+        deletedByAdmin: true,
+        deletedByUid: currentUser.uid,
+        deletedByName: myName,
+        deletedAt: Date.now(),
+        text: "This message was deleted by an admin",
+        image: null,
+        video: null,
+        audio: null,
+        fileUrl: null,
+        fileName: null,
+        pollOptions: null,
+        reactions: {}
+      });
+      showNotifToast("✓ Message deleted by admin", "info");
+    } else {
+      await msgRef.delete();
+      showNotifToast("✓ Message deleted", "info");
+    }
+  } catch (e) {
+    console.error("deleteGroupMsg error:", e);
+    showNotifToast("Failed to delete: " + e.message, "error");
+  }
 }
 
 async function toggleGroupMsgReact(msgId, emoji) {
@@ -3809,17 +3856,52 @@ function handleKeyPress(e) {
   }
 }
 
+let composerChannelCommentsEnabled = true;
+
+function toggleComposerCommentsSetting() {
+  composerChannelCommentsEnabled = !composerChannelCommentsEnabled;
+  updatePollButtonVisibility();
+  showNotifToast(composerChannelCommentsEnabled ? '✓ Comments enabled for next post' : '🔒 Comments disabled for next post', 'info');
+}
+
 function updatePollButtonVisibility() {
   const pollBtn = document.getElementById("pollBtn");
-  if (!pollBtn) return;
-  const isCommunityChat = currentChatMode === 'channel' && !!selectedChannel;
-  if (!isCommunityChat) {
-    pollBtn.style.display = 'none';
-    pollBtn.classList.add("hidden");
-  } else {
-    const hasText = (document.getElementById("text")?.value || "").trim().length > 0;
-    pollBtn.style.display = 'inline-flex';
-    pollBtn.classList.toggle("hidden", hasText);
+  const commentToggleBtn = document.getElementById("channelPostCommentsToggleBtn");
+
+  const isGroup = currentChatMode === 'group' && !!selectedGroup;
+  const isGroupAdmin = isGroup && (selectedGroup.ownerUid === currentUser?.uid || (selectedGroup.admins || []).includes(currentUser?.uid));
+  const canPostInGroup = isGroup && (!selectedGroup.settings?.onlyAdminsCanPost || isGroupAdmin);
+
+  const isChannel = currentChatMode === 'channel' && !!selectedChannel;
+  const isChannelAdmin = isChannel && (selectedChannel.ownerUid === currentUser?.uid || (selectedChannel.admins || []).includes(currentUser?.uid));
+  const canPostInChannel = isChannelAdmin;
+
+  // Poll button: ONLY visible in groups (if allowed to post) and channels (if admin)
+  if (pollBtn) {
+    const canShowPoll = canPostInGroup || canPostInChannel;
+    if (!canShowPoll) {
+      pollBtn.style.display = 'none';
+      pollBtn.classList.add("hidden");
+    } else {
+      const hasText = (document.getElementById("text")?.value || "").trim().length > 0;
+      pollBtn.style.display = 'inline-flex';
+      pollBtn.classList.toggle("hidden", hasText);
+    }
+  }
+
+  // Channel Composer Comments Toggle button: ONLY visible for channel admins in channel mode
+  if (commentToggleBtn) {
+    if (isChannelAdmin) {
+      const hasText = (document.getElementById("text")?.value || "").trim().length > 0;
+      commentToggleBtn.style.display = 'inline-flex';
+      commentToggleBtn.classList.toggle("hidden", hasText);
+      commentToggleBtn.className = `iact-btn channel-composer-comment-toggle ${composerChannelCommentsEnabled ? 'active' : 'disabled'}`;
+      const tickEl = document.getElementById("composerCommentsTick");
+      if (tickEl) tickEl.textContent = composerChannelCommentsEnabled ? '✓' : '✕';
+      commentToggleBtn.title = composerChannelCommentsEnabled ? 'Post comments are ON (Click to turn OFF)' : 'Post comments are OFF (Click to turn ON)';
+    } else {
+      commentToggleBtn.style.display = 'none';
+    }
   }
 }
 
@@ -8031,6 +8113,7 @@ function listenMyGroups() {
         myGroups.push({ id: doc.id, ...doc.data() });
       });
       myGroups.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
+      window._userGroups = myGroups;
       renderMyGroups();
       updateCommunityTabDot();
     }, err => {
@@ -8281,6 +8364,21 @@ function buildGroupMessage(id, msg, fromMe) {
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+
+  // WhatsApp-Style Deleted Tombstone
+  if (msg.isDeleted || msg.deletedByAdmin) {
+    bubble.innerHTML = `
+      <div class="msg-deleted-tombstone">
+        <i data-lucide="ban" style="width: 13px; height: 13px;"></i>
+        <span>This message was deleted by an admin</span>
+      </div>
+      <div class="msg-meta"><span>${formatTime(msg.createdAt)}</span></div>
+    `;
+    row.appendChild(bubble);
+    el.appendChild(row);
+    el.addEventListener("contextmenu", e => { e.preventDefault(); showCtxMenu(e, id, msg); });
+    return el;
+  }
 
   let inner = "";
 
@@ -8849,6 +8947,23 @@ async function submitAddMembersToGroup() {
     });
 
     await batch.commit();
+
+    // Post system message to group chat
+    try {
+      const adderName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Admin';
+      const addedNames = Array.from(selectedGroupMemberUids).map(uid => {
+        const u = (allUsersData || []).find(x => x.uid === uid);
+        return u ? (u.displayName || 'Member') : 'Member';
+      }).join(', ');
+      await groupRef.collection('messages').add({
+        senderUid: 'system',
+        senderName: 'Nexa',
+        isSystem: true,
+        text: `${adderName} added ${addedNames}`,
+        createdAt: Date.now()
+      });
+    } catch (e) { console.warn('System message error:', e); }
+
     closeAddMemberModal();
     showNotifToast(`✓ Added ${selectedGroupMemberUids.size} member(s)`, 'success');
     openGroupInfo();
@@ -9231,7 +9346,6 @@ async function toggleSubscribeChannel(channelId) {
       chan.subscriberUids = (chan.subscriberUids || []).filter(u => u !== currentUser.uid);
       chan.subscribersCount = Math.max(0, (chan.subscribersCount || 1) - 1);
       showNotifToast('Unsubscribed from ' + chan.name, 'info');
-    } else {
       await subRef.set({
         uid: currentUser.uid,
         joinedAt: Date.now()
@@ -9240,6 +9354,20 @@ async function toggleSubscribeChannel(channelId) {
         subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
         subscribersCount: firebase.firestore.FieldValue.increment(1)
       });
+
+      // Post system announcement: [Person] followed this channel
+      try {
+        const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Someone';
+        await chanRef.collection('posts').add({
+          authorUid: 'system',
+          authorName: 'Nexa',
+          isSystem: true,
+          type: 'system',
+          text: `${myName} followed this channel`,
+          createdAt: Date.now()
+        });
+      } catch (e) { console.warn('Channel system announcement error:', e); }
+
       chan.subscriberUids = [...(chan.subscriberUids || []), currentUser.uid];
       chan.subscribersCount = (chan.subscribersCount || 0) + 1;
       showNotifToast('✓ Subscribed to ' + chan.name, 'success');
@@ -9391,6 +9519,37 @@ function renderChannelPostsList(posts) {
 
   box.innerHTML = '';
   posts.forEach(post => {
+    const timeStr = post.createdAt ? new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+    // Handle Channel System Activity Announcements (e.g. Someone followed)
+    if (post.isSystem || post.type === 'system') {
+      const sysEl = document.createElement('div');
+      sysEl.className = 'channel-system-event';
+      sysEl.innerHTML = `<span>👤 ${escapeHtml(post.text)}</span>`;
+      box.appendChild(sysEl);
+      return;
+    }
+
+    // Handle Deleted Post Tombstone (WhatsApp Style)
+    if (post.isDeleted || post.deletedByAdmin) {
+      const delWrap = document.createElement('div');
+      delWrap.className = 'channel-post-wrap';
+      delWrap.id = `post_${post.id}`;
+      delWrap.innerHTML = `
+        <div class="channel-post-card">
+          <div class="channel-post-deleted-tombstone">
+            <i data-lucide="ban" style="width: 14px; height: 14px;"></i>
+            <span>This post was deleted by an admin</span>
+          </div>
+          <div class="channel-post-footer" style="margin-top: 6px;">
+            <span class="channel-post-time" style="font-size: 11px;">${timeStr}</span>
+          </div>
+        </div>
+      `;
+      box.appendChild(delWrap);
+      return;
+    }
+
     // Record view impression accurately per unique user
     recordPostView(post);
 
@@ -9398,7 +9557,8 @@ function renderChannelPostsList(posts) {
     wrap.className = 'channel-post-wrap';
 
     let mediaHtml = '';
-    if (post.type === 'poll' && post.pollOptions) {
+    const isPoll = post.type === 'poll' && post.pollOptions;
+    if (isPoll) {
       mediaHtml = buildPollHTML(post.id, post);
     } else if (post.image) {
       mediaHtml = `<div class="channel-post-media" onclick="openProfilePic('${post.image}')"><img src="${escapeHtml(post.image)}" loading="lazy"></div>`;
@@ -9420,7 +9580,6 @@ function renderChannelPostsList(posts) {
     const uniqueViews = (post.viewsUids && Array.isArray(post.viewsUids) && post.viewsUids.length) ? post.viewsUids.length : (post.viewsCount || 1);
     const views = formatCount(uniqueViews);
     const commentsCount = post.commentsCount || 0;
-    const timeStr = post.createdAt ? new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
     const replyQuote = post.postReplyToComment;
     let replyQuoteHtml = '';
@@ -9444,16 +9603,22 @@ function renderChannelPostsList(posts) {
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="channel-post-time">${timeStr}</span>
             ${isChannelAdmin ? `
+              <button class="channel-comment-toggle-tick ${post.commentsEnabled !== false ? 'on' : 'off'}" onclick="toggleChannelPostCommentsSetting('${post.id}', ${post.commentsEnabled === false})" title="${post.commentsEnabled !== false ? 'Comments are ON (click to turn OFF)' : 'Comments are OFF (click to turn ON)'}">
+                <i data-lucide="${post.commentsEnabled !== false ? 'message-circle' : 'message-circle-off'}" style="width: 12px; height: 12px;"></i>
+                <span>${post.commentsEnabled !== false ? '✓ Comments ON' : '✕ Comments OFF'}</span>
+              </button>
               <button class="comm-icon-btn-xs" onclick="pinChannelPost('${post.id}')" title="Pin / Unpin post" style="opacity: 0.65;">
                 <i data-lucide="pin" style="width: 12px; height: 12px;"></i>
               </button>
-              <button class="comm-icon-btn-xs" onclick="openPostCommentsToggle('${post.id}')" title="Comments on/off for this post" style="opacity: 0.65;"><i data-lucide="message-circle" style="width: 12px; height: 12px;"></i></button>
+              <button class="comm-icon-btn-xs" onclick="deleteChannelPost('${post.id}')" title="Delete post as admin" style="opacity: 0.65; color: var(--danger);">
+                <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+              </button>
             ` : ''}
           </div>
         </div>
         ${replyQuoteHtml}
         ${mediaHtml}
-        <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
+        ${isPoll ? '' : `<div class="channel-post-text">${formatMessageText(post.text || '')}</div>`}
         <div class="channel-post-footer">
           ${isChannelAdmin ? `
           <div class="channel-post-views">
@@ -9492,13 +9657,18 @@ function renderChannelPostsList(posts) {
                 <span>${commentsCount} Comments</span>
               </button>
             ` : commentsOnThisPost ? `
-              <button class="channel-reaction-pill user-comment-btn" onclick="toggleUserChannelComment('${post.id}')" title="Comment on this post">
+              <button class="channel-comments-btn" onclick="openChannelComments('${post.id}')" title="Discussion Comments">
                 <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
-                <span>Comment</span>
+                <span>${commentsCount > 0 ? commentsCount + ' Comments' : 'Comment'}</span>
               </button>
-            ` : ''
+            ` : `
+              <span class="channel-reaction-pill" style="opacity: 0.5; cursor: not-allowed;" title="Comments are disabled for this post">
+                <i data-lucide="lock" style="width:11px;height:11px;"></i>
+                <span>Comments off</span>
+              </span>
+            `
             }
-            <button class="channel-reaction-pill" onclick="shareChannelPost('${post.id}')" title="Forward / Share Post">
+            <button class="channel-reaction-pill" onclick="openForwardModal('${post.id}')" title="Forward / Share Post">
               <i data-lucide="share-2" style="width:12px;height:12px;"></i>
               <span>Share</span>
             </button>
@@ -9741,8 +9911,14 @@ function openChannelComments(postId) {
   if (!selectedChannel) return;
   const isOwner = selectedChannel.ownerUid === currentUser.uid;
   const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
-  if (!isAdmin) {
-    showNotifToast('Discussion comments are accessible to channel admins only', 'info');
+
+  const commentsAllowed = selectedChannel.settings?.allowComments !== false;
+  const postMeta = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
+  const commentsOnThisPost = commentsAllowed && (postMeta ? postMeta.commentsEnabled !== false : true);
+
+  // If comments are off and user is not admin, notify and block
+  if (!commentsOnThisPost && !isAdmin) {
+    showNotifToast('Comments are disabled on this post', 'error');
     return;
   }
 
@@ -9755,9 +9931,19 @@ function openChannelComments(postId) {
   const postText = postEl ? postEl.querySelector('.channel-post-text')?.textContent || 'Discussion' : 'Discussion';
   document.getElementById('commentsOriginalPostSnippet').textContent = postText;
 
-  const commentsAllowed = selectedChannel.settings?.allowComments !== false;
-  const postMeta = (window._nexaChannelPostsCache || []).find(p => p.id === activeCommentPostId);
-  const commentsOnThisPost = commentsAllowed && (postMeta ? postMeta.commentsEnabled !== false : true);
+  // Header subtitle with quick toggle for admin
+  const subEl = document.getElementById('commentsDrawerSub');
+  if (subEl) {
+    if (isAdmin) {
+      subEl.innerHTML = `
+        <button class="channel-comment-toggle-tick ${commentsOnThisPost ? 'on' : 'off'}" onclick="toggleChannelPostCommentsSetting('${postId}', ${!commentsOnThisPost}); setTimeout(() => openChannelComments('${postId}'), 300);" style="font-size: 11px; padding: 2px 6px;">
+          <span>${commentsOnThisPost ? '✓ Comments ON' : '✕ Comments OFF'}</span>
+        </button>
+      `;
+    } else {
+      subEl.textContent = 'Comments';
+    }
+  }
 
   // Toggle input bar or notice depending on channel setting
   const inputBar = drawer.querySelector('.comments-input-bar');
@@ -10109,8 +10295,14 @@ async function toggleChannelCommentsSetting(allow) {
   }
 }
 
-async function toggleChannelPostCommentsSetting(allow) {
-  if (!selectedChannel || !activeCommentPostId) return;
+async function toggleChannelPostCommentsSetting(arg1, arg2) {
+  let targetPostId = activeCommentPostId;
+  let allow = arg1;
+  if (typeof arg1 === 'string') {
+    targetPostId = arg1;
+    allow = arg2;
+  }
+  if (!selectedChannel || !targetPostId) return;
   const isOwner = selectedChannel.ownerUid === currentUser.uid;
   const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
   if (!isAdmin) {
@@ -10118,13 +10310,45 @@ async function toggleChannelPostCommentsSetting(allow) {
     return;
   }
   try {
-    await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(activeCommentPostId).update({
+    await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(targetPostId).update({
       commentsEnabled: allow,
       updatedAt: Date.now()
     });
+    // Update cached post copy
+    const cached = (window._nexaChannelPostsCache || []).find(p => p.id === targetPostId);
+    if (cached) cached.commentsEnabled = allow;
     showNotifToast(`✓ Comments ${allow ? 'enabled' : 'disabled'} for this post`, 'success');
   } catch (err) {
     showNotifToast('Failed to update setting: ' + err.message, 'error');
+  }
+}
+
+async function deleteChannelPost(postId) {
+  if (!selectedChannel || !currentUser) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can delete posts', 'error');
+    return;
+  }
+  if (!confirm('Delete this broadcast post as admin?')) return;
+  try {
+    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
+    await postRef.update({
+      isDeleted: true,
+      deletedByAdmin: true,
+      deletedByName: document.getElementById('myName')?.textContent || currentUser.displayName || 'Admin',
+      deletedAt: Date.now(),
+      text: 'This post was deleted by an admin',
+      image: null,
+      video: null,
+      audio: null,
+      pollOptions: null,
+      reactions: {}
+    });
+    showNotifToast('✓ Post deleted by admin', 'info');
+  } catch (e) {
+    showNotifToast('Failed to delete post: ' + e.message, 'error');
   }
 }
 function openPostCommentsToggle(postId) {
@@ -10604,8 +10828,10 @@ function formatCount(num) {
 // ═══════════════════════════════════════════════════════════════════════
 
 function openPollModal() {
-  if (!selectedGroup && !selectedUser) {
-    showNotifToast('Select a chat or group to create a poll', 'info');
+  const isGroup = currentChatMode === 'group' && !!selectedGroup;
+  const isChannel = currentChatMode === 'channel' && !!selectedChannel;
+  if (!isGroup && !isChannel) {
+    showNotifToast('Polls are only available in groups and channels', 'info');
     return;
   }
   const modal = document.getElementById('pollCreateModal');
@@ -10643,7 +10869,12 @@ function addPollOption() {
 }
 
 async function submitPoll() {
-  if (!selectedChannel && !selectedGroup && !selectedUser) return;
+  const isGroup = currentChatMode === 'group' && !!selectedGroup;
+  const isChannel = currentChatMode === 'channel' && !!selectedChannel;
+  if (!isGroup && !isChannel) {
+    showNotifToast('Polls are only available in groups and channels', 'error');
+    return;
+  }
   const question = (document.getElementById('pollQuestionInput').value || '').trim();
   if (!question) {
     showNotifToast('Please enter a question', 'error');
@@ -10677,16 +10908,12 @@ async function submitPoll() {
     text: `📊 Poll: ${question}`
   };
 
-  if (currentChatMode === 'channel' && selectedChannel) {
+  if (isChannel && selectedChannel) {
     await sendChannelPostWithExtras(pollPayload);
-    showNotifToast('✓ Poll broadcast!', 'success');
-  } else if (currentChatMode === 'group' && selectedGroup) {
+    showNotifToast('✓ Poll broadcast to channel!', 'success');
+  } else if (isGroup && selectedGroup) {
     await sendGroupMessageWithExtras(pollPayload);
     showNotifToast('✓ Poll created in group!', 'success');
-  } else if (selectedUser) {
-    await db.collection("chats").add(baseMsg(pollPayload));
-    showNotifToast('✓ Poll sent!', 'success');
-    sendPushNotification(document.getElementById('myName').textContent || 'Nexa User', `📊 Poll: ${question}`, selectedUser.uid);
   }
 }
 
@@ -10786,12 +11013,17 @@ let forwardSelectedTargets = [];
 
 function openForwardModal(msgId) {
   closeCtxMenu();
-  // Find message
+  // Find message across all modes
   let msg = null;
   if (currentChatMode === 'group') {
-    msg = currentGroupMessages.find(m => m.id === msgId);
+    msg = (currentGroupMessages || []).find(m => m.id === msgId);
+  } else if (currentChatMode === 'channel') {
+    msg = (window._nexaChannelPostsCache || []).find(m => m.id === msgId);
   } else {
-    msg = allMessages.find(m => m.id === msgId);
+    msg = (typeof findLocalMsg === 'function' ? findLocalMsg(msgId) : null) || (allMessages || []).find(m => m.id === msgId);
+  }
+  if (!msg) {
+    msg = (allMessages || []).find(m => m.id === msgId) || (currentGroupMessages || []).find(m => m.id === msgId) || (window._nexaChannelPostsCache || []).find(m => m.id === msgId);
   }
   if (!msg) { showNotifToast('Message not found', 'error'); return; }
 
@@ -10823,7 +11055,19 @@ function renderForwardTargets(filterText) {
 
   let targets = [];
 
-  // Add contacts
+  // 1. Add Message Yourself (Self)
+  if (currentUser) {
+    if (!q || 'you message yourself saved notes'.includes(q)) {
+      targets.push({
+        id: currentUser.uid,
+        name: 'You (Message yourself)',
+        photo: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+        type: 'self'
+      });
+    }
+  }
+
+  // 2. Add contacts
   (allUsersData || []).forEach(u => {
     if (u.uid === currentUser.uid) return;
     const name = u.displayName || u.name || 'User';
@@ -10836,19 +11080,18 @@ function renderForwardTargets(filterText) {
     });
   });
 
-  // Add groups the user is in
-  if (window._userGroups) {
-    window._userGroups.forEach(g => {
-      const name = g.name || 'Group';
-      if (q && !name.toLowerCase().includes(q)) return;
-      targets.push({
-        id: g.id,
-        name: name,
-        photo: g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
-        type: 'group'
-      });
+  // 3. Add groups the user is in (using myGroups array)
+  const availableGroups = (Array.isArray(myGroups) && myGroups.length) ? myGroups : (window._userGroups || []);
+  availableGroups.forEach(g => {
+    const name = g.name || 'Group';
+    if (q && !name.toLowerCase().includes(q)) return;
+    targets.push({
+      id: g.id,
+      name: name,
+      photo: g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
+      type: 'group'
     });
-  }
+  });
 
   if (!targets.length) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">No contacts or groups found</div>';
@@ -10857,11 +11100,12 @@ function renderForwardTargets(filterText) {
 
   list.innerHTML = targets.map(t => {
     const selected = forwardSelectedTargets.includes(t.id + '_' + t.type);
+    const badgeText = t.type === 'group' ? '👥 Group' : t.type === 'self' ? '📝 Saved' : '👤 Contact';
     return `
       <div class="forward-target-row ${selected ? 'selected' : ''}" onclick="toggleForwardTarget('${t.id}', '${t.type}')">
         <img src="${escapeHtml(t.photo)}" class="forward-target-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
         <div class="forward-target-name">${escapeHtml(t.name)}</div>
-        <div class="forward-target-type">${t.type === 'group' ? '👥 Group' : '👤 Contact'}</div>
+        <div class="forward-target-type">${badgeText}</div>
         <div class="forward-check"></div>
       </div>
     `;
@@ -10919,7 +11163,6 @@ async function executeForward() {
         if (msg.type === 'poll') {
           payload.type = 'poll';
           payload.pollQuestion = msg.pollQuestion;
-          // Reset voters on forward
           const newOpts = {};
           for (const k of Object.keys(msg.pollOptions || {})) {
             newOpts[k] = { text: msg.pollOptions[k].text, voters: [] };
@@ -10937,12 +11180,13 @@ async function executeForward() {
           updatedAt: Date.now()
         });
       } else {
-        // Forward to 1:1 contact
+        // Forward to 1:1 contact or self
+        const isSelf = targetId === currentUser.uid;
         const payload = {
           from: currentUser.uid,
           to: targetId,
           createdAt: Date.now(),
-          read: false,
+          read: isSelf,
           forwarded: true,
           forwardedFrom: msg.senderName || msg.from || 'Unknown'
         };
@@ -10952,8 +11196,29 @@ async function executeForward() {
         if (msg.audio) payload.audio = msg.audio;
         if (msg.fileUrl) { payload.fileUrl = msg.fileUrl; payload.fileName = msg.fileName; payload.fileSize = msg.fileSize; }
         if (msg.caption) payload.caption = msg.caption;
+        if (msg.type === 'poll') {
+          payload.type = 'poll';
+          payload.pollQuestion = msg.pollQuestion;
+          const newOpts = {};
+          for (const k of Object.keys(msg.pollOptions || {})) {
+            newOpts[k] = { text: msg.pollOptions[k].text, voters: [] };
+          }
+          payload.pollOptions = newOpts;
+          payload.pollMultiVote = msg.pollMultiVote;
+        }
 
-        await db.collection('chats').add(payload);
+        const docRef = await db.collection('chats').add(payload);
+        const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : payload.audio ? '🎤 Voice note' : 'Attachment');
+        latestMsgTime[targetId] = Date.now();
+        latestMsgText[targetId] = '⤳ ' + snippet;
+        saveLatestMsgState();
+        renderUsers();
+
+        if (selectedUser && selectedUser.uid === targetId) {
+          _msgsA.push({ id: docRef.id, ...payload });
+          renderMessageList();
+          scrollMessagesToBottom();
+        }
       }
       successCount++;
     } catch (err) {
@@ -11307,12 +11572,28 @@ async function resetGroupInviteLink() {
 // INTEGRATION: Wire features into existing UI
 // ═══════════════════════════════════════════════════════════════════════
 
-// --- Enhanced showCtxMenu with Forward, Star, Poll items ---
+// --- Enhanced showCtxMenu with Forward, Star, Poll items & Admin Delete ---
 const _origShowCtxMenu = showCtxMenu;
 showCtxMenu = function(e, id, msg) {
   const menu = document.getElementById("ctxMenu");
   const fromMe = (msg.from || msg.senderUid) === currentUser.uid;
   const isGroup = currentChatMode === 'group';
+  const isGroupAdmin = isGroup && selectedGroup && (selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid));
+  const canDelete = fromMe || isGroupAdmin;
+  const isDeleted = !!(msg.isDeleted || msg.deletedByAdmin);
+
+  if (isDeleted) {
+    if (!canDelete) return; // Nothing to do on a deleted message
+    menu.innerHTML = `
+      <div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Remove for everyone</div>
+    `;
+    menu.classList.add("active");
+    menu.style.top = Math.min(e.clientY, window.innerHeight - 100) + "px";
+    menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + "px";
+    setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
+    return;
+  }
+
   const starred = isMessageStarred(id);
   menu.innerHTML = `
     <div class="ctx-reaction-bar">
@@ -11331,7 +11612,7 @@ showCtxMenu = function(e, id, msg) {
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
     ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
     ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
-    ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
+    ${canDelete ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">${isGroup && isGroupAdmin && !fromMe ? '🗑 Delete as admin' : '🗑 Delete'}</div>` : ''}
   `;
   menu.classList.add("active");
   menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + "px";
@@ -11368,8 +11649,18 @@ openChannelInfo = function() {
 // --- Check and handle group invite URL param (?joinGroup=CODE) ---
 async function checkGroupInviteUrlParam() {
   if (!currentUser) return;
-  const params = new URLSearchParams(window.location.search);
-  const inviteCode = params.get('joinGroup');
+  let params = new URLSearchParams(window.location.search);
+  let inviteCode = params.get('joinGroup');
+  if (!inviteCode) {
+    try {
+      const saved = sessionStorage.getItem('nexa_pending_invite');
+      if (saved) {
+        params = new URLSearchParams(saved);
+        inviteCode = params.get('joinGroup');
+        if (inviteCode) sessionStorage.removeItem('nexa_pending_invite');
+      }
+    } catch (e) {}
+  }
   if (!inviteCode) return;
 
   // Clean URL parameter without page reload
@@ -11410,8 +11701,20 @@ async function checkGroupInviteUrlParam() {
     });
 
     await db.collection('groups').doc(group.id).update({
-      membersCount: firebase.firestore.FieldValue.increment(1)
+      membersCount: firebase.firestore.FieldValue.increment(1),
+      memberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
     });
+
+    // System announcement in group chat
+    try {
+      await db.collection('groups').doc(group.id).collection('messages').add({
+        senderUid: 'system',
+        senderName: 'Nexa',
+        isSystem: true,
+        text: `${myName} joined using this group's invite link`,
+        createdAt: Date.now()
+      });
+    } catch (e) { console.warn('System message error:', e); }
 
     showNotifToast(`✓ Joined "${group.name}"!`, 'success');
     switchTab('community');
@@ -11422,6 +11725,276 @@ async function checkGroupInviteUrlParam() {
     console.error('Error joining group via invite link:', err);
     showNotifToast('Failed to join group: ' + err.message, 'error');
   }
+}
+
+// --- Check and handle channel invite URL param (?joinChannel=ID or ?channel=ID) ---
+async function checkChannelInviteUrlParam() {
+  if (!currentUser) return;
+  let params = new URLSearchParams(window.location.search);
+  let channelId = params.get('joinChannel') || params.get('channel');
+  if (!channelId) {
+    try {
+      const saved = sessionStorage.getItem('nexa_pending_invite');
+      if (saved) {
+        params = new URLSearchParams(saved);
+        channelId = params.get('joinChannel') || params.get('channel');
+        if (channelId) sessionStorage.removeItem('nexa_pending_invite');
+      }
+    } catch (e) {}
+  }
+  if (!channelId) return;
+
+  // Clean URL parameter without page reload
+  try {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } catch (e) {}
+
+  try {
+    const snap = await db.collection('channels').doc(channelId).get();
+    if (!snap.exists) {
+      showNotifToast('Channel not found', 'error');
+      return;
+    }
+
+    const channel = { id: snap.id, ...snap.data() };
+    const isSubscribed = (channel.subscriberUids || []).includes(currentUser.uid);
+    if (isSubscribed) {
+      showNotifToast(`Opening "${channel.name}"…`, 'info');
+      switchTab('community');
+      switchCommunitySubTab('channels');
+      selectChannelChat(channel);
+      return;
+    }
+
+    const confirmFollow = confirm(`You have been invited to follow "${channel.name}". Would you like to follow this channel?`);
+    if (!confirmFollow) return;
+
+    await toggleSubscribeChannel(channel.id);
+    switchTab('community');
+    switchCommunitySubTab('channels');
+    selectChannelChat(channel);
+  } catch (err) {
+    console.error('checkChannelInviteUrlParam error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// COMMUNITY INVITE MODAL: IN-APP CONTACTS & OUTSIDE SHARE
+// ═══════════════════════════════════════════════════════════════════════
+let activeCommunityInviteType = 'group'; // 'group' or 'channel'
+let selectedCommunityInviteUids = new Set();
+
+function openCommunityInviteModal(type) {
+  activeCommunityInviteType = type || (currentChatMode === 'channel' ? 'channel' : 'group');
+  selectedCommunityInviteUids = new Set();
+  const modal = document.getElementById('communityInviteModal');
+  if (!modal) return;
+
+  const isGroup = activeCommunityInviteType === 'group';
+  const targetObj = isGroup ? selectedGroup : selectedChannel;
+  if (!targetObj) {
+    showNotifToast(`Select a ${isGroup ? 'group' : 'channel'} first`, 'info');
+    return;
+  }
+
+  // Update title
+  const titleEl = document.getElementById('communityInviteTitle');
+  if (titleEl) {
+    titleEl.innerHTML = `<i data-lucide="${isGroup ? 'users' : 'radio'}" style="width: 18px; height: 18px; color: var(--primary);"></i> Invite to ${escapeHtml(targetObj.name || (isGroup ? 'Group' : 'Channel'))}`;
+  }
+
+  // Set default tab to in-app
+  switchInviteTab('inApp');
+  renderCommunityInviteContacts('');
+  prepareCommunityShareLink();
+
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeCommunityInviteModal() {
+  const modal = document.getElementById('communityInviteModal');
+  if (modal) modal.classList.remove('active');
+  selectedCommunityInviteUids.clear();
+}
+
+function switchInviteTab(tab) {
+  const inAppTab = document.getElementById('inviteTabInApp');
+  const shareTab = document.getElementById('inviteTabShare');
+  const inAppPanel = document.getElementById('inviteInAppPanel');
+  const sharePanel = document.getElementById('inviteSharePanel');
+
+  if (tab === 'inApp') {
+    if (inAppTab) inAppTab.classList.add('active');
+    if (shareTab) shareTab.classList.remove('active');
+    if (inAppPanel) inAppPanel.style.display = 'block';
+    if (sharePanel) sharePanel.style.display = 'none';
+  } else {
+    if (inAppTab) inAppTab.classList.remove('active');
+    if (shareTab) shareTab.classList.add('active');
+    if (inAppPanel) inAppPanel.style.display = 'none';
+    if (sharePanel) sharePanel.style.display = 'block';
+  }
+}
+
+function renderCommunityInviteContacts(filterText = '') {
+  const container = document.getElementById('inviteContactsList');
+  if (!container) return;
+  const q = (filterText || '').toLowerCase().trim();
+  const isGroup = activeCommunityInviteType === 'group';
+
+  // For groups, exclude people already in the group
+  const existingMemberUids = isGroup && selectedGroup ? (selectedGroup.memberUids || []) : [];
+
+  let candidates = (allUsersData || []).filter(u => {
+    if (u.uid === currentUser.uid) return false;
+    if (existingMemberUids.includes(u.uid)) return false;
+    const name = u.displayName || u.name || 'User';
+    return !q || name.toLowerCase().includes(q);
+  });
+
+  if (!candidates.length) {
+    container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-3);font-size:12.5px;">${existingMemberUids.length ? 'All your contacts are already in this group!' : 'No contacts found.'}</div>`;
+    return;
+  }
+
+  container.innerHTML = candidates.map(u => {
+    const isChecked = selectedCommunityInviteUids.has(u.uid);
+    return `
+      <div class="comm-contact-row" onclick="toggleCommunityInviteSelect('${u.uid}', this)">
+        <input type="checkbox" id="cinv_chk_${u.uid}" ${isChecked ? 'checked' : ''} style="pointer-events:none;">
+        <img src="${escapeHtml(u.photo || 'https://i.imgur.com/HeIi0wU.png')}" class="comm-contact-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <span class="comm-contact-name">${escapeHtml(u.displayName || 'User')}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterInviteContacts(val) {
+  renderCommunityInviteContacts(val);
+}
+
+function toggleCommunityInviteSelect(uid, rowEl) {
+  const chk = rowEl.querySelector('input[type="checkbox"]');
+  if (selectedCommunityInviteUids.has(uid)) {
+    selectedCommunityInviteUids.delete(uid);
+    if (chk) chk.checked = false;
+  } else {
+    selectedCommunityInviteUids.add(uid);
+    if (chk) chk.checked = true;
+  }
+  const countEl = document.getElementById('selectedInviteCount');
+  if (countEl) countEl.textContent = selectedCommunityInviteUids.size;
+  const btn = document.getElementById('btnSendInAppInvites');
+  if (btn) btn.disabled = selectedCommunityInviteUids.size === 0;
+}
+
+async function prepareCommunityShareLink() {
+  const input = document.getElementById('inviteShareLinkInput');
+  if (!input) return '';
+  input.value = 'Generating link…';
+  const isGroup = activeCommunityInviteType === 'group';
+  let link = '';
+  if (isGroup && selectedGroup) {
+    link = await getOrCreateGroupInviteLink();
+  } else if (!isGroup && selectedChannel) {
+    link = `${window.location.origin}${window.location.pathname}?joinChannel=${selectedChannel.id}`;
+  }
+  input.value = link;
+  return link;
+}
+
+async function sendInAppCommunityInvites() {
+  if (!selectedCommunityInviteUids.size) return;
+  const isGroup = activeCommunityInviteType === 'group';
+  const targetObj = isGroup ? selectedGroup : selectedChannel;
+  if (!targetObj) return;
+
+  const count = selectedCommunityInviteUids.size;
+  closeCommunityInviteModal();
+
+  try {
+    const link = await (isGroup ? getOrCreateGroupInviteLink() : `${window.location.origin}${window.location.pathname}?joinChannel=${targetObj.id}`);
+    const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Friend';
+    const inviteMsgText = isGroup 
+      ? `📩 *Group Invitation*\nHey! ${myName} invited you to join "*${targetObj.name}*".\nTap link to join:\n${link}`
+      : `📢 *Channel Invitation*\nHey! Follow "*${targetObj.name}*" on Nexa for broadcast updates.\nTap link to follow:\n${link}`;
+
+    for (const targetUid of selectedCommunityInviteUids) {
+      await db.collection('chats').add({
+        from: currentUser.uid,
+        to: targetUid,
+        text: inviteMsgText,
+        createdAt: Date.now(),
+        read: false
+      });
+      latestMsgTime[targetUid] = Date.now();
+      latestMsgText[targetUid] = inviteMsgText;
+    }
+    saveLatestMsgState();
+    renderUsers();
+    showNotifToast(`✓ Sent invite to ${count} contact${count > 1 ? 's' : ''} in chat!`, 'success');
+  } catch (err) {
+    showNotifToast('Failed to send invites: ' + err.message, 'error');
+  }
+}
+
+async function copyCommunityInviteLink() {
+  const input = document.getElementById('inviteShareLinkInput');
+  let link = input ? input.value : '';
+  if (!link || link === 'Generating link…') {
+    link = await prepareCommunityShareLink();
+  }
+  if (link) {
+    await navigator.clipboard.writeText(link);
+    showNotifToast('✓ Link copied to clipboard!', 'success');
+  }
+}
+
+async function shareCommunityViaWhatsApp() {
+  const isGroup = activeCommunityInviteType === 'group';
+  const targetObj = isGroup ? selectedGroup : selectedChannel;
+  if (!targetObj) return;
+  let link = await (isGroup ? getOrCreateGroupInviteLink() : `${window.location.origin}${window.location.pathname}?joinChannel=${targetObj.id}`);
+  const text = isGroup
+    ? `Join my group "${targetObj.name}" on Nexa Messenger: ${link}`
+    : `Follow "${targetObj.name}" on Nexa Messenger: ${link}`;
+  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+}
+
+async function shareCommunityViaNative() {
+  const isGroup = activeCommunityInviteType === 'group';
+  const targetObj = isGroup ? selectedGroup : selectedChannel;
+  if (!targetObj) return;
+  let link = await (isGroup ? getOrCreateGroupInviteLink() : `${window.location.origin}${window.location.pathname}?joinChannel=${targetObj.id}`);
+  const text = isGroup
+    ? `Join my group "${targetObj.name}" on Nexa Messenger`
+    : `Follow "${targetObj.name}" on Nexa Messenger`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: targetObj.name, text: text, url: link });
+      showNotifToast('✓ Shared link', 'success');
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  copyCommunityInviteLink();
+}
+
+// Override legacy share buttons to use rich community invite modal
+shareGroupInviteLink = function() {
+  openCommunityInviteModal('group');
+};
+shareCurrentChannel = function() {
+  openCommunityInviteModal('channel');
+};
+
+function sendQuickGreeting() {
+  if (!selectedUser) return;
+  const ta = document.getElementById('text');
+  if (ta) ta.value = 'Hello! 👋';
+  sendMessage();
 }
 
 // Expose groups list for forward feature

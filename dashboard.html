@@ -574,6 +574,7 @@
         <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="pollBtn" onclick="openPollModal()" title="Create Poll" style="display: none;"><i data-lucide="bar-chart-2" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn channel-composer-comment-toggle" id="channelPostCommentsToggleBtn" onclick="toggleComposerCommentsSetting()" title="Post comments are ON (Click to turn OFF)" style="display: none;"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i><span class="composer-toggle-tick" id="composerCommentsTick">✓</span></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
       <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
@@ -1644,6 +1645,57 @@
     <div class="comm-modal-footer">
       <button class="comm-btn secondary" onclick="closeForwardModal()">Cancel</button>
       <button class="comm-btn primary" id="forwardSendBtn" onclick="executeForward()" disabled>Forward</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMMUNITY INVITE MODAL (In-App & Outside Share for Groups & Channels) -->
+<div class="comm-modal-overlay" id="communityInviteModal" onclick="handleCommModalOverlayClick(event, 'communityInviteModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 440px;">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title" id="communityInviteTitle" style="display: flex; align-items: center; gap: 8px;">
+        <i data-lucide="user-plus" style="width: 18px; height: 18px; color: var(--primary);"></i> Invite to Group
+      </div>
+      <button class="comm-modal-close" onclick="closeCommunityInviteModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    
+    <!-- Sub tabs: In-App vs Outside Share -->
+    <div class="comm-invite-tabs" style="display: flex; border-bottom: 1px solid var(--border-dk); margin-bottom: 12px;">
+      <button class="comm-invite-tab active" id="inviteTabInApp" onclick="switchInviteTab('inApp')" style="flex: 1; padding: 10px; background: transparent; border: none; border-bottom: 2px solid var(--primary); color: var(--text-1); font-weight: 600; font-size: 13px; cursor: pointer;">👥 Invite in Nexa</button>
+      <button class="comm-invite-tab" id="inviteTabShare" onclick="switchInviteTab('share')" style="flex: 1; padding: 10px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-3); font-weight: 600; font-size: 13px; cursor: pointer;">🔗 Share Link</button>
+    </div>
+
+    <!-- Panel 1: In-App Contacts Picker -->
+    <div id="inviteInAppPanel" class="comm-modal-body" style="max-height: 52vh; overflow-y: auto; padding-top: 0;">
+      <input type="text" id="inviteContactSearch" class="comm-inline-search" placeholder="🔍 Search Nexa contacts…" oninput="filterInviteContacts(this.value)">
+      <div id="inviteContactsList" class="comm-contacts-picker" style="max-height: 240px; margin-top: 8px;"></div>
+      <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 12px; color: var(--text-3);"><span id="selectedInviteCount">0</span> selected</span>
+        <button class="comm-btn primary" id="btnSendInAppInvites" onclick="sendInAppCommunityInvites()" disabled style="padding: 6px 14px; font-size: 13px;">Send Invites</button>
+      </div>
+    </div>
+
+    <!-- Panel 2: Outside Share Link -->
+    <div id="inviteSharePanel" class="comm-modal-body" style="display: none; padding: 6px 0 16px 0;">
+      <div style="font-size: 12.5px; color: var(--text-2); margin-bottom: 8px;">Anyone outside Nexa can open this link to join or follow:</div>
+      <div class="invite-link-copy-box" style="display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,0.04); border: 1px solid var(--border-dk); border-radius: 8px; padding: 6px 10px; margin-bottom: 14px;">
+        <input type="text" id="inviteShareLinkInput" readonly style="flex: 1; background: transparent; border: none; color: var(--text-1); font-size: 12.5px; outline: none;" value="">
+        <button class="comm-icon-btn-xs" onclick="copyCommunityInviteLink()" title="Copy Link" style="background: var(--primary); color: #000; border-radius: 6px; padding: 4px 8px; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+          <i data-lucide="copy" style="width: 12px; height: 12px;"></i> Copy
+        </button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="comm-action-btn-sm" onclick="shareCommunityViaWhatsApp()" style="justify-content: center; background: #25D366; color: #fff; border: none; font-weight: 600;">
+          <i data-lucide="message-circle" style="width: 15px; height: 15px;"></i> Share on WhatsApp
+        </button>
+        <button class="comm-action-btn-sm" onclick="shareCommunityViaNative()" style="justify-content: center;">
+          <i data-lucide="share-2" style="width: 15px; height: 15px;"></i> Share via other apps…
+        </button>
+      </div>
+    </div>
+
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closeCommunityInviteModal()">Close</button>
     </div>
   </div>
 </div>
