@@ -3812,8 +3812,8 @@ function handleKeyPress(e) {
 function updatePollButtonVisibility() {
   const pollBtn = document.getElementById("pollBtn");
   if (!pollBtn) return;
-  const isGroupChat = currentChatMode === 'group' && !!selectedGroup;
-  if (!isGroupChat) {
+  const isCommunityChat = currentChatMode === 'channel' && !!selectedChannel;
+  if (!isCommunityChat) {
     pollBtn.style.display = 'none';
     pollBtn.classList.add("hidden");
   } else {
@@ -9398,7 +9398,9 @@ function renderChannelPostsList(posts) {
     wrap.className = 'channel-post-wrap';
 
     let mediaHtml = '';
-    if (post.image) {
+    if (post.type === 'poll' && post.pollOptions) {
+      mediaHtml = buildPollHTML(post.id, post);
+    } else if (post.image) {
       mediaHtml = `<div class="channel-post-media" onclick="openProfilePic('${post.image}')"><img src="${escapeHtml(post.image)}" loading="lazy"></div>`;
     } else if (post.video) {
       mediaHtml = `<div class="channel-post-media"><video src="${escapeHtml(post.video)}" controls></video></div>`;
@@ -9411,6 +9413,7 @@ function renderChannelPostsList(posts) {
 
     const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
     const commentsAllowedForAll = (selectedChannel.settings && selectedChannel.settings.allowComments) !== false;
+    const commentsOnThisPost = (post.commentsEnabled !== false) && commentsAllowedForAll;
 
     // Viewer count (👁️) is admin-only — regular subscribers shouldn't see
     // how many people viewed a broadcast post.
@@ -9487,7 +9490,7 @@ function renderChannelPostsList(posts) {
                 <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
                 <span>${commentsCount} Comments</span>
               </button>
-            ` : commentsAllowedForAll ? `
+            ` : commentsOnThisPost ? `
               <button class="channel-reaction-pill user-comment-btn" onclick="toggleUserChannelComment('${post.id}')" title="Comment on this post">
                 <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
                 <span>Comment</span>
@@ -9500,7 +9503,7 @@ function renderChannelPostsList(posts) {
             </button>
           </div>
         </div>
-        ${!isChannelAdmin && commentsAllowedForAll ? `
+        ${!isChannelAdmin && commentsOnThisPost ? `
         <div class="channel-user-comment-box" id="userCommentBox_${post.id}" style="display:none;">
           <textarea id="userCommentInput_${post.id}" class="user-comment-input" rows="1" maxlength="1000" placeholder="Write a comment…" onkeydown="handleUserCommentKey(event, '${post.id}')"></textarea>
           <button class="comments-send-btn" onclick="submitUserChannelComment('${post.id}')" title="Send"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
@@ -9665,8 +9668,10 @@ let activeUserCommentPostId = null;
 
 function toggleUserChannelComment(postId) {
   if (!selectedChannel || !currentUser) return;
-  if ((selectedChannel.settings && selectedChannel.settings.allowComments) === false) {
-    showNotifToast('Comments are disabled on this channel', 'error');
+  const postMeta = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
+  const commentsOnThisPost = ((selectedChannel.settings && selectedChannel.settings.allowComments) !== false) && (postMeta ? postMeta.commentsEnabled !== false : true);
+  if (!commentsOnThisPost) {
+    showNotifToast('Comments are disabled on this post', 'error');
     return;
   }
   const box = document.getElementById(`userCommentBox_${postId}`);
@@ -9750,11 +9755,13 @@ function openChannelComments(postId) {
   document.getElementById('commentsOriginalPostSnippet').textContent = postText;
 
   const commentsAllowed = selectedChannel.settings?.allowComments !== false;
+  const postMeta = (window._nexaChannelPostsCache || []).find(p => p.id === activeCommentPostId);
+  const commentsOnThisPost = commentsAllowed && (postMeta ? postMeta.commentsEnabled !== false : true);
 
   // Toggle input bar or notice depending on channel setting
   const inputBar = drawer.querySelector('.comments-input-bar');
   let disabledNotice = document.getElementById('channelCommentsDisabledNotice');
-  if (!commentsAllowed && !isAdmin) {
+  if (!commentsOnThisPost && !isAdmin) {
     if (inputBar) inputBar.style.display = 'none';
     if (!disabledNotice) {
       disabledNotice = document.createElement('div');
@@ -9915,9 +9922,11 @@ async function submitChannelComment() {
   const isOwner = selectedChannel.ownerUid === currentUser.uid;
   const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
   const commentsAllowed = selectedChannel.settings?.allowComments !== false;
+  const postMeta = (window._nexaChannelPostsCache || []).find(p => p.id === activeCommentPostId);
+  const commentsOnThisPost = commentsAllowed && (postMeta ? postMeta.commentsEnabled !== false : true);
 
-  if (!commentsAllowed && !isAdmin) {
-    showNotifToast('Comments are disabled on this channel', 'error');
+  if (!commentsOnThisPost && !isAdmin) {
+    showNotifToast('Comments are disabled on this post', 'error');
     return;
   }
 
@@ -9999,6 +10008,18 @@ function openChannelInfo() {
     commentsToggle.checked = commentsAllowed;
   }
 
+  const perPostCommentsSection = document.getElementById('channelPerPostCommentsSection');
+  const perPostCommentsToggle = document.getElementById('channelPerPostCommentsToggle');
+  const perPostCommentsStatus = document.getElementById('channelPerPostCommentsStatus');
+  if (perPostCommentsSection && perPostCommentsToggle && activeCommentPostId) {
+    const cachedPost = (window._nexaChannelPostsCache || []).find(p => p.id === activeCommentPostId);
+    const postCommentsEnabled = cachedPost ? (cachedPost.commentsEnabled !== false) : true;
+    perPostCommentsSection.style.display = 'block';
+    perPostCommentsToggle.checked = postCommentsEnabled;
+    if (perPostCommentsStatus) perPostCommentsStatus.textContent = postCommentsEnabled ? 'Subscribers can comment on this post' : 'Comments are off for this post';
+  } else if (perPostCommentsSection) {
+    perPostCommentsSection.style.display = 'none';
+  }
   const isSubscribed = (selectedChannel.subscriberUids || []).includes(currentUser.uid);
   const subBtn = document.getElementById('channelSubToggleBtn');
   if (subBtn) {
@@ -10087,6 +10108,24 @@ async function toggleChannelCommentsSetting(allow) {
   }
 }
 
+async function toggleChannelPostCommentsSetting(allow) {
+  if (!selectedChannel || !activeCommentPostId) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can change this setting', 'error');
+    return;
+  }
+  try {
+    await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(activeCommentPostId).update({
+      commentsEnabled: allow,
+      updatedAt: Date.now()
+    });
+    showNotifToast(`✓ Comments ${allow ? 'enabled' : 'disabled'} for this post`, 'success');
+  } catch (err) {
+    showNotifToast('Failed to update setting: ' + err.message, 'error');
+  }
+}
 function triggerChangeChannelAvatar() {
   if (!selectedChannel) return;
   const isOwner = selectedChannel.ownerUid === currentUser.uid;
@@ -10584,7 +10623,7 @@ function addPollOption() {
 }
 
 async function submitPoll() {
-  if (!selectedGroup && !selectedUser) return;
+  if (!selectedChannel && !selectedGroup && !selectedUser) return;
   const question = (document.getElementById('pollQuestionInput').value || '').trim();
   if (!question) {
     showNotifToast('Please enter a question', 'error');
@@ -10618,7 +10657,10 @@ async function submitPoll() {
     text: `📊 Poll: ${question}`
   };
 
-  if (currentChatMode === 'group' && selectedGroup) {
+  if (currentChatMode === 'channel' && selectedChannel) {
+    await sendChannelPostWithExtras(pollPayload);
+    showNotifToast('✓ Poll broadcast!', 'success');
+  } else if (currentChatMode === 'group' && selectedGroup) {
     await sendGroupMessageWithExtras(pollPayload);
     showNotifToast('✓ Poll created in group!', 'success');
   } else if (selectedUser) {
@@ -10631,12 +10673,13 @@ async function submitPoll() {
 async function votePollOption(msgId, optKey) {
   if (!currentUser) return;
   let msgRef;
-  if (currentChatMode === 'group' && selectedGroup) {
+  if (currentChatMode === 'channel' && selectedChannel) {
+    msgRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(msgId);
+  } else if (currentChatMode === 'group' && selectedGroup) {
     msgRef = db.collection('groups').doc(selectedGroup.id).collection('messages').doc(msgId);
   } else {
     msgRef = db.collection('chats').doc(msgId);
   }
-
   try {
     await db.runTransaction(async tx => {
       const doc = await tx.get(msgRef);

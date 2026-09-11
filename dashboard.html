@@ -1509,6 +1509,16 @@
         </label>
       </div>
 
+      <div class="comm-info-section" id="channelPerPostCommentsSection" style="display: none;">
+        <div class="comm-section-title">This Post's Comments</div>
+        <label class="comm-checkbox-label" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 4px 0;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-1);">Comments on post</span>
+            <span style="font-size: 11.5px; color: var(--text-3);" id="channelPerPostCommentsStatus">Allow subscribers to comment on this post</span>
+          </div>
+          <input type="checkbox" id="channelPerPostCommentsToggle" onchange="toggleChannelPostCommentsSetting(this.checked)" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);">
+        </label>
+      </div>
       <!-- WhatsApp-style Shared Media, Links & Docs Section for Channels -->
       <div class="comm-info-section" id="channelSharedMediaSection">
         <div class="comm-section-header">
