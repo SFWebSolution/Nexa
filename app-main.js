@@ -3812,8 +3812,8 @@ function handleKeyPress(e) {
 function updatePollButtonVisibility() {
   const pollBtn = document.getElementById("pollBtn");
   if (!pollBtn) return;
-  const isGroupChat = currentChatMode === 'group' && !!selectedGroup;
-  if (!isGroupChat) {
+  const isCommunityChat = currentChatMode === 'channel' && !!selectedChannel;
+  if (!isCommunityChat) {
     pollBtn.style.display = 'none';
     pollBtn.classList.add("hidden");
   } else {
@@ -9398,7 +9398,9 @@ function renderChannelPostsList(posts) {
     wrap.className = 'channel-post-wrap';
 
     let mediaHtml = '';
-    if (post.image) {
+    if (post.type === 'poll' && post.pollOptions) {
+      mediaHtml = buildPollHTML(post.id, post);
+    } else if (post.image) {
       mediaHtml = `<div class="channel-post-media" onclick="openProfilePic('${post.image}')"><img src="${escapeHtml(post.image)}" loading="lazy"></div>`;
     } else if (post.video) {
       mediaHtml = `<div class="channel-post-media"><video src="${escapeHtml(post.video)}" controls></video></div>`;
@@ -10621,7 +10623,7 @@ function addPollOption() {
 }
 
 async function submitPoll() {
-  if (!selectedGroup && !selectedUser) return;
+  if (!selectedChannel && !selectedGroup && !selectedUser) return;
   const question = (document.getElementById('pollQuestionInput').value || '').trim();
   if (!question) {
     showNotifToast('Please enter a question', 'error');
@@ -10655,7 +10657,10 @@ async function submitPoll() {
     text: `📊 Poll: ${question}`
   };
 
-  if (currentChatMode === 'group' && selectedGroup) {
+  if (currentChatMode === 'channel' && selectedChannel) {
+    await sendChannelPostWithExtras(pollPayload);
+    showNotifToast('✓ Poll broadcast!', 'success');
+  } else if (currentChatMode === 'group' && selectedGroup) {
     await sendGroupMessageWithExtras(pollPayload);
     showNotifToast('✓ Poll created in group!', 'success');
   } else if (selectedUser) {
@@ -10668,12 +10673,13 @@ async function submitPoll() {
 async function votePollOption(msgId, optKey) {
   if (!currentUser) return;
   let msgRef;
-  if (currentChatMode === 'group' && selectedGroup) {
+  if (currentChatMode === 'channel' && selectedChannel) {
+    msgRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(msgId);
+  } else if (currentChatMode === 'group' && selectedGroup) {
     msgRef = db.collection('groups').doc(selectedGroup.id).collection('messages').doc(msgId);
   } else {
     msgRef = db.collection('chats').doc(msgId);
   }
-
   try {
     await db.runTransaction(async tx => {
       const doc = await tx.get(msgRef);
