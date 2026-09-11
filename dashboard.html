@@ -136,7 +136,7 @@
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
         <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
-        <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i></button>
+        <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
         <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
       </div>
@@ -565,6 +565,9 @@
     <div id="replyStripWrap"></div>
 
     <div class="input-area">
+      <div class="mentions-popup" id="mentionsPopup" style="display: none;">
+        <div class="mentions-list" id="mentionsList"></div>
+      </div>
       <div class="input-wrap">
         <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
@@ -636,6 +639,7 @@
   <button class="nav-item" id="navBtnCommunity" onclick="switchTab('community')">
     <span class="nav-icon"><i data-lucide="users" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Community</span>
+    <span class="comm-tab-dot" id="commTabDotMobile" style="display:none;"></span>
   </button>
   <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
     <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
@@ -1624,11 +1628,6 @@
   <div class="starred-list" id="starredMessagesList">
     <div class="comments-empty">No starred messages yet. Long-press or right-click a message and tap ⭐ Star to save it here.</div>
   </div>
-</div>
-
-<!-- @MENTIONS POPUP (Groups) -->
-<div class="mentions-popup" id="mentionsPopup" style="display: none;">
-  <div class="mentions-list" id="mentionsList"></div>
 </div>
 
 <!-- Nexa WhatsApp Multi-User Voice Chat System -->

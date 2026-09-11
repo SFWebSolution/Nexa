@@ -1181,6 +1181,9 @@ function switchTab(tabName) {
   closeStoryViewer();
   currentTab = tabName;
 
+  // Community-tab marker so voice/video call buttons can be hard-hidden via CSS
+  document.body.classList.toggle('community-tab-active', tabName === 'community');
+
   // 1. Update sidebar top tab icons
   document.querySelectorAll('.s-tab-btn').forEach(btn => btn.classList.remove('active'));
   const sBtn = document.getElementById(`sTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
@@ -1777,8 +1780,9 @@ function selectChat(user, el) {
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
   const videoBtn = document.getElementById('headerVideoCallBtn');
   const infoBtn = document.getElementById('headerInfoBtn');
-  if (voiceBtn) voiceBtn.style.display = 'flex';
-  if (videoBtn) videoBtn.style.display = 'flex';
+  const showCallButtons = currentTab !== 'community'; // never show voice/video while on the Community tab
+  if (voiceBtn) voiceBtn.style.display = showCallButtons ? 'flex' : 'none';
+  if (videoBtn) videoBtn.style.display = showCallButtons ? 'flex' : 'none';
   if (infoBtn) infoBtn.style.display = 'flex';
   updatePollButtonVisibility();
   // Persist the chat we're LEAVING so it reopens instantly next app-open,
@@ -7707,9 +7711,60 @@ function formatMessageText(text) {
   return linkify(text);
 }
 
+// ── Community tab activity glow ──────────────────────────────────────────────
+// Shows a green pulsing dot on the Community tab (desktop + mobile) when any
+// group/channel the user follows has unseen activity (new message/post. The dot
+// clears when the user opens the Community tab or opens the group/channel itself).
+function communitySeenKey() {
+  return `nexa_comm_last_viewed_${currentUser?.uid || 'anon'}`;
+}
+
+function getCommunitySeen() {
+  try { return JSON.parse(localStorage.getItem(communitySeenKey()) || '{}'); } catch (e) { return {}; }
+}
+
+function markCommunitySeen(id) {
+  const seen = getCommunitySeen();
+  seen[id] = Date.now();
+  try { localStorage.setItem(communitySeenKey(), JSON.stringify(seen)); } catch (e) {}
+}
+
+function hasCommunityActivity() {
+  if (!currentUser) return false;
+  const seenMap = getCommunitySeen();
+  const now = Date.now();
+  const recentCutoff = now - 10 * 24 * 3600 * 1000; // ignore ancient timestamps
+
+  for (const g of myGroups) {
+    const last = g.lastMessageTime || 0;
+    if (last && last > (seenMap['g_' + g.id] || 0) && last > recentCutoff) return true;
+  }
+  for (const c of myChannels) {
+    const last = c.lastPostTime || 0;
+    if (last && last > (seenMap['c_' + c.id] || 0) && last > recentCutoff) return true;
+  }
+  return false;
+}
+
+function updateCommunityTabDot() {
+  const show = hasCommunityActivity();
+  ['commTabDotDesktop', 'commTabDotMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? 'block' : 'none';
+  });
+}
+
+function clearCommunitySeen() {
+  const now = Date.now();
+  for (const g of myGroups) markCommunitySeen('g_' + g.id);
+  for (const c of myChannels) markCommunitySeen('c_' + c.id);
+  updateCommunityTabDot();
+}
+
 // ── Entry point when Community tab is clicked ──────────────────────────────
 function renderCommunityTab() {
   if (!currentUser) return;
+  clearCommunitySeen();
   listenMyGroups();
   listenMyChannels();
   loadDiscoverChannels();
@@ -7977,6 +8032,7 @@ function listenMyGroups() {
       });
       myGroups.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
       renderMyGroups();
+      updateCommunityTabDot();
     }, err => {
       console.error('Groups listener error:', err);
     });
@@ -8042,6 +8098,8 @@ function handleSelectGroupItem(groupId) {
 
 // ── Select and Open Group Chat Room ────────────────────────────────────────
 function selectGroupChat(group) {
+  markCommunitySeen('g_' + group.id);
+  updateCommunityTabDot();
   if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
   if (unsubMessagesB) { unsubMessagesB(); unsubMessagesB = null; }
   if (unsubTyping) { unsubTyping(); unsubTyping = null; }
@@ -8126,8 +8184,26 @@ function selectGroupChat(group) {
     }
   }, err => console.warn('Group doc sync error:', err));
 
+  // Preload group members so @mentions work immediately (the old flow only
+  // populated currentGroupMembersList when Group Info was opened, so typing @
+  // right after opening a group showed an empty mention list).
+  loadGroupMembersForMentions(group.id);
+
   loadGroupMessages(group.id);
   if (window.lucide) lucide.createIcons();
+}
+
+async function loadGroupMembersForMentions(groupId) {
+  try {
+    const snap = await db.collection('groups').doc(groupId).collection('members').get();
+    const members = [];
+    snap.forEach(d => members.push({ id: d.id, ...d.data() }));
+    if (selectedGroup && selectedGroup.id === groupId) {
+      currentGroupMembersList = members;
+    }
+  } catch (err) {
+    console.warn('Failed to preload group members for mentions:', err);
+  }
 }
 
 function loadGroupMessages(groupId) {
@@ -8990,6 +9066,7 @@ function listenMyChannels() {
       if (activeCommunitySubTab === 'channels') {
         renderChannelsFollowing();
       }
+      updateCommunityTabDot();
     }, err => console.error('Channels listener error:', err));
 }
 
@@ -9180,6 +9257,8 @@ async function toggleSubscribeChannel(channelId) {
 
 // ── Select and Open Channel Broadcast Feed ─────────────────────────────────
 function selectChannelFeed(channel) {
+  markCommunitySeen('c_' + channel.id);
+  updateCommunityTabDot();
   if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
   if (unsubMessagesB) { unsubMessagesB(); unsubMessagesB = null; }
   if (unsubTyping) { unsubTyping(); unsubTyping = null; }
@@ -9320,12 +9399,15 @@ function renderChannelPostsList(posts) {
       </div>`;
     }
 
+    const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
+
+    // Viewer count (👁️) is admin-only — regular subscribers shouldn't see
+    // how many people viewed a broadcast post.
     const uniqueViews = (post.viewsUids && Array.isArray(post.viewsUids) && post.viewsUids.length) ? post.viewsUids.length : (post.viewsCount || 1);
     const views = formatCount(uniqueViews);
     const commentsCount = post.commentsCount || 0;
     const timeStr = post.createdAt ? new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
-    const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
     const replyQuote = post.postReplyToComment;
     let replyQuoteHtml = '';
     if (replyQuote) {
@@ -9358,10 +9440,12 @@ function renderChannelPostsList(posts) {
         ${mediaHtml}
         <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
         <div class="channel-post-footer">
+          ${isChannelAdmin ? `
           <div class="channel-post-views">
             <i data-lucide="eye" style="width:13px;height:13px;"></i>
             <span>${views}</span>
           </div>
+          ` : '<div></div>'}
           <div class="channel-post-actions">
             ${(() => {
               const rMap = post.reactions || {};
@@ -9392,12 +9476,21 @@ function renderChannelPostsList(posts) {
                 <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
                 <span>${commentsCount} Comments</span>
               </button>
-            ` : ''}
+            ` : `
+              <button class="channel-reaction-pill user-comment-btn" onclick="toggleUserChannelComment('${post.id}')" title="Comment on this post">
+                <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
+                <span>Comment</span>
+              </button>
+            `}
             <button class="channel-reaction-pill" onclick="shareChannelPost('${post.id}')" title="Forward / Share Post">
               <i data-lucide="share-2" style="width:12px;height:12px;"></i>
               <span>Share</span>
             </button>
           </div>
+        </div>
+        <div class="channel-user-comment-box" id="userCommentBox_${post.id}" style="display:none;">
+          <textarea id="userCommentInput_${post.id}" class="user-comment-input" rows="1" maxlength="1000" placeholder="Write a comment…" onkeydown="handleUserCommentKey(event, '${post.id}')"></textarea>
+          <button class="comments-send-btn" onclick="submitUserChannelComment('${post.id}')" title="Send"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
         </div>
       </div>
     `;
@@ -9550,6 +9643,72 @@ async function toggleChannelPostReaction(postId, emoji) {
 }
 
 // ── Channel Post Discussion Comments Drawer ────────────────────────────────
+
+// Lightweight comment composer for regular (non-admin) subscribers. Users
+// can drop a comment on a post but the full discussion drawer is admin-only.
+let activeUserCommentPostId = null;
+
+function toggleUserChannelComment(postId) {
+  const box = document.getElementById(`userCommentBox_${postId}`);
+  if (!box) return;
+
+  // Keep only one inline composer open at a time
+  if (activeUserCommentPostId && activeUserCommentPostId !== postId) {
+
+    const prev = document.getElementById(`userCommentBox_${activeUserCommentPostId}`);
+    if (prev) prev.style.display = 'none';
+  }
+
+  if (box.style.display === 'none') {
+    box.style.display = 'flex';
+    activeUserCommentPostId = postId;
+    const ta = document.getElementById(`userCommentInput_${postId}`);
+    if (ta) { ta.focus(); ta.placeholder = 'Write a comment…'; }
+  } else {
+    box.style.display = 'none';
+    if (activeUserCommentPostId === postId) activeUserCommentPostId = null;
+  }
+}
+
+function handleUserCommentKey(e, postId) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    submitUserChannelComment(postId);
+  }
+}
+
+async function submitUserChannelComment(postId) {
+  if (!selectedChannel || !currentUser) return;
+  if (activeUserCommentPostId) {
+    const prev = document.getElementById(`userCommentBox_${activeUserCommentPostId}`);
+    if (prev) prev.style.display = 'none';
+  }
+
+  const ta = document.getElementById(`userCommentInput_${postId}`);
+  const text = ta ? ta.value.trim() : '';
+  if (!text) return;
+  ta.value = '';
+
+  try {
+    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
+    await postRef.collection('comments').add({
+      authorUid: currentUser.uid,
+      authorName: document.getElementById('myName').textContent || currentUser.displayName || 'Subscriber',
+      authorAvatar: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+      text,
+      createdAt: Date.now()
+    });
+
+    await postRef.update({
+      commentsCount: firebase.firestore.FieldValue.increment(1)
+    });
+
+    showNotifToast('✓ Comment posted', 'success');
+  } catch (err) {
+    showNotifToast('Failed to post comment: ' + err.message, 'error');
+  }
+}
+
 let pendingChannelCommentReply = null; // { commentId, authorName, commentText, postId }
 
 function openChannelComments(postId) {
