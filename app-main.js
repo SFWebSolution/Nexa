@@ -9329,6 +9329,15 @@ function selectChannelFeed(channel) {
     // Sync pinned announcement banner for channel
     syncCommPinnedBanner();
 
+    // If the comments setting flips, re-render posts so the user comment button/appears-disappears live
+    const prevCommentsAllowed = window._nexaPrevChannelCommentsAllowed;
+    const nowCommentsAllowed = (selectedChannel.settings && selectedChannel.settings.allowComments) !== false;
+    if (prevCommentsAllowed !== undefined && prevCommentsAllowed !== nowCommentsAllowed) {
+      const cachedPosts = window._nexaChannelPostsCache;
+      if (Array.isArray(cachedPosts) && cachedPosts.length) renderChannelPostsList(cachedPosts);
+    }
+    window._nexaPrevChannelCommentsAllowed = nowCommentsAllowed;
+
     // Update input area if admin status changed
     const nowAdmin = (selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid;
     if (nowAdmin) {
@@ -9358,6 +9367,7 @@ function loadChannelPosts(channelId) {
         posts.push({ id: doc.id, ...doc.data() });
       });
       posts.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      window._nexaChannelPostsCache = posts;
       renderChannelPostsList(posts);
     }, err => {
       console.error('Channel posts error:', err);
@@ -9400,6 +9410,7 @@ function renderChannelPostsList(posts) {
     }
 
     const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
+    const commentsAllowedForAll = (selectedChannel.settings && selectedChannel.settings.allowComments) !== false;
 
     // Viewer count (👁️) is admin-only — regular subscribers shouldn't see
     // how many people viewed a broadcast post.
@@ -9476,22 +9487,26 @@ function renderChannelPostsList(posts) {
                 <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
                 <span>${commentsCount} Comments</span>
               </button>
-            ` : `
+            ` : commentsAllowedForAll ? `
               <button class="channel-reaction-pill user-comment-btn" onclick="toggleUserChannelComment('${post.id}')" title="Comment on this post">
                 <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
                 <span>Comment</span>
               </button>
-            `}
+            ` : ''
+            }
             <button class="channel-reaction-pill" onclick="shareChannelPost('${post.id}')" title="Forward / Share Post">
               <i data-lucide="share-2" style="width:12px;height:12px;"></i>
               <span>Share</span>
             </button>
           </div>
         </div>
+        ${!isChannelAdmin && commentsAllowedForAll ? `
         <div class="channel-user-comment-box" id="userCommentBox_${post.id}" style="display:none;">
           <textarea id="userCommentInput_${post.id}" class="user-comment-input" rows="1" maxlength="1000" placeholder="Write a comment…" onkeydown="handleUserCommentKey(event, '${post.id}')"></textarea>
           <button class="comments-send-btn" onclick="submitUserChannelComment('${post.id}')" title="Send"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
         </div>
+        ` : ''
+        }
       </div>
     `;
     box.appendChild(wrap);
@@ -9649,6 +9664,11 @@ async function toggleChannelPostReaction(postId, emoji) {
 let activeUserCommentPostId = null;
 
 function toggleUserChannelComment(postId) {
+  if (!selectedChannel || !currentUser) return;
+  if ((selectedChannel.settings && selectedChannel.settings.allowComments) === false) {
+    showNotifToast('Comments are disabled on this channel', 'error');
+    return;
+  }
   const box = document.getElementById(`userCommentBox_${postId}`);
   if (!box) return;
 
