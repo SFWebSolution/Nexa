@@ -465,6 +465,10 @@ auth.onAuthStateChanged(async (user) => {
     initPWA();
     await updateOnline(true);
     maybeReopenLastChat();
+    listenMyGroups();
+    listenMyChannels();
+    listenDiscoverChannels();
+    checkGroupInviteUrlParam();
     console.log("✅ App fully ready");
     revealNexaApp();
     // Re-engagement nudge: pops a fun welcome-back popup when the user
@@ -1174,11 +1178,6 @@ function searchUsers() {
 let currentTab = 'chats';
 
 function switchTab(tabName) {
-  // Community tab is currently a "Coming Soon" placeholder
-  if (tabName === 'community') {
-    openCommunityComingSoon();
-    return;
-  }
   closeStoryViewer();
   currentTab = tabName;
 
@@ -3182,7 +3181,11 @@ function buildMessage(id, msg, fromMe) {
 
     bubble.appendChild(badge);
   } else {
-    if (msg.text) inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
+    if (msg.type === 'poll' && msg.pollOptions) {
+      inner += buildPollHTML(id, msg);
+    } else if (msg.text) {
+      inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
+    }
 
     if (msg.image) {
       const imgUrl = safeMediaUrl(msg.image);
@@ -3783,6 +3786,8 @@ function toggleActionButtons() {
   document.getElementById("imgBtn").classList.toggle("hidden", has);
   document.getElementById("fileBtn").classList.toggle("hidden", has);
   document.getElementById("recordBtn").classList.toggle("hidden", has);
+  const pollBtn = document.getElementById("pollBtn");
+  if (pollBtn) pollBtn.classList.toggle("hidden", has);
 }
 
 async function sendMessage() {
@@ -3917,9 +3922,16 @@ document.addEventListener("mouseup", () => { if (isRecording) stopRec(); });
 document.addEventListener("touchend", () => { if (isRecording) stopRec(); });
 
 async function startRec(e) {
-  if (isRecording || (!selectedUser && !selectedGroup)) {
-    if (!selectedUser && !selectedGroup) alert("Select a conversation first");
+  if (isRecording || (!selectedUser && !selectedGroup && !selectedChannel)) {
+    if (!selectedUser && !selectedGroup && !selectedChannel) alert("Select a conversation first");
     return;
+  }
+  if (currentChatMode === 'channel' && selectedChannel) {
+    const isAdmin = (selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid;
+    if (!isAdmin) {
+      showNotifToast("Only channel admins can record voice broadcasts", "error");
+      return;
+    }
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -3971,7 +3983,7 @@ function stopRec() {
 }
 
 async function sendVoice() {
-  if (!selectedUser) return;
+  if (!selectedUser && !selectedGroup && !selectedChannel) return;
   if (!recordingBlob) { showNotifToast("No recording to send", "error"); return; }
 
   const btn = document.getElementById("vSendBtn");
@@ -3982,16 +3994,18 @@ async function sendVoice() {
   const mime = recordingMime;
   const dur = recDuration || 0;
 
-  // Optimistic bubble: show the voice note in the chat immediately (from the
-  // local blob) so it appears the instant you release — then swap in the
-  // uploaded URL once it's stored. No more "waiting for it to send".
-  const localUrl = URL.createObjectURL(blob);
-  const tempMsg = baseMsg({ audio: localUrl, duration: dur });
-  tempMsg.id = "temp_vn_" + Date.now();
-  tempMsg._localAudio = true;
-  _msgsA.push(tempMsg);
-  renderMessageList();
-  scrollMessagesToBottom();
+  let tempMsg = null;
+  if (currentChatMode === 'direct' && selectedUser) {
+    const localUrl = URL.createObjectURL(blob);
+    tempMsg = baseMsg({ audio: localUrl, duration: dur });
+    tempMsg.id = "temp_vn_" + Date.now();
+    tempMsg._localAudio = true;
+    _msgsA.push(tempMsg);
+    renderMessageList();
+    scrollMessagesToBottom();
+  } else {
+    showNotifToast("Uploading voice note…", "info");
+  }
   cancelVoice(); // hide the panel + reset state right away
 
   try {
@@ -4002,18 +4016,25 @@ async function sendVoice() {
       if (currentChatMode === 'group') {
         await sendGroupMessageWithExtras({ audio: url, duration: dur });
         showNotifToast("✓ Voice note sent to group!", "success");
-      } else {
+      } else if (currentChatMode === 'channel') {
+        await sendChannelPostWithExtras({ audio: url, duration: dur, text: '🎤 Voice Broadcast' });
+        showNotifToast("✓ Voice broadcast posted!", "success");
+      } else if (selectedUser) {
         await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
         // Replace the optimistic local-blob bubble with the stored one.
-        const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
-        if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+        if (tempMsg) {
+          const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
+          if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+        }
         const senderName = document.getElementById('myName').textContent || 'Nexa User';
         sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
       }
     }
   } catch (e) {
-    const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
-    if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+    if (tempMsg) {
+      const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
+      if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
+    }
     showNotifToast("Failed to send voice note: " + e.message, "error");
   }
   if (btn) { btn.disabled = false; btn.textContent = "✓ Send"; }
@@ -8976,22 +8997,26 @@ function handleSelectChannelItem(channelId) {
 }
 
 // ── Public Discover Channels Directory ─────────────────────────────────────
-async function loadDiscoverChannels() {
-  try {
-    const snap = await db.collection('channels')
-      .where('isPublic', '==', true)
-      .orderBy('subscribersCount', 'desc')
-      .limit(40)
-      .get();
+let unsubDiscoverChannels = null;
+function listenDiscoverChannels() {
+  if (unsubDiscoverChannels || !db) return;
+  unsubDiscoverChannels = db.collection('channels')
+    .where('isPublic', '==', true)
+    .limit(50)
+    .onSnapshot(snap => {
+      discoverChannels = [];
+      snap.forEach(d => discoverChannels.push({ id: d.id, ...d.data() }));
+      discoverChannels.sort((a, b) => (b.subscribersCount || 0) - (a.subscribersCount || 0));
+      if (activeCommunitySubTab === 'channels') {
+        renderChannelsDiscover();
+      }
+    }, err => {
+      console.warn('Discover channels listener error:', err);
+    });
+}
 
-    discoverChannels = [];
-    snap.forEach(d => discoverChannels.push({ id: d.id, ...d.data() }));
-    if (activeCommunitySubTab === 'channels') {
-      renderChannelsDiscover();
-    }
-  } catch (err) {
-    console.warn('Load discover channels error:', err);
-  }
+function loadDiscoverChannels() {
+  listenDiscoverChannels();
 }
 
 function filterDiscoverChannels() {
@@ -9242,8 +9267,8 @@ function renderChannelPostsList(posts) {
 
   box.innerHTML = '';
   posts.forEach(post => {
-    // Record view impression once per session
-    recordPostView(post.id);
+    // Record view impression accurately per unique user
+    recordPostView(post);
 
     const wrap = document.createElement('div');
     wrap.className = 'channel-post-wrap';
@@ -9253,9 +9278,15 @@ function renderChannelPostsList(posts) {
       mediaHtml = `<div class="channel-post-media" onclick="openProfilePic('${post.image}')"><img src="${escapeHtml(post.image)}" loading="lazy"></div>`;
     } else if (post.video) {
       mediaHtml = `<div class="channel-post-media"><video src="${escapeHtml(post.video)}" controls></video></div>`;
+    } else if (post.audio) {
+      mediaHtml = `<div class="channel-post-audio" style="margin: 8px 0; padding: 10px 14px; background: rgba(255,255,255,0.06); border-radius: 12px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 20px;">🎤</span>
+        <audio controls src="${safeMediaUrl(post.audio)}" style="width: 100%; height: 36px;"></audio>
+      </div>`;
     }
 
-    const views = formatCount(post.viewsCount || 1);
+    const uniqueViews = (post.viewsUids && Array.isArray(post.viewsUids) && post.viewsUids.length) ? post.viewsUids.length : (post.viewsCount || 1);
+    const views = formatCount(uniqueViews);
     const commentsCount = post.commentsCount || 0;
     const timeStr = post.createdAt ? new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -9325,17 +9356,24 @@ function renderChannelPostsList(posts) {
   if (window.lucide) lucide.createIcons();
 }
 
-async function recordPostView(postId) {
-  if (!selectedChannel) return;
-  const key = `nexa_view_${selectedChannel.id}_${postId}`;
+async function recordPostView(post) {
+  if (!selectedChannel || !currentUser || !post || !post.id) return;
+  const postId = post.id;
+  const uids = post.viewsUids || [];
+  if (uids.includes(currentUser.uid)) return;
+
+  const key = `nexa_view_${selectedChannel.id}_${postId}_${currentUser.uid}`;
   if (sessionStorage.getItem(key)) return;
   sessionStorage.setItem(key, '1');
 
   try {
     await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId).update({
+      viewsUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
       viewsCount: firebase.firestore.FieldValue.increment(1)
     });
-  } catch (e) {}
+  } catch (e) {
+    console.warn('recordPostView error:', e);
+  }
 }
 
 async function shareChannelPost(postId) {
@@ -9388,13 +9426,16 @@ async function sendChannelPostWithExtras(extras) {
       authorUid: currentUser.uid,
       authorName,
       createdAt: Date.now(),
+      viewsUids: [currentUser.uid],
       viewsCount: 1,
       commentsCount: 0,
       reactions: {},
       ...extras
     };
 
-    await db.collection('channels').doc(selectedChannel.id).collection('posts').add(postPayload);
+    const docRef = await db.collection('channels').doc(selectedChannel.id).collection('posts').add(postPayload);
+    sessionStorage.setItem(`nexa_view_${selectedChannel.id}_${docRef.id}_${currentUser.uid}`, '1');
+
     await db.collection('channels').doc(selectedChannel.id).update({
       lastPostTime: Date.now()
     });
@@ -10201,8 +10242,8 @@ function formatCount(num) {
 // ═══════════════════════════════════════════════════════════════════════
 
 function openPollModal() {
-  if (currentChatMode !== 'group' || !selectedGroup) {
-    showNotifToast('Polls are available in groups only', 'info');
+  if (!selectedGroup && !selectedUser) {
+    showNotifToast('Select a chat or group to create a poll', 'info');
     return;
   }
   const modal = document.getElementById('pollCreateModal');
@@ -10240,7 +10281,7 @@ function addPollOption() {
 }
 
 async function submitPoll() {
-  if (!selectedGroup || currentChatMode !== 'group') return;
+  if (!selectedGroup && !selectedUser) return;
   const question = (document.getElementById('pollQuestionInput').value || '').trim();
   if (!question) {
     showNotifToast('Please enter a question', 'error');
@@ -10266,18 +10307,32 @@ async function submitPoll() {
     pollOptions[`opt_${i}`] = { text: opt, voters: [] };
   });
 
-  await sendGroupMessageWithExtras({
+  const pollPayload = {
     type: 'poll',
     pollQuestion: question,
     pollOptions: pollOptions,
     pollMultiVote: multiVote,
     text: `📊 Poll: ${question}`
-  });
+  };
+
+  if (currentChatMode === 'group' && selectedGroup) {
+    await sendGroupMessageWithExtras(pollPayload);
+    showNotifToast('✓ Poll created in group!', 'success');
+  } else if (selectedUser) {
+    await db.collection("chats").add(baseMsg(pollPayload));
+    showNotifToast('✓ Poll sent!', 'success');
+    sendPushNotification(document.getElementById('myName').textContent || 'Nexa User', `📊 Poll: ${question}`, selectedUser.uid);
+  }
 }
 
 async function votePollOption(msgId, optKey) {
-  if (!selectedGroup || !currentUser) return;
-  const msgRef = db.collection('groups').doc(selectedGroup.id).collection('messages').doc(msgId);
+  if (!currentUser) return;
+  let msgRef;
+  if (currentChatMode === 'group' && selectedGroup) {
+    msgRef = db.collection('groups').doc(selectedGroup.id).collection('messages').doc(msgId);
+  } else {
+    msgRef = db.collection('chats').doc(msgId);
+  }
 
   try {
     await db.runTransaction(async tx => {
@@ -10931,29 +10986,6 @@ showCtxMenu = function(e, id, msg) {
   });
 })();
 
-// --- Wire poll button: add a 📊 button next to attachment buttons for group mode ---
-(function wirePollButton() {
-  const inputWrap = document.querySelector('.input-wrap');
-  if (!inputWrap) return;
-  const pollBtn = document.createElement('button');
-  pollBtn.className = 'iact-btn';
-  pollBtn.id = 'pollBtn';
-  pollBtn.title = 'Create Poll';
-  pollBtn.style.display = 'none';
-  pollBtn.innerHTML = '<span style="font-size: 18px;">📊</span>';
-  pollBtn.onclick = openPollModal;
-  const recordBtn = document.getElementById('recordBtn');
-  if (recordBtn) {
-    inputWrap.insertBefore(pollBtn, recordBtn);
-  } else {
-    inputWrap.appendChild(pollBtn);
-  }
-})();
-
-// --- Show/hide poll button based on chat mode ---
-const _origToggleActionButtons = typeof toggleActionButtons === 'function' ? toggleActionButtons : null;
-// We'll patch the poll button visibility from the enterGroupChat/enterChannelChat flows instead.
-
 // --- Update mute UI when opening group/channel info ---
 const _origOpenGroupInfo = openGroupInfo;
 openGroupInfo = async function() {
@@ -10967,10 +10999,63 @@ openChannelInfo = function() {
   updateChannelMuteUI();
 };
 
-// --- Show poll button when entering group chat ---
-function showPollButtonForGroup() {
-  const btn = document.getElementById('pollBtn');
-  if (btn) btn.style.display = currentChatMode === 'group' ? '' : 'none';
+// --- Check and handle group invite URL param (?joinGroup=CODE) ---
+async function checkGroupInviteUrlParam() {
+  if (!currentUser) return;
+  const params = new URLSearchParams(window.location.search);
+  const inviteCode = params.get('joinGroup');
+  if (!inviteCode) return;
+
+  // Clean URL parameter without page reload
+  try {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } catch (e) {}
+
+  try {
+    const snap = await db.collection('groups').where('inviteCode', '==', inviteCode).limit(1).get();
+    if (snap.empty) {
+      showNotifToast('Invalid or expired group invite link', 'error');
+      return;
+    }
+
+    const doc = snap.docs[0];
+    const group = { id: doc.id, ...doc.data() };
+    
+    // Check if user is already a member
+    const memSnap = await db.collection('groups').doc(group.id).collection('members').doc(currentUser.uid).get();
+    if (memSnap.exists) {
+      showNotifToast(`Opening "${group.name}"…`, 'info');
+      switchTab('community');
+      switchCommunitySubTab('groups');
+      selectGroupChat(group);
+      return;
+    }
+
+    const confirmJoin = confirm(`You have been invited to join the group "${group.name}". Do you want to join?`);
+    if (!confirmJoin) return;
+
+    const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';
+    await db.collection('groups').doc(group.id).collection('members').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      displayName: myName,
+      photo: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+      role: 'member',
+      joinedAt: Date.now()
+    });
+
+    await db.collection('groups').doc(group.id).update({
+      membersCount: firebase.firestore.FieldValue.increment(1)
+    });
+
+    showNotifToast(`✓ Joined "${group.name}"!`, 'success');
+    switchTab('community');
+    switchCommunitySubTab('groups');
+    group.membersCount = (group.membersCount || 0) + 1;
+    selectGroupChat(group);
+  } catch (err) {
+    console.error('Error joining group via invite link:', err);
+    showNotifToast('Failed to join group: ' + err.message, 'error');
+  }
 }
 
 // Expose groups list for forward feature

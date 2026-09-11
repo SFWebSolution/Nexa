@@ -307,6 +307,14 @@
           </div>
 
           <div class="settings-group">
+            <div class="settings-group-title">⭐ Messages & Media</div>
+            <button class="settings-action-btn" onclick="openStarredDrawer()">
+              <span>⭐ Starred Messages</span>
+              <span>→</span>
+            </button>
+          </div>
+
+          <div class="settings-group">
             <div class="settings-group-title">🎁 Invite Friends</div>
             <div class="referral-card">
               <div class="referral-hero">
@@ -538,7 +546,7 @@
 
     <div class="messages" id="messages" onscroll="updateScrollDownBtn(); maybeLoadOlderMessages()">
       <div class="empty-chat">
-        <div class="empty-chat-icon">💬</div>
+        <div class="empty-chat-icon"><i data-lucide="message-square" style="width: 34px; height: 34px; stroke-width: 1.6; color: var(--primary);"></i></div>
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Nexa Messenger for Web</div>
         <div style="font-size: 13px; color: var(--text-3);">Select a conversation from the sidebar to start chatting</div>
       </div>
@@ -563,6 +571,7 @@
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
         <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn" id="pollBtn" onclick="openPollModal()" title="Create Poll"><i data-lucide="bar-chart-2" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
       <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
@@ -901,6 +910,7 @@
   </div>
   <div class="info-section">
     <div class="info-sec-title">Actions</div>
+    <div class="info-action" onclick="openStarredDrawer()"><span class="ia-icon">⭐</span><span class="ia-text">Starred Messages</span></div>
     <div class="info-action" onclick="muteChat()"><span class="ia-icon">🔕</span><span class="ia-text" id="muteText">Mute Notifications</span></div>
     <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon">⭐</span><span class="ia-text">Favourite Chat</span></div>
     <div class="info-action" onclick="clearChat()"><span class="ia-icon">🗑️</span><span class="ia-text">Clear Chat</span></div>
@@ -1558,7 +1568,7 @@
 <div class="comm-modal-overlay" id="pollCreateModal" onclick="handleCommModalOverlayClick(event, 'pollCreateModal')">
   <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 420px;">
     <div class="comm-modal-header">
-      <div class="comm-modal-title">📊 Create Poll</div>
+      <div class="comm-modal-title" style="display:flex;align-items:center;gap:8px;"><i data-lucide="bar-chart-2" style="width: 18px; height: 18px; color: var(--primary);"></i> Create Poll</div>
       <button class="comm-modal-close" onclick="closePollModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
     </div>
     <div class="comm-modal-body" style="max-height: 55vh; overflow-y: auto;">

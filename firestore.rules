@@ -47,10 +47,10 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         (request.auth.uid == resource.data.to
          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['read', 'readAt', 'status', 'react', 'reactions', 'viewOnceOpened']))
+              .hasOnly(['read', 'readAt', 'status', 'react', 'reactions', 'viewOnceOpened', 'pollOptions']))
         || (request.auth.uid == resource.data.from
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['read', 'readAt', 'status', 'react', 'reactions', 'viewOnceOpened',
+                 .hasOnly(['read', 'readAt', 'status', 'react', 'reactions', 'viewOnceOpened', 'pollOptions',
                            'edited', 'editedAt', 'text', 'updatedAt'])
             && (!request.resource.data.keys().hasAny(['text'])
                 || (request.resource.data.text is string
