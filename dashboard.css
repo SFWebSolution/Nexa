@@ -1530,36 +1530,6 @@ select:focus-visible {
   line-height: 1.6;
   font-weight: 500;
   word-break: break-word;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-shadow: 0 0 1px rgba(255,255,255,0.06);
-}
-
-/* Crisp, high-contrast text renedering for all bubbles regardless of theme */
-.bubble,
-.channel-post-text,
-.comment-text,
-.story-text,
-.media-caption,
-.invite-name,
-.reply-quote-text,
-.group-msg-sender,
-.channel-post-time,
-.file-attach-info,
-.system-event,
-.channel-system-event {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  text-shadow: 0 0 0.5px rgba(255,255,255,0.05);
-}
-
-.msg.me .bubble {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dk) 100%);
-  border-radius: var(--radius-md) var(--radius-md) var(--radius-xs) var(--radius-md;
-  box-shadow: 0 5px 18px rgba(79, 143, 255, 0.28);
-  border: 1px solid rgba(79, 143, 255, 0.25);
-  color: white;
 }
 
 .msg.them .msg-text {
@@ -1582,27 +1552,14 @@ select:focus-visible {
   color: white;
 }
 
-.msg-text a,
-.chat-link {
+.msg-text a {
   color: var(--cyan);
   text-decoration: underline;
   transition: opacity var(--tf);
-  font-weight: 600;
 }
 
-.msg-text a:hover,
-.chat-link:hover {
+.msg-text a:hover {
   opacity: 0.8;
-}
-
-/* Story + channel-post + comment links inherit the sharp link style too */
-.channel-post-text a,
-.comment-text a,
-.story-text a,
-.media-caption a {
-  color: var(--cyan);
-  font-weight: 600;
-  text-decoration: underline;
 }
 
 /* ╔─ REPLY QUOTE ─╗ */
@@ -11632,58 +11589,3 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 
-/* Invite message bubble (sent via community invite: groups/channels) */
-.invite-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: linear-gradient(135deg, rgba(43, 143, 255, 0.14), rgba(120, 80, 255, 0.12));
-  border: 1px solid rgba(43, 143, 255, 0.35);
-  border-radius: 14px;
-  padding: 10px 14px;
-  margin:  4px  0;
-  cursor: pointer;
-  transition: transform var(--tf), opacity var(--tf);
-}
-
-.invite-card:hover {
-  transform: translateY(-1px);
-  opacity: 0.92;
-}
-
-.invite-avatar img {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.invite-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex: 1;
-}
-
-.invite-name {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--text-0);
-}
-
-.invite-action button {
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.invite-action button:hover {
-  filter: brightness(1.1);
-}

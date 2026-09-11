@@ -43,11 +43,7 @@ service cloud.firestore {
                     && request.resource.data.to.size() > 0
                     && (!request.resource.data.keys().hasAny(['text'])
                         || (request.resource.data.text is string
-                            && request.resource.data.text.size() <= 10000))
-                    && (!('type' in request.resource.data)
-                        || request.resource.data.type != 'invite'
-                        || (request.resource.data.type == 'invite'
-                            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowInvites == true));
+                            && request.resource.data.text.size() <= 10000));
       allow update: if isSignedIn() && (
         (request.auth.uid == resource.data.to
          && request.resource.data.diff(resource.data).affectedKeys()
@@ -59,13 +55,6 @@ service cloud.firestore {
             && (!request.resource.data.keys().hasAny(['text'])
                 || (request.resource.data.text is string
                     && request.resource.data.text.size() <= 10000)))
-        || (isSignedIn()
-            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
-            && request.resource.data.diff(resource.data).affectedKeys())
-                 .hasOnly(['isDeleted', 'deletedByAdmin', 'deletedByName', 'deletedAt',
-                           'text', 'image', 'video', 'audio', 'fileUrl', 'reactions']))
-            && request.resource.data.isDeleted == true
-            && request.resource.data.deletedByAdmin == true)
       );
       allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
     }

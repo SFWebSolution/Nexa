@@ -106,110 +106,8 @@ function safeMediaUrl(url) {
 function linkify(text) {
   if (!text) return "";
   const escaped = escapeHtml(text);
-  const urlRegex = /(https?:\/\/[^\s"<>]+)/g;
-  let out = escaped.replace(urlRegex, (m, rawUrl) => {
-    let url = rawUrl;
-    // Trim common trailing punctuation that isn't actually part of the URL
-    const trailing = url.match(/[),.!?;:'"\]]+$/);
-    let suffix = '';
-    if (trailing) {
-      const cut = trailing[0];
-      suffix = cut;
-      url = url.slice(0, url.length - cut.length);
-    }
-    // Balance trailing close-parens against (rare) inner parens
-    let close = url.match(/[)]/g) ? url.match(/[)]/g).length : 0;
-    let open = url.match(/[(]/g) ? url.match(/[(]/g).length : 0;
-    while (close > open && url.endsWith(")")) {
-      suffix = ")" + suffix;
-      url = url.slice(0, -1);
-      close--;
-    }
-    if (url.length <= 4) return rawUrl;
-    return `<a class="chat-link" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>${suffix}`;
-  });
-  return out;
-}
-
-// Open a channel/group invite card directly from a chat bubble.
-function handleInviteCardClick(type, id) {
-  if (!type || !id) return;
-  if (type === 'group') {
-    handleJoinGroupInviteById(id);
-  } else if (type === 'channel') {
-    handleJoinChannelInviteById(id);
-  }
-}
-
-async function handleJoinGroupInviteById(groupId) {
-  try {
-    const snap = await db.collection('groups').doc(groupId).get();
-    if (!snap.exists) {
-      showNotifToast('This group no longer exists', 'error');
-      return;
-    }
-    const group = { id: snap.id, ...snap.data() };
-    const memSnap = await db.collection('groups').doc(groupId).collection('members').doc(currentUser.uid).get();
-    if (memSnap.exists) {
-      showNotifToast(`Opening "${group.name}"…`, 'info');
-    } else {
-      const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';
-      await db.collection('groups').doc(groupId).collection('members').doc(currentUser.uid).set({
-        uid: currentUser.uid,
-        displayName: myName,
-        photo: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
-        role: 'member',
-        joinedAt: Date.now()
-      });
-      await db.collection('groups').doc(groupId).update({
-        membersCount: firebase.firestore.FieldValue.increment(1),
-        memberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
-      });
-      try {
-        await db.collection('groups').doc(groupId).collection('messages').add({
-          senderUid: 'system',
-          senderName: 'Nexa',
-          isSystem: true,
-          text: `${myName} joined using this invite link`,
-          createdAt: Date.now()
-        });
-      } catch (e) { console.warn('System message error:', e); }
-      showNotifToast(`Joined "${group.name}"`, "success");
-    }
-    switchTab('community');
-    switchCommunitySubTab('groups');
-    group.membersCount = (group.membersCount || 0) + 1;
-    selectGroupChat(group);
-  } catch (err) {
-    console.error('Join group invite error:', err);
-    showNotifToast('Failed to join group: ' + err.message, 'error');
-  }
-}
-
-async function handleJoinChannelInviteById(channelId) {
-  try {
-    const snap = await db.collection('channels').doc(channelId).get();
-    if (!snap.exists) {
-      showNotifToast('This channel no longer exists', 'error');
-      return;
-    }
-    const channel = { id: snap.id, ...snap.data() };
-    const isSubscribed = (channel.subscriberUids || []).includes(currentUser.uid);
-    if (isSubscribed) {
-      showNotifToast(`Opening "${channel.name}"…`, 'info');
-    } else {
-      const confirmFollow = confirm(`You have been invited to follow "${channel.name}". Would you like to follow this channel?`);
-      if (!confirmFollow) return;
-      await toggleSubscribeChannel(channel.id, channel);
-      showNotifToast(`Following "${channel.name}"`, "success");
-    }
-    switchTab('community');
-    switchCommunitySubTab('channels');
-    selectChannelFeed(channel);
-  } catch (err) {
-    console.error('Join channel invite error:', err);
-    showNotifToast('Failed to follow channel: ' + err.message, 'error');
-  }
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
 // Human-readable file size for attachments.
@@ -3286,21 +3184,6 @@ function buildMessage(id, msg, fromMe) {
   const bubble = document.createElement("div");
   bubble.className = "bubble";
 
-  // WhatsApp-Style Deleted Tombstone (covers 1:1 + admin soft-delete)
-  if (msg.isDeleted || msg.deletedByAdmin) {
-    bubble.innerHTML = `
-      <div class="msg-deleted-tombstone">
-        <i data-lucide="ban" style="width: 13px; height: 13px;"></i>
-        <span>${msg.isDeleted && !msg.deletedByAdmin ? 'This message was deleted' : 'This message was deleted by an admin'}</span>
-      </div>
-      <div class="msg-meta"><span>${formatTime(msg.createdAt)}</span></div>
-    `;
-    row.appendChild(bubble);
-    el.appendChild(row);
-    el.addEventListener("contextmenu", e => { e.preventDefault(); showCtxMenu(e, id, msg); });
-    return el;
-  }
-
   let inner = "";
 
   // Handle story reply with WhatsApp-style preview card
@@ -3321,7 +3204,7 @@ function buildMessage(id, msg, fromMe) {
 
   // Forwarded label for 1:1
   if (msg.forwarded) {
-    inner += `<div class="forwarded-label">⤳ Forwarded${msg.forwardedFrom ? ' from <span style="opacity:0.85">' + escapeHtml(msg.forwardedFrom) + '</span>' : ''}</div>`;
+    inner += `<div class="forwarded-label">⤳ Forwarded</div>`;
   }
 
   // Handle View Once Media
@@ -3353,20 +3236,16 @@ function buildMessage(id, msg, fromMe) {
 
     bubble.appendChild(badge);
   } else {
-    if (msg.type === 'invite' && msg.targetId && msg.targetName) {
-  inner += `<div class="invite-card" onclick="handleInviteCardClick('${escapeHtml(msg.targetType || 'channel')}', '${msg.targetId}')" title="Tap to open invitation">
+    if (msg.type === 'invite' && msg.targetId && msg.targetName && msg.link) {
+  inner += `<div class="invite-card">
     <div class="invite-avatar"><img src="${msg.avatar || 'https://i.imgur.com/HeIi0wU.png'}" alt="Avatar"></div>
     <div class="invite-info">
       <div class="invite-name">${escapeHtml(msg.targetName)}</div>
-      <div class="invite-action"><button>${msg.targetType === 'group' ? 'Join Group' : 'Follow Channel'}</button></div>
+      <div class="invite-action"><button onclick="window.open('${msg.link}', '_blank')">Open Invite</button></div>
     </div>
   </div>`;
-} else if (msg.type === 'invite') {
-    // No card metadata: render the raw invite text (link included) so the
-    // invite link stays tappable/clickable even for legacy invite messages.
-    if (msg.text) {
-      inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
-    }
+} else if (msg.type === 'poll' && msg.pollOptions) {
+      inner += buildPollHTML(id, msg);
     } else if (msg.text) {
       inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
     }
@@ -3675,39 +3554,6 @@ async function toggleGroupMsgReact(msgId, emoji) {
 
 function deleteMsg(id) {
   if (confirm("Delete this message?")) {
-    const msg = allMessages.find(m => m.id === id);
-    const isAdmin = !!(window.currentUser && window.currentUser.isAdmin);
-    // Own messages hard-delete. Admin soft-deletes (tombstone) instead —
-    // setup so only the sender can hard-delete, but admins can hide content;
-
-    if (msg && isAdmin && msg.from !== currentUser.uid) {
-
-      db.collection("chats").doc(id).update({
-        isDeleted: true,
-        deletedByAdmin: true,
-        deletedByName: document.getElementById('myName')?.textContent || currentUser.displayName || 'Admin',
-        deletedAt: Date.now(),
-        text: firebase.firestore.FieldValue.delete(),
-        image: null,
-        video: null,
-        audio: null,
-        fileUrl: null,
-        reactions: {}
-      }).then(() => {
-        msg.isDeleted = true;
-        msg.deletedByAdmin = true;
-        msg.text = '';
-        msg.image = null;
-        msg.video = null;
-        msg.audio = null;
-        msg.fileUrl = null;
-        msg.reactions = {};
-        renderMessageList();
-      }).catch(e => console.error("admin deleteMsg error:", e));
-      closeCtxMenu();
-      return;
-    }
-
     db.collection("chats").doc(id).delete().then(() => {
       // The live listener prunes window messages; older pages are pruned here.
       [_olderMsgsA, _olderMsgsB].forEach(arr => {
@@ -8580,7 +8426,7 @@ function buildGroupMessage(id, msg, fromMe) {
 
   // 2b. Forwarded label
   if (msg.forwarded) {
-    inner += `<div class="forwarded-label">⤳ Forwarded${msg.forwardedFrom ? ' from <span style="opacity:0.85">' + escapeHtml(msg.forwardedFrom) + '</span>' : ''}</div>`;
+    inner += `<div class="forwarded-label">⤳ Forwarded</div>`;
   }
 
   // 2c. Poll card
@@ -8588,20 +8434,8 @@ function buildGroupMessage(id, msg, fromMe) {
     inner += buildPollHTML(id, msg);
   }
 
-  // 2d. Channel/Group invite card
-  if (msg.type === 'invite' && msg.targetId && msg.targetName) {
-
-    inner += `<div class="invite-card" onclick="handleInviteCardClick('${escapeHtml(msg.targetType || 'channel')}', '${msg.targetId}')" title="Tap to open invitation">
-      <div class="invite-avatar"><img src="${msg.avatar || 'https://i.imgur.com/HeIi0wU.png'}" alt="Avatar"></div>
-      <div class="invite-info">
-        <div class="invite-name">${escapeHtml(msg.targetName)}</div>
-        <div class="invite-action"><button>${msg.targetType === 'group' ? 'Join Group' : 'Follow Channel'}</button></div>
-      </div>
-    </div>`;
-  }
-
-  // 3. Text (skip raw text for polls / invites since the card shows the key info)
-  if (msg.text && msg.type !== 'poll' && msg.type !== 'invite') {
+  // 3. Text (skip raw text for polls since poll card shows the question)
+  if (msg.text && msg.type !== 'poll') {
     const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text)) : linkify(msg.text);
     inner += `<div class="msg-text">${textHtml}</div>`;
   }
@@ -9523,8 +9357,8 @@ function renderChannelsDiscover() {
   if (window.lucide) lucide.createIcons();
 }
 
-async function toggleSubscribeChannel(channelId, chanOverride = null) {
-  const chan = chanOverride || discoverChannels.find(c => c.id === channelId) || myChannels.find(c => c.id === channelId);
+async function toggleSubscribeChannel(channelId) {
+  const chan = discoverChannels.find(c => c.id === channelId) || myChannels.find(c => c.id === channelId);
   if (!chan) return;
 
   const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
@@ -9541,8 +9375,6 @@ async function toggleSubscribeChannel(channelId, chanOverride = null) {
       chan.subscriberUids = (chan.subscriberUids || []).filter(u => u !== currentUser.uid);
       chan.subscribersCount = Math.max(0, (chan.subscribersCount || 1) - 1);
       showNotifToast('Unsubscribed from ' + chan.name, 'info');
-    } else {
-      // Follow path
       await subRef.set({
         uid: currentUser.uid,
         joinedAt: Date.now()
@@ -9957,7 +9789,6 @@ async function sendChannelPostWithExtras(extras) {
       viewsUids: [currentUser.uid],
       viewsCount: 1,
       commentsCount: 0,
-      commentsEnabled: currentChatMode === 'channel' ? (typeof composerChannelCommentsEnabled === 'boolean' ? composerChannelCommentsEnabled : true) : true,
       reactions: {},
       ...extras
     };
@@ -11381,7 +11212,6 @@ async function executeForward() {
           from: currentUser.uid,
           to: targetId,
           createdAt: Date.now(),
-          status: 'sent',
           read: isSelf,
           forwarded: true,
           forwardedFrom: msg.senderName || msg.from || 'Unknown'
@@ -11775,10 +11605,7 @@ showCtxMenu = function(e, id, msg) {
   const fromMe = (msg.from || msg.senderUid) === currentUser.uid;
   const isGroup = currentChatMode === 'group';
   const isGroupAdmin = isGroup && selectedGroup && (selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid));
-  const isChannel = currentChatMode === 'channel' && !!selectedChannel;
-  const isChannelAdmin = isChannel && selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
-  const isAppAdmin = !!(window.currentUser && window.currentUser.isAdmin);
-  const canDelete = fromMe || isGroupAdmin || isAppAdmin;
+  const canDelete = fromMe || isGroupAdmin;
   const isDeleted = !!(msg.isDeleted || msg.deletedByAdmin);
 
   if (isDeleted) {
@@ -11811,7 +11638,7 @@ showCtxMenu = function(e, id, msg) {
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
     ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
     ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
-    ${canDelete ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">${(!fromMe && (isGroupAdmin || isAppAdmin || isChannelAdmin)) ? '🗑 Delete as admin' : '🗑 Delete'}</div>` : ''}
+    ${canDelete ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">${isGroup && isGroupAdmin && !fromMe ? '🗑 Delete as admin' : '🗑 Delete'}</div>` : ''}
   `;
   menu.classList.add("active");
   menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + "px";
@@ -11961,17 +11788,17 @@ async function checkChannelInviteUrlParam() {
       showNotifToast(`Opening "${channel.name}"…`, 'info');
       switchTab('community');
       switchCommunitySubTab('channels');
-      selectChannelFeed(channel);
+      selectChannelChat(channel);
       return;
     }
 
     const confirmFollow = confirm(`You have been invited to follow "${channel.name}". Would you like to follow this channel?`);
     if (!confirmFollow) return;
 
-    await toggleSubscribeChannel(channel.id, channel);
+    await toggleSubscribeChannel(channel.id);
     switchTab('community');
     switchCommunitySubTab('channels');
-    selectChannelFeed(channel);
+    selectChannelChat(channel);
   } catch (err) {
     console.error('checkChannelInviteUrlParam error:', err);
   }
@@ -12134,6 +11961,39 @@ async function sendInAppCommunityInvites() {
         targetName: targetObj.name,
         targetType: isGroup ? 'group' : 'channel',
         link: link,
+        createdAt: Date.now(),
+        read: false
+      });
+      latestMsgTime[targetUid] = Date.now();
+      latestMsgText[targetUid] = inviteMsgText;
+    }
+    saveLatestMsgState();
+    renderUsers();
+    showNotifToast(`Sent invite to ${count} contact${count > 1 ? "s" : ""}`, "success");
+  } catch (err) {
+    showNotifToast('Failed to send invites: ' + err.message, 'error');
+  }
+}
+  if (!selectedCommunityInviteUids.size) return;
+  const isGroup = activeCommunityInviteType === 'group';
+  const targetObj = isGroup ? selectedGroup : selectedChannel;
+  if (!targetObj) return;
+
+  const count = selectedCommunityInviteUids.size;
+  closeCommunityInviteModal();
+
+  try {
+    const link = await (isGroup ? getOrCreateGroupInviteLink() : `${window.location.origin}${window.location.pathname}?joinChannel=${targetObj.id}`);
+    const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Friend';
+    const inviteMsgText = isGroup 
+      ? `📩 *Group Invitation*\nHey! ${myName} invited you to join "*${targetObj.name}*".\nTap link to join:\n${link}`
+      : `📢 *Channel Invitation*\nHey! Follow "*${targetObj.name}*" on Nexa for broadcast updates.\nTap link to follow:\n${link}`;
+
+    for (const targetUid of selectedCommunityInviteUids) {
+      await db.collection('chats').add({
+        from: currentUser.uid,
+        to: targetUid,
+        text: inviteMsgText,
         createdAt: Date.now(),
         read: false
       });
