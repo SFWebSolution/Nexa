@@ -2986,7 +2986,7 @@ function toggleViewOnceMode() {
   isViewOnceActive = !isViewOnceActive;
   const btn = document.getElementById("viewOnceToggleBtn");
   if (btn) btn.classList.toggle("active", isViewOnceActive);
-  showNotifToast(isViewOnceActive ? "1 View Once enabled for next media" : "View Once disabled", "info");
+  showNotifToast(isViewOnceActive ? "View Once enabled" : "View Once disabled", "info");
 }
 
 function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
@@ -3223,7 +3223,7 @@ function buildMessage(id, msg, fromMe) {
 
     if (msg.image) {
       const imgUrl = safeMediaUrl(msg.image);
-      const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+      const cap = msg.caption ? `<div class="media-caption below">${linkify(msg.caption)}</div>` : "";
       inner += imgUrl ? `<div class="media-container">
         <img src="${imgUrl}"
              onclick="viewImg('${imgUrl}')"
@@ -3235,7 +3235,7 @@ function buildMessage(id, msg, fromMe) {
 
     if (msg.video) {
       const vidUrl = safeMediaUrl(msg.video);
-      const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+      const cap = msg.caption ? `<div class="media-caption below">${linkify(msg.caption)}</div>` : "";
       inner += vidUrl ? `<div class="media-container">
         <video controls preload="metadata" controlslist="nodownload" disablepictureinpicture>
           <source src="${vidUrl}" type="video/mp4">
@@ -3441,7 +3441,7 @@ function copyMsg(id) {
     : (allMessages.find(m => m.id === id));
   if (msg && msg.text) {
     navigator.clipboard.writeText(msg.text);
-    showNotifToast("✓ Copied", "success");
+    showNotifToast("Copied", "success");
   }
   closeCtxMenu();
 }
@@ -3485,10 +3485,10 @@ async function deleteGroupMsg(id) {
         pollOptions: null,
         reactions: {}
       });
-      showNotifToast("✓ Message deleted by admin", "info");
+      showNotifToast("Message deleted by admin", "info");
     } else {
       await msgRef.delete();
-      showNotifToast("✓ Message deleted", "info");
+      showNotifToast("Message deleted", "info");
     }
   } catch (e) {
     console.error("deleteGroupMsg error:", e);
@@ -6203,7 +6203,7 @@ function renderStorySlide(idx) {
     if (story.text) {
       const txt = document.createElement("div");
       txt.style.cssText = "position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 20px; word-break: break-word; line-height: 1.4; z-index: 5;";
-      txt.textContent = story.text;
+      txt.innerHTML = linkify(story.text);
       content.appendChild(txt);
     }
 
@@ -6266,14 +6266,14 @@ function renderStorySlide(idx) {
     if (story.text) {
       const txt = document.createElement("div");
       txt.style.cssText = "position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 20px; word-break: break-word; line-height: 1.4; z-index: 5;";
-      txt.textContent = story.text;
+      txt.innerHTML = linkify(story.text);
       content.appendChild(txt);
     }
   } else if (story.type === "text" || story.text) {
     hideLoading();
     const div = document.createElement("div");
     div.className = "story-text-slide";
-    div.textContent = story.text || "";
+    div.innerHTML = linkify(story.text || "");
     content.appendChild(div);
 
     let duration = 6000;
@@ -6471,7 +6471,7 @@ async function answerStoryQuestion(story) {
       read: false,
       status: "sent"
     });
-    showNotifToast("✓ Answer sent", "success");
+    showNotifToast("Answer sent", "success");
     const owner = (typeof allUsersData !== "undefined" ? allUsersData.find(u => u.uid === story.uid) : null);
     const myName = (document.getElementById("myName")?.textContent) || "Nexa User";
     if (typeof sendPushNotification === "function") {
@@ -6486,7 +6486,7 @@ let isStoryPaused = false;
 let storyPauseElapsed = 0;
 
 function handleStoryContentClick(e) {
-  if (e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar') || e.target.closest('.story-sticker-overlay') || e.target.closest('.addyours-sticker') || e.target.closest('.prompt-story-overlay') || e.target.closest('.addyours-cta-btn') || e.target.closest('.addyours-viewall-btn')) return;
+  if (e.target.closest('a') || e.target.closest('#storyViewerActions') || e.target.closest('#storyViewerHeader') || e.target.closest('#storyStatsBar') || e.target.closest('.story-sticker-overlay') || e.target.closest('.addyours-sticker') || e.target.closest('.prompt-story-overlay') || e.target.closest('.addyours-cta-btn') || e.target.closest('.addyours-viewall-btn')) return;
   toggleStoryPause();
 }
 
@@ -6649,7 +6649,7 @@ function deleteStory() {
       } else {
         closeStoryViewer();
       }
-      showNotifToast("✓ Story deleted", "success");
+      showNotifToast("Story deleted", "success");
     });
   }
 }
@@ -6737,7 +6737,7 @@ async function reshareStory() {
     if (!story.reshares) story.reshares = [];
     story.reshares.push(currentUser.uid);
 
-    showNotifToast("🔁 Reshared story to your updates!", "success");
+    showNotifToast("Story reshared", "success");
     renderStorySlide(storyViewerIndex);
   } catch (err) {
     showNotifToast("Failed to reshare story: " + err.message, "error");
@@ -6765,7 +6765,7 @@ async function reactToStory() {
       });
       if (!story.likes) story.likes = [];
       story.likes.push(currentUser.uid);
-      showNotifToast("❤ Liked story!", "success");
+      showNotifToast("Story liked", "success");
     }
     renderStorySlide(storyViewerIndex);
   } catch (err) {
@@ -7511,7 +7511,7 @@ async function shareStatus() {
 
     await db.collection("status").add(statusData);
     closeStatusModal();
-    showNotifToast("✓ Story shared!", "success");
+    showNotifToast("Story shared", "success");
 
   } catch (err) {
     showNotifToast("Failed to share: " + err.message, "error");
@@ -8089,7 +8089,7 @@ async function submitCreateGroup() {
     await batch.commit();
 
     closeCreateGroupModal();
-    showNotifToast('✓ Group created!', 'success');
+    showNotifToast("Group created", "success");
 
     const createdGroup = { id: docRef.id, ...groupDoc };
     selectGroupChat(createdGroup);
@@ -8414,7 +8414,7 @@ function buildGroupMessage(id, msg, fromMe) {
   // 4. Image
   if (msg.image) {
     const imgUrl = safeMediaUrl(msg.image);
-    const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+    const cap = msg.caption ? `<div class="media-caption below">${linkify(msg.caption)}</div>` : "";
     if (imgUrl) {
       inner += `<div class="media-container"><img src="${imgUrl}" onclick="viewImg('${imgUrl}')" loading="lazy" alt="shared image" draggable="false"></div>${cap}`;
     }
@@ -8423,7 +8423,7 @@ function buildGroupMessage(id, msg, fromMe) {
   // 5. Video
   if (msg.video) {
     const vidUrl = safeMediaUrl(msg.video);
-    const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
+    const cap = msg.caption ? `<div class="media-caption below">${linkify(msg.caption)}</div>` : "";
     if (vidUrl) {
       inner += `<div class="media-container"><video controls preload="metadata" controlslist="nodownload"><source src="${vidUrl}" type="video/mp4"></video></div>${cap}`;
     }
@@ -8719,7 +8719,7 @@ async function handleUpdateGroupAvatar(input) {
     document.getElementById('groupInfoAvatar').src = url;
     document.getElementById('chatPic').src = url;
     renderMyGroups();
-    showNotifToast('✓ Group icon updated!', 'success');
+    showNotifToast("Group icon updated", "success");
   } catch (e) {
     showNotifToast('Failed to update icon: ' + e.message, 'error');
   }
@@ -8741,7 +8741,7 @@ async function editGroupName() {
     document.getElementById('groupInfoName').textContent = val;
     document.getElementById('chatName').textContent = val;
     renderMyGroups();
-    showNotifToast('✓ Group name updated', 'success');
+    showNotifToast("Group name updated", "success");
   } catch (e) {
     showNotifToast('Error updating name: ' + e.message, 'error');
   }
@@ -8761,7 +8761,7 @@ async function editGroupDesc() {
     await db.collection('groups').doc(selectedGroup.id).update({ description: val, updatedAt: Date.now() });
     selectedGroup.description = val;
     document.getElementById('groupInfoDesc').textContent = val || 'No description provided';
-    showNotifToast('✓ Description updated', 'success');
+    showNotifToast("Description updated", "success");
   } catch (e) {
     showNotifToast('Error updating description: ' + e.message, 'error');
   }
@@ -8778,7 +8778,7 @@ async function shareGroupInviteLink() {
   if (navigator.share) {
     try {
       await navigator.share(shareData);
-      showNotifToast('✓ Shared group invite', 'success');
+      showNotifToast("Invite shared", "success");
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -8787,7 +8787,7 @@ async function shareGroupInviteLink() {
   const copyStr = `${shareData.text}\n${shareData.url}`;
   if (navigator.clipboard) {
     await navigator.clipboard.writeText(copyStr);
-    showNotifToast('✓ Group invite link copied to clipboard!', 'success');
+    showNotifToast("Invite link copied", "success");
   } else {
     showNotifToast('Link: ' + copyStr, 'info');
   }
@@ -8814,7 +8814,7 @@ async function deleteCurrentGroup() {
     await db.collection('groups').doc(groupId).delete();
     closeGroupInfo();
     resetCommunityChatMode();
-    showNotifToast(`✓ Group "${groupName}" deleted`, 'success');
+    showNotifToast(`Group "${groupName}" deleted`, "success");
   } catch (err) {
     showNotifToast('Error deleting group: ' + err.message, 'error');
   }
@@ -8828,7 +8828,7 @@ async function toggleGroupOnlyAdminsCanPost(checked) {
     });
     selectedGroup.settings = selectedGroup.settings || {};
     selectedGroup.settings.onlyAdminsCanPost = checked;
-    showNotifToast(`✓ Permissions updated`, 'success');
+    showNotifToast("Permissions updated", "success");
   } catch (err) {
     showNotifToast('Failed to update permission: ' + err.message, 'error');
   }
@@ -8965,7 +8965,7 @@ async function submitAddMembersToGroup() {
     } catch (e) { console.warn('System message error:', e); }
 
     closeAddMemberModal();
-    showNotifToast(`✓ Added ${selectedGroupMemberUids.size} member(s)`, 'success');
+    showNotifToast(`Added ${selectedGroupMemberUids.size} member(s)`, "success");
     openGroupInfo();
   } catch (err) {
     showNotifToast('Failed to add members: ' + err.message, 'error');
@@ -8996,7 +8996,7 @@ async function openMemberActionsMenu(targetUid, currentRole) {
         batch.update(groupRef, { admins: firebase.firestore.FieldValue.arrayRemove(targetUid) });
       }
       await batch.commit();
-      showNotifToast(`✓ Updated role for ${name}`, 'success');
+      showNotifToast(`Updated role for ${name}`, "success");
       openGroupInfo();
     } catch (e) {
       showNotifToast('Failed to update role: ' + e.message, 'error');
@@ -9015,7 +9015,7 @@ async function openMemberActionsMenu(targetUid, currentRole) {
         membersCount: firebase.firestore.FieldValue.increment(-1)
       });
       await batch.commit();
-      showNotifToast(`✓ Removed ${name}`, 'success');
+      showNotifToast(`Removed ${name}`, "success");
       openGroupInfo();
     } catch (e) {
       showNotifToast('Failed to remove member: ' + e.message, 'error');
@@ -9045,7 +9045,7 @@ async function openAddChannelAdminModal() {
         admins: firebase.firestore.FieldValue.arrayUnion(targetUid)
       });
       selectedChannel.admins = [...(selectedChannel.admins || []), targetUid];
-      showNotifToast('✓ Admin added!', 'success');
+      showNotifToast("Admin added", "success");
       openChannelInfo();
     } catch (e) {
       showNotifToast('Failed to add admin: ' + e.message, 'error');
@@ -9149,7 +9149,7 @@ async function submitCreateChannel() {
     });
 
     closeCreateChannelModal();
-    showNotifToast('✓ Channel created!', 'success');
+    showNotifToast("Channel created", "success");
 
     const createdChan = { id: docRef.id, ...chanDoc };
     selectChannelFeed(createdChan);
@@ -9370,7 +9370,7 @@ async function toggleSubscribeChannel(channelId) {
 
       chan.subscriberUids = [...(chan.subscriberUids || []), currentUser.uid];
       chan.subscribersCount = (chan.subscribersCount || 0) + 1;
-      showNotifToast('✓ Subscribed to ' + chan.name, 'success');
+      showNotifToast("Followed " + chan.name, "success");
     }
 
     renderChannelsDiscover();
@@ -9603,10 +9603,7 @@ function renderChannelPostsList(posts) {
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="channel-post-time">${timeStr}</span>
             ${isChannelAdmin ? `
-              <button class="channel-comment-toggle-tick ${post.commentsEnabled !== false ? 'on' : 'off'}" onclick="toggleChannelPostCommentsSetting('${post.id}', ${post.commentsEnabled === false})" title="${post.commentsEnabled !== false ? 'Comments are ON (click to turn OFF)' : 'Comments are OFF (click to turn ON)'}">
-                <i data-lucide="${post.commentsEnabled !== false ? 'message-circle' : 'message-circle-off'}" style="width: 12px; height: 12px;"></i>
-                <span>${post.commentsEnabled !== false ? '✓ Comments ON' : '✕ Comments OFF'}</span>
-              </button>
+
               <button class="comm-icon-btn-xs" onclick="pinChannelPost('${post.id}')" title="Pin / Unpin post" style="opacity: 0.65;">
                 <i data-lucide="pin" style="width: 12px; height: 12px;"></i>
               </button>
@@ -9723,7 +9720,7 @@ async function shareChannelPost(postId) {
   if (navigator.share) {
     try {
       await navigator.share(shareData);
-      showNotifToast('✓ Shared broadcast post', 'success');
+      showNotifToast("Post shared", "success");
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -9734,7 +9731,7 @@ async function shareChannelPost(postId) {
   const copyStr = `${shareData.text}\n${shareData.url}`;
   if (navigator.clipboard) {
     await navigator.clipboard.writeText(copyStr);
-    showNotifToast('✓ Post text copied to clipboard to share!', 'success');
+    showNotifToast("Post copied", "success");
   } else {
     showNotifToast('Sharing not supported on this browser', 'info');
   }
@@ -9899,7 +9896,7 @@ async function submitUserChannelComment(postId) {
       commentsCount: firebase.firestore.FieldValue.increment(1)
     });
 
-    showNotifToast('✓ Comment posted', 'success');
+    showNotifToast("Comment posted", "success");
   } catch (err) {
     showNotifToast('Failed to post comment: ' + err.message, 'error');
   }
@@ -10091,7 +10088,7 @@ async function deleteChannelComment(commentId) {
     await postRef.update({
       commentsCount: firebase.firestore.FieldValue.increment(-1)
     });
-    showNotifToast('✓ Comment deleted', 'info');
+    showNotifToast("Comment deleted", "info");
   } catch (e) {
     showNotifToast('Failed to delete comment: ' + e.message, 'error');
   }
@@ -10150,7 +10147,7 @@ async function submitChannelComment() {
           parentPostId: replyContext.postId
         }
       });
-      showNotifToast('✓ Replied to channel broadcast!', 'success');
+      showNotifToast("Reply sent", "success");
     }
   } catch (err) {
     showNotifToast('Failed to comment: ' + err.message, 'error');
@@ -10267,7 +10264,7 @@ async function dismissChannelAdmin(targetUid) {
       admins: firebase.firestore.FieldValue.arrayRemove(targetUid)
     });
     selectedChannel.admins = (selectedChannel.admins || []).filter(u => u !== targetUid);
-    showNotifToast('✓ Admin dismissed', 'info');
+    showNotifToast("Admin dismissed", "info");
     openChannelInfo();
   } catch (e) {
     showNotifToast('Failed to dismiss admin: ' + e.message, 'error');
@@ -10346,7 +10343,7 @@ async function deleteChannelPost(postId) {
       pollOptions: null,
       reactions: {}
     });
-    showNotifToast('✓ Post deleted by admin', 'info');
+    showNotifToast("Post deleted by admin", "info");
   } catch (e) {
     showNotifToast('Failed to delete post: ' + e.message, 'error');
   }
@@ -10397,7 +10394,7 @@ async function handleUpdateChannelAvatar(input) {
     selectedChannel.avatarUrl = url;
     document.getElementById('channelInfoAvatar').src = url;
     document.getElementById('chatPic').src = url;
-    showNotifToast('✓ Channel icon updated!', 'success');
+    showNotifToast("Channel icon updated", "success");
   } catch (e) {
     showNotifToast('Failed to update icon: ' + e.message, 'error');
   }
@@ -10419,7 +10416,7 @@ async function editChannelName() {
     selectedChannel.name = val;
     document.getElementById('channelInfoName').textContent = val;
     document.getElementById('chatName').textContent = val;
-    showNotifToast('✓ Channel name updated', 'success');
+    showNotifToast("Channel name updated", "success");
   } catch (e) {
     showNotifToast('Error updating name: ' + e.message, 'error');
   }
@@ -10440,7 +10437,7 @@ async function editChannelDesc() {
     await db.collection('channels').doc(selectedChannel.id).update({ description: val, updatedAt: Date.now() });
     selectedChannel.description = val;
     document.getElementById('channelInfoDesc').textContent = val || 'No description';
-    showNotifToast('✓ Description updated', 'success');
+    showNotifToast("Description updated", "success");
   } catch (e) {
     showNotifToast('Error updating description: ' + e.message, 'error');
   }
@@ -10467,7 +10464,7 @@ async function deleteCurrentChannel() {
     await db.collection('channels').doc(channelId).delete();
     closeChannelInfo();
     resetCommunityChatMode();
-    showNotifToast(`✓ Channel "${channelName}" deleted`, 'success');
+    showNotifToast(`Channel "${channelName}" deleted`, "success");
   } catch (err) {
     showNotifToast('Error deleting channel: ' + err.message, 'error');
   }
@@ -10490,7 +10487,7 @@ async function shareCurrentChannel() {
   if (navigator.share) {
     try {
       await navigator.share(shareData);
-      showNotifToast('✓ Shared channel invite', 'success');
+      showNotifToast("Invite shared", "success");
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -10500,7 +10497,7 @@ async function shareCurrentChannel() {
   const copyStr = `${shareData.text}\n${shareData.url}`;
   if (navigator.clipboard) {
     await navigator.clipboard.writeText(copyStr);
-    showNotifToast('✓ Channel link copied to clipboard!', 'success');
+    showNotifToast("Channel link copied", "success");
   } else {
     showNotifToast('Sharing not supported on this browser', 'info');
   }
@@ -10643,7 +10640,7 @@ async function unpinCurrentCommMessage() {
     if (isGroup && selectedGroup) delete selectedGroup.pinnedMessage;
     if (!isGroup && selectedChannel) delete selectedChannel.pinnedMessage;
     syncCommPinnedBanner();
-    showNotifToast('✓ Message unpinned', 'info');
+    showNotifToast("Message unpinned", "info");
   } catch (e) {
     showNotifToast('Failed to unpin message: ' + e.message, 'error');
   }
@@ -10677,7 +10674,7 @@ async function pinGroupMsg(msgId) {
     });
     selectedGroup.pinnedMessage = payload;
     syncCommPinnedBanner();
-    showNotifToast('📌 Message pinned to group!', 'success');
+    showNotifToast("Message pinned", "success");
   } catch (e) {
     showNotifToast('Failed to pin message: ' + e.message, 'error');
   }
@@ -10714,7 +10711,7 @@ async function pinChannelPost(postId) {
     });
     selectedChannel.pinnedMessage = payload;
     syncCommPinnedBanner();
-    showNotifToast('📌 Post pinned to channel!', 'success');
+    showNotifToast("Post pinned", "success");
   } catch (e) {
     showNotifToast('Failed to pin post: ' + e.message, 'error');
   }
@@ -10910,10 +10907,10 @@ async function submitPoll() {
 
   if (isChannel && selectedChannel) {
     await sendChannelPostWithExtras(pollPayload);
-    showNotifToast('✓ Poll broadcast to channel!', 'success');
+    showNotifToast("Poll broadcast", "success");
   } else if (isGroup && selectedGroup) {
     await sendGroupMessageWithExtras(pollPayload);
-    showNotifToast('✓ Poll created in group!', 'success');
+    showNotifToast("Poll created", "success");
   }
 }
 
@@ -11227,7 +11224,7 @@ async function executeForward() {
   }
 
   if (successCount > 0) {
-    showNotifToast(`✓ Forwarded to ${successCount} chat${successCount > 1 ? 's' : ''}`, 'success');
+    showNotifToast(`Forwarded to ${successCount} chat${successCount > 1 ? "s" : ""}`, "success");
   } else {
     showNotifToast('Forward failed', 'error');
   }
@@ -11288,7 +11285,7 @@ function toggleStarMessage(msgId) {
     // Cap at 200
     if (starred.length > 200) starred.splice(0, starred.length - 200);
     saveStarredMessages(starred);
-    showNotifToast('⭐ Starred', 'success');
+    showNotifToast("Starred", "success");
   }
 }
 
@@ -11489,10 +11486,10 @@ function toggleMuteGroup() {
   const id = selectedGroup.id;
   if (muted[id]) {
     delete muted[id];
-    showNotifToast('🔔 Group unmuted', 'success');
+    showNotifToast("Group unmuted", "success");
   } else {
     muted[id] = true;
-    showNotifToast('🔕 Group muted', 'success');
+    showNotifToast("Group muted", "success");
   }
   saveMutedChats(muted);
   updateGroupMuteUI();
@@ -11504,10 +11501,10 @@ function toggleMuteChannel() {
   const id = selectedChannel.id;
   if (muted[id]) {
     delete muted[id];
-    showNotifToast('🔔 Channel unmuted', 'success');
+    showNotifToast("Channel unmuted", "success");
   } else {
     muted[id] = true;
-    showNotifToast('🔕 Channel muted', 'success');
+    showNotifToast("Channel muted", "success");
   }
   saveMutedChats(muted);
   updateChannelMuteUI();
@@ -11564,7 +11561,7 @@ async function resetGroupInviteLink() {
 
   const code = generateInviteCode();
   await db.collection('groups').doc(selectedGroup.id).update({ inviteCode: code });
-  showNotifToast('✓ Invite link reset', 'success');
+  showNotifToast("Invite link reset", "success");
 }
 
 
@@ -11716,7 +11713,7 @@ async function checkGroupInviteUrlParam() {
       });
     } catch (e) { console.warn('System message error:', e); }
 
-    showNotifToast(`✓ Joined "${group.name}"!`, 'success');
+    showNotifToast(`Joined "${group.name}"`, "success");
     switchTab('community');
     switchCommunitySubTab('groups');
     group.membersCount = (group.membersCount || 0) + 1;
@@ -11933,7 +11930,7 @@ async function sendInAppCommunityInvites() {
     }
     saveLatestMsgState();
     renderUsers();
-    showNotifToast(`✓ Sent invite to ${count} contact${count > 1 ? 's' : ''} in chat!`, 'success');
+    showNotifToast(`Sent invite to ${count} contact${count > 1 ? "s" : ""}`, "success");
   } catch (err) {
     showNotifToast('Failed to send invites: ' + err.message, 'error');
   }
@@ -11947,7 +11944,7 @@ async function copyCommunityInviteLink() {
   }
   if (link) {
     await navigator.clipboard.writeText(link);
-    showNotifToast('✓ Link copied to clipboard!', 'success');
+    showNotifToast("Link copied", "success");
   }
 }
 
@@ -11973,7 +11970,7 @@ async function shareCommunityViaNative() {
   if (navigator.share) {
     try {
       await navigator.share({ title: targetObj.name, text: text, url: link });
-      showNotifToast('✓ Shared link', 'success');
+      showNotifToast("Link shared", "success");
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;

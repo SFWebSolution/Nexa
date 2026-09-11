@@ -94,7 +94,7 @@
     <div class="mc-top">
       <button class="mc-icon-btn" onclick="cancelMediaComposer()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
       <span class="mc-title" id="mcTitle">Send photo</span>
-      <button class="mc-icon-btn" id="mcVOToggle" onclick="toggleMcViewOnce()" title="Send as View Once (1)">1</button>
+      <button class="mc-icon-btn" id="mcVOToggle" onclick="toggleMcViewOnce()" title="View Once (1)">1</button>
     </div>
     <div class="mc-preview" id="mcPreview"></div>
     <div class="mc-bottom">
@@ -159,7 +159,7 @@
           </div>
         </div>
         <div class="search-wrap">
-          <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
+          <input type="text" id="userSearch" placeholder="🔍  Search…" onkeyup="searchUsers()">
         </div>
         <div class="users" id="users">
           <div class="no-users">Loading users…</div>
@@ -436,7 +436,7 @@
         <!-- GROUPS CONTAINER (WhatsApp Style) -->
         <div class="comm-groups-container" id="commGroupsContainer">
           <div class="search-wrap">
-            <input type="text" id="commGroupSearchInput" placeholder="🔍  Search groups…" oninput="filterMyGroups()">
+            <input type="text" id="commGroupSearchInput" placeholder="🔍  Search…" oninput="filterMyGroups()">
           </div>
 
           <!-- WhatsApp-style "New group" shortcut row -->
@@ -459,7 +459,7 @@
         <!-- CHANNELS CONTAINER (WhatsApp Style) -->
         <div class="comm-channels-container" id="commChannelsContainer" style="display: none;">
           <div class="search-wrap">
-            <input type="text" id="commDiscoverSearchInput" placeholder="🔍  Search channels…" oninput="filterDiscoverChannels()">
+            <input type="text" id="commDiscoverSearchInput" placeholder="🔍  Search…" oninput="filterDiscoverChannels()">
           </div>
 
           <div class="comm-list-scroll" id="commChannelsMainScroll">
@@ -538,7 +538,7 @@
           <span class="comm-pinned-snippet" id="commPinnedSnippet">Snippet</span>
         </div>
       </div>
-      <button class="comm-pinned-unpin-btn" id="commPinnedUnpinBtn" onclick="event.stopPropagation(); unpinCurrentCommMessage()" title="Unpin message" style="display: none;">
+      <button class="comm-pinned-unpin-btn" id="commPinnedUnpinBtn" onclick="event.stopPropagation(); unpinCurrentCommMessage()" title="Unpin" style="display: none;">
         <i data-lucide="x" style="width: 14px; height: 14px;"></i>
       </button>
     </div>
@@ -556,7 +556,7 @@
       <span>Loading older messages…</span>
     </div>
 
-    <button class="scroll-down-btn" id="scrollDownBtn" onclick="scrollChatToBottom()" title="Scroll to latest message">
+    <button class="scroll-down-btn" id="scrollDownBtn" onclick="scrollChatToBottom()" title="Scroll to bottom">
       <i data-lucide="chevron-down" style="width: 22px; height: 22px;"></i>
       <span class="scroll-down-badge" id="scrollDownBadge" style="display: none;">0</span>
     </button>
@@ -570,14 +570,14 @@
       </div>
       <div class="input-wrap">
         <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
-        <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
-        <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
+        <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="View Once (1)">1</button>
+        <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="pollBtn" onclick="openPollModal()" title="Create Poll" style="display: none;"><i data-lucide="bar-chart-2" style="width: 20px; height: 20px;"></i></button>
-        <button class="iact-btn channel-composer-comment-toggle" id="channelPostCommentsToggleBtn" onclick="toggleComposerCommentsSetting()" title="Post comments are ON (Click to turn OFF)" style="display: none;"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i><span class="composer-toggle-tick" id="composerCommentsTick">✓</span></button>
-        <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn channel-composer-comment-toggle" id="channelPostCommentsToggleBtn" onclick="toggleComposerCommentsSetting()" title="Comments are ON (click to toggle)" style="display: none;"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i><span class="composer-toggle-tick" id="composerCommentsTick">✓</span></button>
+        <button class="iact-btn record-btn" id="recordBtn" title="Record voice note"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
-      <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
+      <button class="btn-send" onclick="sendMessage()" title="Send"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
     </div>
 
     <div class="ai-panel" id="aiPanel">
@@ -692,9 +692,9 @@
     <!-- ACTIONS BAR FOR OTHER USERS STORIES -->
     <div class="story-viewer-actions" id="storyViewerActions">
       <input type="text" class="story-reply-inp" id="storyReplyInput" placeholder="Reply to story…">
-      <button class="story-action-btn" onclick="sendStoryReply()" title="Send reply">➤</button>
-      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare story">🔁</button>
-      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like story">❤️</button>
+      <button class="story-action-btn" onclick="sendStoryReply()" title="Send">➤</button>
+      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare">🔁</button>
+      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like">❤️</button>
     </div>
   </div>
 </div>
@@ -738,7 +738,7 @@
     <div class="status-preview" id="addYoursPreview"><span>Tap to add a photo</span></div>
     <input type="file" id="addYoursImgInput" hidden accept="image/*" onchange="previewAddYoursImage(event)">
     <input type="file" id="addYoursVidInput" hidden accept="video/*" onchange="previewAddYoursVideo(event)">
-    <textarea id="addYoursCaption" class="status-text-input" placeholder="Add a caption (optional)…" maxlength="280"></textarea>
+    <textarea id="addYoursCaption" class="status-text-input" placeholder="Add a caption…" maxlength="280"></textarea>
     <div class="status-actions">
       <button class="status-action-btn" onclick="closeAddYoursModal()">Cancel</button>
       <button class="status-action-btn primary" id="addYoursShareBtn" onclick="shareAddYoursResponse()">Share</button>
@@ -823,7 +823,7 @@
     </div>
     
     <!-- TEXT INPUT - VISIBLE FOR IMAGE, VIDEO, AND MUSIC TABS -->
-    <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;" oninput="updateStoryStickerPreview()"></textarea>
+    <textarea id="statusTextInput" class="status-text-input" placeholder="Add a caption…" maxlength="280" style="display: none;" oninput="updateStoryStickerPreview()"></textarea>
     
     <div class="status-actions">
       <button class="status-action-btn" onclick="closeStatusModal()">Cancel</button>
@@ -1074,10 +1074,10 @@
     <div class="call-actions-bar" id="callActionsBar">
       <!-- OUTGOING / ACTIVE CALL CONTROLS -->
       <div class="call-controls-row" id="activeCallControls">
-        <button class="call-action-circle" id="btnMuteMic" onclick="toggleMuteMic()" title="Mute/Unmute Mic">
+        <button class="call-action-circle" id="btnMuteMic" onclick="toggleMuteMic()" title="Toggle microphone">
           <i data-lucide="mic"></i>
         </button>
-        <button class="call-action-circle" id="btnToggleVideo" onclick="toggleVideoCamera()" title="Turn Camera On/Off">
+        <button class="call-action-circle" id="btnToggleVideo" onclick="toggleVideoCamera()" title="Toggle camera">
           <i data-lucide="video"></i>
         </button>
         <button class="call-action-circle" id="btnFlipCamera" onclick="flipCamera()" title="Switch Camera">
@@ -1280,11 +1280,11 @@
       </div>
       <div class="comm-form-group">
         <label>Group Subject</label>
-        <input type="text" id="groupSubjectInput" placeholder="Enter group name…" maxlength="50">
+        <input type="text" id="groupSubjectInput" placeholder="Group name…" maxlength="50">
       </div>
       <div class="comm-form-group">
         <label>Description (Optional)</label>
-        <textarea id="groupDescInput" placeholder="What is this group about?" maxlength="250" rows="2"></textarea>
+        <textarea id="groupDescInput" placeholder="Group description…" maxlength="250" rows="2"></textarea>
       </div>
       <div class="comm-form-group">
         <label>Permissions</label>
@@ -1295,7 +1295,7 @@
       </div>
       <div class="comm-form-group">
         <label>Add Members (<span id="selectedGroupMembersCount">0</span> selected)</label>
-        <input type="text" id="createGroupMemberSearch" class="comm-inline-search" placeholder="🔍 Search contacts to add…" oninput="filterCreateGroupContacts(this.value)">
+        <input type="text" id="createGroupMemberSearch" class="comm-inline-search" placeholder="🔍 Search contacts…" oninput="filterCreateGroupContacts(this.value)">
         <div class="comm-contacts-picker" id="groupContactsPicker">
           <!-- Populated dynamically with user contacts -->
         </div>
@@ -1352,7 +1352,7 @@
       </div>
       <div class="comm-form-group">
         <label>Description</label>
-        <textarea id="channelDescInput" placeholder="Describe what subscribers can expect…" maxlength="300" rows="3"></textarea>
+        <textarea id="channelDescInput" placeholder="Channel description…" maxlength="300" rows="3"></textarea>
       </div>
     </div>
     <div class="comm-modal-footer">
@@ -1455,7 +1455,7 @@
       <button class="comm-modal-close" onclick="closeAddMemberModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
     </div>
     <div class="comm-modal-body">
-      <input type="text" id="addMemberSearchInput" class="comm-inline-search" placeholder="🔍 Search contacts to add…" oninput="filterAddMemberContacts(this.value)">
+      <input type="text" id="addMemberSearchInput" class="comm-inline-search" placeholder="🔍 Search contacts…" oninput="filterAddMemberContacts(this.value)">
       <div class="comm-contacts-picker" id="addMemberContactsPicker">
         <!-- Populated dynamically -->
       </div>
@@ -1639,7 +1639,7 @@
       <button class="comm-modal-close" onclick="closeForwardModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
     </div>
     <div class="comm-modal-body" style="max-height: 55vh; overflow-y: auto;">
-      <input type="text" id="forwardSearchInput" class="comm-inline-search" placeholder="🔍 Search contacts or groups…" oninput="filterForwardTargets(this.value)">
+      <input type="text" id="forwardSearchInput" class="comm-inline-search" placeholder="🔍 Search…" oninput="filterForwardTargets(this.value)">
       <div id="forwardTargetsList" class="forward-targets-list"></div>
     </div>
     <div class="comm-modal-footer">
@@ -1667,7 +1667,7 @@
 
     <!-- Panel 1: In-App Contacts Picker -->
     <div id="inviteInAppPanel" class="comm-modal-body" style="max-height: 52vh; overflow-y: auto; padding-top: 0;">
-      <input type="text" id="inviteContactSearch" class="comm-inline-search" placeholder="🔍 Search Nexa contacts…" oninput="filterInviteContacts(this.value)">
+      <input type="text" id="inviteContactSearch" class="comm-inline-search" placeholder="🔍 Search contacts…" oninput="filterInviteContacts(this.value)">
       <div id="inviteContactsList" class="comm-contacts-picker" style="max-height: 240px; margin-top: 8px;"></div>
       <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-size: 12px; color: var(--text-3);"><span id="selectedInviteCount">0</span> selected</span>
