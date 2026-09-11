@@ -1213,6 +1213,18 @@ function switchTab(tabName) {
     renderCommunityTab();
   }
 
+  // Strictly enforce that call buttons NEVER show in Community tab
+  const voiceBtn = document.getElementById('headerVoiceCallBtn');
+  const videoBtn = document.getElementById('headerVideoCallBtn');
+  if (tabName === 'community' || currentChatMode !== 'direct' || !selectedUser) {
+    if (voiceBtn) voiceBtn.style.display = 'none';
+    if (videoBtn) videoBtn.style.display = 'none';
+  } else if (tabName === 'chats' && currentChatMode === 'direct' && selectedUser) {
+    if (voiceBtn) voiceBtn.style.display = 'flex';
+    if (videoBtn) videoBtn.style.display = 'flex';
+  }
+  updatePollButtonVisibility();
+
   if (window.lucide) lucide.createIcons();
 }
 
@@ -1757,6 +1769,18 @@ async function changeDisappearingSetting(value) {
 
 function selectChat(user, el) {
   if (currentChatMode !== 'direct') resetCommunityChatMode();
+  currentChatMode = 'direct';
+  selectedGroup = null;
+  selectedChannel = null;
+
+  // Header buttons for 1v1 direct chat
+  const voiceBtn = document.getElementById('headerVoiceCallBtn');
+  const videoBtn = document.getElementById('headerVideoCallBtn');
+  const infoBtn = document.getElementById('headerInfoBtn');
+  if (voiceBtn) voiceBtn.style.display = 'flex';
+  if (videoBtn) videoBtn.style.display = 'flex';
+  if (infoBtn) infoBtn.style.display = 'flex';
+  updatePollButtonVisibility();
   // Persist the chat we're LEAVING so it reopens instantly next app-open,
   // then remember the newly selected chat as the last-open one.
   if (selectedUser && selectedUser.uid !== user.uid) saveChatMsgCache(selectedUser.uid);
@@ -3781,13 +3805,26 @@ function handleKeyPress(e) {
   }
 }
 
+function updatePollButtonVisibility() {
+  const pollBtn = document.getElementById("pollBtn");
+  if (!pollBtn) return;
+  const isGroupChat = currentChatMode === 'group' && !!selectedGroup;
+  if (!isGroupChat) {
+    pollBtn.style.display = 'none';
+    pollBtn.classList.add("hidden");
+  } else {
+    const hasText = (document.getElementById("text")?.value || "").trim().length > 0;
+    pollBtn.style.display = 'inline-flex';
+    pollBtn.classList.toggle("hidden", hasText);
+  }
+}
+
 function toggleActionButtons() {
   const has = document.getElementById("text").value.trim().length > 0;
   document.getElementById("imgBtn").classList.toggle("hidden", has);
   document.getElementById("fileBtn").classList.toggle("hidden", has);
   document.getElementById("recordBtn").classList.toggle("hidden", has);
-  const pollBtn = document.getElementById("pollBtn");
-  if (pollBtn) pollBtn.classList.toggle("hidden", has);
+  updatePollButtonVisibility();
 }
 
 async function sendMessage() {
@@ -8020,13 +8057,12 @@ function selectGroupChat(group) {
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
   const videoBtn = document.getElementById('headerVideoCallBtn');
-  const chatInfoBtn = document.getElementById('headerChatInfoBtn');
-  const commInfoBtn = document.getElementById('headerCommunityInfoBtn');
+  const infoBtn = document.getElementById('headerInfoBtn');
 
   if (voiceBtn) voiceBtn.style.display = 'none';
   if (videoBtn) videoBtn.style.display = 'none';
-  if (chatInfoBtn) chatInfoBtn.style.display = 'none';
-  if (commInfoBtn) commInfoBtn.style.display = 'flex';
+  if (infoBtn) infoBtn.style.display = 'flex';
+  updatePollButtonVisibility();
 
   document.getElementById('chatName').textContent = group.name || 'Group';
   document.getElementById('chatPic').src = group.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
@@ -9159,13 +9195,12 @@ function selectChannelFeed(channel) {
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
   const videoBtn = document.getElementById('headerVideoCallBtn');
-  const chatInfoBtn = document.getElementById('headerChatInfoBtn');
-  const commInfoBtn = document.getElementById('headerCommunityInfoBtn');
+  const infoBtn = document.getElementById('headerInfoBtn');
 
   if (voiceBtn) voiceBtn.style.display = 'none';
   if (videoBtn) videoBtn.style.display = 'none';
-  if (chatInfoBtn) chatInfoBtn.style.display = 'none';
-  if (commInfoBtn) commInfoBtn.style.display = 'flex';
+  if (infoBtn) infoBtn.style.display = 'flex';
+  updatePollButtonVisibility();
 
   document.getElementById('chatName').textContent = channel.name || 'Channel';
   document.getElementById('chatPic').src = channel.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
@@ -9290,6 +9325,20 @@ function renderChannelPostsList(posts) {
     const commentsCount = post.commentsCount || 0;
     const timeStr = post.createdAt ? new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
+    const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
+    const replyQuote = post.postReplyToComment;
+    let replyQuoteHtml = '';
+    if (replyQuote) {
+      replyQuoteHtml = `
+        <div class="channel-post-reply-quote">
+          <div style="flex: 1; min-width: 0;">
+            <div class="reply-quote-name"><i data-lucide="corner-down-right" style="width: 11px; height: 11px; vertical-align: middle; margin-right: 4px;"></i>${escapeHtml(replyQuote.authorName || 'User')}</div>
+            <div class="reply-quote-text">${escapeHtml(replyQuote.commentText || '')}</div>
+          </div>
+        </div>
+      `;
+    }
+
     wrap.innerHTML = `
       <div class="channel-post-card" id="post_${post.id}">
         <div class="channel-post-header">
@@ -9298,13 +9347,14 @@ function renderChannelPostsList(posts) {
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="channel-post-time">${timeStr}</span>
-            ${((selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid) ? `
+            ${isChannelAdmin ? `
               <button class="comm-icon-btn-xs" onclick="pinChannelPost('${post.id}')" title="Pin / Unpin post" style="opacity: 0.65;">
                 <i data-lucide="pin" style="width: 12px; height: 12px;"></i>
               </button>
             ` : ''}
           </div>
         </div>
+        ${replyQuoteHtml}
         ${mediaHtml}
         <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
         <div class="channel-post-footer">
@@ -9337,10 +9387,12 @@ function renderChannelPostsList(posts) {
                 <button class="qr-emoji-btn" onclick="toggleChannelPostReaction('${post.id}', '😮')">😮</button>
               </div>
             </div>
-            <button class="channel-comments-btn" onclick="openChannelComments('${post.id}')">
-              <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
-              <span>${commentsCount} Comments</span>
-            </button>
+            ${isChannelAdmin ? `
+              <button class="channel-comments-btn" onclick="openChannelComments('${post.id}')" title="Discussion Comments">
+                <i data-lucide="message-circle" style="width:13px;height:13px;"></i>
+                <span>${commentsCount} Comments</span>
+              </button>
+            ` : ''}
             <button class="channel-reaction-pill" onclick="shareChannelPost('${post.id}')" title="Forward / Share Post">
               <i data-lucide="share-2" style="width:12px;height:12px;"></i>
               <span>Share</span>
@@ -9498,9 +9550,19 @@ async function toggleChannelPostReaction(postId, emoji) {
 }
 
 // ── Channel Post Discussion Comments Drawer ────────────────────────────────
+let pendingChannelCommentReply = null; // { commentId, authorName, commentText, postId }
+
 function openChannelComments(postId) {
   if (!selectedChannel) return;
+  const isOwner = selectedChannel.ownerUid === currentUser.uid;
+  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) {
+    showNotifToast('Discussion comments are accessible to channel admins only', 'info');
+    return;
+  }
+
   activeCommentPostId = postId;
+  cancelChannelCommentReply();
   const drawer = document.getElementById('channelCommentsDrawer');
   if (!drawer) return;
 
@@ -9508,8 +9570,6 @@ function openChannelComments(postId) {
   const postText = postEl ? postEl.querySelector('.channel-post-text')?.textContent || 'Discussion' : 'Discussion';
   document.getElementById('commentsOriginalPostSnippet').textContent = postText;
 
-  const isOwner = selectedChannel.ownerUid === currentUser.uid;
-  const isAdmin = isOwner || (selectedChannel.admins || []).includes(currentUser.uid);
   const commentsAllowed = selectedChannel.settings?.allowComments !== false;
 
   // Toggle input bar or notice depending on channel setting
@@ -9539,8 +9599,40 @@ function openChannelComments(postId) {
 function closeChannelComments() {
   if (unsubChannelComments) { unsubChannelComments(); unsubChannelComments = null; }
   activeCommentPostId = null;
+  cancelChannelCommentReply();
   const drawer = document.getElementById('channelCommentsDrawer');
   if (drawer) drawer.classList.remove('open');
+}
+
+function prepareChannelCommentReply(commentId, authorName, commentText) {
+  pendingChannelCommentReply = {
+    commentId,
+    authorName,
+    commentText,
+    postId: activeCommentPostId
+  };
+  const bar = document.getElementById('channelCommentReplyBar');
+  if (bar) {
+    const titleEl = document.getElementById('channelCommentReplyTitle');
+    const snippetEl = document.getElementById('channelCommentReplySnippet');
+    if (titleEl) titleEl.textContent = `Reply to ${authorName} in channel`;
+    if (snippetEl) snippetEl.textContent = commentText;
+    bar.style.display = 'flex';
+  }
+  const input = document.getElementById('channelCommentInput');
+  if (input) {
+    input.focus();
+    input.placeholder = `Reply to ${authorName} and broadcast to channel…`;
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function cancelChannelCommentReply() {
+  pendingChannelCommentReply = null;
+  const bar = document.getElementById('channelCommentReplyBar');
+  if (bar) bar.style.display = 'none';
+  const input = document.getElementById('channelCommentInput');
+  if (input) input.placeholder = 'Write a comment…';
 }
 
 function loadChannelComments(postId) {
@@ -9577,8 +9669,20 @@ function renderChannelComments(comments) {
     let deleteBtn = '';
     if (canDelete) {
       deleteBtn = `
-        <button class="comm-icon-btn-xs" style="opacity: 0.6; margin-left: auto;" onclick="deleteChannelComment('${c.id}')" title="Delete comment">
+        <button class="comm-icon-btn-xs" style="opacity: 0.6;" onclick="deleteChannelComment('${c.id}')" title="Delete comment">
           <i data-lucide="trash" style="width: 12px; height: 12px; color: var(--danger);"></i>
+        </button>
+      `;
+    }
+
+    let replyBtn = '';
+    if (isAdmin) {
+      const safeAuthor = (c.authorName || 'User').replace(/'/g, "\\'");
+      const rawText = (c.text || '').replace(/\r?\n/g, ' ').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      replyBtn = `
+        <button class="comm-icon-btn-xs" style="color: var(--primary);" onclick="prepareChannelCommentReply('${c.id}', '${safeAuthor}', '${rawText}')" title="Reply to Channel (WhatsApp style)">
+          <i data-lucide="corner-up-left" style="width: 13px; height: 13px;"></i>
+          <span style="font-size: 11px; margin-left: 3px; font-weight: 600;">Reply to Channel</span>
         </button>
       `;
     }
@@ -9590,7 +9694,10 @@ function renderChannelComments(comments) {
           <div class="comment-author-row">
             <span class="comment-author-name">${escapeHtml(c.authorName || 'User')}</span>
             <span class="comment-time">${timeStr}</span>
-            ${deleteBtn}
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 6px;">
+              ${replyBtn}
+              ${deleteBtn}
+            </div>
           </div>
           <div class="comment-text">${formatMessageText(c.text || '')}</div>
         </div>
@@ -9640,6 +9747,9 @@ async function submitChannelComment() {
   if (!text) return;
   input.value = '';
 
+  const replyContext = pendingChannelCommentReply;
+  cancelChannelCommentReply();
+
   try {
     const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(activeCommentPostId);
     await postRef.collection('comments').add({
@@ -9653,6 +9763,20 @@ async function submitChannelComment() {
     await postRef.update({
       commentsCount: firebase.firestore.FieldValue.increment(1)
     });
+
+    // If admin replied to a follower's comment, broadcast to the main channel feed (WhatsApp style)
+    if (replyContext && isAdmin) {
+      await sendChannelPostWithExtras({
+        text,
+        postReplyToComment: {
+          commentId: replyContext.commentId,
+          authorName: replyContext.authorName,
+          commentText: replyContext.commentText,
+          parentPostId: replyContext.postId
+        }
+      });
+      showNotifToast('✓ Replied to channel broadcast!', 'success');
+    }
   } catch (err) {
     showNotifToast('Failed to comment: ' + err.message, 'error');
   }
@@ -9980,16 +10104,16 @@ function resetCommunityChatMode() {
     if (bNav) bNav.classList.remove('hidden');
   }
 
-  // Restore call buttons for direct chat
+  // Restore buttons depending on active direct chat
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
   const videoBtn = document.getElementById('headerVideoCallBtn');
-  const chatInfoBtn = document.getElementById('headerChatInfoBtn');
-  const commInfoBtn = document.getElementById('headerCommunityInfoBtn');
+  const infoBtn = document.getElementById('headerInfoBtn');
 
-  if (voiceBtn) voiceBtn.style.display = 'flex';
-  if (videoBtn) videoBtn.style.display = 'flex';
-  if (chatInfoBtn) chatInfoBtn.style.display = 'flex';
-  if (commInfoBtn) commInfoBtn.style.display = 'none';
+  const showCalls = currentChatMode === 'direct' && !!selectedUser;
+  if (voiceBtn) voiceBtn.style.display = showCalls ? 'flex' : 'none';
+  if (videoBtn) videoBtn.style.display = showCalls ? 'flex' : 'none';
+  if (infoBtn) infoBtn.style.display = (selectedUser || selectedGroup || selectedChannel) ? 'flex' : 'none';
+  updatePollButtonVisibility();
 
   // Restore input area
   const inputArea = document.querySelector('.input-area');
@@ -11061,4 +11185,13 @@ async function checkGroupInviteUrlParam() {
 // Expose groups list for forward feature
 window._userGroups = window._userGroups || [];
 
-
+// Consolidated Header Info Button Click Handler
+function handleHeaderInfoClick() {
+  if (currentChatMode === 'group' && selectedGroup) {
+    if (typeof openGroupInfo === 'function') openGroupInfo();
+  } else if (currentChatMode === 'channel' && selectedChannel) {
+    if (typeof openChannelInfo === 'function') openChannelInfo();
+  } else if (selectedUser) {
+    if (typeof openChatInfo === 'function') openChatInfo();
+  }
+}

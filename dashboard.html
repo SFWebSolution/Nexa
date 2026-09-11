@@ -518,8 +518,7 @@
       <div class="header-actions">
         <button class="hdr-btn" id="headerVoiceCallBtn" onclick="openVoiceCall()" title="Voice Call"><i data-lucide="phone" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" id="headerVideoCallBtn" onclick="openCallModal('video')" title="Video Call"><i data-lucide="video" style="width: 18px; height: 18px;"></i></button>
-        <button class="hdr-btn" id="headerChatInfoBtn" onclick="openChatInfo()" title="Chat Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
-        <button class="hdr-btn" id="headerCommunityInfoBtn" onclick="openActiveCommunityInfo()" title="Community Info" style="display: none;"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
+        <button class="hdr-btn" id="headerInfoBtn" onclick="handleHeaderInfoClick()" title="Info"><i data-lucide="info" style="width: 18px; height: 18px;"></i></button>
         <button class="hdr-btn" onclick="openSearchModal()" title="Search"><i data-lucide="search" style="width: 18px; height: 18px;"></i></button>
       </div>
     </div>
@@ -571,7 +570,7 @@
         <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
         <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
-        <button class="iact-btn" id="pollBtn" onclick="openPollModal()" title="Create Poll"><i data-lucide="bar-chart-2" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn" id="pollBtn" onclick="openPollModal()" title="Create Poll" style="display: none;"><i data-lucide="bar-chart-2" style="width: 20px; height: 20px;"></i></button>
         <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
       </div>
       <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
@@ -1557,6 +1556,14 @@
   </div>
   <div class="comments-list" id="channelCommentsList">
     <div class="comments-empty">No comments yet. Start the conversation!</div>
+  </div>
+  <div class="channel-comment-reply-bar" id="channelCommentReplyBar" style="display: none;">
+    <div class="reply-bar-indicator"></div>
+    <div class="reply-bar-body">
+      <div class="reply-bar-title" id="channelCommentReplyTitle">Replying to User</div>
+      <div class="reply-bar-snippet" id="channelCommentReplySnippet">Comment snippet</div>
+    </div>
+    <button class="reply-bar-close" onclick="cancelChannelCommentReply()"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
   </div>
   <div class="comments-input-bar">
     <textarea id="channelCommentInput" placeholder="Write a comment…" rows="1" maxlength="1000" onkeydown="handleCommentInputKey(event)"></textarea>
