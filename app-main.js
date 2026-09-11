@@ -9447,6 +9447,7 @@ function renderChannelPostsList(posts) {
               <button class="comm-icon-btn-xs" onclick="pinChannelPost('${post.id}')" title="Pin / Unpin post" style="opacity: 0.65;">
                 <i data-lucide="pin" style="width: 12px; height: 12px;"></i>
               </button>
+              <button class="comm-icon-btn-xs" onclick="openPostCommentsToggle('${post.id}')" title="Comments on/off for this post" style="opacity: 0.65;"><i data-lucide="message-circle" style="width: 12px; height: 12px;"></i></button>
             ` : ''}
           </div>
         </div>
@@ -10125,6 +10126,25 @@ async function toggleChannelPostCommentsSetting(allow) {
   } catch (err) {
     showNotifToast('Failed to update setting: ' + err.message, 'error');
   }
+}
+function openPostCommentsToggle(postId) {
+  const cached = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
+  activeCommentPostId = postId;
+  const cb = document.getElementById('postCommentsToggleCheck');
+  const modal = document.getElementById('postCommentsToggleModal');
+  if (cb) cb.checked = cached ? cached.commentsEnabled !== false : true;
+  if (modal) modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+function closePostCommentsToggle() {
+  const modal = document.getElementById('postCommentsToggleModal');
+  if (modal) modal.classList.remove('active');
+}
+async function savePostCommentsToggle() {
+  const cb = document.getElementById('postCommentsToggleCheck');
+  if (!cb || !activeCommentPostId) return;
+  closePostCommentsToggle();
+  await toggleChannelPostCommentsSetting(cb.checked);
 }
 function triggerChangeChannelAvatar() {
   if (!selectedChannel) return;

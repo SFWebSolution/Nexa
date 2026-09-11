@@ -1585,6 +1585,25 @@
   </div>
 </div>
 
+<!-- POST COMMENTS TOGGLE MODAL (Admin Per-Post) -->
+<div class="comm-modal-overlay" id="postCommentsToggleModal" onclick="handleCommModalOverlayClick(event, 'postCommentsToggleModal')">
+  <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 340px;">
+    <div class="comm-modal-header">
+      <div class="comm-modal-title" style="display:flex;align-items:center;gap:8px;"><i data-lucide="message-circle" style="width:18px;height:18px;color:var(--primary);"></i> Comments for this post</div>
+      <button class="comm-modal-close" onclick="closePostCommentsToggle()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="comm-modal-body" style="padding: 6px 0;">
+      <label class="comm-checkbox-label" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="postCommentsToggleCheck" style="width:18px;height:18px;cursor:pointer;accent-color:var(--primary);">
+        <span style="font-size:13.5px;color:var(--text-1);">Allow subscribers to comment on this post</span>
+      </label>
+    </div>
+    <div class="comm-modal-footer">
+      <button class="comm-btn secondary" onclick="closePostCommentsToggle()">Cancel</button>
+      <button class="comm-btn primary" onclick="savePostCommentsToggle()">Save</button>
+    </div>
+  </div>
+</div>
 <!-- POLL CREATION MODAL (Groups) -->
 <div class="comm-modal-overlay" id="pollCreateModal" onclick="handleCommModalOverlayClick(event, 'pollCreateModal')">
   <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 420px;">
