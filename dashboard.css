@@ -1532,7 +1532,6 @@ select:focus-visible {
   word-break: break-word;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-shadow: 0 0 1px rgba(255,255,255,0.06);
 }
 
 /* Crisp, high-contrast text renedering for all bubbles regardless of theme */
@@ -1551,7 +1550,6 @@ select:focus-visible {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  text-shadow: 0 0 0.5px rgba(255,255,255,0.05);
 }
 
 .msg.me .bubble {
