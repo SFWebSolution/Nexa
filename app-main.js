@@ -182,6 +182,7 @@ async function loadProfile() {
     const doc = await db.collection("users").doc(currentUser.uid).get();
     const data = doc.data();
 
+    currentUser.allowInvites = data?.allowInvites ?? false;
     let displayName = null;
     if (data?.displayName && data.displayName.trim() && data.displayName !== "User") {
       displayName = data.displayName;
@@ -223,6 +224,9 @@ async function loadProfile() {
   }
 
   loadPrefs();
+  // Sync Allow Invites toggle UI
+  const invToggle = document.getElementById('allowInvitesToggle');
+  if (invToggle) invToggle.classList.toggle('active', currentUser.allowInvites);
   startStatusListener();
 }
 
@@ -258,6 +262,23 @@ function toggleNotif(key) {
   updateNotifUI();
   showNotifToast(`${key} ${notificationSettings[key] ? 'enabled' : 'disabled'}`, 'success');
 }
+
+function toggleAllowInvites() {
+  if (!currentUser) return;
+  const newVal = !(currentUser.allowInvites);
+  db.collection("users").doc(currentUser.uid).set({ allowInvites: newVal }, { merge: true })
+    .then(() => {
+      currentUser.allowInvites = newVal;
+      const toggle = document.getElementById("allowInvitesToggle");
+      if (toggle) toggle.classList.toggle("active", newVal);
+      showNotifToast(`Allow invites ${newVal ? 'enabled' : 'disabled'}`, 'success');
+    })
+    .catch(err => {
+      console.error("Error toggling invites:", err);
+      showNotifToast("Failed to toggle invites.", "error");
+    });
+}
+window.toggleAllowInvites = toggleAllowInvites;
 
 function openNotifSettings() {
   loadNotificationSettings();
@@ -3215,7 +3236,15 @@ function buildMessage(id, msg, fromMe) {
 
     bubble.appendChild(badge);
   } else {
-    if (msg.type === 'poll' && msg.pollOptions) {
+    if (msg.type === 'invite' && msg.targetId && msg.targetName && msg.link) {
+  inner += `<div class="invite-card">
+    <div class="invite-avatar"><img src="${msg.avatar || 'https://i.imgur.com/HeIi0wU.png'}" alt="Avatar"></div>
+    <div class="invite-info">
+      <div class="invite-name">${escapeHtml(msg.targetName)}</div>
+      <div class="invite-action"><button onclick="window.open('${msg.link}', '_blank')">Open Invite</button></div>
+    </div>
+  </div>`;
+} else if (msg.type === 'poll' && msg.pollOptions) {
       inner += buildPollHTML(id, msg);
     } else if (msg.text) {
       inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
@@ -11902,6 +11931,49 @@ async function prepareCommunityShareLink() {
 }
 
 async function sendInAppCommunityInvites() {
+  // Guard: only admins or users with allowInvites can send invites
+  if (!currentUser.isAdmin && !(currentUser.allowInvites === true)) {
+    showNotifToast('Invites disabled for you', 'error');
+    return;
+  }
+  if (!selectedCommunityInviteUids.size) return;
+  const isGroup = activeCommunityInviteType === 'group';
+  const targetObj = isGroup ? selectedGroup : selectedChannel;
+  if (!targetObj) return;
+
+  const count = selectedCommunityInviteUids.size;
+  closeCommunityInviteModal();
+
+  try {
+    const link = await (isGroup ? getOrCreateGroupInviteLink() : `${window.location.origin}${window.location.pathname}?joinChannel=${targetObj.id}`);
+    const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Friend';
+    const inviteMsgText = isGroup
+      ? `📩 *Group Invitation*\nHey! ${myName} invited you to join "*${targetObj.name}*".\nTap link to join:\n${link}`
+      : `📢 *Channel Invitation*\nHey! Follow "*${targetObj.name}*" on Nexa for broadcast updates.\nTap link to follow:\n${link}`;
+
+    for (const targetUid of selectedCommunityInviteUids) {
+      await db.collection('chats').add({
+        from: currentUser.uid,
+        to: targetUid,
+        text: inviteMsgText,
+        type: 'invite',
+        targetId: targetObj.id,
+        targetName: targetObj.name,
+        targetType: isGroup ? 'group' : 'channel',
+        link: link,
+        createdAt: Date.now(),
+        read: false
+      });
+      latestMsgTime[targetUid] = Date.now();
+      latestMsgText[targetUid] = inviteMsgText;
+    }
+    saveLatestMsgState();
+    renderUsers();
+    showNotifToast(`Sent invite to ${count} contact${count > 1 ? "s" : ""}`, "success");
+  } catch (err) {
+    showNotifToast('Failed to send invites: ' + err.message, 'error');
+  }
+}
   if (!selectedCommunityInviteUids.size) return;
   const isGroup = activeCommunityInviteType === 'group';
   const targetObj = isGroup ? selectedGroup : selectedChannel;
