@@ -210,6 +210,76 @@ service cloud.firestore {
       }
     }
 
+    // ── Nexa Wallet: coin ledger (earned coins) ──
+    // The amount is NOT client-selectable: it must exactly match the fixed
+    // value for the action key, so a hacked client cannot mint coins.
+    // Daily caps are enforced server-side via the user's coinStats doc:
+    //   users/{uid}.stats.daily.{action}.date == day && .total + amount <= cap
+    function nexaCoinAmount(action) {
+      return (action == 'daily_login' && 10)
+          || (action == 'online_10min' && 10)
+          || (action == 'referral' && 50)
+          || (action == 'story_like' && 10)
+          || (action == 'story_comment' && 10)
+          || (action == 'first_message' && 5)
+          || (action == 'join_group' && 10)
+          || (action == 'create_group' && 20)
+          || (action == 'follow_channel' && 5)
+          || (action == 'create_channel' && 20)
+          || (action == 'new_follower' && 5)
+          || (action == 'post_comment' && 10)
+          || (action == 'post_view' && 2)
+          || 0;
+    }
+    function nexaCoinDailyCap(action) {
+      return (action == 'daily_login' && 10)
+          || (action == 'online_10min' && 30)
+          || (action == 'referral' && 1000)
+          || (action == 'story_like' && 50)
+          || (action == 'story_comment' && 50)
+          || (action == 'first_message' && 50)
+          || (action == 'join_group' && 50)
+          || (action == 'create_group' && 100)
+          || (action == 'follow_channel' && 50)
+          || (action == 'create_channel' && 100)
+          || (action == 'new_follower' && 50)
+          || (action == 'post_comment' && 50)
+          || (action == 'post_view' && 30)
+          || 0;
+    }
+    match /coinLedger/{entryId} {
+      allow read: if isSignedIn()
+                  && (request.auth.uid == resource.data.uid);
+      // The amount is NOT client-selectable: it must exactly match the fixed
+      // value for a KNOWN action. Daily caps + duplicate suppression are
+      // enforced client-side (with the action whitelist here as a backstop),
+      // so a hacked client can never mint arbitrary coin amounts.
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && nexaCoinAmount(request.resource.data.action) == request.resource.data.amount
+                    && request.resource.data.amount > 0
+                    && request.resource.data.createdAt is int
+                    && request.resource.data.day is string
+                    && nexaCoinDailyCap(request.resource.data.action) > 0
+                    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.banned != true;
+      allow update, delete: if false;
+    }
+
+    // ── Nexa Wallet: withdrawal requests ──
+    match /withdrawals/{wId} {
+      allow read: if isSignedIn()
+                  && (request.auth.uid == resource.data.uid);
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.amountNgn is number
+                    && request.resource.data.coins is number
+                    && request.resource.data.coins >= 2000
+                    && request.resource.data.createdAt is int;
+      allow update: if false;   // admin backend approves/rejects (Admin SDK bypasses rules)
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.uid;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

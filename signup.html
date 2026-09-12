@@ -384,6 +384,14 @@ async function signup() {
             referralCount: increment(1),
             referrals: arrayUnion(newReferral)
           });
+          // Nexus Wallet: mark the new account as referred so the backend can
+          // credit the inviter's coins on their next app open (idempotent,
+          // guarded by sourceId on the ledger server-side).
+          try {
+            await updateDoc(doc(db, "users", user.uid), {
+              referredBy: refDoc.id
+            });
+          } catch (e) { console.warn("Could not tag referredBy:", e); }
         }
       } catch (e) { console.warn("Referral credit failed:", e); }
     }

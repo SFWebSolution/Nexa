@@ -389,6 +389,12 @@
             <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">Your note appears on your profile and auto-clears after 24 hours.</div>
           </div>
 
+          <button class="nexa-wallet-profile-btn" onclick="openNexaWallet()">
+            <span class="nexa-wallet-prof-icon">💰</span>
+            <span class="nexa-wallet-prof-label">Nexa Wallet</span>
+            <span class="nexa-wallet-prof-chev">›</span>
+          </button>
+
           <button class="profile-logout-btn" onclick="handleLogout()">
             <span>🚪 Sign Out</span>
           </button>
@@ -1608,6 +1614,55 @@
       <button class="comm-btn secondary" onclick="closePostCommentsToggle()">Cancel</button>
       <button class="comm-btn primary" onclick="savePostCommentsToggle()">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- NEXA WALLET — PalmPay-style bottom sheet -->
+<div class="nexa-wallet-overlay" id="nexaWalletModal" onclick="if(event.target===this)closeNexaWallet()">
+  <div class="nexa-wallet-sheet" onclick="event.stopPropagation()">
+    <div class="nexa-wallet-handle"></div>
+    <div class="nexa-wallet-header">
+      <div class="nexa-wallet-header-row">
+        <div class="nexa-wallet-avatar">💰</div>
+        <div>
+          <div class="nexa-wallet-greeting">Nexa Wallet</div>
+          <div class="nexa-wallet-name" id="nexaWalletName">…</div>
+        </div>
+        <button class="nexa-wallet-close" onclick="closeNexaWallet()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+      </div>
+      <div class="nexa-wallet-balance-top">
+        <div class="nexa-wallet-balance-label">Coin balance</div>
+        <div class="nexa-wallet-balance" id="nexaWalletBalance">0</div>
+      </div>
+    </div>
+    <div class="nexa-wallet-body" id="nexaWalletBody">
+      <div style="text-align:center; padding:36px 20px; color:var(--text-3);">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- NEXA WALLET REDEEM FORM -->
+<div class="nexa-wallet-redeem-form" id="nexaWalletRedeemForm" style="display:none;">
+  <div class="nexa-wallet-section-label">Withdraw to your account</div>
+  <div class="nexa-wallet-field">
+    <label>Bank name</label>
+    <input type="text" id="nexaRedeemBank" placeholder="e.g. GTBank, Kuda, Opay" maxlength="40">
+  </div>
+  <div class="nexa-wallet-field">
+    <label>Account number</label>
+    <input type="text" id="nexaRedeemAcct" placeholder="10–12 digit account number" inputmode="numeric" maxlength="12">
+  </div>
+  <div class="nexa-wallet-field">
+    <label>Account name</label>
+    <input type="text" id="nexaRedeemAcctName" placeholder="Name on the account" maxlength="60">
+  </div>
+  <div class="nexa-wallet-field">
+    <label>Amount (₦)</label>
+    <input type="number" id="nexaRedeemAmt" placeholder="Minimum ₦500" min="500" step="1">
+  </div>
+  <div class="nexa-wallet-redeem-actions">
+    <button class="nexa-wallet-redeem-cancel" onclick="document.getElementById('nexaWalletRedeemForm').style.display='none'">Cancel</button>
+    <button class="nexa-wallet-redeem-submit" onclick="submitNexaRedeem()">Submit request</button>
   </div>
 </div>
 <!-- POLL CREATION MODAL (Groups) -->

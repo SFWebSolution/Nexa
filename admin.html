@@ -1322,15 +1322,57 @@ td {
               <th>Status</th>
               <th>Joined</th>
               <th>Last Seen</th>
+              <th>Coins</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="usersTable">
             <tr>
-              <td colspan="7" style="text-align: center; padding: 40px;">
+              <td colspan="8" style="text-align: center; padding: 40px;">
                 <div class="empty-state">
                   <div class="empty-icon">📂</div>
                   <div class="empty-text">Loading users...</div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Nexa Wallet: Withdrawal Requests -->
+    <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <div class="section-title">💸 Withdrawal Requests</div>
+        <div class="section-subtitle" id="withdrawCount">No pending requests</div>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <button class="filter-tab-btn active" onclick="loadWithdrawals('pending', this)">Pending</button>
+        <button class="filter-tab-btn" onclick="loadWithdrawals('approved', this)">Approved</button>
+        <button class="filter-tab-btn" onclick="loadWithdrawals('rejected', this)">Rejected</button>
+      </div>
+    </div>
+    <div class="table-container">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Bank</th>
+              <th>Account</th>
+              <th>Amount</th>
+              <th>Coins</th>
+              <th>Requested</th>
+              <th>Notes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="withdrawalsTable">
+            <tr>
+              <td colspan="8" style="text-align: center; padding: 40px;">
+                <div class="empty-state">
+                  <div class="empty-icon">💸</div>
+                  <div class="empty-text">Loading withdrawals…</div>
                 </div>
               </td>
             </tr>
@@ -1597,6 +1639,10 @@ function initDashboard() {
   listenPresence();
   listenChats();
   listenStories();
+  // Nexa Wallet: load pending withdrawal requests for the admin.
+  setTimeout(() => {
+    try { loadWithdrawals("pending"); } catch (e) {}
+  }, 800);
 
   document.getElementById("searchInput")?.addEventListener("input", applyFiltersAndRender);
 
@@ -2369,6 +2415,140 @@ function deleteUser(uid) {
 }
 
 /* =====================================================
+   NEXA WALLET — Withdrawal requests (admin)
+   ===================================================== */
+let currentWithdrawStatus = "pending";
+
+function adminFetchGet(path) {
+  if (!ADMIN_SECRET) {
+    return Promise.reject(new Error("Admin secret not set — please log in again."));
+  }
+  return fetch(ADMIN_API_BASE + path, {
+    method: "GET",
+    headers: {
+      "X-Admin-Secret": ADMIN_SECRET
+    }
+  });
+}
+
+function loadWithdrawals(status, btn) {
+  currentWithdrawStatus = status || "pending";
+  if (btn) {
+    document.querySelectorAll(".filter-tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  }
+  const table = document.getElementById("withdrawalsTable");
+  if (table) {
+    table.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;"><div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">Loading…</div></div></td></tr>`;
+  }
+  adminFetchGet("/api/admin/withdrawals?status=" + encodeURIComponent(currentWithdrawStatus))
+    .then(res => {
+      if (!res.ok) throw new Error("Backend returned " + res.status);
+      return res.json();
+    })
+    .then(data => {
+      if (!data.success) throw new Error(data.error || "Failed to load withdrawals");
+      renderWithdrawals(data.items || [], currentWithdrawStatus);
+    })
+    .catch(err => {
+      const table = document.getElementById("withdrawalsTable");
+      if (table) {
+        table.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;"><div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Withdrawals unavailable — ${escapeHtml(err.message)}</div></div></td></tr>`;
+      }
+    });
+}
+
+function renderWithdrawals(items, status) {
+  const table = document.getElementById("withdrawalsTable");
+  if (!table) return;
+  const countEl = document.getElementById("withdrawCount");
+
+  const pendingStatus = status || "pending";
+  if (countEl) {
+    const label = pendingStatus === "pending" ? "pending" : pendingStatus;
+    countEl.textContent = (items && items.length ? items.length : 0) + " " + label + " request(s)";
+  }
+
+  if (!items || items.length === 0) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align:center; padding:40px;">
+          <div class="empty-state">
+            <div class="empty-icon">✅</div>
+            <div class="empty-text">No ${pendingStatus} withdrawals</div>
+          </div>
+        </td>
+      </tr>`;
+    return;
+  }
+
+  table.innerHTML = items.map(w => {
+    const isPending = w.status === "pending";
+    const ngn = (typeof w.amountNgn === "number" ? w.amountNgn : 0).toLocaleString("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
+    const coins = typeof w.coins === "number" ? w.coins.toLocaleString() : "—";
+    const dateStr = w.createdAt ? new Date(w.createdAt).toLocaleString() : "—";
+    const userName = escapeHtml(w.name || w.accountName || w.uid || "User");
+    const bank = escapeHtml(w.bank || "—");
+    const acct = escapeHtml(w.accountNumber || "—");
+    const notes = w.notes ? escapeHtml(w.notes) : (isPending ? '<span style="color:var(--text-3)">—</span>' : '<span style="color:var(--text-3)">—</span>');
+    const statusBadge = isPending
+      ? '<span style="color:#f59e0b;font-weight:700;">⏳ Pending</span>'
+      : (w.status === "approved"
+          ? '<span style="color:#22c55e;font-weight:700;">✅ Approved</span>'
+          : '<span style="color:#ef4444;font-weight:700;">❌ Rejected</span>');
+
+    const actions = isPending
+      ? `<div class="actions">
+          <button class="action-btn" style="background:#22c55e;color:#fff;" onclick="approveWithdrawal('${w.id}')">Approve</button>
+          <button class="action-btn danger" onclick="rejectWithdrawal('${w.id}')">Reject</button>
+        </div>`
+      : `<div class="actions"><span style="font-size:12px;color:var(--text-3);">${w.processedAt ? new Date(w.processedAt).toLocaleString() : "—"}</span></div>`;
+
+    return `
+      <tr>
+        <td>
+          <strong>${userName}</strong>
+          ${w.email ? `<div style="font-size:11.5px;color:var(--text-3);">${escapeHtml(w.email)}</div>` : ""}
+          <div style="font-size:11px;color:var(--text-3);">${statusBadge}</div>
+        </td>
+        <td>${bank}</td>
+        <td>${acct}</td>
+        <td><strong>${ngn}</strong></td>
+        <td>💎 ${coins}</td>
+        <td>${dateStr}</td>
+        <td>${notes}</td>
+        <td>${actions}</td>
+      </tr>`;
+  }).join("");
+}
+
+function approveWithdrawal(id) {
+  if (!confirm(`Approve this withdrawal? The coins will be deducted from the user's balance.`)) return;
+  const notes = prompt("Payment reference / note (optional)", "") || "";
+  adminFetch("/api/admin/withdrawals/" + encodeURIComponent(id) + "/approve", { notes })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.success) throw new Error(data.error || "Failed");
+      log("✅ Withdrawal " + id + " approved", "success");
+      loadWithdrawals(currentWithdrawStatus);
+    })
+    .catch(err => alert("❌ Approve failed: " + err.message));
+}
+
+function rejectWithdrawal(id) {
+  if (!confirm("Reject this withdrawal? The coins will stay on the user's balance.")) return;
+  const notes = prompt("Reason / note (optional)", "") || "";
+  adminFetch("/api/admin/withdrawals/" + encodeURIComponent(id) + "/reject", { notes })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.success) throw new Error(data.error || "Failed");
+      log("Withdrawal " + id + " rejected", "warning");
+      loadWithdrawals(currentWithdrawStatus);
+    })
+    .catch(err => alert("❌ Reject failed: " + err.message));
+}
+
+/* =====================================================
    RENDER TABLE
    ===================================================== */
 function renderTable(data) {
@@ -2417,6 +2597,7 @@ function renderTable(data) {
         <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
         <td>${joinedStr}</td>
         <td><span style="font-weight: 500; color: ${isOnline ? 'var(--online)' : 'var(--text-3)'}">${lastSeenStr}</span></td>
+        <td><span title="Nexa Wallet coins">💎 ${typeof u.coinsBalance === 'number' ? u.coinsBalance.toLocaleString() : '0'}</span></td>
         <td>
           <div class="actions">
             <button class="action-btn warning" onclick="editUser('${u.uid}')">Edit</button>
