@@ -255,7 +255,7 @@ app.post("/api/referral-credit", async (req, res) => {
       return res.json({ success: true, credited: false, reason: "already-credited" });
     }
 
-    const amount = 50;
+    const amount = 15;
     await db.collection("coinLedger").add({
       uid: referrerUid,
       action: "referral",

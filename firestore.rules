@@ -216,35 +216,35 @@ service cloud.firestore {
     // Daily caps are enforced server-side via the user's coinStats doc:
     //   users/{uid}.stats.daily.{action}.date == day && .total + amount <= cap
     function nexaCoinAmount(action) {
-      return (action == 'daily_login' && 10)
-          || (action == 'online_10min' && 10)
-          || (action == 'referral' && 50)
-          || (action == 'story_like' && 10)
+      return (action == 'daily_login' && 5)
+          || (action == 'online_10min' && 5)
+          || (action == 'referral' && 15)
+          || (action == 'story_like' && 5)
           || (action == 'story_comment' && 10)
           || (action == 'first_message' && 5)
           || (action == 'join_group' && 10)
-          || (action == 'create_group' && 20)
+          || (action == 'create_group' && 10)
           || (action == 'follow_channel' && 5)
-          || (action == 'create_channel' && 20)
+          || (action == 'create_channel' && 10)
           || (action == 'new_follower' && 5)
           || (action == 'post_comment' && 10)
-          || (action == 'post_view' && 2)
+          || (action == 'post_view' && 5)
           || 0;
     }
     function nexaCoinDailyCap(action) {
-      return (action == 'daily_login' && 10)
-          || (action == 'online_10min' && 30)
-          || (action == 'referral' && 1000)
-          || (action == 'story_like' && 50)
-          || (action == 'story_comment' && 50)
-          || (action == 'first_message' && 50)
-          || (action == 'join_group' && 50)
-          || (action == 'create_group' && 100)
-          || (action == 'follow_channel' && 50)
-          || (action == 'create_channel' && 100)
-          || (action == 'new_follower' && 50)
-          || (action == 'post_comment' && 50)
-          || (action == 'post_view' && 30)
+      return (action == 'daily_login' && 5)
+          || (action == 'online_10min' && 15)
+          || (action == 'referral' && 75)
+          || (action == 'story_like' && 30)
+          || (action == 'story_comment' && 30)
+          || (action == 'first_message' && 25)
+          || (action == 'join_group' && 30)
+          || (action == 'create_group' && 30)
+          || (action == 'follow_channel' && 25)
+          || (action == 'create_channel' && 30)
+          || (action == 'new_follower' && 25)
+          || (action == 'post_comment' && 30)
+          || (action == 'post_view' && 25)
           || 0;
     }
     match /coinLedger/{entryId} {
@@ -263,6 +263,15 @@ service cloud.firestore {
                     && nexaCoinDailyCap(request.resource.data.action) > 0
                     && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.banned != true;
       allow update, delete: if false;
+    }
+
+    // ── Nexa Wallet: in-app notification history (per user) ──
+    // Each signed-in user keeps their OWN history doc. Only the owner can
+    // read/create/update it, so no cross-user data is involved.
+    match /notifHistory/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update, delete:
+          if isSignedIn() && request.auth.uid == uid;
     }
 
     // ── Nexa Wallet: withdrawal requests ──

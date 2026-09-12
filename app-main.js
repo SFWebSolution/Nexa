@@ -538,6 +538,131 @@ window.showNotifToast = function(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 };
 
+// ── Notification history (in-app) ──────────────────────────────────────────
+// Each user's own notifHistory/{uid} doc keeps the last N notifications that
+// ARRIVED to THIS device/app so they can browse them later (WhatsApp/Telegram
+// style). Only self-writes are allowed by the rules.
+const NEXA_NOTIF_HISTORY_MAX = 50;
+
+function notifHistoryIconFor(title) {
+  const t = String(title || '').toLowerCase();
+  if (!t) return '🔔';
+  if (t.includes('call')) return '📞';
+  if (t.includes('react')) return '❤️';
+  if (t.includes('story')) return '📸';
+  if (t.includes('poll')) return '📊';
+  if (t.includes('group')) return '👥';
+  if (t.includes('channel') || t.includes('broadcast')) return '📣';
+  if (t.includes('follow')) return '➕';
+  return '💬';
+}
+
+async function recordNotificationHistory({ icon, title, body, at }) {
+  try {
+    if (!currentUser) return;
+    const ref = db.collection('notifHistory').doc(currentUser.uid);
+    const entry = {
+      icon: icon || notifHistoryIconFor(title),
+      title: String(title || 'Notification').slice(0, 120),
+      body: String(body || '').slice(0, 240),
+      at: at || Date.now()
+    };
+    // Read-modify-write own doc, capped to NEXA_NOTIF_HISTORY_MAX items
+    // (newest first). Missed concurrent writes are fine — history is a cache.
+    try {
+      const cur = await ref.get();
+      let items = (cur.exists && Array.isArray(cur.data().items)) ? cur.data().items.slice() : [];
+      // Dedupe consecutive identical entries (FCM + chat-listener may both
+      // report the same message).
+      const last = items[0];
+      if (last && last.title === entry.title && last.body === entry.body) {
+        last.at = entry.at;
+        await ref.set({ items, updatedAt: Date.now() }, { merge: true });
+        return;
+      }
+      items.unshift(entry);
+      items = items.slice(0, NEXA_NOTIF_HISTORY_MAX);
+      await ref.set({ items, updatedAt: Date.now() }, { merge: true });
+    } catch (e) {
+      // First write (doc may not exist yet).
+      await ref.set({ items: [entry], updatedAt: Date.now() }, { merge: true });
+    }
+  } catch (e) {
+    console.warn('recordNotificationHistory error:', e);
+  }
+}
+
+window.openNotificationHistory = async function () {
+  const modal = document.getElementById('notifHistoryModal');
+  if (!modal) return;
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+
+  const list = document.getElementById('notifHistoryList');
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Loading notifications…</div>';
+
+  if (!currentUser) return;
+  updateNotificationHistoryBadge();
+  try {
+    const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
+    const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+    if (!items.length) {
+      list.innerHTML = `
+        <div style="text-align:center; padding:44px 20px;">
+          <div style="font-size:38px; margin-bottom:10px;">🔕</div>
+          <div style="font-size:15px; font-weight:600; color:var(--text-1);">No notifications yet</div>
+          <div style="font-size:12.5px; color:var(--text-3); margin-top:4px;">Notifications you receive will show up here.</div>
+        </div>`;
+      return;
+    }
+    list.innerHTML = items.map(it => `
+      <div class="nh-item">
+        <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
+        <div class="nh-item-main">
+          <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
+          ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
+        </div>
+        <div class="nh-item-time">${relTime(it.at)}</div>
+      </div>`).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Could not load history.</div>';
+  }
+};
+
+window.closeNotificationHistory = function () {
+  const modal = document.getElementById('notifHistoryModal');
+  if (modal) modal.classList.remove('active');
+};
+
+function relTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h';
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + 'd';
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Fill the small "N" count pill next to "Notification History" in the profile
+// tab without reading the whole doc (stored counts on the notifHistory doc).
+window.updateNotificationHistoryBadge = async function () {
+  const el = document.getElementById('notifHistoryCount');
+  if (!el || !currentUser) return;
+  try {
+    const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
+    const n = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items.length : 0;
+    el.textContent = n ? String(n) : '';
+    el.style.display = n ? '' : 'none';
+  } catch (e) {
+    el.style.display = 'none';
+  }
+};
+
 function sendPushNotification(title, body, targetUidOverride = null, extraData = {}) {
   const targetUid = targetUidOverride || (selectedUser ? selectedUser.uid : null);
   if (!targetUid) return;
@@ -614,6 +739,9 @@ async function initFCM(uid) {
         const data = payload.data || {};
         const title = data.title || 'Nexa Messenger';
         const body = data.body || 'You have a new message';
+
+        // Record into the in-app notification history (self doc, capped).
+        recordNotificationHistory({ icon: notifHistoryIconFor(title), title, body, at: Number(data.timestamp) || Date.now() });
 
         // Show an in-app toast
         if (typeof showNotifToast === 'function') {
@@ -1560,6 +1688,7 @@ function renderSettingsTab() {
 
 function renderProfileTab() {
   if (!currentUser) return;
+  updateNotificationHistoryBadge();
   const myPic = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
   const myName = document.getElementById("myName")?.textContent || currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : "User");
 
@@ -4833,6 +4962,14 @@ function listenIncoming() {
           const senderUser = allUsersData.find(u => u.uid === uid);
           const name = senderUser ? (senderUser.displayName || "User") : "Nexa User";
           showNotifToast(`${name}: You have received a new message`, 'info');
+          // In-app notification history (deduped with FCM via the stable
+          // message id below — recordNotificationHistory keeps the last 50).
+          recordNotificationHistory({
+            icon: notifHistoryIconFor('message'),
+            title: name,
+            body: preview.slice(0, 120),
+            at: msg.createdAt || Date.now()
+          });
         }
       }
 
@@ -11281,19 +11418,19 @@ function cleanPayload(obj) {
    a hacked client cannot mint coins — it can only request a known action.
    ========================================================================= */
 window.NEXA_COIN_RULES = {
-  daily_login:    { amount: 10, dailyCap: 10,  label: 'Daily login' },
-  online_10min:   { amount: 10, dailyCap: 30,  label: 'Online 10 minutes' },
-  referral:       { amount: 50, dailyCap: 1000, label: 'Referred a friend' },
-  story_like:     { amount: 10, dailyCap: 50,  label: 'Story got a like' },
-  story_comment:  { amount: 10, dailyCap: 50,  label: 'Story got a comment' },
-  first_message:  { amount: 5,  dailyCap: 50,  label: 'First message to a new contact' },
-  join_group:     { amount: 10, dailyCap: 50,  label: 'Joined a group' },
-  create_group:   { amount: 20, dailyCap: 100, label: 'Created a group' },
-  follow_channel: { amount: 5,  dailyCap: 50,  label: 'Followed a channel' },
-  create_channel: { amount: 20, dailyCap: 100, label: 'Created a channel' },
-  new_follower:   { amount: 5,  dailyCap: 50,  label: 'Got a new follower' },
-  post_comment:   { amount: 10, dailyCap: 50,  label: 'Got a comment on your post' },
-  post_view:      { amount: 2,  dailyCap: 30,  label: 'Got a view on your post' }
+  daily_login:    { amount: 5,  dailyCap: 5,   label: 'Daily login' },
+  online_10min:   { amount: 5,  dailyCap: 15,  label: 'Online 10 minutes' },
+  referral:       { amount: 15, dailyCap: 75,  label: 'Referred a friend' },
+  story_like:     { amount: 5,  dailyCap: 30,  label: 'Story got a like' },
+  story_comment:  { amount: 10, dailyCap: 30,  label: 'Story got a comment' },
+  first_message:  { amount: 5,  dailyCap: 25,  label: 'First message to a new contact' },
+  join_group:     { amount: 10, dailyCap: 30,  label: 'Joined a group' },
+  create_group:   { amount: 10, dailyCap: 30,  label: 'Created a group' },
+  follow_channel: { amount: 5,  dailyCap: 25,  label: 'Followed a channel' },
+  create_channel: { amount: 10, dailyCap: 30,  label: 'Created a channel' },
+  new_follower:   { amount: 5,  dailyCap: 25,  label: 'Got a new follower' },
+  post_comment:   { amount: 10, dailyCap: 30,  label: 'Got a comment on your post' },
+  post_view:      { amount: 5,  dailyCap: 25,  label: 'Got a view on your post' }
 };
 const NEXA_COIN_MIN_AGE_MS = 90 * 24 * 60 * 60 * 1000;          // 3 months
 const NEXA_COIN_REDEEM_MIN = 2000;                              // coins

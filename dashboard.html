@@ -271,6 +271,13 @@
               </div>
               <div class="notif-toggle" id="tabNotifCalls" onclick="toggleNotif('calls')"></div>
             </div>
+            <div class="notif-item notif-item-btn" onclick="openNotificationHistory()">
+              <div class="notif-item-info">
+                <label class="notif-item-label">🕘 Notification History</label>
+                <div class="notif-item-desc">Browse notifications you've received</div>
+              </div>
+              <div class="notif-item-chev">›</div>
+            </div>
           </div>
 
           <div class="settings-group">
@@ -355,44 +362,60 @@
           <h2>Profile</h2>
         </div>
         <div class="profile-tab-content">
-          <div class="profile-avatar-editor">
-            <div class="profile-avatar-preview-wrap" onclick="triggerProfilePhotoUpload()">
-              <img src="https://i.imgur.com/HeIi0wU.png" id="profileTabPic" class="profile-large-avatar">
-              <div class="avatar-edit-overlay">📷</div>
+          <!-- Cover + Avatar hero -->
+          <div class="profile-hero">
+            <div class="profile-hero-cover"></div>
+            <div class="profile-avatar-editor">
+              <div class="profile-avatar-preview-wrap" onclick="triggerProfilePhotoUpload()">
+                <img src="https://i.imgur.com/HeIi0wU.png" id="profileTabPic" class="profile-large-avatar" alt="Profile photo">
+                <div class="avatar-edit-overlay"><i data-lucide="camera" style="width:26px;height:26px;"></i></div>
+              </div>
+              <div class="profile-avatar-hint">Tap photo to change profile picture</div>
             </div>
-            <div class="profile-avatar-hint">Tap photo to change profile picture</div>
           </div>
 
-          <div class="profile-field-group">
-            <label class="profile-field-label">Username</label>
-            <div class="profile-info-box" id="profileTabNameDisplay" style="user-select: text; font-weight: 600;">Loading...</div>
-            <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">🔒 Username is locked and cannot be changed</div>
-          </div>
-
-          <div class="profile-field-group">
-            <label class="profile-field-label">Email Address</label>
-            <div class="profile-info-box" id="profileTabEmail">loading...</div>
-          </div>
-
-          <div class="profile-field-group">
-            <label class="profile-field-label">Account Status</label>
-            <div class="profile-info-box status-active">● Active & Connected</div>
-          </div>
-
-          <div class="profile-field-group">
-            <label class="profile-field-label">📝 Note (shows on your profile for 24 hours)</label>
-            <div class="note-editor-row">
-              <input type="text" id="profileNoteInput" class="note-input" placeholder="What's on your mind?" maxlength="160">
-              <button class="note-save-btn" id="noteSaveBtn" onclick="saveProfileNote()">Post</button>
+          <div class="profile-card">
+            <div class="profile-field-group">
+              <label class="profile-field-label">🧑 Username</label>
+              <div class="profile-info-box" id="profileTabNameDisplay" style="user-select: text; font-weight: 650;">Loading...</div>
+              <div class="profile-field-hint">🔒 Username is locked and cannot be changed</div>
             </div>
-            <div id="profileNoteDisplay" style="margin-top: 8px;"></div>
-            <div style="font-size: 11.5px; color: var(--text-3); margin-top: 5px;">Your note appears on your profile and auto-clears after 24 hours.</div>
+
+            <div class="profile-field-group">
+              <label class="profile-field-label">📧 Email Address</label>
+              <div class="profile-info-box profile-email-box" id="profileTabEmail">loading...</div>
+            </div>
+
+            <div class="profile-field-group">
+              <label class="profile-field-label">🟢 Account Status</label>
+              <div class="profile-info-box status-active">● Active & Connected</div>
+            </div>
+          </div>
+
+          <div class="profile-card">
+            <div class="profile-field-group">
+              <label class="profile-field-label">📝 Note (shows on your profile for 24 hours)</label>
+              <div class="note-editor-row">
+                <input type="text" id="profileNoteInput" class="note-input" placeholder="What's on your mind?" maxlength="160">
+                <button class="note-save-btn" id="noteSaveBtn" onclick="saveProfileNote()">Post</button>
+              </div>
+              <div id="profileNoteDisplay" style="margin-top: 8px;"></div>
+              <div class="profile-field-hint">Your note appears on your profile and auto-clears after 24 hours.</div>
+            </div>
           </div>
 
           <button class="nexa-wallet-profile-btn" onclick="openNexaWallet()">
             <span class="nexa-wallet-prof-icon">💰</span>
             <span class="nexa-wallet-prof-label">Nexa Wallet</span>
+            <span class="nexa-wallet-prof-sub">Manage coins &amp; weekly payouts</span>
             <span class="nexa-wallet-prof-chev">›</span>
+          </button>
+
+          <button class="profile-notif-history-btn" onclick="openNotificationHistory()">
+            <span class="nh-prof-icon">🕘</span>
+            <span class="nh-prof-label">Notification History</span>
+            <span class="nh-prof-count" id="notifHistoryCount"></span>
+            <span class="nh-prof-chev">›</span>
           </button>
 
           <button class="profile-logout-btn" onclick="handleLogout()">
@@ -990,6 +1013,19 @@
 
     <div class="notif-info-box">
       <strong>💡 Tip:</strong> You can also manage notifications in your device settings for more control.
+    </div>
+  </div>
+</div>
+
+<!-- NOTIFICATION HISTORY MODAL -->
+<div class="notif-settings-overlay" id="notifHistoryModal" onclick="if(event.target===this)closeNotificationHistory()">
+  <div class="notif-settings-modal nh-modal">
+    <div class="notif-hdr">
+      <div class="notif-title"><i data-lucide="bell" style="width:16px;height:16px;margin-right:6px;color:var(--primary);"></i> Notification History</div>
+      <button class="notif-close" onclick="closeNotificationHistory()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    </div>
+    <div class="nh-list-scroll" id="notifHistoryList">
+      <div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Loading notifications…</div>
     </div>
   </div>
 </div>
