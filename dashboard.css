@@ -11473,3 +11473,22 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   padding: 4px;
 }
 
+
+/* In-chat group/channel invite cards */
+.nexa-invite-card { display:flex; align-items:center; gap:10px; padding:10px 12px; margin:6px 0; border-radius:14px; background:rgba(120,120,120,0.08); border:1px solid var(--border); box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+.nexa-invite-icon { font-size:26px; flex-shrink:0; }
+.nexa-invite-body { flex:1; min-width:0; }
+.nexa-invite-title { font-size:13.5px; font-weight:750; color:var(--text-1); }
+.nexa-invite-sub { font-size:11.5px; color:var(--text-2); margin-top:2px; }
+.nexa-invite-cta { padding:7px 16px; border-radius:18px; border:none; background:var(--primary); color:#fff; font-weight:650; font-size:12.5px; cursor:pointer; flex-shrink:0; }
+.nexa-invite-cta:hover { filter:brightness(1.1); }
+.msg.me .nexa-invite-card { background:rgba(255,255,255,0.16); border-color:rgba(255,255,255,0.28); }
+.msg.me .nexa-invite-title { color:#fff; }
+.msg.me .nexa-invite-sub { color:#fff; }
+.msg.me .nexa-invite-cta { background:rgba(255,255,255,0.92); color:#0b2b5a; }
+
+/* Crisp, sharp text everywhere */
+.msg .bubble .msg-text, .msg .bubble .msg-meta, .msg .bubble .reply-quote, .msg .bubble .msg-text a { -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; text-shadow:0 0 1px rgba(0,0,0,0.06); }
+[data-theme] .msg.them .bubble .msg-text { font-weight:500; }
+:root:not([data-theme]) .msg.them .bubble .msg-text { font-weight:550; }
+.story-caption, .story-text-slide, .ws-sticker-card-text, .channel-post-text, .comm-info-desc, .comm-info-title, .comm-info-subtitle { -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }

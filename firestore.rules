@@ -12,6 +12,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function isChannelAdmin(channelId) {
+      return isSignedIn() && (
+        request.auth.uid == get(/databases/$(database)/documents/channels/$(channelId)).data.ownerUid ||
+        request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.admins
+      );
+    }
+
     // ── User profiles ──
     // Owner-only edits, EXCEPT a new signup may credit the referrer's
     // referralCount/referrals (invite system) — nothing else cross-user.
@@ -194,14 +201,24 @@ service cloud.firestore {
       match /posts/{postId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
+        allow update: if isSignedIn() && (
+          isChannelAdmin(channelId) ||
+          request.resource.data.diff(resource.data].affectedKeys()
+            .hasOnly(['viewsUids', 'viewsCount', 'likesUids', 'likesCount', 'reactions'])
+        );
+        allow delete: if isSignedIn() && (
+          resource.data.authorUid == request.auth.uid ||
+          isChannelAdmin(channelId)
+        );
 
         match /comments/{commentId} {
           allow read: if isSignedIn();
           allow create: if isSignedIn() && request.resource.data.authorUid == request.auth.uid;
           allow update: if isSignedIn() && resource.data.authorUid == request.auth.uid;
-          allow delete: if isSignedIn() && (resource.data.authorUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/channels/$(channelId)).data.ownerUid);
+          allow delete: if isSignedIn() && (
+            resource.data.authorUid == request.auth.uid ||
+            isChannelAdmin(channelId)
+          );
         }
       }
     }

@@ -106,8 +106,13 @@ function safeMediaUrl(url) {
 function linkify(text) {
   if (!text) return "";
   const escaped = escapeHtml(text);
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  const urlRegex = /(https?:\/\/[^\s<]+)/g;
+  return escaped
+    .replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/<a href="([^"]+)" target="_blank" rel="noopener noreferrer">[^<]*<\/a>/gi, (m, link) => {
+      const pretty = link.replace(/^https?:\/\//i, '').replace(/\/$/,'').replace(/^www\./i, '');
+      return `<a class="nexa-link" href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(pretty)}</a>`;
+    });
 }
 
 // Human-readable file size for attachments.
@@ -469,6 +474,7 @@ auth.onAuthStateChanged(async (user) => {
     listenMyChannels();
     listenDiscoverChannels();
     checkGroupInviteUrlParam();
+    checkChannelInviteUrlParam();
     console.log("✅ App fully ready");
     revealNexaApp();
     // Re-engagement nudge: pops a fun welcome-back popup when the user
@@ -3175,9 +3181,16 @@ function buildMessage(id, msg, fromMe) {
     inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
-  // Forwarded label for 1:1
+  // Forwarded label
   if (msg.forwarded) {
-    inner += `<div class="forwarded-label">⤳ Forwarded</div>`;
+    const fFrom = msg.forwardedFrom ? ` from ${escapeHtml(msg.forwardedFrom)}` : '';
+    inner += `<div class="forwarded-label">⤳ Forwarded${fFrom}</div>`;
+  }
+
+  // In-chat group/channel invite card (WhatsApp-style Follow/Join
+  if (msg.invite && msg.invite.kind) {
+    const invHtml = buildInviteCardHTML(msg);
+    if (invHtml) inner += invHtml;
   }
 
   // Handle View Once Media
@@ -5714,7 +5727,7 @@ function openUserProfile() {
   const username = u.username || u.usernameField || '';
   const bioEl = document.getElementById('userProfileBio');
   if (bio) {
-    bioEl.innerHTML = escapeHtml(bio);
+    bioEl.innerHTML = linkify(bio);
   } else if (username) {
     bioEl.innerHTML = '<span style="color:var(--text-3)">@</span>' + escapeHtml(username);
   } else {
@@ -6121,7 +6134,7 @@ function renderStorySlide(idx) {
     if (story.text) {
       const txt = document.createElement("div");
       txt.style.cssText = "position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 20px; word-break: break-word; line-height: 1.4; z-index: 5;";
-      txt.textContent = story.text;
+      txt.innerHTML = linkify(story.text);
       content.appendChild(txt);
     }
 
@@ -6184,14 +6197,14 @@ function renderStorySlide(idx) {
     if (story.text) {
       const txt = document.createElement("div");
       txt.style.cssText = "position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 20px; word-break: break-word; line-height: 1.4; z-index: 5;";
-      txt.textContent = story.text;
+      txt.innerHTML = linkify(story.text);
       content.appendChild(txt);
     }
   } else if (story.type === "text" || story.text) {
     hideLoading();
     const div = document.createElement("div");
     div.className = "story-text-slide";
-    div.textContent = story.text || "";
+    div.innerHTML = linkify(story.text || "");
     content.appendChild(div);
 
     let duration = 6000;
@@ -6244,7 +6257,7 @@ function renderStorySlide(idx) {
 
     const promptEl = document.createElement("div");
     promptEl.style.cssText = "font-size:26px;font-weight:800;color:#fff;line-height:1.35;word-break:break-word;text-shadow:0 2px 12px rgba(0,0,0,0.5);";
-    promptEl.textContent = story.promptText || story.text || "";
+    promptEl.innerHTML = linkify(story.promptText || story.text || "");
     overlay.appendChild(promptEl);
 
     const pid = story.promptId;
@@ -6290,7 +6303,7 @@ function renderStorySlide(idx) {
 
     const qEl = document.createElement("div");
     qEl.style.cssText = "font-size:26px;font-weight:800;color:#fff;line-height:1.35;word-break:break-word;text-shadow:0 2px 12px rgba(0,0,0,0.5);";
-    qEl.textContent = story.questionText || story.text || "";
+    qEl.innerHTML = linkify(story.questionText || story.text || "");
     overlay.appendChild(qEl);
 
     const ctaWrap = document.createElement("div");
@@ -6999,7 +7012,7 @@ function openPromptResponsesModal(promptId) {
       } else if (s.type === "video" && s.url) {
         mediaHtml = `<video src="${safeMediaUrl(s.url)}" class="prompt-response-media" controls></video>`;
       } else {
-        mediaHtml = `<div class="prompt-response-text">${escapeHtml(s.text || "")}</div>`;
+        mediaHtml = `<div class="prompt-response-text">${linkify(s.text || "")}</div>`;
       }
       card.innerHTML = `
         <div class="prompt-response-head">
@@ -7010,7 +7023,7 @@ function openPromptResponsesModal(promptId) {
           </div>
         </div>
         ${mediaHtml}
-        ${s.text && s.type !== "text" ? `<div class="prompt-response-caption">${escapeHtml(s.text)}</div>` : ""}
+        ${s.text && s.type !== "text" ? `<div class="prompt-response-caption">${linkify(s.text)}</div>` : ""}
         <button class="prompt-response-viewbtn" onclick="closePromptResponsesModal(); openStoryViewer('${s.uid}', '${s.id}')">View story</button>
       `;
       list.appendChild(card);
@@ -8299,7 +8312,8 @@ function buildGroupMessage(id, msg, fromMe) {
 
   // 2b. Forwarded label
   if (msg.forwarded) {
-    inner += `<div class="forwarded-label">⤳ Forwarded</div>`;
+    const fFrom = msg.forwardedFrom ? ` from ${escapeHtml(msg.forwardedFrom)}` : '';
+    inner += `<div class="forwarded-label">⤳ Forwarded${fFrom}</div>`;
   }
 
   // 2c. Poll card
@@ -9213,8 +9227,182 @@ function renderChannelsDiscover() {
   if (window.lucide) lucide.createIcons();
 }
 
+async function _resolveChannelData(channelId) {
+  // Prefer live subscription docs; fall back to discover cache
+  const cached = myChannels.find(c => c.id === channelId) || discoverChannels.find(c => c.id === channelId);
+  if (cached && cached.subscriberUids && cached.name) return cached;
+  try {
+    const snap = await db.collection('channels').doc(channelId).get();
+    if (snap.exists) return { id: snap.id, ...snap.data() };
+  } catch (e) {}
+  return cached || null;
+}
+
+async function resolveChannelForInvite(channelId) {
+  const chan = await _resolveChannelData(channelId);
+  if (!chan) { showNotifToast('Channel not found', 'error'); return; }
+  selectChannelFeed(chan);
+  switchTab('community');
+  switchCommunitySubTab('channels');
+}
+
+async function resolveGroupForInvite(groupId, groupName) {
+  let group = myGroups.find(g => g.id === groupId);
+  if (!group) { try {
+    const snap = await db.collection('groups').doc(groupId).get();
+    if (snap.exists) group = { id: snap.id, ...snap.data() };
+  } catch (e) {} }
+  if (!group && groupName) group = { id: groupId, name: groupName };
+  if (!group) { showNotifToast('Group not found', 'error'); return; }
+  const isMember = (group.memberUids || []).includes(currentUser?.uid) || (group.createdBy === currentUser?.uid);
+// Already a member? Jump straight in
+  if (isMember) {
+    switchTab('community');
+    switchCommunitySubTab('groups');
+    selectGroupChat(group);
+    return;
+  }
+// Not a member — the invite link / in-chat Follow/Join card must add them first.
+  const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';
+  try {
+    await db.collection('groups').doc(group.id).collection('members').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      displayName: myName,
+      photo: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+      role: 'member',
+      joinedAt: Date.now()
+    });
+    await db.collection('groups').doc(group.id).update({
+      memberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+      membersCount: firebase.firestore.FieldValue.increment(1)
+    });
+    group.memberUids = [...(group.memberUids || []), currentUser.uid];
+    group.membersCount = (group.membersCount || 0) + 1;
+    showNotifToast(`✓ Joined "${group.name}"!`, 'success');
+    switchTab('community');
+    switchCommunitySubTab('groups');
+    selectGroupChat(group);
+  } catch (err) {
+    showNotifToast('Failed to join group: ' + err.message, 'error');
+  }
+}
+
+// Build a clickable in-chat invite card for group/channel invites
+function buildInviteCardHTML(msg) {
+  const inv = msg.invite || {};
+  if (!inv || !inv.kind) return '';
+  if (inv.kind === 'group') {
+    return `<div class="nexa-invite-card" data-kind="group">
+      <div class="nexa-invite-icon">👥</div>
+      <div class="nexa-invite-body">
+        <div class="nexa-invite-title">${escapeHtml(inv.name || 'Group Invite')}</div>
+        <div class="nexa-invite-sub">${escapeHtml(inv.description || 'Join the group conversation')}</div>
+      </div>
+      <button class="nexa-invite-cta" onclick="resolveGroupFromInvite('${inv.id}', '${escapeHtml(inv.name || '')}')">Join</button>
+    </div>`;
+  }
+  if (inv.kind === 'channel') {
+    return `<div class="nexa-invite-card" data-kind="channel">
+      <div class="nexa-invite-icon">📢</div>
+      <div class="nexa-invite-body">
+        <div class="nexa-invite-title">${escapeHtml(inv.name || 'Channel Invite')}</div>
+        <div class="nexa-invite-sub">${escapeHtml(inv.description || 'Follow the channel to get updates')}</div>
+      </div>
+      <button class="nexa-invite-cta" onclick="resolveChannelFromInvite('${inv.id}')">Follow</button>
+    </div>`;
+  }
+  return '';
+}
+
+// Entry points for invite card buttons (exposed to inline onclick)
+async function resolveChannelFromInvite(channelId) {
+  const chan = await _resolveChannelData(channelId);
+  if (!chan) { showNotifToast('Channel not found or no longer exists', 'error'); return; }
+  const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
+  if (!isSubscribed) {
+    try {
+      await db.collection('channels').doc(channelId).collection('subscribers').doc(currentUser.uid).set({
+        uid: currentUser.uid,
+        joinedAt: Date.now()
+      });
+      await db.collection('channels').doc(channelId).update({
+        subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+        subscribersCount: firebase.firestore.FieldValue.increment(1)
+      });
+      showNotifToast(`✓ Following "${chan.name}"!`, 'success');
+    } catch (err) {
+      showNotifToast('Failed to follow: ' + err.message, 'error');
+      return;
+    }
+  }
+  selectChannelFeed({ ...chan, subscriberUids: [...(chan.subscriberUids || [])].includes(currentUser.uid) ? chan.subscriberUids : [...(chan.subscriberUids || []), currentUser.uid] });
+  switchTab('community');
+  switchCommunitySubTab('channels');
+}
+
+async function resolveGroupFromInvite(groupId, groupName) {
+  await resolveGroupForInvite(groupId, groupName);
+}
+
+// Send a group invite as a chat message to a 1:1 contact
+async function sendGroupInviteToChat(contactUid) {
+  if (!selectedGroup || !contactUid) return;
+  const me = document.getElementById('myName')?.textContent || currentUser.displayName || 'Nexa User';
+  const inv = {
+    kind: 'group',
+    id: selectedGroup.id,
+    name: selectedGroup.name,
+    description: selectedGroup.description || `Join "${selectedGroup.name}" on Nexa`
+  };
+  try {
+    await db.collection('chats').add({
+      from: currentUser.uid,
+      to: contactUid,
+      text: `🔗 ${me} invited you to join the group "${inv.name}"`,
+      invite: inv,
+      createdAt: Date.now(),
+      read: false
+    });
+    showNotifToast(`✓ Group invite sent`, 'success');
+  } catch (err) {
+    showNotifToast('Invite failed: ' + err.message, 'error');
+  }
+}
+
+// Send a channel invite as a chat message to a 1:1 contact
+async function sendChannelInviteToChat(contactUid) {
+  if (!selectedChannel || !contactUid) return;
+  const me = document.getElementById('myName')?.textContent || currentUser.displayName || 'Nexa User';
+  const inv = {
+    kind: 'channel',
+    id: selectedChannel.id,
+    name: selectedChannel.name,
+    description: selectedChannel.description || `Follow "${selectedChannel.name}" on Nexa`
+  };
+  try {
+    await db.collection('chats').add({
+      from: currentUser.uid,
+      to: contactUid,
+      text: `📢 ${me} invited you to follow the channel "${inv.name}"`,
+      invite: inv,
+      createdAt: Date.now(),
+      read: false
+    });
+    showNotifToast(`✓ Channel invite sent`, 'success');
+  } catch (err) {
+    showNotifToast('Invite failed: ' + err.message, 'error');
+  }
+}
+
 async function toggleSubscribeChannel(channelId) {
-  const chan = discoverChannels.find(c => c.id === channelId) || myChannels.find(c => c.id === channelId);
+  let chan = discoverChannels.find(c => c.id === channelId) || myChannels.find(c => c.id === channelId);
+  // Read the freshest server state so a stale cached subscriberUids array
+  // (e.g. the Discover snapshot loaded before another device followed) can't
+  // cause a "Follow" press to actually unsubscribe (or vice versa).
+  try {
+    const fresh = await db.collection('channels').doc(channelId).get();
+    if (fresh.exists) chan = { id: fresh.id, ...fresh.data() };
+  } catch (e) {}
   if (!chan) return;
 
   const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
@@ -9246,8 +9434,14 @@ async function toggleSubscribeChannel(channelId) {
     }
 
     renderChannelsDiscover();
+    // If we just subscribed, fetch the live subscription snapshot so the
+    // Following list updates instantly (the onSnapshot won't refire otherwise).
+    if (!isSubscribed && !myChannels.some(c => c.id === channelId)) {
+      listenMyChannels();
+    }
     renderChannelsFollowing();
     if (selectedChannel && selectedChannel.id === channelId) {
+      selectedChannel = { ...selectedChannel, subscriberUids: chan.subscriberUids, subscribersCount: chan.subscribersCount };
       document.getElementById('status').textContent = `${formatCount(chan.subscribersCount)} subscribers • ${chan.handle || ''}`;
     }
   } catch (err) {
@@ -9429,7 +9623,7 @@ function renderChannelPostsList(posts) {
         <div class="channel-post-reply-quote">
           <div style="flex: 1; min-width: 0;">
             <div class="reply-quote-name"><i data-lucide="corner-down-right" style="width: 11px; height: 11px; vertical-align: middle; margin-right: 4px;"></i>${escapeHtml(replyQuote.authorName || 'User')}</div>
-            <div class="reply-quote-text">${escapeHtml(replyQuote.commentText || '')}</div>
+            <div class="reply-quote-text">${linkify(replyQuote.commentText || '')}</div>
           </div>
         </div>
       `;
@@ -9448,10 +9642,12 @@ function renderChannelPostsList(posts) {
                 <i data-lucide="pin" style="width: 12px; height: 12px;"></i>
               </button>
               <button class="comm-icon-btn-xs" onclick="openPostCommentsToggle('${post.id}')" title="Comments on/off for this post" style="opacity: 0.65;"><i data-lucide="message-circle" style="width: 12px; height: 12px;"></i></button>
+              <button class="comm-icon-btn-xs" onclick="deleteChannelPost('${post.id}')" title="Delete this post" style="opacity: 0.65;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></button>
             ` : ''}
           </div>
         </div>
         ${replyQuoteHtml}
+        ${post.forwarded ? `<div class="forwarded-label" style="margin-bottom: 6px;">⤳ Forwarded${post.forwardedFrom ? ` from ${escapeHtml(post.forwardedFrom)}` : ''}</div>` : ''}
         ${mediaHtml}
         <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
         <div class="channel-post-footer">
@@ -9518,6 +9714,26 @@ function renderChannelPostsList(posts) {
 
   scrollMessagesToBottom();
   if (window.lucide) lucide.createIcons();
+}
+
+async function deleteChannelPost(postId) {
+  if (!selectedChannel || !postId) return;
+  const isAdmin = (selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid;
+  if (!isAdmin) {
+    showNotifToast('Only channel admins can delete posts', 'error');
+    return;
+  }
+  if (!confirm('Delete this broadcast post? This cannot be undone.')) return;
+  try {
+    await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId).delete();
+    const cachedPosts = window._nexaChannelPostsCache || [];
+    window._nexaChannelPostsCache = cachedPosts.filter(p => p.id !== postId);
+    showNotifToast('✓ Post deleted', 'success');
+    const remaining = cachedPosts.filter(p => p.id !== postId);
+    if (remaining.length) renderChannelPostsList(remaining);
+  } catch (err) {
+    showNotifToast('Failed to delete post: ' + err.message, 'error');
+  }
 }
 
 async function recordPostView(post) {
@@ -10122,14 +10338,17 @@ async function toggleChannelPostCommentsSetting(allow) {
       commentsEnabled: allow,
       updatedAt: Date.now()
     });
+    const cache = window._nexaChannelPostsCache || [];
+    window._nexaChannelPostsCache = cache.map(p => p.id === activeCommentPostId ? { ...p, commentsEnabled: allow, updatedAt: Date.now() } : p);
+    if (document.getElementById('messages')) renderChannelPostsList(window._nexaChannelPostsCache || []);
     showNotifToast(`✓ Comments ${allow ? 'enabled' : 'disabled'} for this post`, 'success');
   } catch (err) {
     showNotifToast('Failed to update setting: ' + err.message, 'error');
   }
 }
 function openPostCommentsToggle(postId) {
-  const cached = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
   activeCommentPostId = postId;
+  const cached = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
   const cb = document.getElementById('postCommentsToggleCheck');
   const modal = document.getElementById('postCommentsToggleModal');
   if (cb) cb.checked = cached ? cached.commentsEnabled !== false : true;
@@ -10737,7 +10956,7 @@ async function votePollOption(msgId, optKey) {
 
 function buildPollHTML(id, msg) {
   const opts = msg.pollOptions || {};
-  const question = escapeHtml(msg.pollQuestion || '');
+  const question = linkify(msg.pollQuestion || '');
   const multiVote = !!msg.pollMultiVote;
   const uid = currentUser ? currentUser.uid : '';
 
@@ -10760,7 +10979,7 @@ function buildPollHTML(id, msg) {
       <div class="poll-option-row ${voted ? 'voted' : ''}" onclick="votePollOption('${id}', '${k}')">
         <div class="poll-option-bar" style="width: ${pct}%;"></div>
         <div class="poll-option-check"></div>
-        <div class="poll-option-text">${escapeHtml(opt.text)}</div>
+        <div class="poll-option-text">${linkify(opt.text)}</div>
         <div class="poll-option-pct">${pct}%</div>
       </div>
     `;
@@ -10783,6 +11002,8 @@ function buildPollHTML(id, msg) {
 
 let forwardingMessage = null;
 let forwardSelectedTargets = [];
+let inviteModalMode = null; // 'invite' when the forward modal is used asthe "Invite to Chat" picker
+let inviteModalSourceKind = null; // 'group' | 'channel'
 
 function openForwardModal(msgId) {
   closeCtxMenu();
@@ -10804,6 +11025,47 @@ function openForwardModal(msgId) {
   const searchInput = document.getElementById('forwardSearchInput');
   if (searchInput) searchInput.value = '';
 
+  inviteModalMode = null;
+  const title = document.querySelector('#forwardModal .comm-modal-title');
+  const search = document.getElementById('forwardSearchInput');
+  const sendBtn = document.getElementById('forwardSendBtn');
+  if (title) title.textContent = '⤳ Forward To';
+  if (search) search.placeholder = '🔍 Search contacts or groups…';
+  if (sendBtn) sendBtn.textContent = 'Forward';
+  renderForwardTargets('');
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+// Open the forward modal as an "Invite to Chat" contact picker for groups/channels
+function openGroupInvitePicker() {
+  openInvitePicker('group');
+}
+
+function openChannelInvitePicker() {
+  openInvitePicker('channel');
+}
+
+function openInvitePicker(kind) {
+  if (kind === 'group' && !selectedGroup) { showNotifToast('No group selected', 'error'); return; }
+  if (kind === 'channel' && !selectedChannel) { showNotifToast('No channel selected', 'error'); return; }
+  closeCtxMenu();
+
+  forwardingMessage = null;
+  forwardSelectedTargets = [];
+  inviteModalMode = 'invite';
+  inviteModalSourceKind = kind;
+
+  const modal = document.getElementById('forwardModal');
+  if (!modal) return;
+
+  const title = document.querySelector('#forwardModal .comm-modal-title');
+  const search = document.getElementById('forwardSearchInput');
+  const sendBtn = document.getElementById('forwardSendBtn');
+  if (title) title.textContent = kind === 'group' ? '👥 Invite to Group' : '📢 Invite to Channel';
+  if (search) search.placeholder = '🔍 Search contacts to invite…';
+  if (sendBtn) sendBtn.textContent = 'Send Invite';
+
   renderForwardTargets('');
   modal.classList.add('active');
   if (window.lucide) lucide.createIcons();
@@ -10814,6 +11076,8 @@ function closeForwardModal() {
   if (modal) modal.classList.remove('active');
   forwardingMessage = null;
   forwardSelectedTargets = [];
+  inviteModalMode = null;
+  inviteModalSourceKind = null;
 }
 
 function renderForwardTargets(filterText) {
@@ -10836,19 +11100,45 @@ function renderForwardTargets(filterText) {
     });
   });
 
-  // Add groups the user is in
-  if (window._userGroups) {
-    window._userGroups.forEach(g => {
-      const name = g.name || 'Group';
-      if (q && !name.toLowerCase().includes(q)) return;
-      targets.push({
-        id: g.id,
-        name: name,
-        photo: g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
-        type: 'group'
-      });
+if (inviteModalMode === 'invite') {
+  if (!targets.length) { list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">No contacts found</div>'; return; }
+  list.innerHTML = targets.map(t => {
+    const sel = forwardSelectedTargets.includes(t.id + '_' + t.type);
+    return `
+      <div class="forward-target-row ${sel ? 'selected' : ''}" onclick="toggleForwardTarget('${t.id}', '${t.type}')">
+        <img src="${escapeHtml(t.photo)}" class="forward-target-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="forward-target-name">${escapeHtml(t.name)}</div>
+        <div class="forward-target-type">Contact</div>
+        <div class="forward-check"></div>
+      </div>
+    `;
+  }).join('');
+  return;
+}
+  // Add groups the user is in (live myGroups feeds window._userGroups)
+  const fwdGroups = (window._userGroups && window._userGroups.length ? window._userGroups : myGroups);
+  (fwdGroups || []).forEach(g => {
+    const name = g.name || 'Group';
+    if (q && !name.toLowerCase().includes(q)) return;
+    targets.push({
+      id: g.id,
+      name: name,
+      photo: g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
+      type: 'group'
     });
-  }
+  });
+
+  // Add channels the user follows
+  (myChannels || []).forEach(c => {
+    const name = c.name || 'Channel';
+    if (q && !name.toLowerCase().includes(q)) return;
+    targets.push({
+      id: c.id,
+      name: name,
+      photo: c.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
+      type: 'channel'
+    });
+  });
 
   if (!targets.length) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">No contacts or groups found</div>';
@@ -10861,7 +11151,7 @@ function renderForwardTargets(filterText) {
       <div class="forward-target-row ${selected ? 'selected' : ''}" onclick="toggleForwardTarget('${t.id}', '${t.type}')">
         <img src="${escapeHtml(t.photo)}" class="forward-target-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
         <div class="forward-target-name">${escapeHtml(t.name)}</div>
-        <div class="forward-target-type">${t.type === 'group' ? '👥 Group' : '👤 Contact'}</div>
+        <div class="forward-target-type">${t.type === 'group' ? '👥 Group' : t.type === 'channel' ? '📢 Channel' : '👤 Contact'}</div>
         <div class="forward-check"></div>
       </div>
     `;
@@ -10890,6 +11180,22 @@ function toggleForwardTarget(id, type) {
 }
 
 async function executeForward() {
+  if (inviteModalMode === 'invite') {
+    const kind = inviteModalSourceKind;
+    let count = 0;
+    for (const key of forwardSelectedTargets) {
+      const [targetId] = key.split('_');
+      try {
+        if (kind === 'group') await sendGroupInviteToChat(targetId);
+        else if (kind === 'channel') await sendChannelInviteToChat(targetId);
+        count +=  1;
+      } catch (e) {}
+    }
+    closeForwardModal();
+    showNotifToast(`✓ Invite sent to ${count} chat${count === 1 ? '' : 's'}`, count ? 'success' : 'error');
+    return;
+  }
+
   if (!forwardingMessage || !forwardSelectedTargets.length) return;
   const msg = forwardingMessage;
 
@@ -10934,6 +11240,43 @@ async function executeForward() {
           lastMessage: '⤳ ' + snippet,
           lastMessageTime: Date.now(),
           lastSenderName: senderName,
+          updatedAt: Date.now()
+        });
+      } else if (targetType === 'channel') {
+        // Forward to channel (visible to subscribers in the feed)
+        const senderName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';
+        const payload = {
+          authorUid: currentUser.uid,
+          authorName: senderName,
+          senderAvatar: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
+          channelId: targetId,
+          createdAt: Date.now(),
+          forwarded: true,
+          forwardedFrom: msg.senderName || msg.from || 'Unknown'
+        };
+        if (msg.text) payload.text = msg.text;
+        if (msg.image) payload.image = msg.image;
+        if (msg.video) payload.video = msg.video;
+        if (msg.audio) payload.audio = msg.audio;
+        if (msg.fileUrl) { payload.fileUrl = msg.fileUrl; payload.fileName = msg.fileName; payload.fileSize = msg.fileSize; }
+        if (msg.caption) payload.caption = msg.caption;
+        if (msg.type === 'poll') {
+          payload.type = 'poll';
+          payload.pollQuestion = msg.pollQuestion;
+          // Reset voters on forward
+          const newOpts = {};
+          for (const k of Object.keys(msg.pollOptions || {})) {
+            newOpts[k] = { text: msg.pollOptions[k].text, voters: [] };
+          }
+          payload.pollOptions = newOpts;
+          payload.pollMultiVote = msg.pollMultiVote;
+        }
+        await db.collection('channels').doc(targetId).collection('posts').add(payload);
+        const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : 'Attachment');
+        await db.collection('channels').doc(targetId).update({
+          lastPost: '⤳ ' + snippet,
+          lastPostTime: Date.now(),
+          lastPosterName: senderName,
           updatedAt: Date.now()
         });
       } else {
@@ -11366,6 +11709,49 @@ openChannelInfo = function() {
 };
 
 // --- Check and handle group invite URL param (?joinGroup=CODE) ---
+async function checkChannelInviteUrlParam() {
+  if (!currentUser) return;
+  const params = new URLSearchParams(window.location.search);
+  const channelId = params.get('joinChannel');
+  if (!channelId) return;
+
+  try {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } catch (e) {}
+
+  const chan = await _resolveChannelData(channelId);
+  if (!chan) {
+    showNotifToast('Invalid or expired channel invite link', 'error');
+    return;
+  }
+
+  const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
+  if (isSubscribed) {
+    showNotifToast(`Opening "${chan.name}"…`, 'info');
+    selectChannelFeed(chan);
+    switchTab('community');
+    switchCommunitySubTab('channels');
+    return;
+  }
+
+  const confirmFollow = confirm(`You have been invited to follow the channel "${chan.name}". Do you want to follow?`);
+  if (!confirmFollow) return;
+
+  await db.collection('channels').doc(channelId).collection('subscribers').doc(currentUser.uid).set({
+    uid: currentUser.uid,
+    joinedAt: Date.now()
+  });
+  await db.collection('channels').doc(channelId).update({
+    subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+    subscribersCount: firebase.firestore.FieldValue.increment(1)
+  });
+
+  showNotifToast(`✓ Following "${chan.name}"!`, 'success');
+  selectChannelFeed({ ...chan, subscriberUids: [...(chan.subscriberUids || []), currentUser.uid] });
+  switchTab('community');
+  switchCommunitySubTab('channels');
+}
+
 async function checkGroupInviteUrlParam() {
   if (!currentUser) return;
   const params = new URLSearchParams(window.location.search);
