@@ -9403,7 +9403,10 @@ async function toggleSubscribeChannel(channelId) {
     const fresh = await db.collection('channels').doc(channelId).get();
     if (fresh.exists) chan = { id: fresh.id, ...fresh.data() };
   } catch (e) {}
-  if (!chan) return;
+  if (!chan) {
+    showNotifToast('Channel not found or no longer exists', 'error');
+    return;
+  }
 
   const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
   try {
@@ -11209,12 +11212,13 @@ async function executeForward() {
 
   if (!forwardingMessage || !forwardSelectedTargets.length) return;
   const msg = forwardingMessage;
+  const targets = forwardSelectedTargets.slice();
 
   closeForwardModal();
 
   let successCount = 0;
   let firstError = ''
-  for (const key of forwardSelectedTargets) {
+  for (const key of targets) {
     const sepIdx = key.lastIndexOf('_');
     const targetId = key.slice(0, sepIdx);
     const targetType = key.slice(sepIdx + 1);
