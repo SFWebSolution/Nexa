@@ -1588,7 +1588,7 @@ function loadProfileNote() {
       const remaining = 24 * 60 * 60 * 1000 - (now - data.createdAt);
       display.innerHTML = `
         <div class="note-active-card">
-          <div class="note-active-text">${escapeHtml(data.text)}</div>
+          <div class="note-active-text">${linkify(data.text)}</div>
           <div class="note-active-meta">⏱ Expires in ${formatTimeRemaining(remaining)} • <a href="#" onclick="deleteProfileNote(); return false;" style="color: var(--danger, #ef4444);">Remove</a></div>
         </div>`;
       if (input) input.value = data.text;
@@ -3178,7 +3178,7 @@ function buildMessage(id, msg, fromMe) {
     const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
     const rFrom = replied ? replied.from : (msg.replyToFrom || null);
     const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-    inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${escapeHtml(typeof rText === "string" ? rText : "(message)")}</div></div>`;
+    inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // Forwarded label
@@ -4150,7 +4150,7 @@ function renderInfoContact() {
   noteEl.innerHTML = '<span style="color:var(--text-3);font-size:12px;">…</span>';
   fetchUserNote(u.uid).then(noteText => {
     if (!noteEl) return;
-    noteEl.innerHTML = noteText ? ("📝 " + escapeHtml(noteText)) : "";
+    noteEl.innerHTML = noteText ? ("📝 " + linkify(noteText)) : "";
   });
 }
 
@@ -5740,7 +5740,7 @@ function openUserProfile() {
   fetchUserNote(u.uid).then(noteText => {
     if (!noteEl) return;
     if (noteText) {
-      noteEl.innerHTML = '📝 ' + escapeHtml(noteText);
+      noteEl.innerHTML = '📝 ' + linkify(noteText);
     } else {
       noteEl.innerHTML = '';
     }
@@ -8306,7 +8306,7 @@ function buildGroupMessage(id, msg, fromMe) {
   // 2. Reply Quote Card
   if (msg.replyTo) {
     const rAuthor = escapeHtml(msg.replyToName || (msg.replyToFrom === currentUser.uid ? "You" : "Member"));
-    const rText = escapeHtml(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
+    const rText = linkify(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
     inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
   }
 
@@ -11007,12 +11007,15 @@ let inviteModalSourceKind = null; // 'group' | 'channel'
 
 function openForwardModal(msgId) {
   closeCtxMenu();
-  // Find message
+  // Find message (including older pages loaded via scroll-up paging)
   let msg = null;
   if (currentChatMode === 'group') {
     msg = currentGroupMessages.find(m => m.id === msgId);
   } else {
-    msg = allMessages.find(m => m.id === msgId);
+    msg = allMessages.find(m => m.id === msgId)
+      || _olderMsgsA.find(m => m.id === msgId)
+      || _olderMsgsB.find(m => m.id === msgId)
+      || (window._nexaChannelPostsCache || []).find(m => m.id === msgId);
   }
   if (!msg) { showNotifToast('Message not found', 'error'); return; }
 
@@ -11179,12 +11182,20 @@ function toggleForwardTarget(id, type) {
   renderForwardTargets(searchVal);
 }
 
+function cleanPayload(obj) {
+  const out = {};
+  for (const k of Object.keys(obj)) {
+    if (obj[k] !== undefined) out[k] = obj[k];
+  }
+  return out;
+}
+
 async function executeForward() {
   if (inviteModalMode === 'invite') {
     const kind = inviteModalSourceKind;
     let count = 0;
     for (const key of forwardSelectedTargets) {
-      const [targetId] = key.split('_');
+      const targetId = key.slice(0, key.lastIndexOf('_'));
       try {
         if (kind === 'group') await sendGroupInviteToChat(targetId);
         else if (kind === 'channel') await sendChannelInviteToChat(targetId);
@@ -11202,8 +11213,11 @@ async function executeForward() {
   closeForwardModal();
 
   let successCount = 0;
+  let firstError = ''
   for (const key of forwardSelectedTargets) {
-    const [targetId, targetType] = key.split('_');
+    const sepIdx = key.lastIndexOf('_');
+    const targetId = key.slice(0, sepIdx);
+    const targetType = key.slice(sepIdx + 1);
     try {
       if (targetType === 'group') {
         // Forward to group
@@ -11234,7 +11248,7 @@ async function executeForward() {
           payload.pollMultiVote = msg.pollMultiVote;
         }
 
-        await db.collection('groups').doc(targetId).collection('messages').add(payload);
+        await db.collection('groups').doc(targetId).collection('messages').add(cleanPayload(payload));
         const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : 'Attachment');
         await db.collection('groups').doc(targetId).update({
           lastMessage: '⤳ ' + snippet,
@@ -11271,7 +11285,7 @@ async function executeForward() {
           payload.pollOptions = newOpts;
           payload.pollMultiVote = msg.pollMultiVote;
         }
-        await db.collection('channels').doc(targetId).collection('posts').add(payload);
+        await db.collection('channels').doc(targetId).collection('posts').add(cleanPayload(payload));
         const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : 'Attachment');
         await db.collection('channels').doc(targetId).update({
           lastPost: '⤳ ' + snippet,
@@ -11296,18 +11310,19 @@ async function executeForward() {
         if (msg.fileUrl) { payload.fileUrl = msg.fileUrl; payload.fileName = msg.fileName; payload.fileSize = msg.fileSize; }
         if (msg.caption) payload.caption = msg.caption;
 
-        await db.collection('chats').add(payload);
+        await db.collection('chats').add(cleanPayload(payload));
       }
       successCount++;
     } catch (err) {
       console.error('Forward error:', err);
+      if (!firstError) firstError = (err && err.message) || String(err);
     }
   }
 
   if (successCount > 0) {
     showNotifToast(`✓ Forwarded to ${successCount} chat${successCount > 1 ? 's' : ''}`, 'success');
   } else {
-    showNotifToast('Forward failed', 'error');
+    showNotifToast('Forward failed' + (firstError ? ': ' + firstError : ''), 'error');
   }
 }
 
