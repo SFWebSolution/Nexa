@@ -178,7 +178,11 @@ service cloud.firestore {
                       && (request.resource.data.senderUid == request.auth.uid
                           || request.resource.data.senderUid == 'system');
         allow update: if isSignedIn();
-        allow delete: if isSignedIn() && resource.data.senderUid == request.auth.uid;
+        allow delete: if isSignedIn()
+                      && (resource.data.senderUid == request.auth.uid
+                          || request.auth.uid == resource.data.createdBy
+                          || request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerUid
+                          || request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.admins);
       }
     }
 

@@ -105,14 +105,41 @@ function safeMediaUrl(url) {
 
 function linkify(text) {
   if (!text) return "";
-  const escaped = escapeHtml(text);
-  const urlRegex = /(https?:\/\/[^\s<]+)/g;
-  return escaped
-    .replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/<a href="([^"]+)" target="_blank" rel="noopener noreferrer">[^<]*<\/a>/gi, (m, link) => {
-      const pretty = link.replace(/^https?:\/\//i, '').replace(/\/$/,'').replace(/^www\./i, '');
-      return `<a class="nexa-link" href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(pretty)}</a>`;
-    });
+  // Matches, in order: full URLs (http/https), bare www. links, and bare
+  // domain-with-known-TLD links (with optional subdomains + path). Operates on
+  // RAW text so & < > are escaped once, at insertion time — no double-escape.
+  // Quotes are excluded from matches so they can never break out of href.
+  const urlRe = /((?:https?:\/\/|www\.)[^\s<>"']+|[\w-]+(?:\.[\w-]+){0,3}\.(?:com|net|org|io|co|me|dev|app|link|xyz|info|biz|tv)(?:\.[a-z]{2,3})?(?:\/[^\s<>"']*)?)/gi;
+
+  let out = "";
+  let last = 0;
+  let m;
+  let guard = 0;
+  while ((m = urlRe.exec(text)) !== null && guard++ < 500) {
+    const pre = text.slice(last, m.index);
+    const raw = m[0];
+
+    // Skip emails (foo@example.com) and mid-word matches (e.g. "abc.example"):
+    // keep the original text verbatim (don't drop the prefix or double-link).
+    const prevChar = m.index > 0 ? text[m.index - 1] : "";
+    if (prevChar === "@" || prevChar === "." || /[\w-]/.test(prevChar)) {
+      out += escapeHtml(pre + raw);
+      last = m.index + raw.length;
+      continue;
+    }
+
+    let href = raw;
+    if (!/^https?:\/\//i.test(raw)) href = "https://" + raw;
+
+    // Strip trailing punctuation / stray closing chars from href + label.
+    const cleaned = href.replace(/[),.;:!?]+$/g, "");
+
+    out += escapeHtml(pre);
+    out += `<a class="nexa-link" href="${escapeHtml(cleaned)}" target="_blank" rel="noopener noreferrer">${escapeHtml(cleaned.replace(/^https?:\/\//i, "").replace(/^www\./i, ""))}</a>`;
+    last = m.index + raw.length;
+  }
+  out += escapeHtml(text.slice(last));
+  return out;
 }
 
 // Human-readable file size for attachments.
@@ -3025,29 +3052,7 @@ function renderMessageList() {
       }
 
       // In-place reactions update for instant visual feedback
-      let reactEl = msgEl.querySelector(".msg-reactions");
-      const newReactHTML = buildReactionsHTML(msg.id, msg.reactions);
-      if (reactEl) {
-        if (newReactHTML) {
-          const temp = document.createElement("div");
-          temp.innerHTML = newReactHTML;
-          reactEl.replaceWith(temp.firstElementChild);
-        } else {
-          reactEl.remove();
-        }
-      } else if (newReactHTML) {
-        const bubble = msgEl.querySelector(".bubble");
-        if (bubble) {
-          const temp = document.createElement("div");
-          temp.innerHTML = newReactHTML;
-          const newEl = temp.firstElementChild;
-          if (metaEl) {
-            bubble.insertBefore(newEl, metaEl);
-          } else {
-            bubble.appendChild(newEl);
-          }
-        }
-      }
+      updateMsgReactionsInPlace(msgEl, msg.id, msg.reactions);
 
       // In-place view once update
       if (msg.isViewOnce) {
@@ -3289,6 +3294,47 @@ function buildReactionsHTML(id, reactions) {
   }
   html += '</div>';
   return html;
+}
+
+// Shared helper: patch a message's reaction strip IN PLACE so reacting feels
+// instant (no full list re-render, no scroll jump). Used by group messages
+// (toggleGroupMsgReact) and by the live 1:1 render reconciler. Mirrors the
+// DOM shape produced by buildMessage/buildGroupMessage (.msg-reactions sits
+// directly before .msg-meta inside .bubble).
+function updateMsgReactionsInPlace(msgEl, id, reactions) {
+  if (!msgEl) return;
+  const newHTML = buildReactionsHTML(id, reactions);
+  const reactEl = msgEl.querySelector(".msg-reactions");
+  const getFirstEl = (html) => {
+    const temp = document.createElement("div");
+    temp.innerHTML = html;
+    return temp.firstElementChild;
+  };
+  const swapWith = (oldEl, newEl) => {
+    const parent = oldEl.parentNode;
+    if (parent && parent.replaceChild) parent.replaceChild(newEl, oldEl);
+    else oldEl.replaceWith(newEl);
+  };
+  if (reactEl) {
+    if (newHTML) {
+      swapWith(reactEl, getFirstEl(newHTML));
+    } else if (reactEl.remove) {
+      reactEl.remove();
+    } else if (reactEl.parentNode) {
+      reactEl.parentNode.removeChild(reactEl);
+    }
+  } else if (newHTML) {
+    const bubble = msgEl.querySelector(".bubble");
+    const metaEl = msgEl.querySelector(".msg-meta");
+    if (bubble) {
+      const newEl = getFirstEl(newHTML);
+      if (metaEl) {
+        bubble.insertBefore(newEl, metaEl);
+      } else {
+        bubble.appendChild(newEl);
+      }
+    }
+  }
 }
 
 function buildMessage(id, msg, fromMe) {
@@ -3619,7 +3665,10 @@ async function toggleGroupMsgReact(msgId, emoji) {
   }
 
   msg.reactions = r;
-  renderGroupMessageList(currentGroupMessages);
+  // Instant in-place feedback — no full re-render, so the list doesn't jump
+  // and the tap feels immediate. The Firestore snapshot reconciles later.
+  const msgEl = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
+  updateMsgReactionsInPlace(msgEl, msgId, r);
 
   try {
     await db.collection("groups").doc(selectedGroup.id).collection("messages").doc(msgId).update({ reactions: r });
@@ -8465,6 +8514,12 @@ function buildGroupMessage(id, msg, fromMe) {
     inner += `<div class="forwarded-label">⤳ Forwarded${fFrom}</div>`;
   }
 
+  // 2b2. In-chat group/channel invite card (renders even inside group streams)
+  if (msg.invite && msg.invite.kind) {
+    const invHtml = buildInviteCardHTML(msg);
+    if (invHtml) inner += invHtml;
+  }
+
   // 2c. Poll card
   if (msg.type === 'poll' && msg.pollOptions) {
     inner += buildPollHTML(id, msg);
@@ -9441,6 +9496,9 @@ async function resolveGroupForInvite(groupId, groupName) {
 function buildInviteCardHTML(msg) {
   const inv = msg.invite || {};
   if (!inv || !inv.kind) return '';
+  // Base64-encode the name so apostrophes/quotes in a group name can't break
+  // out of the inline onclick JS string.
+  const nameB64 = typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(inv.name || ''))).replace(/=+$/, '') : encodeURIComponent(inv.name || '');
   if (inv.kind === 'group') {
     return `<div class="nexa-invite-card" data-kind="group">
       <div class="nexa-invite-icon">👥</div>
@@ -9448,7 +9506,7 @@ function buildInviteCardHTML(msg) {
         <div class="nexa-invite-title">${escapeHtml(inv.name || 'Group Invite')}</div>
         <div class="nexa-invite-sub">${escapeHtml(inv.description || 'Join the group conversation')}</div>
       </div>
-      <button class="nexa-invite-cta" onclick="resolveGroupFromInvite('${inv.id}', '${escapeHtml(inv.name || '')}')">Join</button>
+      <button class="nexa-invite-cta" onclick="resolveGroupInviteWithName('${inv.id}', '${nameB64}')">Join</button>
     </div>`;
   }
   if (inv.kind === 'channel') {
@@ -9462,6 +9520,17 @@ function buildInviteCardHTML(msg) {
     </div>`;
   }
   return '';
+}
+
+// Safely decode the base64 group name (see buildInviteCardHTML) and resolve.
+function resolveGroupInviteWithName(groupId, nameB64) {
+  let name = '';
+  try {
+    name = nameB64 && typeof atob === 'function'
+      ? decodeURIComponent(escape(atob(nameB64)))
+      : decodeURIComponent(nameB64 || '');
+  } catch (e) { name = ''; }
+  resolveGroupFromInvite(groupId, name);
 }
 
 // Entry points for invite card buttons (exposed to inline onclick)
@@ -9479,13 +9548,21 @@ async function resolveChannelFromInvite(channelId) {
         subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
         subscribersCount: firebase.firestore.FieldValue.increment(1)
       });
+      chan.subscriberUids = [...(chan.subscriberUids || []), currentUser.uid];
+      chan.subscribersCount = (chan.subscribersCount || 0) + 1;
       showNotifToast(`✓ Following "${chan.name}"!`, 'success');
     } catch (err) {
       showNotifToast('Failed to follow: ' + err.message, 'error');
       return;
     }
   }
-  selectChannelFeed({ ...chan, subscriberUids: [...(chan.subscriberUids || [])].includes(currentUser.uid) ? chan.subscriberUids : [...(chan.subscriberUids || []), currentUser.uid] });
+  // Kick any stale myChannels/discover entries so the Following list is current
+  // without waiting for the slow onSnapshot round-trip.
+  if (!myChannels.some(c => c.id === channelId)) myChannels.push({ ...chan });
+  discoverChannels = discoverChannels.map(c => c.id === channelId ? { ...c, subscriberUids: chan.subscriberUids, subscribersCount: chan.subscribersCount } : c);
+  renderChannelsDiscover();
+  renderChannelsFollowing();
+  selectChannelFeed(chan);
   switchTab('community');
   switchCommunitySubTab('channels');
 }
@@ -9586,16 +9663,26 @@ async function toggleSubscribeChannel(channelId) {
       showNotifToast('✓ Subscribed to ' + chan.name, 'success');
     }
 
-    renderChannelsDiscover();
-    // If we just subscribed, fetch the live subscription snapshot so the
-    // Following list updates instantly (the onSnapshot won't refire otherwise).
-    if (!isSubscribed && !myChannels.some(c => c.id === channelId)) {
-      listenMyChannels();
+    // Reflect the new state immediately in the local caches (the Discover
+    // onSnapshot holds a stale array, so without this a Follow tap "does
+    // nothing" — the button and Following list only update on the next reload).
+    discoverChannels = discoverChannels.map(c => c.id === channelId ? { ...c, subscriberUids: chan.subscriberUids, subscribersCount: chan.subscribersCount } : c);
+    const existingIdx = myChannels.findIndex(c => c.id === channelId);
+    if (isSubscribed) {
+      if (existingIdx > -1) myChannels.splice(existingIdx, 1);
+    } else {
+      if (existingIdx > -1) {
+        myChannels[existingIdx] = { ...myChannels[existingIdx], ...chan };
+      } else {
+        myChannels.push({ ...chan });
+      }
     }
+    renderChannelsDiscover();
     renderChannelsFollowing();
     if (selectedChannel && selectedChannel.id === channelId) {
       selectedChannel = { ...selectedChannel, subscriberUids: chan.subscriberUids, subscribersCount: chan.subscribersCount };
-      document.getElementById('status').textContent = `${formatCount(chan.subscribersCount)} subscribers • ${chan.handle || ''}`;
+      const statusEl = document.getElementById('status');
+      if (statusEl) statusEl.textContent = `${formatCount(chan.subscribersCount || 0)} subscribers • ${chan.handle || ''}`;
     }
   } catch (err) {
     showNotifToast('Subscription error: ' + err.message, 'error');
@@ -9714,7 +9801,37 @@ function loadChannelPosts(channelId) {
         posts.push({ id: doc.id, ...doc.data() });
       });
       posts.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const prev = window._nexaChannelPostsCache || [];
+      // Reactions-only delta? Patch just the pill strips in place instead of
+      // re-rendering the whole list (no scroll jump, and recordPostView isn't
+      // re-fired for every post). Full render only when content/comments/views
+      // actually change.
+      let reactionsOnly = prev.length === posts.length;
+      if (reactionsOnly) {
+        for (let i = 0; i < posts.length; i++) {
+          const a = prev.find(p => p.id === posts[i].id);
+          if (!a) { reactionsOnly = false; break; }
+          const keys = new Set([...Object.keys(a), ...Object.keys(posts[i])]);
+          for (const k of keys) {
+            if (k === 'reactions') continue;
+            const va = a[k];
+            const vb = posts[i][k];
+            const same = va === vb || (typeof va === 'object' && va !== null && JSON.stringify(va) === JSON.stringify(vb));
+            if (!same) { reactionsOnly = false; break; }
+          }
+          if (!reactionsOnly) break;
+        }
+      }
       window._nexaChannelPostsCache = posts;
+      if (reactionsOnly) {
+        for (const p of posts) {
+          const prevP = prev.find(x => x.id === p.id);
+          if (prevP && JSON.stringify(prevP.reactions || {}) !== JSON.stringify(p.reactions || {})) {
+            patchChannelPostReactions(p.id, p.reactions || {});
+          }
+        }
+        return;
+      }
       renderChannelPostsList(posts);
     }, err => {
       console.error('Channel posts error:', err);
@@ -9811,17 +9928,7 @@ function renderChannelPostsList(posts) {
           </div>
           ` : '<div></div>'}
           <div class="channel-post-actions">
-            ${(() => {
-              const rMap = post.reactions || {};
-              const myUid = currentUser ? currentUser.uid : '';
-              return Object.keys(rMap).map(em => {
-                const val = rMap[em];
-                const count = Array.isArray(val) ? val.length : (typeof val === 'number' ? val : 0);
-                const hasReacted = Array.isArray(val) && myUid && val.includes(myUid);
-                if (count <= 0) return '';
-                return `<button class="channel-reaction-pill ${hasReacted ? 'me-reacted' : ''}" onclick="toggleChannelPostReaction('${post.id}', '${em}')"><span>${em}</span> <span>${count}</span></button>`;
-              }).join('');
-            })()}
+            <div class="channel-reaction-pills" id="reactPills_${post.id}">${buildChannelReactionPillsHTML(post)}</div>
             <div style="position: relative; display: inline-flex;">
               <button class="channel-reaction-pill" onclick="toggleChannelQuickReactMenu('${post.id}')" title="React with emoji">
                 <i data-lucide="smile-plus" style="width:13px;height:13px;"></i>
@@ -9994,10 +10101,56 @@ function toggleChannelQuickReactMenu(postId) {
   }
 }
 
+// Build just the channel post reaction pill strip (counts + "me" highlight).
+// Kept standalone so a reaction can patch ONLY the pills in place instead of
+// re-rendering the whole post list (which also re-fires recordPostView tour).
+function buildChannelReactionPillsHTML(post) {
+  if (!post) return "";
+  const rMap = post.reactions || {};
+  const myUid = currentUser ? currentUser.uid : '';
+  return Object.keys(rMap).map(em => {
+    const val = rMap[em];
+    const count = Array.isArray(val) ? val.length : (typeof val === 'number' ? val : 0);
+    const hasReacted = Array.isArray(val) && myUid && val.includes(myUid);
+    if (count <= 0) return '';
+    return `<button class="channel-reaction-pill ${hasReacted ? 'me-reacted' : ''}" onclick="toggleChannelPostReaction('${post.id}', '${em}')"><span>${em}</span> <span>${count}</span></button>`;
+  }).join('');
+}
+
+// Swap the pill strip for one post in place (instant feedback, no scroll jump).
+function patchChannelPostReactions(postId, reactions) {
+  const host = document.getElementById(`reactPills_${postId}`);
+  if (!host) return;
+  host.innerHTML = buildChannelReactionPillsHTML({ id: postId, reactions: reactions || {} });
+}
+
 async function toggleChannelPostReaction(postId, emoji) {
   if (!selectedChannel || !currentUser) return;
   const popup = document.getElementById(`quickReact_${postId}`);
   if (popup) popup.classList.remove('active');
+
+  // Optimistic local patch so the tap reflects instantly on this device;
+  // the Firestore transaction (and subsequent snapshot) become the source
+  // of truth and reconcile any conflict.
+  const cachedIdx = (window._nexaChannelPostsCache || []).findIndex(p => p.id === postId);
+  if (cachedIdx > -1) {
+    const post = window._nexaChannelPostsCache[cachedIdx];
+    const cur = { ...(post.reactions || {}) };
+    const emojiList = cur[emoji] && Array.isArray(cur[emoji]) ? [...cur[emoji]] : [];
+    const idx = emojiList.indexOf(currentUser.uid);
+    if (idx > -1) {
+      emojiList.splice(idx, 1);
+    } else {
+      emojiList.push(currentUser.uid);
+    }
+    if (emojiList.length) {
+      cur[emoji] = emojiList;
+    } else {
+      delete cur[emoji];
+    }
+    post.reactions = cur;
+    patchChannelPostReactions(postId, cur);
+  }
 
   try {
     const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
@@ -10502,7 +10655,9 @@ async function toggleChannelPostCommentsSetting(allow) {
     showNotifToast('Failed to update setting: ' + err.message, 'error');
   }
 }
+let postCommentsTogglePostId = null;
 function openPostCommentsToggle(postId) {
+  postCommentsTogglePostId = postId;
   activeCommentPostId = postId;
   const cached = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
   const cb = document.getElementById('postCommentsToggleCheck');
@@ -10517,7 +10672,12 @@ function closePostCommentsToggle() {
 }
 async function savePostCommentsToggle() {
   const cb = document.getElementById('postCommentsToggleCheck');
-  if (!cb || !activeCommentPostId) return;
+  // Use the post this modal was opened for, not the shared activeCommentPostId
+  // (which the admin comments drawer can clobber while the modal is open).
+  const postId = postCommentsTogglePostId || activeCommentPostId;
+  if (!cb || !postId) return;
+  // Preserve the captured post id for the settings write.
+  activeCommentPostId = postId;
   closePostCommentsToggle();
   await toggleChannelPostCommentsSetting(cb.checked);
 }
@@ -11262,7 +11422,7 @@ function renderForwardTargets(filterText) {
 if (inviteModalMode === 'invite') {
   if (!targets.length) { list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">No contacts found</div>'; return; }
   list.innerHTML = targets.map(t => {
-    const sel = forwardSelectedTargets.includes(t.id + '_' + t.type);
+    const sel = forwardSelectedTargets.includes(t.type + ':' + t.id);
     return `
       <div class="forward-target-row ${sel ? 'selected' : ''}" onclick="toggleForwardTarget('${t.id}', '${t.type}')">
         <img src="${escapeHtml(t.photo)}" class="forward-target-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
@@ -11305,7 +11465,7 @@ if (inviteModalMode === 'invite') {
   }
 
   list.innerHTML = targets.map(t => {
-    const selected = forwardSelectedTargets.includes(t.id + '_' + t.type);
+    const selected = forwardSelectedTargets.includes(t.type + ':' + t.id);
     return `
       <div class="forward-target-row ${selected ? 'selected' : ''}" onclick="toggleForwardTarget('${t.id}', '${t.type}')">
         <img src="${escapeHtml(t.photo)}" class="forward-target-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
@@ -11322,7 +11482,7 @@ function filterForwardTargets(val) {
 }
 
 function toggleForwardTarget(id, type) {
-  const key = id + '_' + type;
+  const key = type + ':' + id;
   const idx = forwardSelectedTargets.indexOf(key);
   if (idx >= 0) {
     forwardSelectedTargets.splice(idx, 1);
@@ -11351,7 +11511,8 @@ async function executeForward() {
     const kind = inviteModalSourceKind;
     let count = 0;
     for (const key of forwardSelectedTargets) {
-      const targetId = key.slice(0, key.lastIndexOf('_'));
+      const sepIdx = key.indexOf(':');
+      const targetId = key.slice(sepIdx + 1);
       try {
         if (kind === 'group') await sendGroupInviteToChat(targetId);
         else if (kind === 'channel') await sendChannelInviteToChat(targetId);
@@ -11372,9 +11533,9 @@ async function executeForward() {
   let successCount = 0;
   let firstError = ''
   for (const key of targets) {
-    const sepIdx = key.lastIndexOf('_');
-    const targetId = key.slice(0, sepIdx);
-    const targetType = key.slice(sepIdx + 1);
+    const sepIdx = key.indexOf(':');
+    const targetId = key.slice(sepIdx + 1);
+    const targetType = key.slice(0, sepIdx);
     try {
       if (targetType === 'group') {
         // Forward to group
@@ -11828,6 +11989,11 @@ showCtxMenu = function(e, id, msg) {
   const menu = document.getElementById("ctxMenu");
   const fromMe = (msg.from || msg.senderUid) === currentUser.uid;
   const isGroup = currentChatMode === 'group';
+  // Group admins/creator may delete ANY group message; senders may delete
+  // their own. Outside groups only the sender can delete.
+  const canDeleteGroupMsg = isGroup && selectedGroup
+    ? (fromMe || selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid))
+    : fromMe;
   const starred = isMessageStarred(id);
   menu.innerHTML = `
     <div class="ctx-reaction-bar">
@@ -11846,7 +12012,7 @@ showCtxMenu = function(e, id, msg) {
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
     ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
     ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
-    ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
+    ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
   `;
   menu.classList.add("active");
   menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + "px";
