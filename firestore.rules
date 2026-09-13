@@ -178,7 +178,11 @@ service cloud.firestore {
                       && (request.resource.data.senderUid == request.auth.uid
                           || request.resource.data.senderUid == 'system');
         allow update: if isSignedIn();
-        allow delete: if isSignedIn() && resource.data.senderUid == request.auth.uid;
+        allow delete: if isSignedIn()
+                      && (resource.data.senderUid == request.auth.uid
+                          || request.auth.uid == resource.data.createdBy
+                          || request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerUid
+                          || request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.admins);
       }
     }
 
@@ -208,6 +212,15 @@ service cloud.firestore {
           allow delete: if isSignedIn() && (resource.data.authorUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/channels/$(channelId)).data.ownerUid);
         }
       }
+    }
+
+    // ── Nexa Wallet: in-app notification history (per user) ──
+    // Each signed-in user keeps their OWN history doc. Only the owner can
+    // read/create/update it, so no cross-user data is involved.
+    match /notifHistory/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update, delete:
+          if isSignedIn() && request.auth.uid == uid;
     }
 
     match /{document=**} {
