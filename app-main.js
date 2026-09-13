@@ -9690,7 +9690,19 @@ async function toggleSubscribeChannel(channelId) {
 }
 
 // ── Select and Open Channel Broadcast Feed ─────────────────────────────────
+function flushAllPendingPostReactions() {
+  const pending = [..._postReactionTimers.keys()];
+  for (const postId of pending) {
+    const timer = _postReactionTimers.get(postId);
+    if (timer) clearTimeout(timer);
+    _postReactionTimers.delete(postId);
+    flushPostReaction(postId);
+  }
+}
+
 function selectChannelFeed(channel) {
+  // Persist any debounced reaction writes before leaving this channel feed.
+  flushAllPendingPostReactions();
   markCommunitySeen('c_' + channel.id);
   updateCommunityTabDot();
   if (unsubMessagesA) { unsubMessagesA(); unsubMessagesA = null; }
@@ -10124,14 +10136,69 @@ function patchChannelPostReactions(postId, reactions) {
   host.innerHTML = buildChannelReactionPillsHTML({ id: postId, reactions: reactions || {} });
 }
 
-async function toggleChannelPostReaction(postId, emoji) {
+// Per-post debounced reaction persistence. The DOM gets patched instantly on
+// tap; the Firestore write is coalesced (one transaction per post after a short
+// idle window) so rapidly tapping several emoji on one post doesn't trigger a
+// read-modify-write transaction per tap.
+const _pendingPostReactRevs = new Map(); // postId -> "1"/"2"... per-call revision
+const _postReactionTimers = new Map();   // postId -> timeout id
+function postReactionRevision(postId) {
+  const cur = (_pendingPostReactRevs.get(postId) || 0) + 1;
+  _pendingPostReactRevs.set(postId, cur);
+  return cur;
+}
+function schedulePostReactionFlush(postId) {
+  if (_postReactionTimers.has(postId)) clearTimeout(_postReactionTimers.get(postId));
+  const timer = setTimeout(() => {
+    _postReactionTimers.delete(postId);
+    flushPostReaction(postId);
+  }, 300);
+  _postReactionTimers.set(postId, timer);
+}
+async function flushPostReaction(postId) {
+  if (!selectedChannel || !currentUser) return;
+  try {
+    const myUid = currentUser.uid;
+    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
+    await db.runTransaction(async (transaction) => {
+      const postDoc = await transaction.get(postRef);
+      if (!postDoc.exists) return;
+      const serverReactions = (postDoc.data() || {}).reactions || {};
+      // Our local intent for each emoji (aggregated during the debounce window).
+      const cached = (window._nexaChannelPostsCache || []).find(p => p.id === postId);
+      const localReactions = (cached && cached.reactions) || {};
+
+      // Merge on the transaction's fresh server read so a concurrent reaction
+      // by another user survives: base each emoji list on the server's, then
+      // add/remove ONLY our uid to match what we tapped locally.
+      const allEmojis = new Set([...Object.keys(serverReactions), ...Object.keys(localReactions)]);
+      const final = {};
+      for (const em of allEmojis) {
+        // Legacy numeric-count format ("❤️": 3) — treat as empty list; the
+        // current-app writes always use uid arrays, and the array migration
+        // has been in place across releases.
+        const rawBase = serverReactions[em];
+        let baseList = Array.isArray(rawBase) ? [...rawBase] : [];
+        const wantMine = Array.isArray(localReactions[em]) && localReactions[em].includes(myUid);
+        const hasMine = baseList.includes(myUid);
+        if (wantMine && !hasMine) baseList.push(myUid);
+        else if (!wantMine && hasMine) baseList.splice(baseList.indexOf(myUid), 1);
+        if (baseList.length) final[em] = baseList;
+      }
+      transaction.update(postRef, { reactions: final });
+    });
+  } catch (e) {
+    console.error('Flush reaction error:', e);
+  }
+}
+
+function toggleChannelPostReaction(postId, emoji) {
   if (!selectedChannel || !currentUser) return;
   const popup = document.getElementById(`quickReact_${postId}`);
   if (popup) popup.classList.remove('active');
 
   // Optimistic local patch so the tap reflects instantly on this device;
-  // the Firestore transaction (and subsequent snapshot) become the source
-  // of truth and reconcile any conflict.
+  // the debounced flush (and subsequent snapshot) reconcile on the server.
   const cachedIdx = (window._nexaChannelPostsCache || []).findIndex(p => p.id === postId);
   if (cachedIdx > -1) {
     const post = window._nexaChannelPostsCache[cachedIdx];
@@ -10152,35 +10219,8 @@ async function toggleChannelPostReaction(postId, emoji) {
     patchChannelPostReactions(postId, cur);
   }
 
-  try {
-    const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId);
-    await db.runTransaction(async (transaction) => {
-      const postDoc = await transaction.get(postRef);
-      if (!postDoc.exists) return;
-      const data = postDoc.data() || {};
-      const reactions = data.reactions || {};
-      const currentVal = reactions[emoji];
-      let userList = [];
-      if (Array.isArray(currentVal)) {
-        userList = [...currentVal];
-      } else if (typeof currentVal === 'number' && currentVal > 0) {
-        userList = [];
-      }
-
-      const idx = userList.indexOf(currentUser.uid);
-      if (idx >= 0) {
-        userList.splice(idx, 1); // remove reaction
-      } else {
-        userList.push(currentUser.uid); // add reaction
-      }
-
-      transaction.update(postRef, {
-        [`reactions.${emoji}`]: userList
-      });
-    });
-  } catch (e) {
-    console.error('Toggle reaction error:', e);
-  }
+  postReactionRevision(postId);
+  schedulePostReactionFlush(postId);
 }
 
 // ── Channel Post Discussion Comments Drawer ────────────────────────────────
