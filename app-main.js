@@ -446,12 +446,6 @@ auth.onAuthStateChanged(async (user) => {
   console.log("👤 User:", user.email);
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
-  // Nexa Wallet: award the once-per-day login coins (guarded by the rule's
-  // daily cap + per-source dedupe inside awardCoins).
-  _nexaDailyLogin();
-  // Referral coins for my inviter (server-side; fires again when profile
-  // lands so referredBy is available early).
-  _nexaCheckReferralCredit();
   // If this account was created via a referral link, greet them by their
   // inviter's username so the referral feels personal.
   db.collection("users").doc(user.uid).get().then(d => {
@@ -899,8 +893,8 @@ function handleLogout() {
 }
 
 let allUsersData = window.allUsersData;
-// Mirror my own users.doc into window.profileObj (used by the wallet). It is
-// refreshed whenever the users snapshot lands.
+// Mirror my own users.doc into window.profileObj. It is refreshed whenever
+// the users snapshot lands.
 function _refreshMyProfile() {
   if (!currentUser) return;
   try {
@@ -2233,22 +2227,6 @@ function setupHeartbeat() {
       updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
     }
     renderActiveNowBar();
-
-    // Nexa Wallet: track continuous online time — every 10 real minutes in a
-    // single session pays 10 coins (max 3×/day via the rule cap). Session
-    // resets when hidden for > 60s so backgrounding doesn't farm coins.
-    if (currentUser && currentUser.uid) {
-      try {
-        const now = Date.now();
-        if (!window._nexaSessionStart || now - window._nexaSessionStart > 60000) {
-          window._nexaSessionStart = now;
-        }
-        if (now - window._nexaSessionStart >= 600000) { // 10 minutes
-          _nexaOnlineSession();
-          window._nexaSessionStart = now;
-        }
-      } catch (e) {}
-    }
   }, 10000);
 
   // Backgrounding/foregrounding: do NOT write offline when hidden — the tab is
@@ -4042,11 +4020,6 @@ async function sendMessage() {
   latestMsgTime[selectedUser.uid] = Date.now();
   latestMsgText[selectedUser.uid] = text;
   saveLatestMsgState();
-  // Nexa Wallet: first message to a new contact — award only if we've never
-  // messaged this person before (latestMsgTime was absent/0 pre-write).
-  if (!isSelfChat() && !_hadChatBefore) {
-    awardCoins('first_message', 'contact_' + selectedUser.uid);
-  }
   renderUsers();
 
   // Optimistic UI push for 0ms delay feedback
@@ -6578,11 +6551,6 @@ async function answerStoryQuestion(story) {
       status: "sent"
     });
     showNotifToast("✓ Answer sent", "success");
-    // Nexa Wallet: pay the story owner for getting an answer from a viewer
-    // (no self-pay — guards above already block self-answers).
-    if (story.uid && story.uid !== currentUser.uid) {
-      awardCoins('story_comment', 'answer_' + story.id + '_' + currentUser.uid, { meta: { storyId: story.id, answerer: currentUser.uid } });
-    }
     const owner = (typeof allUsersData !== "undefined" ? allUsersData.find(u => u.uid === story.uid) : null);
     const myName = (document.getElementById("myName")?.textContent) || "Nexa User";
     if (typeof sendPushNotification === "function") {
@@ -6877,10 +6845,6 @@ async function reactToStory() {
       if (!story.likes) story.likes = [];
       story.likes.push(currentUser.uid);
       showNotifToast("❤ Liked story!", "success");
-      // Nexa Wallet: pay the story owner for getting a like (no self-pay).
-      if (story.uid && story.uid !== currentUser.uid) {
-        awardCoins('story_like', 'story_' + story.id + '_' + currentUser.uid, { meta: { storyId: story.id, liker: currentUser.uid } });
-      }
     }
     renderStorySlide(storyViewerIndex);
   } catch (err) {
@@ -8169,8 +8133,6 @@ async function submitCreateGroup() {
     };
 
     const docRef = await db.collection('groups').add(groupDoc);
-    // Nexa Wallet: reward for creating a group (idempotent per group).
-    awardCoins('create_group', 'group_' + docRef.id);
 
     // Write initial membership documents
     const batch = db.batch();
@@ -9233,8 +9195,6 @@ async function submitCreateChannel() {
       joinedAt: Date.now(),
       role: 'owner'
     });
-    // Nexa Wallet: reward for creating a channel (idempotent per channel).
-    awardCoins('create_channel', 'channel_' + docRef.id);
 
     closeCreateChannelModal();
     showNotifToast('✓ Channel created!', 'success');
@@ -9469,8 +9429,6 @@ async function resolveGroupForInvite(groupId, groupName) {
     group.memberUids = [...(group.memberUids || []), currentUser.uid];
     group.membersCount = (group.membersCount || 0) + 1;
     showNotifToast(`✓ Joined "${group.name}"!`, 'success');
-    // Nexa Wallet: reward for joining a group (idempotent per group).
-    awardCoins('join_group', 'group_' + group.id);
     switchTab('community');
     switchCommunitySubTab('groups');
     selectGroupChat(group);
@@ -9522,11 +9480,6 @@ async function resolveChannelFromInvite(channelId) {
         subscribersCount: firebase.firestore.FieldValue.increment(1)
       });
       showNotifToast(`✓ Following "${chan.name}"!`, 'success');
-      // Nexa Wallet: reward the follower + the channel owner for the follow.
-      awardCoins('follow_channel', 'channel_' + channelId);
-      if (chan.ownerUid && chan.ownerUid !== currentUser.uid) {
-        awardCoins('new_follower', 'channel_' + channelId + '_' + currentUser.uid, { meta: { channelId, follower: currentUser.uid } });
-      }
     } catch (err) {
       showNotifToast('Failed to follow: ' + err.message, 'error');
       return;
@@ -9631,12 +9584,6 @@ async function toggleSubscribeChannel(channelId) {
       chan.subscriberUids = [...(chan.subscriberUids || []), currentUser.uid];
       chan.subscribersCount = (chan.subscribersCount || 0) + 1;
       showNotifToast('✓ Subscribed to ' + chan.name, 'success');
-      // Nexa Wallet: reward the follower + the channel owner for the follow
-      // (idempotent per channel; no self-pay on your own channel).
-      awardCoins('follow_channel', 'channel_' + channelId);
-      if (chan.ownerUid && chan.ownerUid !== currentUser.uid) {
-        awardCoins('new_follower', 'channel_' + channelId + '_' + currentUser.uid, { meta: { channelId, follower: currentUser.uid } });
-      }
     }
 
     renderChannelsDiscover();
@@ -9957,11 +9904,6 @@ async function recordPostView(post) {
       viewsUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
       viewsCount: firebase.firestore.FieldValue.increment(1)
     });
-    // Nexa Wallet: pay the post author when a subscriber views their post
-    // (no self-pay; idempotent per viewer via post_<id>_<uid>).
-    if (post.authorUid && post.authorUid !== currentUser.uid) {
-      awardCoins('post_view', 'post_' + postId + '_' + currentUser.uid, { meta: { postId, viewer: currentUser.uid } });
-    }
   } catch (e) {
     console.warn('recordPostView error:', e);
   }
@@ -10158,12 +10100,6 @@ async function submitUserChannelComment(postId) {
     await postRef.update({
       commentsCount: firebase.firestore.FieldValue.increment(1)
     });
-
-    // Nexa Wallet: pay the post owner when someone comments on their post
-    // (no self-pay). Idempotent per post+commenter.
-    if (postOwner && postOwner !== currentUser.uid) {
-      awardCoins('post_comment', 'post_' + postId + '_' + currentUser.uid, { meta: { postId, commenter: currentUser.uid } });
-    }
 
     showNotifToast('✓ Comment posted', 'success');
   } catch (err) {
@@ -11410,351 +11346,6 @@ function cleanPayload(obj) {
   return out;
 }
 
-/* =========================================================================
-   NEXA WALLET — Earn coins by being active, redeem weekly.
-   Balance is the SUM of `coinLedger` docs (auditable, no drift). A cached
-   `coinsBalance` lives on the users doc for fast reads.
-   Security: the Firestore rules WHITELIST the amount for each action key, so
-   a hacked client cannot mint coins — it can only request a known action.
-   ========================================================================= */
-window.NEXA_COIN_RULES = {
-  daily_login:    { amount: 5,  dailyCap: 5,   label: 'Daily login' },
-  online_10min:   { amount: 5,  dailyCap: 15,  label: 'Online 10 minutes' },
-  referral:       { amount: 15, dailyCap: 75,  label: 'Referred a friend' },
-  story_like:     { amount: 5,  dailyCap: 30,  label: 'Story got a like' },
-  story_comment:  { amount: 10, dailyCap: 30,  label: 'Story got a comment' },
-  first_message:  { amount: 5,  dailyCap: 25,  label: 'First message to a new contact' },
-  join_group:     { amount: 10, dailyCap: 30,  label: 'Joined a group' },
-  create_group:   { amount: 10, dailyCap: 30,  label: 'Created a group' },
-  follow_channel: { amount: 5,  dailyCap: 25,  label: 'Followed a channel' },
-  create_channel: { amount: 10, dailyCap: 30,  label: 'Created a channel' },
-  new_follower:   { amount: 5,  dailyCap: 25,  label: 'Got a new follower' },
-  post_comment:   { amount: 10, dailyCap: 30,  label: 'Got a comment on your post' },
-  post_view:      { amount: 5,  dailyCap: 25,  label: 'Got a view on your post' }
-};
-const NEXA_COIN_MIN_AGE_MS = 90 * 24 * 60 * 60 * 1000;          // 3 months
-const NEXA_COIN_REDEEM_MIN = 2000;                              // coins
-const NEXA_COIN_NGN_PER_COIN = 0.25;                            // 2k coins = ₦500
-const NEXA_COIN_REDEEM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;     // weekly
-const NEXA_WALLET_DAY_KEY = () => new Date().toISOString().slice(0, 10);
-
-// Cap the daily per-action total at the rule cap (in coins).
-function nexaCoinDailyCapFor(action) {
-  const r = window.NEXA_COIN_RULES[action];
-  return r ? r.dailyCap : 0;
-}
-
-async function _nexaDocExists(pathArr) {
-  try {
-    const snap = await db.doc(pathArr.join('/')).get();
-    return snap.exists;
-  } catch (e) {
-    return false;
-  }
-}
-
-// Atomic, self-authored coin ledger entry. Falls back to a non-atomic write
-// only if batching is unavailable (old SDK) — still legal per rules.
-async function addCoinEvent(uid, action, sourceId, amount, opts) {
-  const docRef = db.collection('coinLedger').doc();
-  const payload = {
-    uid,
-    action,
-    amount,
-    sourceId: sourceId || null,
-    createdAt: Date.now(),
-    day: NEXA_WALLET_DAY_KEY()
-  };
-  if (opts && opts.meta) payload.meta = opts.meta;
-  const clean = cleanPayload(payload);
-  if (typeof db.batch === 'function') {
-    const b = db.batch();
-    b.set(docRef, clean);
-    await b.commit();
-  } else {
-    await docRef.set(clean);
-  }
-}
-
-// Append locally for instant UI (the server confirms via snapshot).
-async function _cacheCoinLocally(amount) {
-  try {
-    const cur = parseFloat(localStorage.getItem('nexa_coins_balance') || '0');
-    localStorage.setItem('nexa_coins_balance', String(cur + amount));
-  } catch (e) {}
-}
-
-// Main entry: award coins for an action the CURRENT user just did.
-//  - The rules engine enforces per-action daily caps client-side too (the
-//    server rule enforces the same caps as a backstop).
-//  - Liking your own story / self-referral etc is skipped by callers.
-async function awardCoins(action, sourceId, opts) {
-  try {
-    if (!currentUser) return 0;
-    const rule = window.NEXA_COIN_RULES[action];
-    if (!rule) return 0;
-    const amount = rule.amount;
-
-    // Daily cap check (client mirror of the rule):
-    const day = NEXA_WALLET_DAY_KEY();
-    let spentToday = 0;
-    try {
-      const snap = await db.collection('coinLedger')
-        .where('uid', '==', currentUser.uid)
-        .where('action', '==', action)
-        .where('day', '==', day)
-        .get();
-      snap.forEach(d => { spentToday += (d.data().amount || 0); });
-    } catch (e) {}
-
-    if (spentToday + amount > nexaCoinDailyCapFor(action)) return 0;
-
-    // Duplicate suppression: if this exact sourceId was already used for this
-    // action, don't double-pay (e.g. liking the same story twice).
-    if (sourceId) {
-      try {
-        const dup = await db.collection('coinLedger')
-          .where('uid', '==', currentUser.uid)
-          .where('action', '==', action)
-          .where('sourceId', '==', sourceId)
-          .limit(1)
-          .get();
-        if (!dup.empty) return 0;
-      } catch (e) {}
-    }
-
-    await addCoinEvent(currentUser.uid, action, sourceId || null, amount, opts);
-    try {
-      await db.collection('users').doc(currentUser.uid).update({
-        coinsBalance: firebase.firestore.FieldValue.increment(amount)
-      });
-    } catch (e) {}
-    await _cacheCoinLocally(amount);
-    if (window._nexaWalletOpen) renderNexaWallet();
-    return amount;
-  } catch (e) {
-    console.warn('awardCoins failed:', e);
-    return 0;
-  }
-}
-
-async function getNexaBalance() {
-  try {
-    if (!currentUser) return 0;
-    // Prefer the authoritative users-doc cached balance; occasionally fall
-    // back to summing the ledger if the field is missing.
-    const snap = await db.collection('users').doc(currentUser.uid).get();
-    if (snap.exists && typeof snap.data().coinsBalance === 'number') {
-      return snap.data().coinsBalance;
-    }
-    let sum = 0;
-    const led = await db.collection('coinLedger').where('uid', '==', currentUser.uid).get();
-    led.forEach(d => { sum += (d.data().amount || 0); });
-    return sum;
-  } catch (e) {
-    return 0;
-  }
-}
-
-function nexaWalletEligibility() {
-  const createdAt = (window.profileObj && window.profileObj.createdAt) || 0;
-  const ageMs = Date.now() - createdAt;
-  return {
-    ageOk: createdAt > 0 && ageMs >= NEXA_COIN_MIN_AGE_MS,
-    balanceOk: false,  // filled by caller after balance known
-    ...({})
-  };
-}
-
-function formatNaira(amount) {
-  return '\u20A6' + Math.max(0, amount).toLocaleString('en-NG', { maximumFractionDigits: 2 });
-}
-
-function openNexaWallet() {
-  const modal = document.getElementById('nexaWalletModal');
-  if (!modal) return;
-  modal.classList.add('active');
-  window._nexaWalletOpen = true;
-  renderNexaWallet();
-  if (window.lucide) lucide.createIcons();
-}
-
-function closeNexaWallet() {
-  const modal = document.getElementById('nexaWalletModal');
-  if (modal) modal.classList.remove('active');
-  window._nexaWalletOpen = false;
-}
-
-async function renderNexaWallet() {
-  const modal = document.getElementById('nexaWalletModal');
-  if (!modal) return;
-  const balanceEl = document.getElementById('nexaWalletBalance');
-  const nameEl = document.getElementById('nexaWalletName');
-  const bodyEl = document.getElementById('nexaWalletBody');
-  if (!bodyEl) return;
-
-  const me = window.profileObj || currentUser || {};
-  if (nameEl) nameEl.textContent = (me.displayName || me.name || 'Nexa user');
-
-  const balance = await getNexaBalance();
-  if (balanceEl) balanceEl.textContent = balance.toLocaleString();
-
-  const ageOk = (me.createdAt && (Date.now() - me.createdAt) >= NEXA_COIN_MIN_AGE_MS);
-  const eligible = ageOk && balance >= NEXA_COIN_REDEEM_MIN;
-
-  if (!eligible) {
-    bodyEl.innerHTML = `
-      <div style="text-align:center; padding:36px 20px;">
-        <div style="font-size:42px; margin-bottom:12px;">🔒</div>
-        <div style="font-size:17px; font-weight:700; color:var(--text-1); margin-bottom:6px;">Not eligible</div>
-        <div style="font-size:13px; color:var(--text-3); line-height:1.5;">Your Nexa Wallet unlocks after you've been with us a while and built up coins. Keep using Nexa — we'll let you know when it's ready.</div>
-      </div>`;
-    return;
-  }
-
-  // Eligible → show balance summary + redeem card.
-  const naira = formatNaira(balance * NEXA_COIN_NGN_PER_COIN);
-  const lastPayout = await _lastSuccessfulWithdrawal();
-  const canRedeem = !lastPayout || (Date.now() - lastPayout.paidAt) >= NEXA_COIN_REDEEM_WINDOW_MS;
-  const nextAvailable = lastPayout ? new Date(lastPayout.paidAt + NEXA_COIN_REDEEM_WINDOW_MS) : new Date();
-
-  bodyEl.innerHTML = `
-    <div class="nexa-wallet-balance-card">
-      <div class="nexa-wallet-balance-label">Available balance</div>
-      <div class="nexa-wallet-ngn">${naira}</div>
-      <div class="nexa-wallet-coins">${balance.toLocaleString()} coins</div>
-    </div>
-    <div class="nexa-wallet-section-label">Redeem</div>
-    <div class="nexa-wallet-redeem-box">
-      <div class="nexa-wallet-redeem-row">
-        <div>
-          <div class="nexa-wallet-redeem-name">Weekly payout</div>
-          <div class="nexa-wallet-redeem-sub">${canRedeem ? 'Available now' : 'Next redeem: ' + nextAvailable.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-        </div>
-        <button class="nexa-wallet-redeem-btn" ${canRedeem ? '' : 'disabled'} onclick="openNexaRedeemForm()">Redeem</button>
-      </div>
-    </div>`;
-}
-
-async function _lastSuccessfulWithdrawal() {
-  try {
-    const snap = await db.collection('withdrawals')
-      .where('uid', '==', currentUser.uid)
-      .where('status', '==', 'approved')
-      .get();
-    // Client-side sort keeps this on single-field indexes (no composite).
-    if (snap.empty) return null;
-    let best = null;
-    snap.forEach(d => {
-      const t = d.data().paidAt || 0;
-      if (!best || t > best.paidAt) best = { id: d.id, ...d.data() };
-    });
-    return best;
-  } catch (e) {}
-  return null;
-}
-
-function openNexaRedeemForm() {
-  const redeem = document.getElementById('nexaWalletRedeemForm');
-  if (redeem) redeem.style.display = 'block';
-  // Pre-fill account name from profile.
-  const mb = document.getElementById('nexaRedeemAcctName');
-  if (mb && window.profileObj) mb.value = window.profileObj.displayName || window.profileObj.name || '';
-}
-
-async function submitNexaRedeem() {
-  const bank = (document.getElementById('nexaRedeemBank') || {}).value || '';
-  const acct = (document.getElementById('nexaRedeemAcct') || {}).value || '';
-  const name = (document.getElementById('nexaRedeemAcctName') || {}).value || '';
-  const ngn = parseFloat((document.getElementById('nexaRedeemAmt') || {}).value || '0');
-
-  if (!bank.trim() || !acct.trim() || !name.trim()) {
-    showNotifToast('Please fill in bank, account number and account name', 'error');
-    return;
-  }
-  if (!/^\d{10,12}$/.test(acct.trim())) {
-    showNotifToast('Enter a valid account number (10-12 digits)', 'error');
-    return;
-  }
-
-  const balance = await getNexaBalance();
-  if (balance < NEXA_COIN_REDEEM_MIN) {
-    showNotifToast(`You need at least ${NEXA_COIN_REDEEM_MIN} coins to redeem`, 'error');
-    return;
-  }
-  const maxNgn = Math.floor(balance * NEXA_COIN_NGN_PER_COIN);
-  const minNgn = Math.floor(NEXA_COIN_REDEEM_MIN * NEXA_COIN_NGN_PER_COIN);
-  if (!ngn || ngn < minNgn) {
-    showNotifToast(`Minimum redemption is ${formatNaira(minNgn)}`, 'error');
-    return;
-  }
-  if (ngn > maxNgn) {
-    showNotifToast(`You can redeem at most ${formatNaira(maxNgn)}`, 'error');
-    return;
-  }
-
-  const lastPayout = await _lastSuccessfulWithdrawal();
-  if (lastPayout && (Date.now() - lastPayout.paidAt) < NEXA_COIN_REDEEM_WINDOW_MS) {
-    showNotifToast('You can only redeem once per week', 'error');
-    return;
-  }
-
-  const coins = Math.round(ngn / NEXA_COIN_NGN_PER_COIN);
-  const reqId = 'NW-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-  try {
-    await db.collection('withdrawals').add(cleanPayload({
-      uid: currentUser.uid,
-      name,
-      username: (window.profileObj && window.profileObj.username) || '',
-      email: (currentUser.email || ''),
-      bank,
-      accountNumber: acct.trim(),
-      accountName: name.trim(),
-      amountNgn: ngn,
-      coins: coins,
-      status: 'pending',
-      chainId: reqId,
-      createdAt: Date.now()
-    }));
-    // Reserve the coins by noting a pending amount in localStorage (the ledger
-    // deduction happens on approval — a pending request locks that amount so
-    // the user can't double-spend in a second request).
-    try {
-      const pending = parseFloat(localStorage.getItem('nexa_coins_pending') || '0');
-      localStorage.setItem('nexa_coins_pending', String(pending + coins));
-    } catch (e) {}
-    showNotifToast('✓ Redemption request sent! Awaiting admin approval', 'success');
-    closeNexaWallet();
-  } catch (err) {
-    showNotifToast('Redeem failed: ' + err.message, 'error');
-  }
-}
-
-async function _nexaDailyLogin() {
-  await awardCoins('daily_login', 'day_' + NEXA_WALLET_DAY_KEY());
-}
-
-async function _nexaOnlineSession() {
-  await awardCoins('online_10min', 'session_' + currentUser.uid + '_' + Date.now());
-}
-
-// Once per app open: if I was referred, ask the backend to credit my inviter
-// (server-side, idempotent via the ledger sourceId). Safe to call repeatedly.
-async function _nexaCheckReferralCredit() {
-  try {
-    const me = window.profileObj || (allUsersData || []).find(u => u && u.uid === (currentUser && currentUser.uid));
-    const inviter = me && (me.referredBy || null);
-    if (!inviter || !currentUser || currentUser.uid === inviter) return;
-    try {
-      await fetch(BACKEND_URL + '/api/referral-credit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referredUid: currentUser.uid })
-      });
-    } catch (e) {}
-  } catch (e) {}
-}
-
 async function executeForward() {
   if (inviteModalMode === 'invite') {
     const kind = inviteModalSourceKind;
@@ -12381,8 +11972,6 @@ async function checkGroupInviteUrlParam() {
     });
 
     showNotifToast(`✓ Joined "${group.name}"!`, 'success');
-    // Nexa Wallet: reward for joining a group (idempotent per group).
-    awardCoins('join_group', 'group_' + group.id);
     switchTab('community');
     switchCommunitySubTab('groups');
     group.membersCount = (group.membersCount || 0) + 1;
