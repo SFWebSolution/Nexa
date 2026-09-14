@@ -5,180 +5,450 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexa Login</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Sign In — Nexa Messenger</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --nx-bg: #eef2f7;
+      --nx-primary: #0b57d0;
+      --nx-primary-dk: #0842a0;
+      --nx-primary-lt: #1d6bf3;
+      --nx-primary-glow: rgba(11, 87, 208, 0.28);
+      --nx-primary-soft: rgba(11, 87, 208, 0.08);
+
+      --nx-bg: #f4f6fa;
       --nx-surface: #ffffff;
-      --nx-border: #e5e9f0;
-      --nx-border-strong: #d6dde8;
-      --nx-text: #0f1b2d;
-      --nx-text-dim: #6b7a92;
-      --nx-primary: #166fe5;
-      --nx-primary-dk: #0b5bd3;
-      --nx-font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --nx-font-display: 'Sora', 'Plus Jakarta Sans', sans-serif;
+      --nx-border: #e2e8f0;
+      --nx-border-focus: #1d6bf3;
+
+      --nx-text-0: #081226;
+      --nx-text-1: #142036;
+      --nx-text-dim: #5c6c84;
+      --nx-text-muted: #8a99ad;
+
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-display: 'Sora', 'Plus Jakarta Sans', sans-serif;
+    }
+
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
 
     body {
-      margin: 0;
-      font-family: var(--nx-font-body);
-      background: var(--nx-bg);
+      font-family: var(--font-body);
+      background-color: var(--nx-bg);
+      color: var(--nx-text-1);
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
-      overflow: hidden;
+      padding: 24px;
       position: relative;
+      overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Soft light ambient background (matches the landing page family) */
-    .aurora { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
-    .aurora span {
+    /* Ambient Deep Blue & Luminous Mesh Background */
+    .bg-mesh {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+      background:
+        radial-gradient(1000px 500px at 15% 10%, rgba(11, 87, 208, 0.12), transparent 70%),
+        radial-gradient(800px 600px at 85% 90%, rgba(29, 107, 243, 0.09), transparent 65%),
+        radial-gradient(600px 400px at 50% 50%, rgba(37, 99, 235, 0.05), transparent 60%),
+        var(--nx-bg);
+    }
+
+    .bg-mesh span {
       position: absolute;
       border-radius: 50%;
-      filter: blur(90px);
-      opacity: 0.4;
-      animation: drift 18s ease-in-out infinite;
+      filter: blur(80px);
+      opacity: 0.6;
+      animation: floatOrb 20s ease-in-out infinite alternate;
     }
-    .aurora span:nth-child(1) { width: 520px; height: 520px; background: #bcd6fb; top: -160px; left: -120px; }
-    .aurora span:nth-child(2) { width: 460px; height: 460px; background: #c9f2e2; bottom: -160px; right: -120px; animation-delay: -6s; }
-    .aurora span:nth-child(3) { width: 380px; height: 380px; background: #d9e6fd; top: 40%; left: 55%; animation-delay: -11s; opacity: 0.5; }
-    @keyframes drift {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      33% { transform: translate(60px, -40px) scale(1.1); }
-      66% { transform: translate(-40px, 50px) scale(0.95); }
+    .bg-mesh span:nth-child(1) {
+      width: 480px; height: 480px;
+      background: #c3d9fe;
+      top: -140px; left: -100px;
+    }
+    .bg-mesh span:nth-child(2) {
+      width: 420px; height: 420px;
+      background: #d4e3fc;
+      bottom: -120px; right: -100px;
+      animation-delay: -7s;
+    }
+    .bg-mesh span:nth-child(3) {
+      width: 320px; height: 320px;
+      background: #e0ecff;
+      top: 35%; right: 20%;
+      animation-delay: -14s;
     }
 
-    .card {
+    @keyframes floatOrb {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(40px, -30px) scale(1.08); }
+      100% { transform: translate(-30px, 35px) scale(0.96); }
+    }
+
+    /* Card Container */
+    .auth-card {
       position: relative;
-      z-index: 2;
+      z-index: 10;
       width: 100%;
-      max-width: 430px;
-      margin: 20px;
+      max-width: 420px;
       background: var(--nx-surface);
-      padding: 2.75rem 2.5rem;
       border-radius: 24px;
-      border: 1px solid var(--nx-border);
-      box-shadow: 0 18px 50px rgba(15, 27, 45, 0.12);
-      animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+      padding: 40px 36px;
+      border: 1px solid rgba(11, 87, 208, 0.14);
+      box-shadow:
+        0 4px 6px -1px rgba(8, 18, 38, 0.04),
+        0 16px 40px -4px rgba(11, 87, 208, 0.10),
+        0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+      animation: cardEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
-    @keyframes rise { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: none; } }
 
-    .brand {
-      display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 1.75rem;
+    @keyframes cardEntrance {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
-    .brand-mark {
-      width: 64px; height: 64px; border-radius: 18px;
-      background: transparent;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 12px 30px rgba(22, 111, 229, 0.28);
-      position: relative;
-      overflow: hidden;
-    }
-    .brand-mark img { width: 100%; height: 100%; object-fit: cover; border-radius: 18px; position: relative; z-index: 1; display: block; }
-    .brand-name {
-      font-family: var(--nx-font-display); font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--nx-text);
-    }
-    .brand-sub { font-size: 13px; color: var(--nx-text-dim); margin-top: -8px; font-weight: 500; }
 
+    /* Brand Header */
+    .brand-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .brand-logo-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 68px;
+      height: 68px;
+      border-radius: 20px;
+      background: #ffffff;
+      padding: 4px;
+      margin-bottom: 14px;
+      box-shadow:
+        0 12px 28px rgba(11, 87, 208, 0.22),
+        0 0 0 1px rgba(11, 87, 208, 0.12);
+      transition: transform 0.3s ease;
+    }
+    .brand-logo-wrap:hover {
+      transform: scale(1.05) rotate(2deg);
+    }
+    .brand-logo-wrap img {
+      width: 100%;
+      height: 100%;
+      border-radius: 16px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--nx-text-0);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .brand-sub {
+      font-size: 13.5px;
+      color: var(--nx-text-dim);
+      font-weight: 500;
+      line-height: 1.45;
+    }
+
+    /* Input Groups */
     .input-group {
-      position: relative; margin-bottom: 1rem; width: 100%; display: flex; align-items: center;
+      margin-bottom: 18px;
     }
 
+    .input-label {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--nx-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 7px;
+    }
+
+    .input-field-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 15px;
+      width: 18px;
+      height: 18px;
+      color: var(--nx-text-muted);
+      pointer-events: none;
+      transition: color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .input-field-wrap input {
+      width: 100%;
+      height: 48px;
+      padding: 0 16px 0 46px;
+      font-size: 14.5px;
+      font-family: inherit;
+      font-weight: 500;
+      color: var(--nx-text-1);
+      background: #f8fafd;
+      border: 1.5px solid var(--nx-border);
+      border-radius: 14px;
+      outline: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .input-field-wrap input:focus {
+      background: #ffffff;
+      border-color: var(--nx-primary);
+      box-shadow: 0 0 0 4px rgba(11, 87, 208, 0.12);
+    }
+
+    .input-field-wrap input:focus + .input-icon,
+    .input-field-wrap:focus-within .input-icon {
+      color: var(--nx-primary);
+    }
+
+    .input-field-wrap input::placeholder {
+      color: var(--nx-text-muted);
+      font-weight: 400;
+    }
+
+    /* Password Toggle Button */
     .password-toggle-btn {
-      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-      background: transparent; border: none; color: #6b7a92; cursor: pointer;
-      padding: 6px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s ease; z-index: 10; border-radius: 50%;
+      position: absolute;
+      right: 10px;
+      background: transparent;
+      border: none;
+      color: var(--nx-text-muted);
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
     }
-    .password-toggle-btn:hover { color: var(--nx-primary); background: rgba(22, 111, 229, 0.10); }
-
+    .password-toggle-btn:hover {
+      color: var(--nx-primary);
+      background: rgba(11, 87, 208, 0.08);
+    }
     .password-toggle-btn svg {
-      width: 20px; height: 20px; stroke: currentColor; fill: none;
-      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
     }
 
-    input#password { padding-right: 52px !important; }
-
-    input[type="text"], input[type="email"], input[type="password"], input:not([type]) {
-      width: 100%; padding: 14px 16px; border-radius: 13px;
-      border: 1.5px solid var(--nx-border); background: #f7f9fc; color: var(--nx-text);
-      font-size: 15px; font-weight: 500; font-family: inherit;
-      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1); box-sizing: border-box; outline: none;
-      backdrop-filter: none;
+    /* Extras (Forgot link) */
+    .form-extras {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: -6px;
+      margin-bottom: 22px;
     }
-    input:focus {
-      border-color: var(--nx-primary); background: #fff;
-      box-shadow: 0 0 0 4px rgba(22, 111, 229, 0.14);
-    }
-    input::placeholder { color: var(--nx-text-dim); }
 
-    button#loginBtn {
-      width: 100%; padding: 15px; border: none; border-radius: 13px;
-      background: linear-gradient(135deg, var(--nx-primary), var(--nx-primary-dk));
-      color: #fff; font-weight: 700; font-size: 15px; font-family: var(--nx-font-display);
-      letter-spacing: 0.3px; cursor: pointer;
+    .forgot-link {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--nx-primary);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .forgot-link:hover {
+      color: var(--nx-primary-dk);
+      text-decoration: underline;
+    }
+
+    /* Primary Submit Button */
+    .btn-submit {
+      width: 100%;
+      height: 48px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--nx-primary) 0%, var(--nx-primary-lt) 100%);
+      color: #ffffff;
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 10px 24px var(--nx-primary-glow);
       transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: 0 8px 22px rgba(22, 111, 229, 0.32);
-      margin-top: 0.5rem;
     }
-    button#loginBtn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(22, 111, 229, 0.40); }
-    button#loginBtn:active { transform: translateY(0) scale(0.99); }
 
-    .forgot { text-align: right; margin-bottom: 1.25rem; margin-top: -0.25rem; }
-    .forgot a { color: var(--nx-text-dim); text-decoration: none; font-size: 13px; font-weight: 500; transition: color 0.2s; }
-    .forgot a:hover { color: var(--nx-primary); }
+    .btn-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 30px rgba(11, 87, 208, 0.38);
+    }
 
-    .signup-link { text-align: center; margin-top: 1.5rem; font-size: 13.5px; color: var(--nx-text-dim); }
-    .signup-link a { color: var(--nx-primary); font-weight: 700; text-decoration: none; }
-    .signup-link a:hover { text-decoration: underline; }
+    .btn-submit:active {
+      transform: translateY(0) scale(0.99);
+    }
 
-    .msg { text-align: center; margin-top: 14px; font-size: 13px; font-weight: 600; min-height: 20px; }
-    .error { color: #e11d48; }
-    .success { color: #16a34a; }
+    .btn-submit:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Secondary Footer Link */
+    .auth-footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 13.5px;
+      color: var(--nx-text-dim);
+      font-weight: 500;
+    }
+    .auth-footer a {
+      color: var(--nx-primary);
+      font-weight: 700;
+      text-decoration: none;
+      margin-left: 4px;
+      transition: color 0.15s;
+    }
+    .auth-footer a:hover {
+      color: var(--nx-primary-dk);
+      text-decoration: underline;
+    }
+
+    /* Message / Feedback Pill */
+    .msg {
+      margin-top: 18px;
+      font-size: 13.5px;
+      font-weight: 600;
+      text-align: center;
+      border-radius: 12px;
+      padding: 0;
+      min-height: 0;
+      transition: all 0.25s ease;
+    }
+
+    .msg.error {
+      padding: 11px 16px;
+      color: #e11d48;
+      background: rgba(225, 29, 72, 0.08);
+      border: 1px solid rgba(225, 29, 72, 0.20);
+    }
+
+    .msg.success {
+      padding: 11px 16px;
+      color: #16a34a;
+      background: rgba(22, 163, 74, 0.08);
+      border: 1px solid rgba(22, 163, 74, 0.20);
+    }
+
+    @media (max-width: 480px) {
+      .auth-card {
+        padding: 32px 24px;
+        border-radius: 20px;
+      }
+      .brand-title {
+        font-size: 24px;
+      }
+    }
   </style>
 </head>
 
 <body>
 
-<div class="aurora"><span></span><span></span><span></span></div>
+<div class="bg-mesh">
+  <span></span>
+  <span></span>
+  <span></span>
+</div>
 
-<div class="card">
+<div class="auth-card">
 
-  <div class="brand">
-    <div class="brand-mark">
-      <img src="icon-512.png" alt="Nexa" />
+  <div class="brand-header">
+    <div class="brand-logo-wrap">
+      <img src="icon-512.png" alt="Nexa Messenger">
     </div>
-    <div class="brand-name">Nexa</div>
-    <div class="brand-sub">Welcome back. Sign in to continue.</div>
+    <h1 class="brand-title">Nexa</h1>
+    <p class="brand-sub">Welcome back. Sign in to your workspace.</p>
   </div>
 
   <div class="input-group">
-    <input type="email" id="email" placeholder="Email Address">
+    <label class="input-label" for="email">Email Address</label>
+    <div class="input-field-wrap">
+      <div class="input-icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="20" height="16" x="2" y="4" rx="2"/>
+          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+        </svg>
+      </div>
+      <input type="email" id="email" placeholder="name@example.com" autocomplete="email" required>
+    </div>
   </div>
 
   <div class="input-group">
-    <input type="password" id="password" placeholder="Password" style="padding-right: 48px;">
-    <button type="button" class="password-toggle-btn" id="togglePasswordBtn" title="Toggle password visibility">
-      <svg id="eyeIcon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-    </button>
+    <label class="input-label" for="password">Password</label>
+    <div class="input-field-wrap">
+      <div class="input-icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" style="padding-right: 46px;" required>
+      <button type="button" class="password-toggle-btn" id="togglePasswordBtn" title="Toggle password visibility">
+        <svg id="eyeIcon" viewBox="0 0 24 24">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
-  <div class="forgot">
-    <a href="#" id="forgotPassword">Forgot Password?</a>
+  <div class="form-extras">
+    <a href="#" id="forgotPassword" class="forgot-link">Forgot password?</a>
   </div>
 
-  <button id="loginBtn">Sign In</button>
+  <button id="loginBtn" class="btn-submit">
+    <span>Sign In</span>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+    </svg>
+  </button>
 
-  <div class="signup-link">
+  <div class="auth-footer">
     Don't have an account? <a href="signup.html">Sign Up</a>
   </div>
 
@@ -318,7 +588,7 @@ async function login(){
   }
 
   btn.disabled = true;
-  btn.innerText = "Logging in...";
+  btn.innerHTML = `<span>Signing in...</span>`;
 
   try {
 
@@ -331,7 +601,7 @@ async function login(){
         await signOut(auth);
         showMsg("🚫 Your account has been banned by an administrator.", "error");
         btn.disabled = false;
-        btn.innerText = "Login";
+        btn.innerHTML = `<span>Sign In</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
         return;
       }
     } catch (docErr) {
@@ -358,9 +628,8 @@ async function login(){
   }
 
   btn.disabled = false;
-  btn.innerText = "Login";
+  btn.innerHTML = `<span>Sign In</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
 }
-
 
 async function resetPassword(e){
 
@@ -369,7 +638,7 @@ async function resetPassword(e){
   const email = emailInput ? emailInput.value.trim() : "";
 
   if(!email){
-    showMsg("Enter your email first", "error");
+    showMsg("Enter your email address first", "error");
     return;
   }
 
@@ -387,9 +656,7 @@ async function resetPassword(e){
   }
 }
 
-
 </script>
-
 
 </body>
 </html>

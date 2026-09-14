@@ -547,7 +547,7 @@
 
 
     <div id="disappearingNotice" class="disappearing-banner" style="display: none;">
-      <span class="disappearing-banner-icon">⏱️</span>
+      <span class="disappearing-banner-icon"><i data-lucide="clock" style="width: 15px; height: 15px;"></i></span>
       <span id="disappearingBannerText">Disappearing messages are turned on</span>
     </div>
 
@@ -713,9 +713,9 @@
     <!-- ACTIONS BAR FOR OTHER USERS STORIES -->
     <div class="story-viewer-actions" id="storyViewerActions">
       <input type="text" class="story-reply-inp" id="storyReplyInput" placeholder="Reply to story…">
-      <button class="story-action-btn" onclick="sendStoryReply()" title="Send reply">➤</button>
-      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare story">🔁</button>
-      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like story">❤️</button>
+      <button class="story-action-btn" onclick="sendStoryReply()" title="Send reply"><i data-lucide="send" style="width:16px;height:16px;"></i></button>
+      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare story"><i data-lucide="repeat" style="width:16px;height:16px;"></i></button>
+      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like story"><i data-lucide="heart" style="width:16px;height:16px;"></i></button>
     </div>
   </div>
 </div>
@@ -807,7 +807,7 @@
       <!-- Sticker toolbar button (like WhatsApp's sticker icon). Always
            clickable: when no media is picked yet, tapping it opens the image
            picker (handled in toggleStickerTray) instead of silently failing. -->
-      <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker">😀</button>
+      <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker"><i data-lucide="smile" style="width:18px;height:18px;"></i></button>
 
       <!-- Sticker tray popup -->
       <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
@@ -935,10 +935,10 @@
   </div>
   <div class="info-section">
     <div class="info-sec-title">Actions</div>
-    <div class="info-action" onclick="openStarredDrawer()"><span class="ia-icon">⭐</span><span class="ia-text">Starred Messages</span></div>
-    <div class="info-action" onclick="muteChat()"><span class="ia-icon">🔕</span><span class="ia-text" id="muteText">Mute Notifications</span></div>
-    <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon">⭐</span><span class="ia-text">Favourite Chat</span></div>
-    <div class="info-action" onclick="clearChat()"><span class="ia-icon">🗑️</span><span class="ia-text">Clear Chat</span></div>
+    <div class="info-action" onclick="openStarredDrawer()"><span class="ia-icon"><i data-lucide="star" style="width:16px;height:16px;"></i></span><span class="ia-text">Starred Messages</span></div>
+    <div class="info-action" onclick="muteChat()"><span class="ia-icon" id="muteIcon"><i data-lucide="bell-off" style="width:16px;height:16px;"></i></span><span class="ia-text" id="muteText">Mute Notifications</span></div>
+    <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon"><i data-lucide="heart" style="width:16px;height:16px;"></i></span><span class="ia-text">Favourite Chat</span></div>
+    <div class="info-action danger" onclick="clearChat()"><span class="ia-icon"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></span><span class="ia-text">Clear Chat</span></div>
   </div>
 </div>
 

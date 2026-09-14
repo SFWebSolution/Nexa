@@ -1681,17 +1681,13 @@ function renderSettingsTab() {
   grid.innerHTML = "";
 
   const themes = [
-    { id: 'light', name: 'Nexa Light', color: '#eef2f7' },
-    { id: 'nexa', name: 'Nexa Blue (Dark)', color: '#2b8fff' },
-    { id: 'midnight', name: 'Midnight', color: '#3b82f6' },
-    { id: 'black', name: 'Nexa Black', color: '#0a0a0a' },
-    { id: 'rose', name: 'Rose', color: '#e11d48' },
-    { id: 'lavender', name: 'Lavender', color: '#a855f7' }
+    { id: 'light', name: 'Clean White', color: '#ffffff', desc: 'Crisp white with deep blue accents' },
+    { id: 'midnight', name: 'Deep Blue', color: '#091226', desc: 'Rich midnight navy with vibrant blue accents' }
   ];
 
   themes.forEach(t => {
     const card = document.createElement("div");
-    card.className = "theme-card-option" + (currentTheme === t.id ? " active" : "");
+    card.className = "theme-card-option" + ((currentTheme === t.id || (t.id === 'midnight' && currentTheme === 'nexa')) ? " active" : "");
     card.onclick = () => {
       setTheme(t.id);
       renderSettingsTab();
@@ -1699,9 +1695,9 @@ function renderSettingsTab() {
     };
 
     card.innerHTML = `
-      <div class="theme-swatch" style="background: ${t.color}"></div>
+      <div class="theme-swatch" style="background: ${t.color}; border: 1px solid rgba(11,87,208,0.2);"></div>
       <div class="theme-option-name">${t.name}</div>
-      ${currentTheme === t.id ? '<div class="theme-check">✓</div>' : ''}
+      ${(currentTheme === t.id || (t.id === 'midnight' && currentTheme === 'nexa')) ? '<div class="theme-check">✓</div>' : ''}
     `;
     grid.appendChild(card);
   });
@@ -3358,12 +3354,26 @@ function buildMessage(id, msg, fromMe) {
   // Handle regular reply
   if (msg.replyTo) {
     const replied = allMessages.find(m => m.id === msg.replyTo);
-    // Prefer the loaded original; fall back to the denormalized fields stored
-    // on the reply message itself so the preview shows on both sides.
-    const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
-    const rFrom = replied ? replied.from : (msg.replyToFrom || null);
-    const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-    inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
+    let rText = msg.replyToText;
+    if (replied) {
+      if (replied.text) {
+        rText = (replied.image ? "📷 " : replied.video ? "🎥 " : "") + replied.text;
+      } else if (replied.image) {
+        rText = "📷 Photo";
+      } else if (replied.video) {
+        rText = "🎥 Video";
+      } else if (replied.audio) {
+        rText = "🎤 Voice message";
+      } else if (replied.file) {
+        rText = `📄 ${replied.fileName || "Document"}`;
+      } else {
+        rText = "(message)";
+      }
+    }
+    if (!rText) rText = "(message)";
+    const rFrom = replied ? (replied.from || replied.senderUid) : (msg.replyToFrom || null);
+    const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(msg.replyToName || selectedUser?.displayName || "User");
+    inner += `<div class="reply-quote" onclick="scrollToMsg('${msg.replyTo}')" title="Jump to message"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // Forwarded label
@@ -3549,14 +3559,39 @@ function replyMsg(msgId) {
   messageRepliedTo = msg;
   const isMine = (msg.from || msg.senderUid) === currentUser.uid;
   const author = isMine ? "You" : escapeHtml(msg.senderName || selectedUser?.displayName || "User");
+
+  let iconHtml = '<i data-lucide="corner-up-left" style="width:16px;height:16px;"></i>';
+  let thumbHtml = '';
+  let previewText = escapeHtml(msg.text || '');
+
+  if (msg.image) {
+    iconHtml = '<i data-lucide="image" style="width:16px;height:16px;"></i>';
+    thumbHtml = `<img class="reply-strip-thumb" src="${escapeHtml(msg.image)}" alt="Photo">`;
+    previewText = previewText ? `📷 ${previewText}` : '📷 Photo';
+  } else if (msg.video) {
+    iconHtml = '<i data-lucide="video" style="width:16px;height:16px;"></i>';
+    previewText = previewText ? `🎥 ${previewText}` : '🎥 Video';
+  } else if (msg.audio) {
+    iconHtml = '<i data-lucide="mic" style="width:16px;height:16px;"></i>';
+    previewText = '🎤 Voice message';
+  } else if (msg.file) {
+    iconHtml = '<i data-lucide="file-text" style="width:16px;height:16px;"></i>';
+    previewText = `📄 ${escapeHtml(msg.fileName || 'Attachment')}`;
+  } else if (!previewText) {
+    previewText = 'Message';
+  }
+
   document.getElementById("replyStripWrap").innerHTML = `
     <div class="reply-strip">
+      <div class="reply-strip-icon-col">${iconHtml}</div>
       <div class="reply-strip-info">
-        <div class="reply-strip-author">${author}</div>
-        <div class="reply-strip-text">${escapeHtml(msg.text) || "(attachment)"}</div>
+        <div class="reply-strip-author">Replying to ${author}</div>
+        <div class="reply-strip-text">${previewText}</div>
       </div>
-      <button class="reply-strip-close" onclick="clearReply()">✕</button>
+      ${thumbHtml}
+      <button class="reply-strip-close" onclick="clearReply()" title="Cancel reply"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>`;
+  if (window.lucide) lucide.createIcons();
   document.getElementById("text").focus();
   closeCtxMenu();
 }
@@ -4311,6 +4346,15 @@ function openChatInfo() {
   document.getElementById("infoPanel").classList.add("active");
   loadMediaGrid();
   renderThemeGrid();
+  const isMuted = !!mutedChats[selectedUser.uid];
+  const isFav = !!favoritedChats[selectedUser.uid];
+  const muteText = document.getElementById("muteText");
+  if (muteText) muteText.textContent = isMuted ? "Unmute Notifications" : "Mute Notifications";
+  const muteEl = document.getElementById("muteIcon");
+  if (muteEl) muteEl.innerHTML = isMuted ? '<i data-lucide="bell" style="width:16px;height:16px;"></i>' : '<i data-lucide="bell-off" style="width:16px;height:16px;"></i>';
+  const favEl = document.getElementById("favIcon");
+  if (favEl) favEl.innerHTML = isFav ? '<i data-lucide="heart" style="width:16px;height:16px;fill:currentColor;color:#e11d48;"></i>' : '<i data-lucide="heart" style="width:16px;height:16px;"></i>';
+  if (window.lucide) lucide.createIcons();
 }
 
 // Render the contact profile header at the top of the Chat Info panel: avatar
@@ -4373,12 +4417,8 @@ function loadMediaGrid() {
    THEMES
    ========================================================================= */
 const THEMES = {
-  light: { label: '☀ Nexa Light', attr: 'light', tier: 'classic' },
-  nexa: { label: '🔵 Nexa Blue (Dark)', attr: 'nexa', tier: 'classic' },
-  midnight: { label: '🌙 Midnight', attr: 'midnight', tier: 'classic' },
-  black: { label: '🖤 Nexa Black', attr: 'black', tier: 'premium' },
-  rose: { label: '🌹 Rose', attr: 'rose', tier: 'classic' },
-  lavender: { label: '💜 Lavender', attr: 'lavender', tier: 'classic' }
+  light: { label: '⚪ Clean White', attr: 'light', tier: 'classic' },
+  midnight: { label: '🔵 Deep Blue', attr: 'midnight', tier: 'classic' }
 };
 
 let currentTheme = 'light';
@@ -4447,6 +4487,9 @@ function handleFontPickerOverlayClick(ev) {
 }
 
 function setTheme(themeName) {
+  if (themeName === 'nexa' || themeName === 'black' || themeName === 'rose' || themeName === 'lavender') {
+    themeName = 'midnight';
+  }
   const theme = THEMES[themeName];
   if (!theme) return;
   currentTheme = themeName;
@@ -4836,14 +4879,26 @@ function resetCurrentChatWallpaper() {
 function muteChat() {
   if (!selectedUser) return;
   mutedChats[selectedUser.uid] = !mutedChats[selectedUser.uid];
-  document.getElementById("muteText").textContent = mutedChats[selectedUser.uid] ? "Unmute Notifications" : "Mute Notifications";
+  const isMuted = mutedChats[selectedUser.uid];
+  const textEl = document.getElementById("muteText");
+  if (textEl) textEl.textContent = isMuted ? "Unmute Notifications" : "Mute Notifications";
+  const muteEl = document.getElementById("muteIcon");
+  if (muteEl) {
+    muteEl.innerHTML = isMuted ? '<i data-lucide="bell" style="width:16px;height:16px;"></i>' : '<i data-lucide="bell-off" style="width:16px;height:16px;"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
   savePrefs();
 }
 
 function favoriteChat() {
   if (!selectedUser) return;
   favoritedChats[selectedUser.uid] = !favoritedChats[selectedUser.uid];
-  document.getElementById("favIcon").textContent = favoritedChats[selectedUser.uid] ? "💛" : "⭐";
+  const isFav = favoritedChats[selectedUser.uid];
+  const favEl = document.getElementById("favIcon");
+  if (favEl) {
+    favEl.innerHTML = isFav ? '<i data-lucide="heart" style="width:16px;height:16px;fill:currentColor;color:#e11d48;"></i>' : '<i data-lucide="heart" style="width:16px;height:16px;"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
   savePrefs();
   renderUsers();
 }
@@ -7760,8 +7815,9 @@ function loadPrefs() {
   try {
     const prefs = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");
     currentTheme = prefs.theme || 'light';
-    // Fallback: if a saved theme was removed from the picker, reset to the
-    // default so the user isn't left with no theme applied.
+    if (currentTheme === 'nexa' || currentTheme === 'black' || currentTheme === 'rose' || currentTheme === 'lavender') {
+      currentTheme = 'midnight';
+    }
     if (!THEMES[currentTheme]) currentTheme = 'light';
     fontFamily = prefs.fontFamily || 'plus-jakarta';
     if (!FONT_FAMILIES.some(x => x.key === fontFamily)) fontFamily = 'plus-jakarta';
@@ -12046,15 +12102,16 @@ showCtxMenu = function(e, id, msg) {
       <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🔥')` : `addQuickReact('${id}', '🔥')`}">🔥</button>
     </div>
     <div class="ctx-divider"></div>
-    <div class="ctx-item" onclick="replyMsg('${id}')">↩ Reply</div>
-    <div class="ctx-item" onclick="openForwardModal('${id}')">⤳ Forward</div>
-    <div class="ctx-item" onclick="toggleStarMessage('${id}')">${starred ? '★ Unstar' : '⭐ Star'}</div>
-    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
-    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
-    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
-    ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
+    <div class="ctx-item" onclick="replyMsg('${id}')"><i data-lucide="corner-up-left"></i> Reply</div>
+    <div class="ctx-item" onclick="openForwardModal('${id}')"><i data-lucide="share-2"></i> Forward</div>
+    <div class="ctx-item" onclick="toggleStarMessage('${id}')"><i data-lucide="star"></i> ${starred ? 'Unstar' : 'Star'}</div>
+    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy"></i> Copy</div>` : ''}
+    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin"></i> Pin Message</div>` : ''}
+    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="edit-3"></i> Edit</div>` : ''}
+    ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2"></i> Delete</div>` : ''}
   `;
   menu.classList.add("active");
+  if (window.lucide) lucide.createIcons();
   menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + "px";
   menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + "px";
   setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
