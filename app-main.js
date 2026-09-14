@@ -1182,11 +1182,19 @@ function renderUsers() {
   if (!q) {
     list = list.filter(u => !deletedChats[u.uid]);
   } else {
-    list = list.filter(u =>
-      (u.displayName || "").toLowerCase().includes(q) ||
-      ((u.username || "").toLowerCase().includes(q) && q !== "") ||
-      ((u.phone || "").replace(/\D/g, "").includes(q.replace(/\D/g, "")) && q.replace(/\D/g, "") !== "")
-  );
+    const digits = q.replace(/\D/g, "");
+    list = list.filter(u => {
+      const name = (u.displayName || "").toLowerCase();
+      const handle = (u.username || "").toLowerCase();
+      // "@name" or plain handles sort by username first so people can be found
+      // by the handle they share, even without a prior chat (deleted chats are
+      // NOT hidden during a search, so results still appear).
+      if (q.startsWith("@")) {
+        const bare = q.slice(1);
+        return handle === bare || handle.includes(bare) || name.includes(bare);
+      }
+      return name.includes(q) || handle.includes(q) || (digits && (u.phone || "").replace(/\D/g, "").includes(digits));
+    });
   }
 
   const userMetrics = new Map();

@@ -193,12 +193,13 @@
             list.forEach(function (u) {
               var photo = okUrl(u.photo);
               var name = esc(u.displayName || "User");
+              var handle = (u.username && u.username !== (u.displayName || "").toLowerCase()) ? '@' + esc(u.username) : '';
               var prev = esc(texts[u.uid] || "");
               var time = times[u.uid] ? esc(new Date(times[u.uid]).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })) : "";
               var badge = (unread[u.uid] || 0) > 0 ? '<div class="unread-badge">' + (unread[u.uid] > 99 ? "99+" : unread[u.uid]) + "</div>" : "";
               html += '<div class="user-item" data-uid="' + esc(u.uid) + '">' +
                 '<div class="user-avatar-wrap"><img src="' + esc(photo) + '" class="user-avatar" loading="lazy" decoding="async" onerror="this.src=\'https://i.imgur.com/HeIi0wU.png\'"><div class="status-dot" id="dot-' + esc(u.uid) + '"></div></div>' +
-                '<div class="user-info"><div class="user-name">' + name + '</div><div class="user-preview" id="prev-' + esc(u.uid) + '">' + prev + '</div></div>' +
+                '<div class="user-info"><div class="user-name">' + name + '</div><div class="user-handle" style="' + (handle ? '' : 'display:none;') + '">' + handle + '</div><div class="user-preview" id="prev-' + esc(u.uid) + '">' + prev + '</div></div>' +
                 '<div class="user-meta"><div class="user-time">' + time + '</div>' + badge + '</div>' +
                 '</div>';
             });
@@ -211,7 +212,9 @@
                 var q = (document.getElementById("userSearch").value || "").toLowerCase();
                 box.querySelectorAll(".user-item").forEach(function (it) {
                   var nm = (it.querySelector(".user-name") || {}).textContent || "";
-                  it.style.display = nm.toLowerCase().indexOf(q) > -1 ? "" : "none";
+                  var hh = (it.querySelector(".user-handle") || {}).textContent || "";
+                  var hay = (nm + " " + hh).toLowerCase();
+                  it.style.display = hay.indexOf(q) > -1 ? "" : "none";
                 });
               };
             }
@@ -1031,7 +1034,7 @@
       <div class="notif-title"><i data-lucide="at-sign" style="width:15px;height:15px;margin-right:6px;color:var(--primary);"></i> Change Username</div>
       <button class="notif-close" onclick="closeChangeUsernameModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
-    <div class="cuu-subtitle">You can change your @username <strong>once</strong>. Choose carefully — after this it is locked forever.</div>
+    <div class="cuu-subtitle">You can change your @username <strong>once</strong>. Others find you by <strong>searching this handle</strong> — choose carefully, it locks forever.</div>
     <div class="cuu-field-wrap">
       <span class="cuu-at">@</span>
       <input type="text" id="changeUsernameInput" class="cuu-input" placeholder="new_username" maxlength="20" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();saveUsernameChange();}">
