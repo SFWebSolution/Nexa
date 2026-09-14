@@ -2880,14 +2880,15 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
 
   container.innerHTML = `
     <button type="button" class="vn-btn-play" title="Play voice note">
-      <svg class="vn-icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      <svg class="vn-icon-pause" viewBox="0 0 24 24" style="display: none;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      <svg class="vn-icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></svg>
+      <svg class="vn-icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="5" y="4" width="5.5" height="16" rx="1.6"/><rect x="13.5" y="4" width="5.5" height="16" rx="1.6"/></svg>
     </button>
     <div class="vn-body">
-      <div class="vn-waveform-wrap">${barsHtml}</div>
+      <button type="button" class="vn-waveform-wrap" aria-label="Seek in voice note">${barsHtml}</button>
       <div class="vn-meta">
         <span class="vn-time">0:00</span>
-        <button type="button" class="vn-speed-btn" title="Playback speed">1x</button>
+        <span class="vn-meta-spacer"></span>
+        <button type="button" class="vn-speed-btn" title="Playback speed">1×</button>
       </div>
     </div>
   `;
@@ -2920,13 +2921,14 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
 
   audio.addEventListener("loadedmetadata", () => {
     timeEl.textContent = fmtVnTime(audio.duration);
+    timeEl.title = `Duration ${fmtVnTime(audio.duration)}`;
   });
 
   audio.addEventListener("timeupdate", () => {
     if (!audio.duration) return;
     const progress = audio.currentTime / audio.duration;
-    timeEl.textContent = `${fmtVnTime(audio.currentTime)} / ${fmtVnTime(audio.duration)}`;
-    
+    timeEl.textContent = fmtVnTime(audio.currentTime);
+
     const playedBars = Math.floor(progress * barCount);
     bars.forEach((b, idx) => {
       if (idx <= playedBars) {
@@ -2940,6 +2942,12 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   audio.addEventListener("pause", () => {
     playIcon.style.display = "block";
     pauseIcon.style.display = "none";
+    timeEl.classList.add("vn-time-idle");
+    container.classList.remove("vn-playing");
+  });
+
+  audio.addEventListener("play", () => {
+    timeEl.classList.remove("vn-time-idle");
   });
 
   window.addEventListener("nexa-audio-pause", (e) => {
@@ -2949,6 +2957,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   });
 
   audio.addEventListener("ended", () => {
+    container.classList.remove("vn-playing");
     playIcon.style.display = "block";
     pauseIcon.style.display = "none";
     bars.forEach(b => b.classList.remove("played"));
@@ -2969,6 +2978,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
       // frozen while it streams in.
       playBtn.classList.add("vn-loading");
       audio.play().then(() => {
+        container.classList.add("vn-playing");
         playBtn.classList.remove("vn-loading");
         playIcon.style.display = "none";
         pauseIcon.style.display = "block";
@@ -2978,6 +2988,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
       });
     } else {
       audio.pause();
+      container.classList.remove("vn-playing");
       playIcon.style.display = "block";
       pauseIcon.style.display = "none";
       if (activeAudioPlayer === audio) activeAudioPlayer = null;
@@ -2985,7 +2996,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   });
 
   // Clear the buffering hint the moment playback actually starts or stalls out.
-  audio.addEventListener("playing", () => playBtn.classList.remove("vn-loading"));
+  audio.addEventListener("playing", () => { playBtn.classList.remove("vn-loading"); container.classList.add("vn-playing"); });
   audio.addEventListener("waiting", () => { if (!audio.paused) playBtn.classList.add("vn-loading"); });
 
   waveWrap.addEventListener("click", (e) => {
@@ -3003,7 +3014,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
     if (playbackRate === 1.0) playbackRate = 1.5;
     else if (playbackRate === 1.5) playbackRate = 2.0;
     else playbackRate = 1.0;
-    speedBtn.textContent = playbackRate + "x";
+    speedBtn.textContent = playbackRate + "×";
     audio.playbackRate = playbackRate;
   });
 
