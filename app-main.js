@@ -1681,13 +1681,13 @@ function renderSettingsTab() {
   grid.innerHTML = "";
 
   const themes = [
-    { id: 'light', name: 'Clean White', color: '#ffffff', desc: 'Crisp white with deep blue accents' },
-    { id: 'midnight', name: 'Deep Blue', color: '#091226', desc: 'Rich midnight navy with vibrant blue accents' }
+    { id: 'light', name: 'Nexa White', color: '#eef2f7', icon: 'sun' },
+    { id: 'nexa', name: 'Nexa Deep Blue', color: '#2b8fff', icon: 'moon' }
   ];
 
   themes.forEach(t => {
     const card = document.createElement("div");
-    card.className = "theme-card-option" + ((currentTheme === t.id || (t.id === 'midnight' && currentTheme === 'nexa')) ? " active" : "");
+    card.className = "theme-card-option" + (currentTheme === t.id ? " active" : "");
     card.onclick = () => {
       setTheme(t.id);
       renderSettingsTab();
@@ -1695,12 +1695,13 @@ function renderSettingsTab() {
     };
 
     card.innerHTML = `
-      <div class="theme-swatch" style="background: ${t.color}; border: 1px solid rgba(11,87,208,0.2);"></div>
-      <div class="theme-option-name">${t.name}</div>
-      ${(currentTheme === t.id || (t.id === 'midnight' && currentTheme === 'nexa')) ? '<div class="theme-check">✓</div>' : ''}
+      <div class="theme-swatch" style="background: ${t.color}"></div>
+      <div class="theme-option-name"><i data-lucide="${t.icon}" style="width: 13px; height: 13px;"></i> ${t.name}</div>
+      ${currentTheme === t.id ? '<div class="theme-check"><i data-lucide="check" style="width: 12px; height: 12px;"></i></div>' : ''}
     `;
     grid.appendChild(card);
   });
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderProfileTab() {
@@ -1751,8 +1752,9 @@ function loadProfileNote() {
       display.innerHTML = `
         <div class="note-active-card">
           <div class="note-active-text">${linkify(data.text)}</div>
-          <div class="note-active-meta">⏱ Expires in ${formatTimeRemaining(remaining)} • <a href="#" onclick="deleteProfileNote(); return false;" style="color: var(--danger, #ef4444);">Remove</a></div>
+          <div class="note-active-meta"><i data-lucide="clock" style="width: 12px; height: 12px; vertical-align: -1px;"></i> Expires in ${formatTimeRemaining(remaining)} • <a href="#" onclick="deleteProfileNote(); return false;" style="color: var(--danger, #ef4444);">Remove</a></div>
         </div>`;
+      if (window.lucide) lucide.createIcons();
       if (input) input.value = data.text;
     }, err => console.warn("Profile note listener error:", err));
 }
@@ -3260,7 +3262,7 @@ function buildStoryReplyPreview(msg) {
   return `
     <div class="whatsapp-story-reply-card" onclick="openStoryViewer('${msg.storyReplyUid}', '${msg.storyReplyId}')">
       <div class="story-reply-info-col">
-        <div class="story-reply-author">↩ ${authorName}</div>
+        <div class="story-reply-author"><i data-lucide="corner-up-left" style="width: 12px; height: 12px; vertical-align: -1px; display: inline-flex;"></i> ${authorName}</div>
         <div class="story-reply-subtext">${previewSubtext}</div>
       </div>
       ${thumbnailHtml}
@@ -3354,32 +3356,18 @@ function buildMessage(id, msg, fromMe) {
   // Handle regular reply
   if (msg.replyTo) {
     const replied = allMessages.find(m => m.id === msg.replyTo);
-    let rText = msg.replyToText;
-    if (replied) {
-      if (replied.text) {
-        rText = (replied.image ? "📷 " : replied.video ? "🎥 " : "") + replied.text;
-      } else if (replied.image) {
-        rText = "📷 Photo";
-      } else if (replied.video) {
-        rText = "🎥 Video";
-      } else if (replied.audio) {
-        rText = "🎤 Voice message";
-      } else if (replied.file) {
-        rText = `📄 ${replied.fileName || "Document"}`;
-      } else {
-        rText = "(message)";
-      }
-    }
-    if (!rText) rText = "(message)";
-    const rFrom = replied ? (replied.from || replied.senderUid) : (msg.replyToFrom || null);
-    const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(msg.replyToName || selectedUser?.displayName || "User");
-    inner += `<div class="reply-quote" onclick="scrollToMsg('${msg.replyTo}')" title="Jump to message"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
+    // Prefer the loaded original; fall back to the denormalized fields stored
+    // on the reply message itself so the preview shows on both sides.
+    const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
+    const rFrom = replied ? replied.from : (msg.replyToFrom || null);
+    const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
+    inner += `<div class="reply-quote"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // Forwarded label
   if (msg.forwarded) {
     const fFrom = msg.forwardedFrom ? ` from ${escapeHtml(msg.forwardedFrom)}` : '';
-    inner += `<div class="forwarded-label">⤳ Forwarded${fFrom}</div>`;
+    inner += `<div class="forwarded-label"><i data-lucide="forward" style="width: 12px; height: 12px;"></i> Forwarded${fFrom}</div>`;
   }
 
   // In-chat group/channel invite card (WhatsApp-style Follow/Join
@@ -3559,40 +3547,17 @@ function replyMsg(msgId) {
   messageRepliedTo = msg;
   const isMine = (msg.from || msg.senderUid) === currentUser.uid;
   const author = isMine ? "You" : escapeHtml(msg.senderName || selectedUser?.displayName || "User");
-
-  let iconHtml = '<i data-lucide="corner-up-left" style="width:16px;height:16px;"></i>';
-  let thumbHtml = '';
-  let previewText = escapeHtml(msg.text || '');
-
-  if (msg.image) {
-    iconHtml = '<i data-lucide="image" style="width:16px;height:16px;"></i>';
-    thumbHtml = `<img class="reply-strip-thumb" src="${escapeHtml(msg.image)}" alt="Photo">`;
-    previewText = previewText ? `📷 ${previewText}` : '📷 Photo';
-  } else if (msg.video) {
-    iconHtml = '<i data-lucide="video" style="width:16px;height:16px;"></i>';
-    previewText = previewText ? `🎥 ${previewText}` : '🎥 Video';
-  } else if (msg.audio) {
-    iconHtml = '<i data-lucide="mic" style="width:16px;height:16px;"></i>';
-    previewText = '🎤 Voice message';
-  } else if (msg.file) {
-    iconHtml = '<i data-lucide="file-text" style="width:16px;height:16px;"></i>';
-    previewText = `📄 ${escapeHtml(msg.fileName || 'Attachment')}`;
-  } else if (!previewText) {
-    previewText = 'Message';
-  }
-
   document.getElementById("replyStripWrap").innerHTML = `
     <div class="reply-strip">
-      <div class="reply-strip-icon-col">${iconHtml}</div>
+      <i data-lucide="corner-up-left" class="reply-strip-ico" style="width: 15px; height: 15px; flex-shrink: 0; stroke-width: 2.4;"></i>
       <div class="reply-strip-info">
         <div class="reply-strip-author">Replying to ${author}</div>
-        <div class="reply-strip-text">${previewText}</div>
+        <div class="reply-strip-text">${escapeHtml(msg.text) || "(attachment)"}</div>
       </div>
-      ${thumbHtml}
-      <button class="reply-strip-close" onclick="clearReply()" title="Cancel reply"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+      <button class="reply-strip-close" onclick="clearReply()" title="Cancel reply"><i data-lucide="x" style="width: 15px; height: 15px;"></i></button>
     </div>`;
-  if (window.lucide) lucide.createIcons();
   document.getElementById("text").focus();
+  if (window.lucide) lucide.createIcons();
   closeCtxMenu();
 }
 
@@ -3646,15 +3611,16 @@ function showCtxMenu(e, id, msg) {
       <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🔥')` : `addQuickReact('${id}', '🔥')`}">🔥</button>
     </div>
     <div class="ctx-divider"></div>
-    <div class="ctx-item" onclick="replyMsg('${id}')">↩ Reply</div>
-    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')">📋 Copy</div>` : ''}
-    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')">📌 Pin Message</div>` : ''}
-    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')">✏ Edit</div>` : ''}
-    ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}">🗑 Delete</div>` : ''}
+    <div class="ctx-item" onclick="replyMsg('${id}')"><i data-lucide="corner-up-left" style="width: 15px; height: 15px;"></i> Reply</div>
+    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy" style="width: 15px; height: 15px;"></i> Copy</div>` : ''}
+    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin" style="width: 15px; height: 15px;"></i> Pin</div>` : ''}
+    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
+    ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Delete</div>` : ''}
   `;
   menu.classList.add("active");
   menu.style.top = Math.min(e.clientY, window.innerHeight - 240) + "px";
   menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + "px";
+  if (window.lucide) lucide.createIcons();
   setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
 }
 
@@ -4265,7 +4231,7 @@ async function sendVoice() {
   if (!recordingBlob) { showNotifToast("No recording to send", "error"); return; }
 
   const btn = document.getElementById("vSendBtn");
-  if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="send" style="width: 15px; height: 15px;"></i> Sending…'; if (window.lucide) lucide.createIcons(); }
 
   // Capture the blob/mime/duration BEFORE cancelVoice() clears them.
   const blob = recordingBlob;
@@ -4315,7 +4281,7 @@ async function sendVoice() {
     }
     showNotifToast("Failed to send voice note: " + e.message, "error");
   }
-  if (btn) { btn.disabled = false; btn.textContent = "✓ Send"; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="send" style="width: 15px; height: 15px;"></i> Send'; if (window.lucide) lucide.createIcons(); }
 }
 
 function cancelVoice() {
@@ -4346,15 +4312,6 @@ function openChatInfo() {
   document.getElementById("infoPanel").classList.add("active");
   loadMediaGrid();
   renderThemeGrid();
-  const isMuted = !!mutedChats[selectedUser.uid];
-  const isFav = !!favoritedChats[selectedUser.uid];
-  const muteText = document.getElementById("muteText");
-  if (muteText) muteText.textContent = isMuted ? "Unmute Notifications" : "Mute Notifications";
-  const muteEl = document.getElementById("muteIcon");
-  if (muteEl) muteEl.innerHTML = isMuted ? '<i data-lucide="bell" style="width:16px;height:16px;"></i>' : '<i data-lucide="bell-off" style="width:16px;height:16px;"></i>';
-  const favEl = document.getElementById("favIcon");
-  if (favEl) favEl.innerHTML = isFav ? '<i data-lucide="heart" style="width:16px;height:16px;fill:currentColor;color:#e11d48;"></i>' : '<i data-lucide="heart" style="width:16px;height:16px;"></i>';
-  if (window.lucide) lucide.createIcons();
 }
 
 // Render the contact profile header at the top of the Chat Info panel: avatar
@@ -4383,7 +4340,8 @@ function renderInfoContact() {
   noteEl.innerHTML = '<span style="color:var(--text-3);font-size:12px;">…</span>';
   fetchUserNote(u.uid).then(noteText => {
     if (!noteEl) return;
-    noteEl.innerHTML = noteText ? ("📝 " + linkify(noteText)) : "";
+    noteEl.innerHTML = noteText ? ('<i data-lucide="file-text" style="width: 12px; height: 12px; vertical-align: -1px; color: var(--text-3);"></i> ' + linkify(noteText)) : "";
+    if (window.lucide) lucide.createIcons();
   });
 }
 
@@ -4417,8 +4375,8 @@ function loadMediaGrid() {
    THEMES
    ========================================================================= */
 const THEMES = {
-  light: { label: '⚪ Clean White', attr: 'light', tier: 'classic' },
-  midnight: { label: '🔵 Deep Blue', attr: 'midnight', tier: 'classic' }
+  light: { label: 'Nexa White', attr: 'light', tier: 'classic' },
+  nexa: { label: 'Nexa Deep Blue', attr: 'nexa', tier: 'classic' }
 };
 
 let currentTheme = 'light';
@@ -4465,10 +4423,11 @@ function renderFontPickerGrid() {
     card.className = 'font-picker-card' + (fontFamily === f.key ? ' active' : '');
     card.innerHTML = '<div class="fp-card-name">' + f.label + '</div>' +
                       '<div class="fp-card-sample" style="font-family:' + f.family + '">' + f.sample + '</div>' +
-                      (fontFamily === f.key ? '<div class="fp-card-check">✓ Applied</div>' : '');
+                      (fontFamily === f.key ? '<div class="fp-card-check"><i data-lucide="check" style="width: 12px; height: 12px;"></i> Applied</div>' : '');
     card.onclick = () => setFontFamily(f.key);
     grid.appendChild(card);
   });
+  if (window.lucide) lucide.createIcons();
 }
 
 function openFontPickerModal() {
@@ -4487,9 +4446,6 @@ function handleFontPickerOverlayClick(ev) {
 }
 
 function setTheme(themeName) {
-  if (themeName === 'nexa' || themeName === 'black' || themeName === 'rose' || themeName === 'lavender') {
-    themeName = 'midnight';
-  }
   const theme = THEMES[themeName];
   if (!theme) return;
   currentTheme = themeName;
@@ -4500,6 +4456,8 @@ function setTheme(themeName) {
   } else {
     document.documentElement.setAttribute('data-theme', theme.attr);
   }
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if (tc) tc.setAttribute('content', themeName === 'nexa' ? '#060c1e' : '#ffffff');
   savePrefs();
 }
 
@@ -4510,10 +4468,12 @@ function renderThemeGrid() {
   Object.entries(THEMES).forEach(([key, theme]) => {
     const btn = document.createElement('button');
     btn.className = `theme-btn ${currentTheme === key ? 'active' : ''}`;
-    btn.textContent = theme.label;
+    const icon = key === 'nexa' ? 'moon' : 'sun';
+    btn.innerHTML = `<i data-lucide="${icon}" style="width: 14px; height: 14px;"></i> ${theme.label}`;
     btn.onclick = () => { setTheme(key); renderThemeGrid(); };
     grid.appendChild(btn);
   });
+  if (window.lucide) lucide.createIcons();
 }
 
 /* =========================================================================
@@ -4879,26 +4839,19 @@ function resetCurrentChatWallpaper() {
 function muteChat() {
   if (!selectedUser) return;
   mutedChats[selectedUser.uid] = !mutedChats[selectedUser.uid];
-  const isMuted = mutedChats[selectedUser.uid];
-  const textEl = document.getElementById("muteText");
-  if (textEl) textEl.textContent = isMuted ? "Unmute Notifications" : "Mute Notifications";
-  const muteEl = document.getElementById("muteIcon");
-  if (muteEl) {
-    muteEl.innerHTML = isMuted ? '<i data-lucide="bell" style="width:16px;height:16px;"></i>' : '<i data-lucide="bell-off" style="width:16px;height:16px;"></i>';
-    if (window.lucide) lucide.createIcons();
-  }
+  document.getElementById("muteText").textContent = mutedChats[selectedUser.uid] ? "Unmute Notifications" : "Mute Notifications";
+  const mi = document.getElementById("muteIcon");
+  if (mi) mi.innerHTML = `<i data-lucide="${mutedChats[selectedUser.uid] ? 'bell' : 'bell-off'}" style="width: 16px; height: 16px;"></i>`;
+  if (window.lucide) lucide.createIcons();
   savePrefs();
 }
 
 function favoriteChat() {
   if (!selectedUser) return;
   favoritedChats[selectedUser.uid] = !favoritedChats[selectedUser.uid];
-  const isFav = favoritedChats[selectedUser.uid];
-  const favEl = document.getElementById("favIcon");
-  if (favEl) {
-    favEl.innerHTML = isFav ? '<i data-lucide="heart" style="width:16px;height:16px;fill:currentColor;color:#e11d48;"></i>' : '<i data-lucide="heart" style="width:16px;height:16px;"></i>';
-    if (window.lucide) lucide.createIcons();
-  }
+  const fi = document.getElementById("favIcon");
+  if (fi) fi.innerHTML = '<i data-lucide="star" style="width: 16px; height: 16px;"></i>';
+  if (window.lucide) lucide.createIcons();
   savePrefs();
   renderUsers();
 }
@@ -5992,7 +5945,8 @@ function openUserProfile() {
   fetchUserNote(u.uid).then(noteText => {
     if (!noteEl) return;
     if (noteText) {
-      noteEl.innerHTML = '📝 ' + linkify(noteText);
+      noteEl.innerHTML = '<i data-lucide="file-text" style="width: 13px; height: 13px; vertical-align: -2px; color: var(--text-3);"></i> ' + linkify(noteText);
+      if (window.lucide) lucide.createIcons();
     } else {
       noteEl.innerHTML = '';
     }
@@ -6281,9 +6235,9 @@ function renderStorySlide(idx) {
   if (isOwnStory) {
     if (statsBar) {
       statsBar.style.display = "flex";
-      document.getElementById("storyViewsText").textContent = `👁 ${viewsList.length} view${viewsList.length === 1 ? '' : 's'}`;
-      document.getElementById("storyLikesText").textContent = `❤ ${likesList.length} like${likesList.length === 1 ? '' : 's'}`;
-      document.getElementById("storyResharesText").textContent = `🔁 ${resharesList.length} reshare${resharesList.length === 1 ? '' : 's'}`;
+      document.getElementById("storyViewsText").innerHTML = `<i data-lucide="eye" style="width: 13px; height: 13px;"></i> ${viewsList.length} view${viewsList.length === 1 ? '' : 's'}`;
+      document.getElementById("storyLikesText").innerHTML = `<i data-lucide="heart" style="width: 13px; height: 13px;"></i> ${likesList.length} like${likesList.length === 1 ? '' : 's'}`;
+      document.getElementById("storyResharesText").innerHTML = `<i data-lucide="repeat" style="width: 13px; height: 13px;"></i> ${resharesList.length} reshare${resharesList.length === 1 ? '' : 's'}`;
     }
     if (actionsBar) actionsBar.style.display = "none";
   } else {
@@ -6294,8 +6248,10 @@ function renderStorySlide(idx) {
     const hasLiked = likesList.includes(currentUser.uid);
     if (likeBtn) {
       likeBtn.classList.toggle("active-like", hasLiked);
+      likeBtn.innerHTML = `<i data-lucide="heart" style="width: 18px; height: 18px;"></i>`;
     }
   }
+  if (window.lucide) lucide.createIcons();
 
   const progressRow = document.getElementById("storyProgressRow");
   progressRow.innerHTML = "";
@@ -7038,7 +6994,7 @@ function renderStickerOnImage() {
         <div class="ws-sticker-label">${isQ ? "❓ Ask a Question" : "➕ Add Yours"}</div>
         <div class="ws-sticker-text">${escapeHtml(s.text)}</div>
       </div>
-      <button class="ws-sticker-remove" onclick="event.stopPropagation(); removeStorySticker()" title="Remove sticker">✕</button>
+      <button class="ws-sticker-remove" onclick="event.stopPropagation(); removeStorySticker()" title="Remove sticker"><i data-lucide="x" style="width: 13px; height: 13px;"></i></button>
     </div>`;
 }
 
@@ -7054,7 +7010,7 @@ function renderStoryStickerPreview() {
       <span class="story-sticker-chip-icon">${icon}</span>
       <span class="story-sticker-chip-label">${label}</span>
       <span class="story-sticker-chip-text">${escapeHtml(s.text)}</span>
-      <button class="story-sticker-chip-remove" onclick="removeStorySticker()" title="Remove">✕</button>
+      <button class="story-sticker-chip-remove" onclick="removeStorySticker()" title="Remove"><i data-lucide="x" style="width: 11px; height: 11px;"></i></button>
     </div>`;
 }
 
@@ -7561,7 +7517,7 @@ function selectMusic(musicData) {
         </div>
         <div class="duration-hint">🎵 Music will play in background</div>
       </div>
-      <button class="music-remove-btn" onclick="removeMusicSelection()" title="Remove music">✕</button>
+      <button class="music-remove-btn" onclick="removeMusicSelection()" title="Remove music"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
     </div>
   `;
   selectedBox.style.display = "block";
@@ -7815,9 +7771,8 @@ function loadPrefs() {
   try {
     const prefs = JSON.parse(localStorage.getItem("nexaPrefs") || "{}");
     currentTheme = prefs.theme || 'light';
-    if (currentTheme === 'nexa' || currentTheme === 'black' || currentTheme === 'rose' || currentTheme === 'lavender') {
-      currentTheme = 'midnight';
-    }
+    // Fallback: if a saved theme was removed from the picker, reset to the
+    // default so the user isn't left with no theme applied.
     if (!THEMES[currentTheme]) currentTheme = 'light';
     fontFamily = prefs.fontFamily || 'plus-jakarta';
     if (!FONT_FAMILIES.some(x => x.key === fontFamily)) fontFamily = 'plus-jakarta';
@@ -8561,13 +8516,13 @@ function buildGroupMessage(id, msg, fromMe) {
   if (msg.replyTo) {
     const rAuthor = escapeHtml(msg.replyToName || (msg.replyToFrom === currentUser.uid ? "You" : "Member"));
     const rText = linkify(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
-    inner += `<div class="reply-quote"><div class="reply-quote-author">${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+    inner += `<div class="reply-quote"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
   }
 
   // 2b. Forwarded label
   if (msg.forwarded) {
     const fFrom = msg.forwardedFrom ? ` from ${escapeHtml(msg.forwardedFrom)}` : '';
-    inner += `<div class="forwarded-label">⤳ Forwarded${fFrom}</div>`;
+    inner += `<div class="forwarded-label"><i data-lucide="forward" style="width: 12px; height: 12px;"></i> Forwarded${fFrom}</div>`;
   }
 
   // 2b2. In-chat group/channel invite card (renders even inside group streams)
@@ -9985,7 +9940,7 @@ function renderChannelPostsList(posts) {
           </div>
         </div>
         ${replyQuoteHtml}
-        ${post.forwarded ? `<div class="forwarded-label" style="margin-bottom: 6px;">⤳ Forwarded${post.forwardedFrom ? ` from ${escapeHtml(post.forwardedFrom)}` : ''}</div>` : ''}
+        ${post.forwarded ? `<div class="forwarded-label" style="margin-bottom: 6px;"><i data-lucide="forward" style="width: 12px; height: 12px;"></i> Forwarded${post.forwardedFrom ? ` from ${escapeHtml(post.forwardedFrom)}` : ''}</div>` : ''}
         ${mediaHtml}
         <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
         <div class="channel-post-footer">
@@ -11444,8 +11399,8 @@ function openForwardModal(msgId) {
   const title = document.querySelector('#forwardModal .comm-modal-title');
   const search = document.getElementById('forwardSearchInput');
   const sendBtn = document.getElementById('forwardSendBtn');
-  if (title) title.textContent = '⤳ Forward To';
-  if (search) search.placeholder = '🔍 Search contacts or groups…';
+  if (title) title.innerHTML = '<i data-lucide="forward" style="width: 15px; height: 15px; vertical-align: -2px;"></i> Forward To';
+  if (search) search.placeholder = 'Search contacts or groups…';
   if (sendBtn) sendBtn.textContent = 'Forward';
   renderForwardTargets('');
   modal.classList.add('active');
@@ -11833,7 +11788,7 @@ function renderStarredMessages() {
           <span class="starred-msg-author">${escapeHtml(authorName)}</span>
           <span>
             <span class="starred-msg-time">${time}</span>
-            <button class="starred-msg-unstar" onclick="event.stopPropagation(); unstarFromDrawer('${s.id}')" title="Unstar">✕</button>
+            <button class="starred-msg-unstar" onclick="event.stopPropagation(); unstarFromDrawer('${s.id}')" title="Unstar"><i data-lucide="x" style="width: 13px; height: 13px;"></i></button>
           </span>
         </div>
         <div class="starred-msg-text">${snippet}</div>
@@ -12102,18 +12057,18 @@ showCtxMenu = function(e, id, msg) {
       <button class="ctx-emoji-btn" onclick="${isGroup ? `toggleGroupMsgReact('${id}', '🔥')` : `addQuickReact('${id}', '🔥')`}">🔥</button>
     </div>
     <div class="ctx-divider"></div>
-    <div class="ctx-item" onclick="replyMsg('${id}')"><i data-lucide="corner-up-left"></i> Reply</div>
-    <div class="ctx-item" onclick="openForwardModal('${id}')"><i data-lucide="share-2"></i> Forward</div>
-    <div class="ctx-item" onclick="toggleStarMessage('${id}')"><i data-lucide="star"></i> ${starred ? 'Unstar' : 'Star'}</div>
-    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy"></i> Copy</div>` : ''}
-    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin"></i> Pin Message</div>` : ''}
-    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="edit-3"></i> Edit</div>` : ''}
-    ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2"></i> Delete</div>` : ''}
+    <div class="ctx-item" onclick="replyMsg('${id}')"><i data-lucide="corner-up-left" style="width: 15px; height: 15px;"></i> Reply</div>
+    <div class="ctx-item" onclick="openForwardModal('${id}')"><i data-lucide="forward" style="width: 15px; height: 15px;"></i> Forward</div>
+    <div class="ctx-item" onclick="toggleStarMessage('${id}')"><i data-lucide="${starred ? 'star-off' : 'star'}" style="width: 15px; height: 15px;"></i> ${starred ? 'Unstar' : 'Star'}</div>
+    ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy" style="width: 15px; height: 15px;"></i> Copy</div>` : ''}
+    ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin" style="width: 15px; height: 15px;"></i> Pin</div>` : ''}
+    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
+    ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Delete</div>` : ''}
   `;
   menu.classList.add("active");
-  if (window.lucide) lucide.createIcons();
   menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + "px";
   menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + "px";
+  if (window.lucide) lucide.createIcons();
   setTimeout(() => document.addEventListener("click", closeCtxMenu, { once: true }), 0);
 };
 
