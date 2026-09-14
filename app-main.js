@@ -2693,8 +2693,9 @@ function loadMessages() {
   const otherUid = selectedUser.uid;
 
   // Track the oldest timestamp ever loaded per direction — older pages are
-  // fetched with endBefore(that timestamp). Live snapshots only ever LOWER
-  // it (a fresh window's oldest is newer than any loaded history).
+  // fetched with startAfter(that timestamp) on the DESC query. Live snapshots
+  // only ever LOWER it (a fresh window's oldest is newer than any loaded
+  // history).
   const trackWindow = (side, docs) => {
     docs.forEach(d => {
       const ts = d.data().createdAt;
@@ -2793,12 +2794,16 @@ async function loadOlderMessages() {
   try {
     const me = currentUser.uid;
     const other = selectedUser.uid;
-    const olderQuery = (fromUid, toUid, before) =>
+    const olderQuery = (fromUid, toUid, after) =>
       db.collection("chats")
         .where("from", "==", fromUid)
         .where("to", "==", toUid)
         .orderBy("createdAt", "desc")
-        .endBefore(before)
+        // DESC cursor semantics: the window runs newest→oldest, so "older"
+        // messages sit AFTER the oldest timestamp we already have, and
+        // endBefore() would return NEWER (already-loaded) ones. startAfter()
+        // is what yields genuinely older history.
+        .startAfter(after)
         .limit(MSG_OLDER_PAGE_SIZE)
         .get();
 
@@ -4218,8 +4223,12 @@ function handleKeyPress(e) {
 function updatePollButtonVisibility() {
   const pollBtn = document.getElementById("pollBtn");
   if (!pollBtn) return;
-  const isCommunityChat = currentChatMode === 'channel' && !!selectedChannel;
-  if (!isCommunityChat) {
+  // Polls are supported in groups (submitPoll -> sendGroupMessageWithExtras)
+  // AND channels (submitPoll -> sendChannelPostWithExtras); the button is
+  // hidden only in direct chat / elsewhere.
+  const pollableChat = (currentChatMode === 'channel' && !!selectedChannel)
+                    || (currentChatMode === 'group' && !!selectedGroup);
+  if (!pollableChat) {
     pollBtn.style.display = 'none';
     pollBtn.classList.add("hidden");
   } else {
@@ -10105,10 +10114,15 @@ function renderChannelPostsList(posts) {
     } else if (post.video) {
       mediaHtml = `<div class="channel-post-media"><video src="${escapeHtml(post.video)}" controls></video></div>`;
     } else if (post.audio) {
-      mediaHtml = `<div class="channel-post-audio" style="margin: 8px 0; padding: 10px 14px; background: rgba(255,255,255,0.06); border-radius: 12px; display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 20px;">🎤</span>
-        <audio controls src="${safeMediaUrl(post.audio)}" style="width: 100%; height: 36px;"></audio>
-      </div>`;
+      // Use the SAME modern voice-note player as 1:1 and group chats (glassy
+      // waveform pill with gradient play button + speed control) instead of a
+      // stock <audio controls> element. duration is in ms (same field the
+      // other chat modes use); pass fromMe=false so the player uses the
+      // neutral/incoming styling, which fits a broadcast post.
+      const vnHost = document.createElement('div');
+      vnHost.className = 'channel-post-audio';
+      vnHost.appendChild(renderVoiceNotePlayer(post.id, post.audio, post.duration || 0, false));
+      mediaHtml = vnHost.outerHTML;
     }
 
     const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
@@ -11401,12 +11415,12 @@ function formatCount(num) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// FEATURE 1: INTERACTIVE POLLS (Groups)
+// FEATURE 1: INTERACTIVE POLLS (Groups, Channels, and 1:1)
 // ═══════════════════════════════════════════════════════════════════════
 
 function openPollModal() {
-  if (!selectedGroup && !selectedUser) {
-    showNotifToast('Select a chat or group to create a poll', 'info');
+  if (!selectedChannel && !selectedGroup && !selectedUser) {
+    showNotifToast('Select a chat, group, or channel to create a poll', 'info');
     return;
   }
   const modal = document.getElementById('pollCreateModal');
