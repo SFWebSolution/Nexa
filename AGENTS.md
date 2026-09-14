@@ -533,6 +533,22 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Icons:** lucide pinned @0.469.0 with jsDelivr UMD fallback (was @latest — drift risk). Un-icode modal close/back glyphs swapped to <i data-lucide> (x 14–20px, arrow-left 18–20px): story-close, notif-close x3(analytics, prompt-responses, notif-settings), status-modal-close x2(add-yours, status-share), modal-close(search), delete-chat-close, wallpaper-modal-close, askify-coming-close, welcome-back-close, info-back+info-close, profile-pic-back, user-profile-back, ai-back-btn, chat-back-btn, mc-icon-btn-back, view-once close(inline styles, font-size→<i>x> 20px). Ensure any NEW modal close/back uses <i data-lucide> + pinned loader, never raw ✕/←. (Story-close differs: no title attr — exact-string matches must be per-line.)
 - **Toolchain quirk (critical for this repo):** heredocs + paren-dense python inline in terminal often get paren-dropped — author scripts via file_editor then run python3 script.py, never heredoc. Keep ONE action per line, use locals for nested prints (trailing ) corruption). Plain-ASCII marker )→() conversion + brace/paren audit scripts are the reliable authoring loop for CSS blocks. dashboard.html & dashboard.css use CRLF — preserve via the normalize step (python3 replace b'\r\n'→b'\n'→b'\r\n') after any file_editor edit or the whole file shows as changed in git diff.)
 
+
+## One-time username change (Profile tab)
+- Every user (with OR without a username) may set/change their `@username` EXACTLY ONCE.
+  The `users/{uid}` doc flag `usernameChangeUsed: true` (written by `saveUsernameChange()` in
+  app-main.js) is the single source of truth; the Profile-tab button `#changeUsernameBtn`
+  shows only while the flag is absent (`refreshMyUsernameInfo()`). Do NOT let users change
+  it again once set — removing the flag silently breaks the one-time guarantee.
+- Uniqueness is enforced by a Firestore query `where("username","==",newUsername).limit(2)`
+  (single-field equality -> auto index, no composite needed); usernames are stored lowercase.
+  Format rule: `NEXA_USERNAME_RE = /^[a-z0-9_]{3,20}$/`. The users `update` rule is already
+  owner-only, so NO firestore.rules change is needed.
+- Modal markup is `#changeUsernameModal` (reuses `.notif-settings-overlay` / `#notif-hdr`
+  patterns, z-9500); JS: `openChangeUsernameModal`, `closeChangeUsernameModal`,
+  `handleChangeUsernameOverlayClick`, `saveUsernameChange`; CSS `.username-edit-btn`/`.cuu-*`
+  in the PROFILE NOTE CSS zone of dashboard.css. Reads are one-off (modal open + save
+  double-check), never listeners — keep it lean for the Spark quota.
 ## Starter tabs (bell + tray + drawer) — rule-safe design
 - Starter tabs are PERSONAL (WhatsApp-style). The array lives ONLY on `users/{me}.starter` as `[{uid, t}]`;toggle/dismiss/cleanup write THE OWN DOC ONLY. Firestore rules make `users` updates owner-only — NEVER batch-write `users/{theirUid}` (the old "mirror on their side" design would be DENIED → "Couldn't update Starter”). No new collections or rule deploys needed.
 - TTL: `NEXA_STARTER_TTL_MS` 24h;`getStarterTabsFromCache()` filters stale + garbage-collects on own doc (cheap,write-own-only。 `NEXA_STARTER_CAP` 4 most recent。
