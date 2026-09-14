@@ -18,42 +18,43 @@
 
 :root {
   /* ╔─ PRIMARY PALETTE ─╗
-     Nexa signature deep blue (#0b57d0 / #1d6bf3) — crisp, modern, high-contrast,
-     unifying the Clean White and Deep Blue experiences. */
-  --primary: #0b57d0;
-  --primary-dk: #0842a0;
-  --primary-lt: #1d6bf3;
-  --primary-glow: rgba(11, 87, 208, 0.28);
-  --primary-soft: rgba(11, 87, 208, 0.12);
+     One unified Nexa brand blue (#166fe5) — the same accent used on the
+     landing page and auth screens, so the whole product feels cohesive. */
+  --primary: #166fe5;
+  --primary-dk: #0b5bd3;
+  --primary-lt: #4a94f0;
+  --primary-glow: rgba(22, 111, 229, 0.28);
+  --primary-soft: rgba(22, 111, 229, 0.12);
 
   /* ╔─ ACCENT COLORS ─╗
      --cyan sits in the same blue family as --primary. */
-  --cyan: #1d6bf3;
-  --cyan-soft: rgba(29, 107, 243, 0.12);
+  --cyan: #2f86f0;
+  --cyan-soft: rgba(22, 111, 229, 0.12);
   --online: #16b364;
   --online-soft: rgba(22, 179, 100, 0.15);
   --danger: #e11d48;
   --danger-soft: rgba(225, 29, 72, 0.10);
   
-  /* ╔─ SURFACE PALETTE (CLEAN WHITE — Default) ─╗
-     Crisp modern canvas with pure white surfaces, sharp contrast and depth. */
-  --bg-0: #f4f6fa;
+  /* ╔─ SURFACE PALETTE (SOFT LIGHT — Nexa Light, the default) ─╗
+     A comfortable, slightly warm light slate — easy on the eyes for long
+     sessions, with enough contrast that cards and bubbles read crisply. */
+  --bg-0: #edf1f7;
   --bg-1: #ffffff;
-  --bg-2: #edf1f7;
-  --bg-3: #e2e8f2;
-  --bg-4: #d2dde9;
-  --bg-5: #c2d0e0;
+  --bg-2: #f5f8fc;
+  --bg-3: #e9edf5;
+  --bg-4: #dbe3ee;
+  --bg-5: #ccd6e4;
 
-  /* ╔─ TEXT HIERARCHY (HIGH CONTRAST & LEGIBILITY) ─╗ */
-  --text-0: #081226;
-  --text-1: #142036;
-  --text-2: #3d4e6d;
-  --text-3: #647594;
+  /* ╔─ TEXT HIERARCHY ─╗ */
+  --text-0: #0d1830;
+  --text-1: #1d2b45;
+  --text-2: #45536b;
+  --text-3: #6d7c94;
 
   /* ╔─ BORDER & DIVIDER ─╗ */
-  --border-dk: rgba(8, 18, 38, 0.08);
-  --border-md: rgba(8, 18, 38, 0.13);
-  --border-lt: rgba(8, 18, 38, 0.20);
+  --border-dk: rgba(13, 24, 48, 0.08);
+  --border-md: rgba(13, 24, 48, 0.12);
+  --border-lt: rgba(13, 24, 48, 0.18);
 
   /* ╔─ ELEVATION SYSTEM ─╗ */
   --shadow-xs: 0 1px 3px rgba(13, 24, 48, 0.07);
@@ -98,72 +99,19 @@
 /* THEME VARIANTS */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ╔─ DEEP BLUE (NEXA DEEP BLUE) ─╗
-   Rich, immersive midnight ocean navy with radiant royal blue accents,
-   crystal-clear white text hierarchy, and crisp blue-tinted borders. */
-:root[data-theme="nexa"],
-:root[data-theme="midnight"] {
-  --primary: #2563eb;
-  --primary-dk: #1d4ed8;
-  --primary-lt: #60a5fa;
-  --primary-glow: rgba(37, 99, 235, 0.38);
-  --primary-soft: rgba(37, 99, 235, 0.18);
-  --bg-0: #040816;
-  --bg-1: #091226;
-  --bg-2: #0f1d3d;
-  --bg-3: #162852;
-  --bg-4: #1e356b;
-  --bg-5: #284488;
-  --text-0: #ffffff;
-  --text-1: #f8fafc;
-  --text-2: #a3b8de;
-  --text-3: #708cb8;
-  --border-dk: rgba(147, 197, 253, 0.08);
-  --border-md: rgba(147, 197, 253, 0.14);
-  --border-lt: rgba(147, 197, 253, 0.22);
-  --shadow-xs: 0 1px 3px rgba(2, 6, 23, 0.35);
-  --shadow-sm: 0 2px 8px rgba(2, 6, 23, 0.45);
-  --shadow-md: 0 8px 24px rgba(2, 6, 23, 0.60);
-  --shadow-lg: 0 16px 44px rgba(2, 6, 23, 0.75);
-  --shadow-xl: 0 24px 64px rgba(2, 6, 23, 0.90);
-  --cyan: #38bdf8;
-  --cyan-soft: rgba(56, 189, 248, 0.16);
-  --online: #22c55e;
-  --online-soft: rgba(34, 197, 94, 0.20);
-}
-/* Rose — rich warm crimson-plum, sophisticated rather than hot pink. */
-:root[data-theme="rose"] {
-  --primary: #f43f5e; --primary-dk: #d11d48; --primary-lt: #fb6f8a;
-  --bg-0: #1e0812; --bg-1: #2b0d1c; --bg-2: #3a1228; --bg-3: #4c1835;
-  --text-0: #fff5f7; --text-1: #fbe4ea; --text-2: #d9a0b0; --text-3: #a86d7e;
-  --border-dk: rgba(255,255,255,0.06); --border-md: rgba(255,255,255,0.12); --border-lt: rgba(255,255,255,0.18);
-  --cyan: var(--primary-lt); --cyan-soft: rgba(244,63,94,0.16);
-  --online: #34d399; --online-soft: rgba(52,211,153,0.16);
-  --primary-soft: rgba(244,63,94,0.18); --primary-glow: rgba(244,63,94,0.32);
-}
-/* Lavender — soft royal violet on deep plum, calm and modern. */
-:root[data-theme="lavender"] {
-  --primary: #a06bff; --primary-dk: #8b4ef0; --primary-lt: #c09aff;
-  --bg-0: #150d24; --bg-1: #1e1533; --bg-2: #2a1d45; --bg-3: #38265a;
-  --text-0: #f7f3ff; --text-1: #ece4fb; --text-2: #b3a3d9; --text-3: #8775ab;
-  --border-dk: rgba(255,255,255,0.06); --border-md: rgba(255,255,255,0.12); --border-lt: rgba(255,255,255,0.18);
-  --cyan: var(--primary-lt); --cyan-soft: rgba(160,107,255,0.16);
-  --online: #34d399; --online-soft: rgba(52,211,153,0.16);
-  --primary-soft: rgba(160,107,255,0.18); --primary-glow: rgba(160,107,255,0.32);
-}
-/* Black — premium X/Twitter true-dark, layered near-blacks. A near-black
-   surface stack (0,22,24,28 / 13,14,16 / 22,24,28) that reads as deep,
-   premium black like X's "Lights Out" mode. */
-:root[data-theme="black"] {
-  --primary: #e7e9ea; --primary-dk: #c9ccd1; --primary-lt: #f0f2f3;
-  --bg-0: #000000; --bg-1: #0f1012; --bg-2: #16171a; --bg-3: #1c1d21; --bg-4: #26282c; --bg-5: #2f3136;
-  --text-0: #ffffff; --text-1: #e7e9ea; --text-2: #8b949e; --text-3: #6e767d;
-  --border-dk: rgba(255,255,255,0.07); --border-md: rgba(255,255,255,0.13); --border-lt: rgba(255,255,255,0.20);
-  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.5); --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.6);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.7); --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.85); --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.95);
-  --cyan: #1d9bf0; --cyan-soft: rgba(29, 155, 240, 0.16);
-  --online: #00ba7c; --online-soft: rgba(0, 186, 124, 0.18);
-  --primary-soft: rgba(255, 255, 255, 0.12); --primary-glow: rgba(255, 255, 255, 0.18);
+/* Nexa Deep Blue — the flagship dark theme: a true deep-ocean navy with a
+   vivid electric-blue accent. Surfaces sit in rich blue-navy tones (never
+   gray slate) and text is kept bright for maximum legibility. */
+:root[data-theme="nexa"] {
+  --primary: #2b8fff; --primary-dk: #1a6fe0; --primary-lt: #5aa6f5;
+  --bg-0: #060c1e; --bg-1: #0a1732; --bg-2: #0f2040; --bg-3: #162a52; --bg-4: #1e3566; --bg-5: #294379;
+  --text-0: #ffffff; --text-1: #eef4ff; --text-2: #aebfe0; --text-3: #7c8db5;
+  --border-dk: rgba(140, 170, 255, 0.10); --border-md: rgba(140, 170, 255, 0.18); --border-lt: rgba(140, 170, 255, 0.26);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.25); --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45); --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.6); --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.75);
+  --cyan: #3f93f7; --cyan-soft: rgba(43, 143, 255, 0.16);
+  --online: #16c784; --online-soft: rgba(22, 199, 132, 0.18);
+  --primary-soft: rgba(43, 143, 255, 0.18); --primary-glow: rgba(43, 143, 255, 0.34);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -1584,87 +1532,29 @@ select:focus-visible {
   opacity: 0.8;
 }
 
-/* ╔─ REPLY QUOTE (BUBBLE REPLIES) ─╗ */
+/* ╔─ REPLY QUOTE ─╗ */
 
 .reply-quote {
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-xs);
   margin-bottom: 8px;
-  border-left: 3.5px solid var(--primary);
-  background: rgba(11, 87, 208, 0.08);
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-  position: relative;
-  overflow: hidden;
-}
-.reply-quote:hover {
-  opacity: 0.92;
+  border-left: 3px solid var(--cyan);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .reply-quote-author {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  color: var(--primary);
-  margin-bottom: 3px;
-  letter-spacing: 0.2px;
+  color: var(--cyan);
+  margin-bottom: 2px;
 }
 
 .reply-quote-text {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-1);
+  font-size: 12px;
+  color: var(--text-2);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  line-height: 1.35;
-}
-
-/* Specific contrast for incoming bubbles */
-:root:not([data-theme]) .msg.them .reply-quote,
-:root[data-theme="light"] .msg.them .reply-quote {
-  background: #edf3fb;
-  border-left-color: #0b57d0;
-  box-shadow: 0 1px 3px rgba(11, 87, 208, 0.06);
-}
-:root:not([data-theme]) .msg.them .reply-quote-author,
-:root[data-theme="light"] .msg.them .reply-quote-author {
-  color: #0b57d0;
-}
-:root:not([data-theme]) .msg.them .reply-quote-text,
-:root[data-theme="light"] .msg.them .reply-quote-text {
-  color: #111e38;
-}
-
-:root[data-theme="midnight"] .msg.them .reply-quote,
-:root[data-theme="nexa"] .msg.them .reply-quote {
-  background: rgba(37, 99, 235, 0.18);
-  border-left-color: #60a5fa;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-}
-:root[data-theme="midnight"] .msg.them .reply-quote-author,
-:root[data-theme="nexa"] .msg.them .reply-quote-author {
-  color: #93c5fd;
-}
-:root[data-theme="midnight"] .msg.them .reply-quote-text,
-:root[data-theme="nexa"] .msg.them .reply-quote-text {
-  color: #f1f5f9;
-}
-
-/* Razor-sharp contrast on outgoing blue bubbles (me) */
-.msg.me .bubble .reply-quote {
-  background: rgba(0, 0, 0, 0.25) !important;
-  border-left: 3.5px solid #ffffff !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
-}
-.msg.me .bubble .reply-quote-author {
-  color: #ffffff !important;
-  font-weight: 700 !important;
-  opacity: 0.98 !important;
-}
-.msg.me .bubble .reply-quote-text {
-  color: #ffffff !important;
-  opacity: 0.94 !important;
-  font-weight: 500 !important;
 }
 
 /* ╔─ REACTIONS ─╗ */
@@ -1884,134 +1774,80 @@ select:focus-visible {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 .reply-strip {
-  margin: 0 18px 10px;
-  padding: 10px 14px;
-  background: var(--bg-1);
-  border: 1.5px solid var(--border-lt);
-  border-left: 4px solid var(--primary);
+  margin: 0 22px 8px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--cyan) 11%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, var(--cyan) 32%, transparent);
+  border-left: 4px solid var(--cyan);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   animation: stripIn var(--duration-sm) var(--spring);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
   flex-shrink: 0;
-  position: relative;
-  z-index: 10;
-}
-
-:root:not([data-theme]) .reply-strip,
-:root[data-theme="light"] .reply-strip {
-  background: #ffffff;
-  border-color: rgba(11, 87, 208, 0.18);
-  border-left-color: #0b57d0;
-  box-shadow: 0 6px 20px rgba(11, 87, 208, 0.08);
-}
-
-:root[data-theme="midnight"] .reply-strip,
-:root[data-theme="nexa"] .reply-strip {
-  background: #0d1a38;
-  border-color: rgba(96, 165, 250, 0.25);
-  border-left-color: #3b82f6;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-}
-
-.reply-strip-icon-col {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
-:root:not([data-theme]) .reply-strip-icon-col,
-:root[data-theme="light"] .reply-strip-icon-col {
-  background: rgba(11, 87, 208, 0.10);
-  color: #0b57d0;
-}
-
-:root[data-theme="midnight"] .reply-strip-icon-col,
-:root[data-theme="nexa"] .reply-strip-icon-col {
-  background: rgba(59, 130, 246, 0.18);
-  color: #60a5fa;
 }
 
 .reply-strip-info {
   flex: 1;
   min-width: 0;
+  position: relative;
+  padding-left: 20px;
+}
+
+.reply-strip-info::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2.5px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cyan) 55%, transparent);
 }
 
 .reply-strip-author {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--cyan);
   margin-bottom: 2px;
-  letter-spacing: 0.2px;
-}
-
-:root:not([data-theme]) .reply-strip-author,
-:root[data-theme="light"] .reply-strip-author {
-  color: #0b57d0;
-}
-
-:root[data-theme="midnight"] .reply-strip-author,
-:root[data-theme="nexa"] .reply-strip-author {
-  color: #93c5fd;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .reply-strip-text {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-0);
+  color: var(--text-1);
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.35;
 }
 
-:root:not([data-theme]) .reply-strip-text,
-:root[data-theme="light"] .reply-strip-text {
-  color: #142036;
-}
-
-:root[data-theme="midnight"] .reply-strip-text,
-:root[data-theme="nexa"] .reply-strip-text {
-  color: #f1f5f9;
-}
-
-.reply-strip-thumb {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-  border: 1px solid var(--border-md);
+.reply-strip-ico {
+  color: var(--cyan);
 }
 
 .reply-strip-close {
-  background: var(--bg-2);
+  background: none;
   border: none;
-  color: var(--text-2);
+  color: var(--text-3);
   cursor: pointer;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-xs);
   transition: all var(--tf);
   flex-shrink: 0;
 }
 
 .reply-strip-close:hover {
   color: var(--danger);
-  background: rgba(225, 29, 72, 0.12);
-  transform: scale(1.08);
+  background: rgba(255, 56, 96, 0.1);
+  transform: rotate(90deg);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -3469,30 +3305,10 @@ input[type="range"] {
   border-bottom: none;
 }
 
-.ctx-item i[data-lucide],
-.ctx-item svg {
-  width: 15px;
-  height: 15px;
-  stroke-width: 2px;
-  flex-shrink: 0;
-  color: var(--primary);
-  transition: transform var(--tf);
-}
-
 .ctx-item:hover {
   background: rgba(79, 143, 255, 0.1);
   color: var(--primary);
   padding-left: 19px;
-}
-
-.ctx-item:hover i[data-lucide],
-.ctx-item:hover svg {
-  transform: scale(1.1);
-}
-
-.ctx-item.danger i[data-lucide],
-.ctx-item.danger svg {
-  color: var(--danger);
 }
 
 .ctx-item.danger:hover {
@@ -8139,7 +7955,7 @@ a:focus-visible, [tabindex]:focus-visible {
   background: linear-gradient(135deg, rgba(43, 143, 255, 0.14), rgba(43, 143, 255, 0.04));
   border-color: rgba(43, 143, 255, 0.25);
 }
-:root[data-theme="light"] .reply-quote { background: #edf3fb; border-left-color: #0b57d0; }
+:root[data-theme="light"] .reply-quote { background: rgba(15, 27, 45, 0.05); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NEXA LIGHT — DEFAULT BASE (no data-theme attribute)
@@ -8266,7 +8082,7 @@ a:focus-visible, [tabindex]:focus-visible {
 }
 :root:not([data-theme]) .empty-chat > div:nth-child(3) { color: #45536b !important; }
 :root:not([data-theme]) .stories-bar { background: rgba(244, 247, 251, 0.6); }
-:root:not([data-theme]) .reply-quote { background: #edf3fb; border-left-color: #0b57d0; }
+:root:not([data-theme]) .reply-quote { background: rgba(15, 27, 45, 0.05); }
 /* Toast notifications (e.g. the "Welcome to Nexa Messenger" popup) — the base
    toast is a dark card that used --text-1, which is DARK in the light theme,
    making the text invisible. Give the light theme a clean white toast with
@@ -8300,60 +8116,14 @@ a:focus-visible, [tabindex]:focus-visible {
   border-color: var(--border-dk);
 }
 
-/* Nexa Blue (Dark) — cool blue ambient */
+/* Nexa Deep Blue — deep-ocean navy ambient */
 :root[data-theme="nexa"] .app {
   background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(43, 143, 255, 0.10), transparent 60%),
-    radial-gradient(900px 500px at 100% 110%, rgba(43, 143, 255, 0.07), transparent 55%),
+    radial-gradient(1200px 600px at 12% -10%, rgba(43, 143, 255, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(43, 143, 255, 0.08), transparent 55%),
     var(--bg-0);
 }
-:root[data-theme="nexa"] .msg.them .bubble { background: linear-gradient(180deg, rgba(32, 44, 64, 0.85), rgba(24, 34, 50, 0.85)); }
-
-/* Midnight — deep navy ambient */
-:root[data-theme="midnight"] .app {
-  background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(61, 123, 255, 0.13), transparent 60%),
-    radial-gradient(900px 500px at 100% 110%, rgba(61, 123, 255, 0.06), transparent 55%),
-    var(--bg-0);
-}
-:root[data-theme="midnight"] .sidebar { background: linear-gradient(180deg, rgba(10, 18, 38, 0.85), rgba(5, 10, 24, 0.9)); }
-:root[data-theme="midnight"] .msg.them .bubble { background: linear-gradient(180deg, rgba(26, 42, 82, 0.9), rgba(16, 28, 58, 0.9)); }
-
-/* Rose — warm crimson ambient */
-:root[data-theme="rose"] .app {
-  background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(244, 63, 94, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 100% 110%, rgba(244, 63, 94, 0.06), transparent 55%),
-    var(--bg-0);
-}
-:root[data-theme="rose"] .sidebar { background: linear-gradient(180deg, rgba(43, 13, 28, 0.8), rgba(30, 8, 18, 0.85)); }
-:root[data-theme="rose"] .msg.them .bubble { background: linear-gradient(180deg, rgba(76, 24, 53, 0.85), rgba(58, 18, 40, 0.85)); }
-
-/* Lavender — soft violet ambient */
-:root[data-theme="lavender"] .app {
-  background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(160, 107, 255, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 100% 110%, rgba(160, 107, 255, 0.06), transparent 55%),
-    var(--bg-0);
-}
-:root[data-theme="lavender"] .sidebar { background: linear-gradient(180deg, rgba(30, 21, 51, 0.8), rgba(21, 13, 36, 0.85)); }
-:root[data-theme="lavender"] .msg.them .bubble { background: linear-gradient(180deg, rgba(56, 38, 90, 0.85), rgba(42, 29, 69, 0.85)); }
-
-
-/* Black — premium X/Twitter true-dark, layered near-blacks */
-:root[data-theme="black"] .app {
-  background:
-    radial-gradient(1200px 650px at 12% -10%, rgba(255, 255, 255, 0.035), transparent 60%),
-    radial-gradient(900px 550px at 100% 115%, rgba(255, 255, 255, 0.02), transparent 55%),
-    #000000;
-}
-:root[data-theme="black"] .sidebar { background: linear-gradient(180deg, rgba(22, 24, 28, 0.92), rgba(13, 14, 16, 0.96)); }
-:root[data-theme="black"] .msg.them .bubble { background: linear-gradient(180deg, #1d1f23, #16171b); }
-:root[data-theme="black"] .msg.me .bubble { background: linear-gradient(180deg, #23262b, #17181c); }
-:root[data-theme="black"] .msg.me .bubble::after,
-:root[data-theme="black"] .msg.them .bubble::after { border-color: rgba(255, 255, 255, 0.30); }
-:root[data-theme="black"] .input-wrap { border-color: rgba(255, 255, 255, 0.07); }
-:root[data-theme="black"] .input-wrap:focus-within { border-color: rgba(255, 255, 255, 0.25); }
+:root[data-theme="nexa"] .msg.them .bubble { background: linear-gradient(180deg, rgba(22, 42, 88, 0.85), rgba(15, 32, 64, 0.85)); }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* BRANDED SPLASH + APP REVEAL — premium first impression */
@@ -8652,9 +8422,7 @@ a:focus-visible, [tabindex]:focus-visible {
   color-scheme: light;
   accent-color: var(--primary);
 }
-:root[data-theme="nexa"],
-:root[data-theme="midnight"],
-:root[data-theme="black"] {
+:root[data-theme="nexa"] {
   color-scheme: dark;
 }
 
@@ -10870,9 +10638,7 @@ input:user-valid {
   --glass-specular-subtle: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-:root[data-theme="nexa"],
-:root[data-theme="midnight"],
-:root[data-theme="black"] {
+:root[data-theme="nexa"] {
   --shadow-soft-xs: 0 1px 3px rgba(0, 0, 0, 0.35);
   --shadow-soft-sm: 0 3px 10px -2px rgba(0, 0, 0, 0.5), 0 1px 4px -1px rgba(0, 0, 0, 0.4);
   --shadow-soft-md: 0 12px 30px -4px rgba(0, 0, 0, 0.65), 0 4px 12px -2px rgba(0, 0, 0, 0.45);
@@ -10915,9 +10681,7 @@ button:active,
   transition: transform 180ms var(--spring-tactile), box-shadow 180ms ease;
 }
 
-:root[data-theme="nexa"] .msg.them .bubble,
-:root[data-theme="midnight"] .msg.them .bubble,
-:root[data-theme="black"] .msg.them .bubble {
+:root[data-theme="nexa"] .msg.them .bubble {
   background: var(--bg-2) !important;
   border-color: var(--border-md) !important;
 }
@@ -10935,72 +10699,49 @@ button:active,
 
 /* ── D. ENHANCED QUOTED REPLIES ── */
 .reply-quote {
-  border-left: 3.5px solid var(--primary) !important;
+  border-left: 4px solid var(--cyan) !important;
   border-radius: 8px !important;
-  background: rgba(11, 87, 208, 0.08) !important;
-  padding: 7px 12px !important;
-  margin-bottom: 7px !important;
-  transition: opacity 150ms ease;
-  cursor: pointer;
+  background: color-mix(in srgb, var(--primary) 9%, transparent) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 0 0 1px color-mix(in srgb, var(--primary) 14%, transparent) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 7px 11px !important;
+  margin-bottom: 6px !important;
+  transition: background 150ms ease;
 }
 
-:root:not([data-theme]) .msg.them .reply-quote,
-:root[data-theme="light"] .msg.them .reply-quote {
-  background: #edf3fb !important;
-  border-left-color: #0b57d0 !important;
-  box-shadow: 0 1px 3px rgba(11, 87, 208, 0.06);
-}
-:root:not([data-theme]) .msg.them .reply-quote .reply-quote-author,
-:root[data-theme="light"] .msg.them .reply-quote .reply-quote-author {
-  color: #0b57d0 !important;
-  font-weight: 700 !important;
-  font-size: 11px !important;
-}
-:root:not([data-theme]) .msg.them .reply-quote .reply-quote-text,
-:root[data-theme="light"] .msg.them .reply-quote .reply-quote-text {
-  color: #111e38 !important;
-  font-weight: 500 !important;
-  font-size: 12.5px !important;
+.reply-quote .reply-quote-author {
+  color: var(--cyan) !important;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  margin-bottom: 2px;
 }
 
-:root[data-theme="midnight"] .msg.them .reply-quote,
-:root[data-theme="nexa"] .msg.them .reply-quote {
-  background: rgba(37, 99, 235, 0.18) !important;
-  border-left-color: #60a5fa !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-}
-:root[data-theme="midnight"] .msg.them .reply-quote .reply-quote-author,
-:root[data-theme="nexa"] .msg.them .reply-quote .reply-quote-author {
-  color: #93c5fd !important;
-  font-weight: 700 !important;
-  font-size: 11px !important;
-}
-:root[data-theme="midnight"] .msg.them .reply-quote .reply-quote-text,
-:root[data-theme="nexa"] .msg.them .reply-quote .reply-quote-text {
-  color: #f1f5f9 !important;
-  font-weight: 500 !important;
-  font-size: 12.5px !important;
+.reply-quote .reply-quote-text {
+  color: var(--text-1) !important;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .msg.me .reply-quote {
   border-left-color: #ffffff !important;
-  background: rgba(0, 0, 0, 0.26) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
-}
-
-.msg.me .reply-quote .reply-quote-author,
-.msg.me .reply-quote .reply-quote-name {
+  background: rgba(255, 255, 255, 0.20) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16) !important;
   color: #ffffff !important;
-  font-weight: 700 !important;
-  font-size: 11px !important;
-  opacity: 0.98 !important;
 }
 
+.msg.me .reply-quote-name,
+.msg.me .reply-quote .reply-quote-author {
+  color: #ffffff !important;
+  font-weight: 800;
+}
+
+.msg.me .reply-quote-text,
 .msg.me .reply-quote .reply-quote-text {
   color: #ffffff !important;
-  opacity: 0.94 !important;
-  font-weight: 500 !important;
-  font-size: 12.5px !important;
+  opacity: 0.92;
 }
 
 /* ── E. MODERN STATUS CHECKMARKS / TICKS ── */
@@ -11389,8 +11130,8 @@ svg.lucide {
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* THEME HARMONY & PERFECTION ENGINE                                          */
-/* Pixel-perfect calibration across Light, Nexa Dark, Midnight, Black,        */
-/* Rose, and Lavender: smooth cross-fades, custom bubble gradients, and glow  */
+/* Pixel-perfect calibration across Nexa White (Light) and Nexa Deep Blue:    */
+/* smooth cross-fades, custom bubble gradients, and glow                      */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Global smooth theme cross-fade transition */
@@ -11443,165 +11184,38 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   border-color: rgba(22, 111, 229, 0.25) !important;
 }
 
-/* ── 2. NEXA DEEP BLUE (MIDNIGHT & NEXA DARK) ── */
-:root[data-theme="nexa"],
-:root[data-theme="midnight"] {
-  --primary: #2563eb;
-  --primary-dk: #1d4ed8;
-  --primary-lt: #60a5fa;
-  --primary-glow: rgba(37, 99, 235, 0.38);
-  --primary-soft: rgba(37, 99, 235, 0.18);
-  --bg-0: #040816;
-  --bg-1: #091226;
-  --bg-2: #0f1d3d;
-  --bg-3: #162852;
-  --bg-4: #1e356b;
-  --bg-5: #284488;
+/* ── 2. NEXA DEEP BLUE (DEEP-OCEAN NAVY) ── */
+:root[data-theme="nexa"] {
+  --primary: #2b8fff;
+  --primary-dk: #1a6fe0;
+  --primary-lt: #5aa6f5;
+  --primary-glow: rgba(43, 143, 255, 0.36);
+  --primary-soft: rgba(43, 143, 255, 0.18);
+  --bg-0: #060c1e;
+  --bg-1: #0a1732;
+  --bg-2: #0f2040;
+  --bg-3: #162a52;
+  --bg-4: #1e3566;
+  --bg-5: #294379;
   --text-0: #ffffff;
-  --text-1: #f8fafc;
-  --text-2: #a3b8de;
-  --text-3: #708cb8;
-  --border-dk: rgba(147, 197, 253, 0.08);
-  --border-md: rgba(147, 197, 253, 0.15);
-  --border-lt: rgba(147, 197, 253, 0.22);
+  --text-1: #eef4ff;
+  --text-2: #aebfe0;
+  --text-3: #7c8db5;
+  --border-dk: rgba(140, 170, 255, 0.10);
+  --border-md: rgba(140, 170, 255, 0.18);
+  --border-lt: rgba(140, 170, 255, 0.26);
 }
 
-:root[data-theme="nexa"] .msg.me .bubble,
-:root[data-theme="midnight"] .msg.me .bubble {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+:root[data-theme="nexa"] .msg.me .bubble {
+  background: linear-gradient(135deg, #2b8fff 0%, #1a6fe0 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4) !important;
+  box-shadow: 0 2px 14px rgba(43, 143, 255, 0.4) !important;
 }
 
-:root[data-theme="nexa"] .msg.them .bubble,
-:root[data-theme="midnight"] .msg.them .bubble {
-  background: #0f1d3d !important;
-  color: #f8fafc !important;
-  border: 1px solid rgba(147, 197, 253, 0.16) !important;
-}
-
-:root[data-theme="nexa"] .user-item.active,
-:root[data-theme="midnight"] .user-item.active {
-  background: rgba(37, 99, 235, 0.18) !important;
-  border-color: rgba(37, 99, 235, 0.4) !important;
-}
-
-/* ── 4. BLACK (LIGHTS OUT STEALTH) ── */
-:root[data-theme="black"] {
-  --primary: #1d9bf0;
-  --primary-dk: #0c85d0;
-  --primary-lt: #4cb5f5;
-  --primary-glow: rgba(29, 155, 240, 0.32);
-  --primary-soft: rgba(29, 155, 240, 0.16);
-  --bg-0: #000000;
-  --bg-1: #0e1012;
-  --bg-2: #16181b;
-  --bg-3: #1e2025;
-  --bg-4: #282a30;
-  --bg-5: #32353c;
-  --text-0: #ffffff;
-  --text-1: #f0f2f5;
-  --text-2: #8b949e;
-  --text-3: #6e767d;
-  --border-dk: rgba(255, 255, 255, 0.08);
-  --border-md: rgba(255, 255, 255, 0.15);
-  --border-lt: rgba(255, 255, 255, 0.22);
-}
-
-:root[data-theme="black"] .msg.me .bubble {
-  background: linear-gradient(135deg, #1d9bf0 0%, #0c85d0 100%) !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 14px rgba(29, 155, 240, 0.4) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-}
-
-:root[data-theme="black"] .msg.them .bubble {
-  background: #16181b !important;
-  color: #f0f2f5 !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-}
-
-:root[data-theme="black"] .user-item.active {
-  background: rgba(29, 155, 240, 0.14) !important;
-  border-color: rgba(29, 155, 240, 0.35) !important;
-}
-
-/* ── 5. ROSE (WARM CRIMSON PLUM) ── */
-:root[data-theme="rose"] {
-  --primary: #f43f5e;
-  --primary-dk: #be123c;
-  --primary-lt: #fb7185;
-  --primary-glow: rgba(244, 63, 94, 0.35);
-  --primary-soft: rgba(244, 63, 94, 0.16);
-  --bg-0: #1a0610;
-  --bg-1: #260a19;
-  --bg-2: #340e23;
-  --bg-3: #45132f;
-  --bg-4: #57193c;
-  --bg-5: #6a204a;
-  --text-0: #fff5f7;
-  --text-1: #fbe4ea;
-  --text-2: #d9a0b0;
-  --text-3: #a86d7e;
-  --border-dk: rgba(255, 255, 255, 0.07);
-  --border-md: rgba(255, 255, 255, 0.14);
-  --border-lt: rgba(255, 255, 255, 0.22);
-}
-
-:root[data-theme="rose"] .msg.me .bubble {
-  background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%) !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 14px rgba(244, 63, 94, 0.4) !important;
-}
-
-:root[data-theme="rose"] .msg.them .bubble {
-  background: #340e23 !important;
-  color: #fff5f7 !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-}
-
-:root[data-theme="rose"] .user-item.active {
-  background: rgba(244, 63, 94, 0.15) !important;
-  border-color: rgba(244, 63, 94, 0.35) !important;
-}
-
-/* ── 6. LAVENDER (ROYAL VIOLET) ── */
-:root[data-theme="lavender"] {
-  --primary: #a06bff;
-  --primary-dk: #7e3af2;
-  --primary-lt: #c09aff;
-  --primary-glow: rgba(160, 107, 255, 0.35);
-  --primary-soft: rgba(160, 107, 255, 0.16);
-  --bg-0: #120b1f;
-  --bg-1: #1a112c;
-  --bg-2: #24183d;
-  --bg-3: #322252;
-  --bg-4: #412d69;
-  --bg-5: #513982;
-  --text-0: #f7f3ff;
-  --text-1: #ece4fb;
-  --text-2: #b3a3d9;
-  --text-3: #8775ab;
-  --border-dk: rgba(255, 255, 255, 0.07);
-  --border-md: rgba(255, 255, 255, 0.14);
-  --border-lt: rgba(255, 255, 255, 0.22);
-}
-
-:root[data-theme="lavender"] .msg.me .bubble {
-  background: linear-gradient(135deg, #a06bff 0%, #7e3af2 100%) !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 14px rgba(160, 107, 255, 0.4) !important;
-}
-
-:root[data-theme="lavender"] .msg.them .bubble {
-  background: #24183d !important;
-  color: #f7f3ff !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-}
-
-:root[data-theme="lavender"] .user-item.active {
-  background: rgba(160, 107, 255, 0.15) !important;
-  border-color: rgba(160, 107, 255, 0.35) !important;
+:root[data-theme="nexa"] .msg.them .bubble {
+  background: #0f2040 !important;
+  color: #eef4ff !important;
+  border: 1px solid rgba(140, 170, 255, 0.16) !important;
 }
 
 /* WhatsApp-Style Channel Broadcast Reply to Comment Quote */
@@ -11634,13 +11248,14 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--bg-2);
-  border-top: 1px solid var(--border);
-  padding: 6px 12px;
+  background: color-mix(in srgb, var(--cyan) 11%, var(--bg-1));
+  border-top: 1px solid color-mix(in srgb, var(--cyan) 22%, transparent);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+  padding: 8px 12px;
 }
 .channel-comment-reply-bar .reply-bar-indicator {
-  width: 3px;
-  height: 28px;
+  width: 4px;
+  height: 30px;
   background: var(--primary);
   border-radius: 2px;
   flex-shrink: 0;
@@ -11651,12 +11266,13 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 .channel-comment-reply-bar .reply-bar-title {
   font-size: 11.5px;
-  font-weight: 700;
-  color: var(--primary);
+  font-weight: 800;
+  color: var(--cyan);
 }
 .channel-comment-reply-bar .reply-bar-snippet {
-  font-size: 11px;
-  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11664,9 +11280,16 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 .channel-comment-reply-bar .reply-bar-close {
   background: none;
   border: none;
-  color: var(--text-3);
+  color: var(--text-2);
   cursor: pointer;
-  padding: 4px;
+  padding: 5px;
+  border-radius: 6px;
+  display: flex;
+  transition: background 120ms ease, color 120ms ease;
+}
+.channel-comment-reply-bar .reply-bar-close:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 

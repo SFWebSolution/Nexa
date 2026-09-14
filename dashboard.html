@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src https://askifyai.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Nexa Messenger - Premium Chat & Stories Platform with Music Integration">
-  <meta name="theme-color" content="#080c14">
+  <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Nexa Messenger">
@@ -249,7 +249,7 @@
         </div>
         <div class="settings-scroll-area">
           <div class="settings-group">
-            <div class="settings-group-title">🔔 Notifications</div>
+            <div class="settings-group-title"><i data-lucide="bell" style="width: 15px; height: 15px;"></i> Notifications</div>
             <div class="notif-item">
               <div class="notif-item-info">
                 <label class="notif-item-label">Messages</label>
@@ -273,26 +273,26 @@
             </div>
             <div class="notif-item notif-item-btn" onclick="openNotificationHistory()">
               <div class="notif-item-info">
-                <label class="notif-item-label">🕘 Notification History</label>
+                <label class="notif-item-label"><i data-lucide="clock" style="width: 14px; height: 14px;"></i> Notification History</label>
                 <div class="notif-item-desc">Browse notifications you've received</div>
               </div>
-              <div class="notif-item-chev">›</div>
+              <div class="notif-item-chev"><i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i></div>
             </div>
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">🎨 Appearance & Theme</div>
+            <div class="settings-group-title"><i data-lucide="palette" style="width: 15px; height: 15px;"></i> Appearance & Theme</div>
             <div class="theme-picker-grid" id="settingsThemeGrid">
               <!-- Themes rendered by JS -->
             </div>
             <button class="settings-action-btn" id="fontPickerBtn" onclick="openFontPickerModal()" style="margin-top: 10px;">
-              <span>✍️ Font Style</span>
-              <span>→</span>
+              <span><i data-lucide="pen-line" style="width: 16px; height: 16px;"></i> Font Style</span>
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
             </button>
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">🖼️ Global Chat Wallpaper</div>
+            <div class="settings-group-title"><i data-lucide="image" style="width: 15px; height: 15px;"></i> Global Chat Wallpaper</div>
             <div class="wallpaper-settings-card">
               <div class="wallpaper-preview-strip" id="settingsWallpaperPreview" onclick="openWallpaperModal('global')">
                 <div class="wp-preview-thumb" id="settingsWpThumb"></div>
@@ -306,26 +306,26 @@
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">🤖 AI Assistant</div>
+            <div class="settings-group-title"><i data-lucide="bot" style="width: 15px; height: 15px;"></i> AI Assistant</div>
             <button class="settings-action-btn" onclick="openAskifyComingSoon()">
-              <span>🤖 Launch Askify AI</span>
-              <span>→</span>
+              <span><i data-lucide="bot" style="width: 16px; height: 16px;"></i> Launch Askify AI</span>
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
             </button>
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">⭐ Messages & Media</div>
+            <div class="settings-group-title"><i data-lucide="star" style="width: 15px; height: 15px;"></i> Messages & Media</div>
             <button class="settings-action-btn" onclick="openStarredDrawer()">
-              <span>⭐ Starred Messages</span>
-              <span>→</span>
+              <span><i data-lucide="star" style="width: 16px; height: 16px;"></i> Starred Messages</span>
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
             </button>
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">🎁 Invite Friends</div>
+            <div class="settings-group-title"><i data-lucide="gift" style="width: 15px; height: 15px;"></i> Invite Friends</div>
             <div class="referral-card">
               <div class="referral-hero">
-                <div class="referral-hero-icon">🎁</div>
+                <div class="referral-hero-icon"><i data-lucide="gift" style="width: 20px; height: 20px;"></i></div>
                 <div class="referral-hero-text">
                   <div class="referral-title">Share Nexa, grow your circle</div>
                   <div class="referral-sub">Invite friends with your personal link — track how many join.</div>
@@ -336,10 +336,10 @@
                   <span class="referral-link-text" id="referralLinkText"></span>
                   <input type="text" id="referralLinkInput" class="referral-link-input" readonly value="">
                 </div>
-                <button class="referral-copy-btn" onclick="copyReferralLink()" title="Copy link">⧉ Copy</button>
+                <button class="referral-copy-btn" onclick="copyReferralLink()" title="Copy link"><i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copy</button>
               </div>
               <div class="referral-actions">
-                <button class="referral-share-btn" onclick="shareReferralLink()">📤 Share link</button>
+                <button class="referral-share-btn" onclick="shareReferralLink()"><i data-lucide="share-2" style="width: 14px; height: 14px;"></i> Share link</button>
                 <div class="referral-count"><span class="referral-count-num" id="referralCount">0</span> friends joined</div>
               </div>
               <div class="referral-list" id="referralList" style="display:none;"></div>
@@ -347,10 +347,10 @@
           </div>
 
           <div class="settings-group">
-            <div class="settings-group-title">💾 Storage & Cache</div>
+            <div class="settings-group-title"><i data-lucide="hard-drive" style="width: 15px; height: 15px;"></i> Storage & Cache</div>
             <button class="settings-action-btn danger" onclick="clearAppCache()">
-              <span>🗑️ Clear Local Cache</span>
-              <span>Clean</span>
+              <span><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Clear Local Cache</span>
+              <span style="color: var(--text-3); font-size: 12px; font-weight: 600;">Clean</span>
             </button>
           </div>
         </div>
@@ -405,14 +405,14 @@
           </div>
 
           <button class="profile-notif-history-btn" onclick="openNotificationHistory()">
-            <span class="nh-prof-icon">🕘</span>
+            <span class="nh-prof-icon"><i data-lucide="clock" style="width: 16px; height: 16px;"></i></span>
             <span class="nh-prof-label">Notification History</span>
             <span class="nh-prof-count" id="notifHistoryCount"></span>
-            <span class="nh-prof-chev">›</span>
+            <span class="nh-prof-chev"><i data-lucide="chevron-right" style="width: 15px; height: 15px;"></i></span>
           </button>
 
           <button class="profile-logout-btn" onclick="handleLogout()">
-            <span>🚪 Sign Out</span>
+            <span><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Sign Out</span>
           </button>
         </div>
       </div>
@@ -547,7 +547,7 @@
 
 
     <div id="disappearingNotice" class="disappearing-banner" style="display: none;">
-      <span class="disappearing-banner-icon"><i data-lucide="clock" style="width: 15px; height: 15px;"></i></span>
+      <span class="disappearing-banner-icon">⏱️</span>
       <span id="disappearingBannerText">Disappearing messages are turned on</span>
     </div>
 
@@ -687,12 +687,12 @@
       <div class="story-user-meta">
         <div class="story-user-name-wrap">
           <div class="story-user-name" id="storyUserName">User</div>
-          <div class="reshared-banner" id="resharedBadge" style="display: none;">🔁 Reshared from <span id="resharedName"></span></div>
+          <div class="reshared-banner" id="resharedBadge" style="display: none;"><i data-lucide="repeat" style="width: 12px; height: 12px;"></i> Reshared from <span id="resharedName"></span></div>
         </div>
         <div class="story-user-time" id="storyUserTime"></div>
       </div>
       <div class="story-actions-top">
-        <button class="story-delete-btn" id="storyDeleteBtn" style="display: none;" onclick="deleteStory()" title="Delete">🗑️</button>
+        <button class="story-delete-btn" id="storyDeleteBtn" style="display: none;" onclick="deleteStory()" title="Delete"><i data-lucide="trash-2" style="width: 18px; height: 18px;"></i></button>
         <button class="story-close-btn" onclick="closeStoryViewer()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
       </div>
     </div>
@@ -704,18 +704,18 @@
     
     <!-- STATS BAR FOR OWN STORY (VIEWS, LIKES, RESHARES) -->
     <div class="story-stats-bar" id="storyStatsBar" style="display: none;" onclick="openStoryAnalyticsModal()">
-      <div class="stats-item" id="storyViewsText">👁️ 0 views</div>
-      <div class="stats-item" id="storyLikesText">❤️ 0 likes</div>
-      <div class="stats-item" id="storyResharesText">🔁 0 reshares</div>
+      <div class="stats-item" id="storyViewsText"><i data-lucide="eye" style="width: 13px; height: 13px;"></i> 0 views</div>
+      <div class="stats-item" id="storyLikesText"><i data-lucide="heart" style="width: 13px; height: 13px;"></i> 0 likes</div>
+      <div class="stats-item" id="storyResharesText"><i data-lucide="repeat" style="width: 13px; height: 13px;"></i> 0 reshares</div>
       <div class="stats-badge-action">▲ Details</div>
     </div>
 
     <!-- ACTIONS BAR FOR OTHER USERS STORIES -->
     <div class="story-viewer-actions" id="storyViewerActions">
       <input type="text" class="story-reply-inp" id="storyReplyInput" placeholder="Reply to story…">
-      <button class="story-action-btn" onclick="sendStoryReply()" title="Send reply"><i data-lucide="send" style="width:16px;height:16px;"></i></button>
-      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare story"><i data-lucide="repeat" style="width:16px;height:16px;"></i></button>
-      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like story"><i data-lucide="heart" style="width:16px;height:16px;"></i></button>
+      <button class="story-action-btn" onclick="sendStoryReply()" title="Send reply"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
+      <button class="story-action-btn" id="storyReshareBtn" onclick="reshareStory()" title="Reshare story"><i data-lucide="repeat" style="width: 18px; height: 18px;"></i></button>
+      <button class="story-action-btn" id="storyLikeBtn" onclick="reactToStory()" title="Like story"><i data-lucide="heart" style="width: 18px; height: 18px;"></i></button>
     </div>
   </div>
 </div>
@@ -729,9 +729,9 @@
     </div>
     
     <div class="analytics-tab-bar">
-      <button class="analytics-tab active" id="aTabViews" onclick="switchAnalyticsTab('views')">👁️ Viewers (<span id="cntViews">0</span>)</button>
-      <button class="analytics-tab" id="aTabLikes" onclick="switchAnalyticsTab('likes')">❤️ Likes (<span id="cntLikes">0</span>)</button>
-      <button class="analytics-tab" id="aTabReshares" onclick="switchAnalyticsTab('reshares')">🔁 Reshares (<span id="cntReshares">0</span>)</button>
+      <button class="analytics-tab active" id="aTabViews" onclick="switchAnalyticsTab('views')"><i data-lucide="eye" style="width: 14px; height: 14px;"></i> Viewers (<span id="cntViews">0</span>)</button>
+      <button class="analytics-tab" id="aTabLikes" onclick="switchAnalyticsTab('likes')"><i data-lucide="heart" style="width: 14px; height: 14px;"></i> Likes (<span id="cntLikes">0</span>)</button>
+      <button class="analytics-tab" id="aTabReshares" onclick="switchAnalyticsTab('reshares')"><i data-lucide="repeat" style="width: 14px; height: 14px;"></i> Reshares (<span id="cntReshares">0</span>)</button>
     </div>
 
     <div class="analytics-list" id="analyticsList">
@@ -807,7 +807,7 @@
       <!-- Sticker toolbar button (like WhatsApp's sticker icon). Always
            clickable: when no media is picked yet, tapping it opens the image
            picker (handled in toggleStickerTray) instead of silently failing. -->
-      <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker"><i data-lucide="smile" style="width:18px;height:18px;"></i></button>
+      <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker">😀</button>
 
       <!-- Sticker tray popup -->
       <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
@@ -859,8 +859,8 @@
   <div class="voice-timer-txt" id="voiceTimer">0:00</div>
   <div class="voice-hint">Recording… tap Send or Discard</div>
   <div class="voice-actions">
-    <button class="vbtn vbtn-del" onclick="cancelVoice()">🗑 Discard</button>
-    <button class="vbtn vbtn-send" id="vSendBtn" onclick="sendVoice()">✓ Send</button>
+    <button class="vbtn vbtn-del" onclick="cancelVoice()"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Discard</button>
+    <button class="vbtn vbtn-send" id="vSendBtn" onclick="sendVoice()"><i data-lucide="send" style="width: 15px; height: 15px;"></i> Send</button>
   </div>
 </div>
 
@@ -888,7 +888,7 @@
   <div class="info-contact" id="infoContact">
     <div class="info-contact-avatar-wrap" onclick="openProfilePic(document.getElementById('infoContactAvatar').src, 'chatinfo')">
       <img id="infoContactAvatar" class="info-contact-avatar" src="https://i.imgur.com/HeIi0wU.png" alt="Profile">
-      <div class="info-contact-avatar-zoom">🔍</div>
+      <div class="info-contact-avatar-zoom"><i data-lucide="zoom-in" style="width: 16px; height: 16px;"></i></div>
     </div>
     <div class="info-contact-name" id="infoContactName">User</div>
     <div class="info-contact-status" id="infoContactStatus">offline</div>
@@ -903,7 +903,7 @@
     <div class="theme-grid" id="themeGrid"></div>
   </div>
   <div class="info-section">
-    <div class="info-sec-title">🖼️ Chat Background Wallpaper</div>
+    <div class="info-sec-title"><i data-lucide="image" style="width: 14px; height: 14px;"></i> Chat Background Wallpaper</div>
     <div class="wallpaper-info-card">
       <div class="wp-info-preview-box" id="infoWpPreviewBox" onclick="openWallpaperModal('current')">
         <div class="wp-info-thumb" id="infoWpThumb"></div>
@@ -913,13 +913,13 @@
         </div>
       </div>
       <div class="wp-info-actions" style="margin-top: 10px; display: flex; gap: 8px;">
-        <button class="wp-btn-sm primary" onclick="openWallpaperModal('current')">✏️ Customize Background</button>
-        <button class="wp-btn-sm secondary" id="infoWpResetBtn" onclick="resetCurrentChatWallpaper()" style="display: none;">↩️ Reset to Default</button>
+        <button class="wp-btn-sm primary" onclick="openWallpaperModal('current')"><i data-lucide="image" style="width: 14px; height: 14px;"></i> Customize Background</button>
+        <button class="wp-btn-sm secondary" id="infoWpResetBtn" onclick="resetCurrentChatWallpaper()" style="display: none;"><i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i> Reset to Default</button>
       </div>
     </div>
   </div>
   <div class="info-section">
-    <div class="info-sec-title">⏱️ Disappearing Messages</div>
+    <div class="info-sec-title"><i data-lucide="timer" style="width: 14px; height: 14px;"></i> Disappearing Messages</div>
     <div style="padding: 6px 0;">
       <div style="font-size: 12px; color: var(--text-3); margin-bottom: 8px; line-height: 1.4;">
         For privacy, new messages will disappear from this chat after the selected duration.
@@ -935,10 +935,10 @@
   </div>
   <div class="info-section">
     <div class="info-sec-title">Actions</div>
-    <div class="info-action" onclick="openStarredDrawer()"><span class="ia-icon"><i data-lucide="star" style="width:16px;height:16px;"></i></span><span class="ia-text">Starred Messages</span></div>
-    <div class="info-action" onclick="muteChat()"><span class="ia-icon" id="muteIcon"><i data-lucide="bell-off" style="width:16px;height:16px;"></i></span><span class="ia-text" id="muteText">Mute Notifications</span></div>
-    <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon"><i data-lucide="heart" style="width:16px;height:16px;"></i></span><span class="ia-text">Favourite Chat</span></div>
-    <div class="info-action danger" onclick="clearChat()"><span class="ia-icon"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></span><span class="ia-text">Clear Chat</span></div>
+    <div class="info-action" onclick="openStarredDrawer()"><span class="ia-icon"><i data-lucide="star" style="width: 16px; height: 16px;"></i></span><span class="ia-text">Starred Messages</span></div>
+    <div class="info-action" onclick="muteChat()"><span class="ia-icon" id="muteIcon"><i data-lucide="bell-off" style="width: 16px; height: 16px;"></i></span><span class="ia-text" id="muteText">Mute Notifications</span></div>
+    <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon"><i data-lucide="star" style="width: 16px; height: 16px;"></i></span><span class="ia-text">Favourite Chat</span></div>
+    <div class="info-action" onclick="clearChat()"><span class="ia-icon"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></span><span class="ia-text">Clear Chat</span></div>
   </div>
 </div>
 
@@ -1158,7 +1158,7 @@
     <div class="user-profile-cover"></div>
     <div class="user-profile-avatar-wrap" onclick="openProfilePic(document.getElementById('userProfileAvatar').src, 'profile')">
       <img id="userProfileAvatar" src="" alt="Profile" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-      <div class="user-profile-avatar-zoom">🔍</div>
+      <div class="user-profile-avatar-zoom"><i data-lucide="zoom-in" style="width: 16px; height: 16px;"></i></div>
     </div>
     <div class="user-profile-info">
       <div class="user-profile-name" id="userProfileName"></div>
@@ -1185,7 +1185,7 @@
   <div class="wallpaper-modal">
     <div class="wallpaper-modal-header">
       <div class="wp-modal-title-wrap">
-        <div class="wallpaper-modal-title" id="wpModalTitle">🖼️ Customize Chat Background</div>
+        <div class="wallpaper-modal-title" id="wpModalTitle"><i data-lucide="image" style="width: 16px; height: 16px;"></i> Customize Chat Background</div>
         <div class="wallpaper-modal-sub" id="wpModalSub">Select or upload a wallpaper image and adjust lighting for crisp reading</div>
       </div>
       <button class="wallpaper-modal-close" onclick="closeWallpaperModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
@@ -1252,7 +1252,7 @@
         </div>
 
         <div class="wp-slider-group">
-          <div class="wp-slider-label">🎨 Overlay Tint Mode</div>
+          <div class="wp-slider-label"><i data-lucide="palette" style="width: 14px; height: 14px;"></i> Overlay Tint Mode</div>
           <div class="wp-tint-pills">
             <button class="wp-tint-pill active" id="wpTintDark" onclick="setWallpaperTintMode('dark')">🌙 Dark</button>
             <button class="wp-tint-pill" id="wpTintGlass" onclick="setWallpaperTintMode('glass')">🧊 Glass Frost</button>
@@ -1263,7 +1263,7 @@
     </div>
 
     <div class="wallpaper-modal-footer">
-      <button class="wp-modal-btn danger" onclick="removeActiveWallpaper()">🗑️ Remove Wallpaper</button>
+      <button class="wp-modal-btn danger" onclick="removeActiveWallpaper()"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Remove Wallpaper</button>
       <div style="flex: 1;"></div>
       <button class="wp-modal-btn secondary" onclick="closeWallpaperModal()">Cancel</button>
       <button class="wp-modal-btn primary" onclick="saveWallpaperFromModal()">Save Wallpaper</button>
@@ -1288,7 +1288,7 @@
     </div>
     <div class="welcome-back-cta">
       <button class="welcome-back-btn secondary" onclick="dismissReturningWelcome()">Not now</button>
-      <button class="welcome-back-btn primary" onclick="returningWelcomeInvite()">📤 Invite friends</button>
+      <button class="welcome-back-btn primary" onclick="returningWelcomeInvite()"><i data-lucide="share-2" style="width: 15px; height: 15px;"></i> Invite friends</button>
     </div>
     <div class="welcome-back-foot">Help us grow Nexa by bringing your people along ❤️<br>We dey wait for you o! 😂⚔️</div>
   </div>
@@ -1676,11 +1676,11 @@
 <div class="comm-modal-overlay" id="forwardModal" onclick="handleCommModalOverlayClick(event, 'forwardModal')">
   <div class="comm-modal-card" onclick="event.stopPropagation()" style="max-width: 420px;">
     <div class="comm-modal-header">
-      <div class="comm-modal-title">⤳ Forward To</div>
+      <div class="comm-modal-title"><i data-lucide="forward" style="width: 15px; height: 15px; vertical-align: -2px;"></i> Forward To</div>
       <button class="comm-modal-close" onclick="closeForwardModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
     </div>
     <div class="comm-modal-body" style="max-height: 55vh; overflow-y: auto;">
-      <input type="text" id="forwardSearchInput" class="comm-inline-search" placeholder="🔍 Search contacts or groups…" oninput="filterForwardTargets(this.value)">
+      <input type="text" id="forwardSearchInput" class="comm-inline-search" placeholder="Search contacts or groups…" oninput="filterForwardTargets(this.value)">
       <div id="forwardTargetsList" class="forward-targets-list"></div>
     </div>
     <div class="comm-modal-footer">
@@ -1693,7 +1693,7 @@
 <!-- STARRED MESSAGES DRAWER -->
 <div class="starred-drawer" id="starredDrawer">
   <div class="starred-drawer-header">
-    <div class="starred-drawer-title">⭐ Starred Messages</div>
+    <div class="starred-drawer-title"><i data-lucide="star" style="width: 16px; height: 16px;"></i> Starred Messages</div>
     <button class="comments-drawer-close" onclick="closeStarredDrawer()"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
   </div>
   <div class="starred-list" id="starredMessagesList">
