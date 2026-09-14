@@ -993,6 +993,7 @@ function confirmDeleteChat() {
     clearChatMsgCache(uid);
     const chatNameEl = document.getElementById("chatName");
     if (chatNameEl) chatNameEl.textContent = "Select a conversation";
+    setChatHandle("");
     const msgBox = document.getElementById("messages");
     if (msgBox) msgBox.innerHTML = '<div class="empty-chat"><div class="empty-chat-icon">💬</div><div style="font-size: 16px; font-weight: 600;">Nexa Messenger</div><div style="font-size: 13px; color: var(--text-3);">Select a user to start chatting</div></div>';
     if (window.innerWidth <= 768) {
@@ -1159,6 +1160,19 @@ function scheduleRender() {
   });
 }
 
+function setChatHandle(text) {
+  const el = document.getElementById("chatHandle");
+  if (el) {
+    if (text) {
+      el.textContent = text;
+      el.style.display = "block";
+    } else {
+      el.textContent = "";
+      el.style.display = "none";
+    }
+  }
+}
+
 function renderUsers() {
   const box = document.getElementById("users");
   if (!box) return;
@@ -1170,6 +1184,7 @@ function renderUsers() {
   } else {
     list = list.filter(u =>
       (u.displayName || "").toLowerCase().includes(q) ||
+      ((u.username || "").toLowerCase().includes(q) && q !== "") ||
       ((u.phone || "").replace(/\D/g, "").includes(q.replace(/\D/g, "")) && q.replace(/\D/g, "") !== "")
   );
   }
@@ -1251,6 +1266,7 @@ function renderUsers() {
         </div>
         <div class="user-info">
           <div class="user-name">${isSelf ? '📝 ' : (favoritedChats[user.uid] ? '⭐ ' : '')}${name}</div>
+          <div class="user-handle" id="handle-${user.uid}" ${user.username && user.username !== (user.displayName || '').toLowerCase() ? '' : 'style="display:none"'}>${user.username && user.username !== (user.displayName || '').toLowerCase() ? '@' + escapeHtml(user.username) : ''}</div>
           <div class="user-preview" id="prev-${user.uid}">${escapeHtml(prevText)}</div>
         </div>
         <div class="user-meta">
@@ -1266,6 +1282,13 @@ function renderUsers() {
       
       const nameEl = el.querySelector(`.user-name`);
       if (nameEl) nameEl.innerHTML = `${isSelf ? '📝 ' : (favoritedChats[user.uid] ? '⭐ ' : '')}${name}`;
+
+      const handleEl = el.querySelector(`.user-handle`);
+      if (handleEl) {
+        const h = (user.username && user.username !== (user.displayName || '').toLowerCase()) ? '@' + user.username : '';
+        if (handleEl.textContent !== h) handleEl.textContent = h;
+        handleEl.style.display = h ? '' : 'none';
+      }
       
       const prevEl = el.querySelector(`.user-preview`);
       if (prevEl && prevEl.textContent !== prevText) prevEl.textContent = prevText;
@@ -1716,8 +1739,12 @@ function renderProfileTab() {
   const pNameDisplay = document.getElementById("profileTabNameDisplay");
   if (pNameDisplay) pNameDisplay.textContent = myName === "Loading…" ? (currentUser.displayName || currentUser.email?.split('@')[0] || "User") : myName;
 
-  const pNameInput = document.getElementById("profileTabNameInput");
-  if (pNameInput && !pNameInput.value) pNameInput.value = (myName !== "Loading…" ? myName : currentUser.displayName) || "";
+  const pUsername = document.getElementById("profileTabUsername");
+  if (pUsername) {
+    const meDoc = allUsersData.find(u => u.uid === currentUser.uid);
+    const myUsername = (meDoc && (meDoc.username || meDoc.usernameField)) || _myUsername || (currentUser.email ? currentUser.email.split('@')[0] : '');
+    pUsername.textContent = myUsername ? '@' + myUsername : '@—';
+  }
 
   const pEmail = document.getElementById("profileTabEmail");
   if (pEmail) pEmail.textContent = currentUser.email || "No email";
@@ -1821,33 +1848,6 @@ async function fetchUserNote(uid) {
 function triggerProfilePhotoUpload() {
   const input = document.getElementById("profileUpload");
   if (input) input.click();
-}
-
-async function saveProfileTabName() {
-  const input = document.getElementById("profileTabNameInput");
-  const newName = input?.value.trim();
-  if (!newName || newName.length < 2) {
-    showNotifToast("Please enter a valid display name", "error");
-    return;
-  }
-
-  if (!currentUser) return;
-
-  try {
-    await currentUser.updateProfile({ displayName: newName });
-    await db.collection("users").doc(currentUser.uid).set({
-      displayName: newName,
-      name: newName
-    }, { merge: true });
-
-    document.getElementById("myName").textContent = newName;
-    const pNameDisplay = document.getElementById("profileTabNameDisplay");
-    if (pNameDisplay) pNameDisplay.textContent = newName;
-    showNotifToast("✓ Profile name updated!", "success");
-    renderUsers();
-  } catch (err) {
-    showNotifToast("Error saving name: " + err.message, "error");
-  }
 }
 
 function clearAppCache() {
@@ -1968,6 +1968,8 @@ function selectChat(user, el) {
   messageRepliedTo = null;
   clearReply();
   document.getElementById("chatName").textContent = user.displayName || "User";
+  const handleText = (user.username && user.username !== (user.displayName || "").toLowerCase()) ? "@" + user.username : "";
+  setChatHandle(handleText);
   document.getElementById("chatPic").src = user.photo || "https://i.imgur.com/HeIi0wU.png";
   document.querySelectorAll(".user-item").forEach(e => e.classList.remove("active"));
   if (el) el.classList.add("active");
@@ -5913,6 +5915,11 @@ function openUserProfile() {
 
   document.getElementById('userProfileAvatar').src = photo;
   document.getElementById('userProfileName').textContent = u.displayName || u.name || 'User';
+  const profHandle = document.getElementById('userProfileHandle');
+  if (profHandle) {
+    const uh = u.username || u.usernameField || '';
+    profHandle.textContent = uh ? '@' + uh : '';
+  }
 
   // Presence / status from the shared cache (timestamp-based).
   const pData = userPresenceCache[u.uid] || {};
@@ -8345,6 +8352,7 @@ function selectGroupChat(group) {
   updatePollButtonVisibility();
 
   document.getElementById('chatName').textContent = group.name || 'Group';
+  setChatHandle("");
   document.getElementById('chatPic').src = group.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
   document.getElementById('chatStatusDot').style.display = 'none';
   document.getElementById('status').textContent = `${group.membersCount || 1} members`;
@@ -8388,6 +8396,7 @@ function selectGroupChat(group) {
     if (!docSnap.exists) return;
     selectedGroup = { id: docSnap.id, ...docSnap.data() };
     document.getElementById('chatName').textContent = selectedGroup.name || 'Group';
+    setChatHandle("");
     document.getElementById('chatPic').src = selectedGroup.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
     document.getElementById('status').textContent = `${selectedGroup.membersCount || 1} members`;
 
@@ -8871,6 +8880,7 @@ async function editGroupName() {
     selectedGroup.name = val;
     document.getElementById('groupInfoName').textContent = val;
     document.getElementById('chatName').textContent = val;
+    setChatHandle("");
     renderMyGroups();
     showNotifToast('✓ Group name updated', 'success');
   } catch (e) {
@@ -9739,6 +9749,7 @@ function selectChannelFeed(channel) {
   updatePollButtonVisibility();
 
   document.getElementById('chatName').textContent = channel.name || 'Channel';
+  setChatHandle("");
   document.getElementById('chatPic').src = channel.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
   document.getElementById('chatStatusDot').style.display = 'none';
   document.getElementById('status').textContent = `${formatCount(channel.subscribersCount || 1)} subscribers • ${channel.handle || ''}`;
@@ -10781,6 +10792,7 @@ async function editChannelName() {
     selectedChannel.name = val;
     document.getElementById('channelInfoName').textContent = val;
     document.getElementById('chatName').textContent = val;
+    setChatHandle("");
     showNotifToast('✓ Channel name updated', 'success');
   } catch (e) {
     showNotifToast('Error updating name: ' + e.message, 'error');
@@ -10916,6 +10928,7 @@ function resetCommunityChatMode() {
     `;
   }
   document.getElementById("chatName").textContent = "Nexa Messenger";
+  setChatHandle("");
   document.getElementById("chatPic").src = "https://i.imgur.com/HeIi0wU.png";
   document.getElementById("status").textContent = "";
 

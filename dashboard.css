@@ -872,7 +872,7 @@ select:focus-visible {
      paint win for long contact lists (WhatsApp-feel). The intrinsic size
      stops the scrollbar from jumping as rows virtualize in/out. */
   content-visibility: auto;
-  contain-intrinsic-size: 64px;
+  contain-intrinsic-size: 76px;
 }
 
 .user-item:hover {
@@ -11452,4 +11452,38 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   color: #fff; border-radius: 20px;
   padding: 3px 9px; min-width: 22px; text-align: center;
   font-variant-numeric: tabular-nums;
+}
+/* Display-name / @username semantics — the @handle sits in its own subdued
+   line right under the display name (chat list, chat header, profile modal). */
+.user-handle {
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  min-height: 0;
+}
+
+.chat-peer-handle {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  display: none;
+}
+
+.user-profile-handle {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

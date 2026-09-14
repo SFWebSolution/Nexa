@@ -57,6 +57,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
+  <!-- Lucide icons (pinned, with jsDelivr UMD fallback) -->
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script>window.lucide || document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"><\/script>');</script>
+
   <script>
     // Instant redirect for returning users: if this device has an active
     // session flag (set on dashboard load, cleared on sign-out), bounce
@@ -265,7 +269,7 @@ section{padding:84px 0}
 .step-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);padding:32px 28px;transition:transform .2s, box-shadow .25s;position:relative}
 .step-card:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
 .step-num{width:34px;height:34px;border-radius:10px;background:var(--blue-l);color:var(--blue-d);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:1rem;margin-bottom:18px}
-.step-icon{font-size:1.8rem;margin-bottom:14px}
+.step-icon{font-size:1.8rem;margin-bottom:14px;width:52px;height:52px;border-radius:14px;background:var(--blue-l);color:var(--blue);display:flex;align-items:center;justify-content:center}
 .step-card h3{font-family:var(--font-display);font-size:1.18rem;color:var(--ink);font-weight:700;margin-bottom:10px;letter-spacing:-.3px}
 .step-card p{font-size:.95rem;color:var(--muted)}
 
@@ -295,7 +299,7 @@ section{padding:84px 0}
 /* ---------- Download / install ---------- */
 .download-inner{background:linear-gradient(135deg,var(--ink),#1d2b45);border-radius:24px;padding:56px 40px;text-align:center;color:#fff;position:relative;overflow:hidden}
 .download-inner::before{content:"";position:absolute;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(22,111,229,.4),transparent 65%);top:-160px;right:-120px}
-.download-icon{font-size:2.4rem;margin-bottom:14px;position:relative}
+.download-icon{font-size:2.4rem;margin-bottom:14px;position:relative;color:#7db3ff;display:flex;align-items:center;justify-content:center}
 .download-inner h2{font-family:var(--font-display);font-size:clamp(1.5rem,3vw,2.1rem);font-weight:800;letter-spacing:-.8px;margin-bottom:12px;position:relative}
 .download-inner p{color:rgba(255,255,255,.75);max-width:520px;margin:0 auto 26px;position:relative}
 .download-buttons{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;position:relative}
@@ -350,6 +354,42 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
   .phone-mockup{width:100%;max-width:320px}
   .footer-bottom{flex-direction:column;text-align:center}
 }
+  /* ═══════════════════════════════════════════════════════════════
+     MODERN POLISH — NEXA LANDING (deep-blue era)
+     ═══════════════════════════════════════════════════════════════ */
+  ::selection { background: rgba(11, 87, 208, 0.15); }
+  .hero h1 .accent {
+    background: linear-gradient(120deg, #0b57d0 0%, #1d6bf3 60%, #3b82f6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .btn-primary {
+    background: linear-gradient(120deg, var(--blue) 0%, var(--blue-d) 100%);
+    box-shadow: 0 8px 22px rgba(11, 87, 208, 0.30);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 12px 30px rgba(11, 87, 208, 0.40);
+    transform: translateY(-2px);
+  }
+  .btn-lg { position: relative; overflow: hidden; }
+  .btn-lg::after {
+    content: ""; position: absolute; top: 0; left: -50%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.32), transparent);
+    transform: skewX(-22deg); transition: left .55s ease; pointer-events: none;
+  }
+  .btn-lg:hover::after { left: 130%; }
+  .section-tag {
+    text-transform: uppercase; letter-spacing: 2px;
+  }
+  .feature-card { transition: transform .22s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease; }
+  .feature-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); }
+  .faq-toggle { transition: transform .3s cubic-bezier(.16,1,.3,1); }
+  .faq-item.open .faq-toggle { transform: rotate(45deg); }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-lg::after { display: none; }
+    .feature-card:hover { transform: none; }
+  }
   </style>
 </head>
 <body>
@@ -408,8 +448,8 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
 
       <div class="hero-visual">
         <div class="phone-wrap">
-          <div class="float-card float-1"><div class="ic" style="background:var(--blue-l);color:var(--blue)">🎤</div> Voice notes</div>
-          <div class="float-card float-2"><div class="ic" style="background:rgba(22,111,229,.12);color:var(--blue)">👥</div> Voice rooms</div>
+          <div class="float-card float-1"><div class="ic" style="background:var(--blue-l);color:var(--blue)"><i data-lucide="mic" style="width:15px;height:15px;"></i></div> Voice notes</div>
+          <div class="float-card float-2"><div class="ic" style="background:rgba(22,111,229,.12);color:var(--blue)"><i data-lucide="users" style="width:15px;height:15px;"></i></div> Voice rooms</div>
           <div class="phone-mockup">
             <div class="phone-statusbar"><span>9:41</span><span>●●●● 📶 🔋</span></div>
             <div class="phone-app">
@@ -523,19 +563,19 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
       <div class="steps">
         <div class="step-card reveal reveal-delay-1">
           <div class="step-num">1</div>
-          <div class="step-icon">📝</div>
+          <div class="step-icon"><i data-lucide="user-plus" style="width:24px;height:24px;"></i></div>
           <h3>Create your account</h3>
           <p>Sign up with your email and phone in seconds, and messaging stays free forever.</p>
         </div>
         <div class="step-card reveal reveal-delay-2">
           <div class="step-num">2</div>
-          <div class="step-icon">🔍</div>
+          <div class="step-icon"><i data-lucide="search" style="width:24px;height:24px;"></i></div>
           <h3>Find your people</h3>
           <p>Find friends by username or phone number, or share your profile link to connect instantly.</p>
         </div>
         <div class="step-card reveal reveal-delay-3">
           <div class="step-num">3</div>
-          <div class="step-icon">💬</div>
+          <div class="step-icon"><i data-lucide="message-circle" style="width:24px;height:24px;"></i></div>
           <h3>Start the conversation</h3>
           <p>Send messages and voice notes, post stories, follow channels, or jump into a voice room — all from one clean interface.</p>
         </div>
@@ -588,7 +628,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
   <section class="download-section" id="download" style="padding-top:0">
     <div class="container">
       <div class="download-inner reveal">
-        <div class="download-icon">📲</div>
+        <div class="download-icon"><i data-lucide="smartphone" style="width:38px;height:38px;"></i></div>
         <h2>Install Nexa on your device</h2>
         <p>Get the full app experience on your phone, tablet, or desktop. Install directly from your browser — no app store needed.</p>
         <div class="download-buttons">
@@ -623,10 +663,10 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
           </a>
           <p>An all-in-one messenger — chat, stories, channels, and live voice rooms. Fast, private, and thoughtfully designed.</p>
           <div class="social-links">
-            <a href="https://neuro-stack.onrender.com" target="_blank" class="social-link" aria-label="Website">🌐</a>
-            <a href="#" class="social-link" aria-label="Twitter">𝕏</a>
-            <a href="#" class="social-link" aria-label="Instagram">📷</a>
-            <a href="#" class="social-link" aria-label="Discord">💬</a>
+            <a href="https://neuro-stack.onrender.com" target="_blank" class="social-link" aria-label="Website"><i data-lucide="globe" style="width:16px;height:16px;"></i></a>
+            <a href="#" class="social-link" aria-label="Twitter"><i data-lucide="twitter" style="width:16px;height:16px;"></i></a>
+            <a href="#" class="social-link" aria-label="Instagram"><i data-lucide="instagram" style="width:16px;height:16px;"></i></a>
+            <a href="#" class="social-link" aria-label="Discord"><i data-lucide="message-square" style="width:16px;height:16px;"></i></a>
           </div>
         </div>
         <div class="footer-section">
@@ -721,6 +761,15 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
       document.addEventListener("DOMContentLoaded", initializeAuthListener);
     } else {
       initializeAuthListener();
+    }
+
+    // LUCODE ICONS — render once the page paints.
+    if (window.lucide) {
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => lucide.createIcons());
+      } else {
+        lucide.createIcons();
+      }
     }
 
     // SERVICE WORKER
