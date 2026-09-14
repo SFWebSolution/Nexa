@@ -386,9 +386,12 @@
             <div class="profile-field-group">
               <label class="profile-field-label"><i data-lucide="at-sign" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"></i> Username</label>
               <div class="profile-info-box" id="profileTabUsername" style="user-select: text; color: var(--text-3);">@loading...</div>
-              <div class="profile-field-hint">🔒 Your @username is locked and cannot be changed.
+              <div class="profile-field-hint" id="profileUsernameHint">🔒 Your @username is locked and cannot be changed.
                 <span style="display:block;margin-top:2px;">Other people find you by this handle — share it anywhere.</span>
               </div>
+              <button class="username-edit-btn" id="changeUsernameBtn" style="display:none;" onclick="openChangeUsernameModal()">
+                <i data-lucide="edit-3" style="width:13px;height:13px;"></i> Change Username
+              </button>
             </div>
 
             <div class="profile-field-group">
@@ -1018,6 +1021,23 @@
     <div class="notif-info-box">
       <strong>💡 Tip:</strong> You can also manage notifications in your device settings for more control.
     </div>
+  </div>
+</div>
+
+<!-- ONE-TIME CHANGE USERNAME MODAL -->
+<div class="notif-settings-overlay" id="changeUsernameModal" onclick="handleChangeUsernameOverlayClick(event)">
+  <div class="notif-settings-modal">
+    <div class="notif-hdr">
+      <div class="notif-title"><i data-lucide="at-sign" style="width:15px;height:15px;margin-right:6px;color:var(--primary);"></i> Change Username</div>
+      <button class="notif-close" onclick="closeChangeUsernameModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    </div>
+    <div class="cuu-subtitle">You can change your @username <strong>once</strong>. Choose carefully — after this it is locked forever.</div>
+    <div class="cuu-field-wrap">
+      <span class="cuu-at">@</span>
+      <input type="text" id="changeUsernameInput" class="cuu-input" placeholder="new_username" maxlength="20" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();saveUsernameChange();}">
+    </div>
+    <div class="cuu-error" id="changeUsernameError"></div>
+    <button class="note-save-btn cuu-save" id="changeUsernameSaveBtn" onclick="saveUsernameChange()">Save Username</button>
   </div>
 </div>
 

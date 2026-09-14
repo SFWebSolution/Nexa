@@ -1750,7 +1750,150 @@ function renderProfileTab() {
   if (pEmail) pEmail.textContent = currentUser.email || "No email";
 
   loadProfileNote();
+  refreshMyUsernameInfo();
 }
+
+
+const NEXA_USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+
+// One-time username handler: users with a username AND users without one may
+// set/change it exactly once (users doc flag usernameChangeUsed). After that
+// the button is hidden and the handle is locked.
+async function refreshMyUsernameInfo() {
+  if (!currentUser || !window.db) return;
+  try {
+    const snap = await db.collection("users").doc(currentUser.uid).get();
+    if (!snap.exists) return;
+    const d = snap.data();
+    const myUsername = String(d.username || "").trim();
+    _myUsername = myUsername ? myUsername.toLowerCase().replace(/[^a-z0-9_]/g, "") : _myUsername;
+    const used = !!d.usernameChangeUsed;
+
+    const pUsername = document.getElementById("profileTabUsername");
+    if (pUsername) {
+      pUsername.textContent = myUsername
+        ? '@' + myUsername
+        : (currentUser.email ? '@' + currentUser.email.split('@')[0] : '@\u2014');
+    }
+
+    const btn = document.getElementById("changeUsernameBtn");
+    if (btn) btn.style.display = used ? "none" : "inline-flex";
+
+    const hint = document.getElementById("profileUsernameHint");
+    if (hint) {
+      hint.innerHTML = used
+        ? '\uD83D\uDD12 Your @username is locked and cannot be changed.<span style="display:block;margin-top:2px;">Other people find you by this handle \u2014 share it anywhere.</span>'
+        : '\uD83D\uDD8A You can change your @username <strong>once</strong>.<span style="display:block;margin-top:2px;">Other people find you by this handle \u2014 share it anywhere.</span>';
+    }
+
+    const refInput = document.getElementById("referralLinkInput");
+    if (refInput && typeof initReferralCard === "function") initReferralCard();
+  } catch (e) {
+    console.warn("refreshMyUsernameInfo failed:", e);
+  }
+}
+
+async function openChangeUsernameModal() {
+  if (!currentUser) return;
+  const modal = document.getElementById("changeUsernameModal");
+  if (!modal) return;
+  const input = document.getElementById("changeUsernameInput");
+  const err = document.getElementById("changeUsernameError");
+  const saveBtn = document.getElementById("changeUsernameSaveBtn");
+  if (err) err.textContent = "";
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save Username";
+  }
+  let current = "";
+  try {
+    const snap = await db.collection("users").doc(currentUser.uid).get();
+    if (snap.exists) {
+      const d = snap.data();
+      if (d.usernameChangeUsed) {
+        showNotifToast("You've already used your one-time username change", "info");
+        refreshMyUsernameInfo();
+        return;
+      }
+      current = String(d.username || "").trim();
+    }
+  } catch (e) {
+    console.warn("openChangeUsernameModal read failed:", e);
+  }
+  if (input) {
+    input.value = current;
+    input.disabled = false;
+  }
+  modal.classList.add("active");
+  setTimeout(() => { if (input) input.focus(); }, 60);
+}
+
+function closeChangeUsernameModal() {
+  const modal = document.getElementById("changeUsernameModal");
+  if (modal) modal.classList.remove("active");
+}
+
+function handleChangeUsernameOverlayClick(e) {
+  if (e.target === document.getElementById("changeUsernameModal")) closeChangeUsernameModal();
+}
+
+async function saveUsernameChange() {
+  if (!currentUser) return;
+  const input = document.getElementById("changeUsernameInput");
+  const err = document.getElementById("changeUsernameError");
+  const saveBtn = document.getElementById("changeUsernameSaveBtn");
+  const newUsername = (input ? input.value : "").trim().toLowerCase();
+
+  if (err) err.textContent = "";
+  if (!newUsername) {
+    if (err) err.textContent = "Username cannot be empty.";
+    return;
+  }
+  if (!NEXA_USERNAME_RE.test(newUsername)) {
+    if (err) err.textContent = "Use 3\u201320 letters, numbers or underscores (no spaces).";
+    return;
+  }
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving\u2026";
+  }
+
+  try {
+    const me = await db.collection("users").doc(currentUser.uid).get();
+    if (me.exists && me.data().usernameChangeUsed) {
+      if (err) err.textContent = "You've already used your one-time username change.";
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Username"; }
+      refreshMyUsernameInfo();
+      return;
+    }
+
+    // Uniqueness check (exact match; stored usernames are lowercased).
+    const q = await db.collection("users").where("username", "==", newUsername).limit(2).get();
+    const takenByOther = q.docs.some(doc_ => doc_.id !== currentUser.uid);
+    if (takenByOther) {
+      if (err) err.textContent = "That username is already taken. Try another.";
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Username"; }
+      return;
+    }
+
+    await db.collection("users").doc(currentUser.uid).update({
+      username: newUsername,
+      usernameChangeUsed: true
+    });
+
+    _myUsername = newUsername;
+    closeChangeUsernameModal();
+    renderProfileTab();
+    const refInput = document.getElementById("referralLinkInput");
+    if (refInput && typeof initReferralCard === "function") initReferralCard();
+    showNotifToast('\u2713 Username changed to @' + newUsername, "success");
+  } catch (e) {
+    console.error("Username change failed:", e);
+    if (err) err.textContent = "Couldn't save: " + (e.message || "please try again");
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Username"; }
+  }
+}
+
 
 /* =========================================================================
    PROFILE NOTES — 24-hour note shown on the user's profile (WhatsApp-style)
