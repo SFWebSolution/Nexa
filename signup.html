@@ -384,6 +384,160 @@
         font-size: 23px;
       }
     }
+
+    /* ═══════════════════════════════════════════════════════════════
+       FLUID & MODERN POLISH — auth pages (Nexa Deep Blue era)
+       Additive ✦ layered on top of the classic card so login/signup
+       never feel stale again.
+       ═══════════════════════════════════════════════════════════════ */
+    ::selection {
+      background: rgba(11, 87, 208, 0.16);
+    }
+
+    body {
+      background:
+        radial-gradient(120% 90% at 12% 8%, rgba(11, 87, 208, 0.14), transparent 55%),
+        radial-gradient(110% 100% at 88% 92%, rgba(29, 107, 243, 0.12), transparent 55%),
+        linear-gradient(180deg, #f7f9fd 0%, #eef2fb 100%);
+    }
+
+    .auth-card {
+      border-radius: 28px;
+      backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.9) inset,
+        0 1px 2px rgba(8, 18, 38, 0.04),
+        0 12px 24px -6px rgba(11, 87, 208, 0.10),
+        0 32px 64px -24px rgba(11, 87, 208, 0.22);
+      animation: cardEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    /* Vertical brand accent bar on the card edge */
+    .auth-card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 32px;
+      bottom: 32px;
+      width: 4px;
+      border-radius: 0 4px 4px 0;
+      background: linear-gradient(180deg, #1d6bf3, #0b57d0 55%, rgba(11, 87, 208, 0.05));
+      opacity: 0;
+      transform: scaleY(0.6);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .auth-card:hover::before {
+      opacity: 1;
+      transform: scaleY(1);
+    }
+
+    .brand-logo-wrap {
+      width: 70px;
+      height: 70px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.9),
+        0 14px 34px rgba(11, 87, 208, 0.28),
+        0 4px 10px rgba(11, 87, 208, 0.12);
+    }
+    .brand-logo-wrap img {
+      border-radius: 16px;
+    }
+
+    .brand-title {
+      background: linear-gradient(120deg, #081226 20%, #0b57d0 90%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+
+    .referral-banner {
+      background: linear-gradient(120deg, rgba(11, 87, 208, 0.10), rgba(29, 107, 243, 0.06));
+      border-color: rgba(11, 87, 208, 0.28);
+    }
+
+    .input-field-wrap input {
+      height: 50px;
+      border-radius: 15px;
+      background: color-mix(in srgb, #f8fafd 92%, transparent);
+      border-color: color-mix(in srgb, var(--nx-border) 85%, #ffffff);
+    }
+    .input-field-wrap input:focus {
+      box-shadow:
+        0 0 0 4px rgba(11, 87, 208, 0.13),
+        inset 0 1px 2px rgba(8, 18, 38, 0.03);
+    }
+
+    .input-label {
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    .btn-submit {
+      height: 52px;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(120deg, var(--nx-primary) 0%, var(--nx-primary-lt) 60%, #3b82f6 100%);
+    }
+    .btn-submit::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -60%;
+      width: 45%;
+      height: 100%;
+      background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+      transform: skewX(-22deg);
+      transition: left 0.6s ease;
+      pointer-events: none;
+    }
+    .btn-submit:hover::after {
+      left: 130%;
+    }
+    .btn-submit:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 18px 40px rgba(11, 87, 208, 0.45);
+    }
+
+    .auth-footer a {
+      position: relative;
+    }
+    .auth-footer a::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      right: 4px;
+      bottom: -2px;
+      height: 1.5px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--nx-primary), var(--nx-primary-lt));
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .auth-footer a:hover::after {
+      transform: scaleX(1);
+    }
+
+    .msg.error,
+    .msg.success {
+      animation: pillPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes pillPop {
+      from { opacity: 0; transform: translateY(4px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .auth-card { animation: none; }
+      .btn-submit::after { display: none; }
+    }
   </style>
 </head>
 

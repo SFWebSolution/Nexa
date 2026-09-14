@@ -376,18 +376,28 @@
 
           <div class="profile-card">
             <div class="profile-field-group">
-              <label class="profile-field-label">🧑 Username</label>
+              <label class="profile-field-label"><i data-lucide="user" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"></i> Display Name</label>
               <div class="profile-info-box" id="profileTabNameDisplay" style="user-select: text; font-weight: 650;">Loading...</div>
-              <div class="profile-field-hint">🔒 Username is locked and cannot be changed</div>
+              <div class="profile-field-hint">🔒 Your display name is locked and cannot be changed.
+                <span style="display:block;margin-top:2px;">It was set when you created your account.</span>
+              </div>
             </div>
 
             <div class="profile-field-group">
-              <label class="profile-field-label">📧 Email Address</label>
+              <label class="profile-field-label"><i data-lucide="at-sign" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"></i> Username</label>
+              <div class="profile-info-box" id="profileTabUsername" style="user-select: text; color: var(--text-3);">@loading...</div>
+              <div class="profile-field-hint">🔒 Your @username is locked and cannot be changed.
+                <span style="display:block;margin-top:2px;">Other people find you by this handle — share it anywhere.</span>
+              </div>
+            </div>
+
+            <div class="profile-field-group">
+              <label class="profile-field-label"><i data-lucide="mail" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"></i> Email Address</label>
               <div class="profile-info-box profile-email-box" id="profileTabEmail">loading...</div>
             </div>
 
             <div class="profile-field-group">
-              <label class="profile-field-label">🟢 Account Status</label>
+              <label class="profile-field-label"><i data-lucide="circle-check" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"></i> Account Status</label>
               <div class="profile-info-box status-active">● Active & Connected</div>
             </div>
           </div>
@@ -534,6 +544,7 @@
         </div>
         <div class="chat-peer-info">
           <div class="chat-peer-name" id="chatName">Select a user to chat</div>
+          <div class="chat-peer-handle" id="chatHandle"></div>
           <div id="status">offline</div>
         </div>
       </div>
@@ -1162,6 +1173,7 @@
     </div>
     <div class="user-profile-info">
       <div class="user-profile-name" id="userProfileName"></div>
+      <div class="user-profile-handle" id="userProfileHandle"></div>
       <div class="user-profile-status" id="userProfileStatus"></div>
       <div class="user-profile-bio" id="userProfileBio"></div>
       <div class="user-profile-note" id="userProfileNote"></div>
