@@ -754,7 +754,7 @@ btn.addEventListener("click", (e) => {
 
 async function signup() {
 
-  const username = document.getElementById("username").value.trim();
+  const username = document.getElementById("username").value.trim().toLowerCase();
   const displayName = document.getElementById("displayName").value.trim();
   const email = document.getElementById("email").value.trim();
   const phoneRaw = document.getElementById("phone").value.trim();

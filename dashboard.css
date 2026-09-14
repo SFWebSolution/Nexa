@@ -5590,143 +5590,193 @@ body.community-tab-active #headerVideoCallBtn {
 }
 
 /* =========================================================================
-   MODERN NEXA VOICE NOTE PLAYER
+   MODERN NEXA VOICE NOTE PLAYER  (2026 refresh)
+   Compact glassy pill with a gradient play button and a "live" waveform:
+   played bars glow/appear, unplayed bars sit faint, and while playing the
+   bars gently breathe for a feeling of life.
    ========================================================================= */
 .nexa-vn-player {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(10, 15, 30, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 8px 12px;
+  background: rgba(10, 15, 30, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  padding: 6px 12px 6px 7px;
   margin-top: 6px;
-  min-width: 220px;
+  min-width: 236px;
   max-width: 300px;
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   user-select: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nexa-vn-player:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
 }
 
 .msg.me .nexa-vn-player {
-  background: rgba(0, 229, 255, 0.12);
-  border-color: rgba(0, 229, 255, 0.28);
+  background: rgba(0, 229, 255, 0.10);
+  border-color: rgba(0, 229, 255, 0.22);
+}
+
+.msg.me .nexa-vn-player:hover {
+  border-color: rgba(0, 229, 255, 0.4);
 }
 
 .msg.them .nexa-vn-player {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .vn-btn-play {
-  width: 36px;
-  height: 36px;
+  position: relative;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   border: none;
-  background: var(--primary);
-  color: #050a15;
+  background: linear-gradient(135deg, #2b8fff 0%, #1a6fe0 55%, #0e54b5 100%);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 3px 10px rgba(22, 111, 229, 0.42);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .vn-btn-play:hover {
-  transform: scale(1.06);
-  box-shadow: var(--shadow-sm);
+  transform: scale(1.07);
+  box-shadow: 0 5px 16px rgba(22, 111, 229, 0.55);
 }
 
 .vn-btn-play:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
 }
 
 .vn-btn-play svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   fill: currentColor;
   stroke: currentColor;
 }
 
-/* Buffering state — a soft pulse on the play button while a remote clip
-   streams in, so the first tap doesn't feel frozen. */
+/* Soft pulsing halo while buffering/starting */
 .vn-btn-play.vn-loading {
   animation: vnPulse 0.9s ease-in-out infinite;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 @keyframes vnPulse {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.08); opacity: 0.6; }
+  0%, 100% { box-shadow: 0 3px 10px rgba(22, 111, 229, 0.42); transform: scale(1); }
+  50% { box-shadow: 0 3px 22px rgba(22, 111, 229, 0.75); transform: scale(1.09); }
 }
 
 .vn-body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+  padding-right: 2px;
 }
 
 .vn-waveform-wrap {
   display: flex;
   align-items: center;
   gap: 2.5px;
-  height: 22px;
+  height: 24px;
   cursor: pointer;
-  position: relative;
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  --vn-bar-base: rgba(255, 255, 255, 0.26);
+  --vn-bar-played: #ffffff;
+}
+
+.msg.me .vn-waveform-wrap {
+  --vn-bar-base: rgba(220, 244, 255, 0.4);
+  --vn-bar-played: #ffffff;
 }
 
 .vn-bar {
   flex: 1;
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 3px;
   height: 25%;
-  transition: height 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
-}
-
-.msg.me .vn-bar {
-  background: rgba(43, 143, 255, 0.3);
+  background: var(--vn-bar-base);
+  border-radius: 3px;
+  transition: height 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, transform 0.2s ease;
+  transform-origin: center;
 }
 
 .vn-bar.played {
-  background: #2b8fff;
-  box-shadow: var(--shadow-sm);
+  background: var(--vn-bar-played);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.55);
 }
 
 .msg.me .vn-bar.played {
-  background: #ffffff;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 0 7px rgba(255, 255, 255, 0.7);
+}
+
+/* While playing, bars gently breathe */
+.nexa-vn-player.vn-playing .vn-bar:not(.played) {
+  animation: vnBreathe 1.35s ease-in-out infinite;
+}
+.nexa-vn-player.vn-playing .vn-bar.played {
+  animation: vnGlow 1.35s ease-in-out infinite;
+}
+@keyframes vnBreathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.72); }
+}
+@keyframes vnGlow {
+  0%, 100% { transform: scaleY(1); opacity: 1; }
+  50% { transform: scaleY(1.18); opacity: 0.85; }
 }
 
 .vn-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   font-size: 10.5px;
-  color: rgba(255, 255, 255, 0.7);
-  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+  letter-spacing: 0.2px;
   font-family: inherit;
+  line-height: 1;
+}
+
+.vn-meta-spacer {
+  flex: 1;
+}
+
+/* When idle show duration; when playing show current time (JS swaps text) */
+.vn-time.vn-time-idle {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .vn-speed-btn {
-  background: rgba(255, 255, 255, 0.12);
-  border: none;
-  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 9.5px;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.16s ease;
+  line-height: 1.1;
 }
 
 .vn-speed-btn:hover {
-  background: rgba(43, 143, 255, 0.25);
+  background: rgba(43, 143, 255, 0.28);
+  border-color: rgba(43, 143, 255, 0.5);
   color: #fff;
-}
-
-/* =========================================================================
+  box-shadow: 0 0 8px rgba(43, 143, 255, 0.35);
+}/* =========================================================================
    WHATSAPP-STYLE STORY REPLY PREVIEW CARD
    ========================================================================= */
 .whatsapp-story-reply-card {
@@ -11369,6 +11419,34 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   margin-left: auto;
   line-height: 1;
 }
+.notif-item-count {
+  font-size: 11px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+  border-radius: 20px;
+  padding: 3px 9px;
+  min-width: 22px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+.nh-clear-btn {
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-xs, 8px);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--danger, #ff6b6b);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: background var(--tf), color var(--tf);
+}
+.nh-clear-btn:hover {
+  background: rgba(255, 56, 96, 0.14);
+  color: var(--danger, #ff385f);
+}
 .nh-modal { max-width: 420px; display: flex; flex-direction: column; }
 .nh-list-scroll {
   overflow-y: auto;
@@ -11418,7 +11496,7 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 /* =====================================================================
-   PROFILE TAB POLISH + NOTIFICATION HISTORY BUTTON
+   PROFILE TAB POLISH
    ===================================================================== */
 .profile-tab-content {
   padding: 22px 18px 30px;
@@ -11474,28 +11552,7 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   overflow-wrap: anywhere;
   user-select: text;
 }
-.profile-notif-history-btn {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  background: var(--bg-2);
-  border: 1px solid var(--border-md, rgba(127,127,127,0.16));
-  border-radius: 16px;
-  padding: 13px 16px;
-  cursor: pointer;
-  color: var(--text-1);
-  transition: transform .15s ease, box-shadow .15s ease, background var(--tf);
-}
-.profile-notif-history-btn:hover { background: var(--bg-3, rgba(127,127,127,0.08)); }
-.profile-notif-history-btn:active { transform: scale(.985); }
-.nh-prof-icon { font-size: 20px; line-height: 1; }
-.nh-prof-label { font-size: 14.5px; font-weight: 650; flex: 1; text-align: left; }
-.nh-prof-chev { font-size: 20px; color: var(--text-3); }
-.nh-prof-count {
-  font-size: 11px; font-weight: 700;
-  background: linear-gradient(135deg, var(--primary), #8b5cf6);
-  color: #fff; border-radius: 20px;
-  padding: 3px 9px; min-width: 22px; text-align: center;
-  font-variant-numeric: tabular-nums;
-}
+
 /* Display-name / @username semantics — the @handle sits in its own subdued
    line right under the display name (chat list, chat header, profile modal). */
 .user-handle {

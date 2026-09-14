@@ -613,6 +613,15 @@ async function recordNotificationHistory({ icon, title, body, at }) {
   }
 }
 
+function nhEmptyStateHtml() {
+  return `
+    <div style="text-align:center; padding:44px 20px;">
+      <div style="font-size:38px; margin-bottom:10px;">🔕</div>
+      <div style="font-size:15px; font-weight:600; color:var(--text-1);">No notifications yet</div>
+      <div style="font-size:12.5px; color:var(--text-3); margin-top:4px;">Notifications you receive will show up here.</div>
+    </div>`;
+}
+
 window.openNotificationHistory = async function () {
   const modal = document.getElementById('notifHistoryModal');
   if (!modal) return;
@@ -624,30 +633,58 @@ window.openNotificationHistory = async function () {
   list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Loading notifications…</div>';
 
   if (!currentUser) return;
-  updateNotificationHistoryBadge();
   try {
     const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
     const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
     if (!items.length) {
-      list.innerHTML = `
-        <div style="text-align:center; padding:44px 20px;">
-          <div style="font-size:38px; margin-bottom:10px;">🔕</div>
-          <div style="font-size:15px; font-weight:600; color:var(--text-1);">No notifications yet</div>
-          <div style="font-size:12.5px; color:var(--text-3); margin-top:4px;">Notifications you receive will show up here.</div>
-        </div>`;
-      return;
+      list.innerHTML = nhEmptyStateHtml();
+    } else {
+      list.innerHTML = items.map(it => `
+        <div class="nh-item">
+          <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
+          <div class="nh-item-main">
+            <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
+            ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
+          </div>
+          <div class="nh-item-time">${relTime(it.at)}</div>
+        </div>`).join('');
     }
-    list.innerHTML = items.map(it => `
-      <div class="nh-item">
-        <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
-        <div class="nh-item-main">
-          <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
-          ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
-        </div>
-        <div class="nh-item-time">${relTime(it.at)}</div>
-      </div>`).join('');
+    // Viewer has seen everything up to now — clear the unread badge.
+    await db.collection('notifHistory').doc(currentUser.uid)
+      .set({ lastViewedAt: Date.now(), updatedAt: Date.now() }, { merge: true });
+    updateNotificationHistoryBadge();
   } catch (e) {
     list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Could not load history.</div>';
+  }
+};
+
+// Clear the whole history (empty-state + the settings badge both reset).
+// Two-step confirm on the button so a stray tap can't wipe history.
+window.clearNotificationHistory = async function (btn) {
+  if (!currentUser) return;
+  if (!btn || btn.dataset.arming !== '1') {
+    if (btn) {
+      btn.dataset.arming = '1';
+      btn.textContent = 'Sure?';
+      setTimeout(() => {
+        btn.dataset.arming = '';
+        if (!btn.dataset.done) btn.textContent = 'Clear';
+      }, 2500);
+    }
+    return;
+  }
+  btn.dataset.arming = '';
+  btn.dataset.done = '1';
+  btn.textContent = 'Cleared';
+  setTimeout(() => { if (btn) btn.textContent = 'Clear'; }, 2000);
+  try {
+    await db.collection('notifHistory').doc(currentUser.uid)
+      .set({ items: [], updatedAt: Date.now(), lastViewedAt: Date.now() }, { merge: true });
+    const list = document.getElementById('notifHistoryList');
+    if (list) list.innerHTML = nhEmptyStateHtml();
+    updateNotificationHistoryBadge();
+  } catch (e) {
+    console.warn('clearNotificationHistory error:', e);
   }
 };
 
@@ -669,16 +706,19 @@ function relTime(ts) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-// Fill the small "N" count pill next to "Notification History" in the profile
-// tab without reading the whole doc (stored counts on the notifHistory doc).
+// Fill the small "N" count pill next to "Notification History" in the SETTINGS
+// tab. Shows the number of notifications that arrived since lastViewedAt, i.e.
+// the UNREAD count — opening the history (which stamps lastViewedAt) clears it.
 window.updateNotificationHistoryBadge = async function () {
   const el = document.getElementById('notifHistoryCount');
   if (!el || !currentUser) return;
   try {
     const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
-    const n = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items.length : 0;
-    el.textContent = n ? String(n) : '';
-    el.style.display = n ? '' : 'none';
+    const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+    const lastViewed = doc.exists ? (Number(doc.data().lastViewedAt) || 0) : 0;
+    const unread = items.filter(it => Number(it.at || 0) > lastViewed).length;
+    el.textContent = unread ? String(unread) : '';
+    el.style.display = unread ? '' : 'none';
   } catch (e) {
     el.style.display = 'none';
   }
@@ -1700,6 +1740,7 @@ window.dismissReturningWelcome = dismissReturningWelcome;
 function renderSettingsTab() {
   loadNotificationSettings();
   initReferralCard();
+  updateNotificationHistoryBadge();
   const msgToggle = document.getElementById("tabNotifMessages");
   if (msgToggle) msgToggle.classList.toggle("active", notificationSettings.messages);
   const stToggle = document.getElementById("tabNotifStories");
@@ -1737,7 +1778,6 @@ function renderSettingsTab() {
 
 function renderProfileTab() {
   if (!currentUser) return;
-  updateNotificationHistoryBadge();
   const myPic = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
   const myName = document.getElementById("myName")?.textContent || currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : "User");
 
@@ -2880,14 +2920,15 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
 
   container.innerHTML = `
     <button type="button" class="vn-btn-play" title="Play voice note">
-      <svg class="vn-icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      <svg class="vn-icon-pause" viewBox="0 0 24 24" style="display: none;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      <svg class="vn-icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></svg>
+      <svg class="vn-icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="5" y="4" width="5.5" height="16" rx="1.6"/><rect x="13.5" y="4" width="5.5" height="16" rx="1.6"/></svg>
     </button>
     <div class="vn-body">
-      <div class="vn-waveform-wrap">${barsHtml}</div>
+      <button type="button" class="vn-waveform-wrap" aria-label="Seek in voice note">${barsHtml}</button>
       <div class="vn-meta">
         <span class="vn-time">0:00</span>
-        <button type="button" class="vn-speed-btn" title="Playback speed">1x</button>
+        <span class="vn-meta-spacer"></span>
+        <button type="button" class="vn-speed-btn" title="Playback speed">1×</button>
       </div>
     </div>
   `;
@@ -2920,13 +2961,14 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
 
   audio.addEventListener("loadedmetadata", () => {
     timeEl.textContent = fmtVnTime(audio.duration);
+    timeEl.title = `Duration ${fmtVnTime(audio.duration)}`;
   });
 
   audio.addEventListener("timeupdate", () => {
     if (!audio.duration) return;
     const progress = audio.currentTime / audio.duration;
-    timeEl.textContent = `${fmtVnTime(audio.currentTime)} / ${fmtVnTime(audio.duration)}`;
-    
+    timeEl.textContent = fmtVnTime(audio.currentTime);
+
     const playedBars = Math.floor(progress * barCount);
     bars.forEach((b, idx) => {
       if (idx <= playedBars) {
@@ -2940,6 +2982,12 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   audio.addEventListener("pause", () => {
     playIcon.style.display = "block";
     pauseIcon.style.display = "none";
+    timeEl.classList.add("vn-time-idle");
+    container.classList.remove("vn-playing");
+  });
+
+  audio.addEventListener("play", () => {
+    timeEl.classList.remove("vn-time-idle");
   });
 
   window.addEventListener("nexa-audio-pause", (e) => {
@@ -2949,6 +2997,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   });
 
   audio.addEventListener("ended", () => {
+    container.classList.remove("vn-playing");
     playIcon.style.display = "block";
     pauseIcon.style.display = "none";
     bars.forEach(b => b.classList.remove("played"));
@@ -2969,6 +3018,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
       // frozen while it streams in.
       playBtn.classList.add("vn-loading");
       audio.play().then(() => {
+        container.classList.add("vn-playing");
         playBtn.classList.remove("vn-loading");
         playIcon.style.display = "none";
         pauseIcon.style.display = "block";
@@ -2978,6 +3028,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
       });
     } else {
       audio.pause();
+      container.classList.remove("vn-playing");
       playIcon.style.display = "block";
       pauseIcon.style.display = "none";
       if (activeAudioPlayer === audio) activeAudioPlayer = null;
@@ -2985,7 +3036,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
   });
 
   // Clear the buffering hint the moment playback actually starts or stalls out.
-  audio.addEventListener("playing", () => playBtn.classList.remove("vn-loading"));
+  audio.addEventListener("playing", () => { playBtn.classList.remove("vn-loading"); container.classList.add("vn-playing"); });
   audio.addEventListener("waiting", () => { if (!audio.paused) playBtn.classList.add("vn-loading"); });
 
   waveWrap.addEventListener("click", (e) => {
@@ -3003,7 +3054,7 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
     if (playbackRate === 1.0) playbackRate = 1.5;
     else if (playbackRate === 1.5) playbackRate = 2.0;
     else playbackRate = 1.0;
-    speedBtn.textContent = playbackRate + "x";
+    speedBtn.textContent = playbackRate + "×";
     audio.playbackRate = playbackRate;
   });
 
