@@ -36,6 +36,23 @@
 - The user list is sorted primarily by **last-chat time** (`latestMsgTime[uid]`, descending) — "those you chatted last" on top. Favorites / online / name are only tiebreakers among contacts with the same (or no) last-chat time. Don't put favorites or a "has message" tier ABOVE recency — that buries recently-chatted contacts under old favorites.
 - `latestMsgTime` is persisted to `localStorage` (`nexa_latest_msg_time`) and restored on app open for instant ordering, then refreshed from Firestore (`loadInitialChatTimestamps`).
 
+## User discovery by username (`renderUsers` + `#userSearch`)
+- **Any signed-in user can find any other user by their @username** via the
+  `#userSearch` box in the chat sidebar; results open `selectChat` on click
+  (the row's click handler un-deletes a deleted-chat entry on open). This is
+  what the change-username hint means by "others find you by this handle" —
+  don't weaken username search.
+- Search matching rules in `renderUsers()` (`app-main.js`):
+  - Empty query: hidden deleted chats only.
+  - Query starting with `@`: matches `handle === bare || handle.includes(bare) || name.includes(bare)` (exact/prefix over username, display-name fallback).
+  - Other queries: `name.includes(q) || handle.includes(q) || phone-digits includes` (phone digits stripped).
+  - **During a search, deleted chats are NOT hidden** so a deleted conversation
+    still surfaces the person when you look up their handle (clicking re-opens).
+- The **instant-paint fallback** in `dashboard.html` (runs before Firebase/app
+  JS loads) renders `.user-handle` under each `.user-name` and its fallback
+  `window.searchUsers` matches BOTH `.user-name` and `.user-handle` text — keep
+  both in sync with the main `renderUsers` if you touch username rendering.
+
 ## Presence / online status
 - Online dots + chat-header "last seen" are driven by a SINGLE shared
   `db.collection("presence").onSnapshot` listener (`startSharedPresenceListener`)
