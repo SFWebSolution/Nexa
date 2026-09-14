@@ -358,6 +358,15 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - `sendPushNotification(title, body, target, extraData)` generates `notifId` and sends it as `data.messageId` to the backend; pass `extraData.messageId` to reuse an existing id. Calls use the fixed tag `nexa-incoming-call`.
 - Foreground handler (`messaging.onMessage` in `initFCM`) shows an in-app toast always, but shows a SYSTEM notification only when the relevant chat is NOT already open & focused (`sameChatOpen` guard on `selectedUser.uid` + `visibilityState` + `document.hasFocus()`), avoiding toast+system duplicates while reading. It reuses the same stable `tag` as the SW.
 
+## Notification History (app-main.js + dashboard.html/dashboard.css)
+- Stored per-user in Firestore `notifHistory/{uid}` as `{items:[], updatedAt, lastViewedAt}` (`recordNotificationHistory`, capped at `NEXA_NOTIF_HISTORY_MAX`=50 items).
+- Entry lives ONLY in **Settings** (row uses `.notif-item-count` badge `#notifHistoryCount` + `openNotificationHistory()`), NOT in Profile — do NOT re-add a Profile button.
+- **Badge shows UNREAD count**, not total: `updateNotificationHistoryBadge()` filters `items` by `at > lastViewedAt`; docs written before `lastViewedAt` existed default the view time to 0, so pre-existing history reads as unread until first viewed.
+- **Opening the history STAMPS `lastViewedAt: Date.now()`** (merge write) and then refreshes the badge, so viewing clears the unread badge. `renderSettingsTab()` calls `updateNotificationHistoryBadge()`; `renderProfileTab()` must NOT.
+- **Clear history** = `clearNotificationHistory(btn)` (two-step confirm: first tap arms "Sure?", second tap wipes). Writes `{items: [], lastViewedAt: now}` with merge, swaps the list to the `nhEmptyStateHtml()` empty state, refreshes badge. Clear button lives in the modal header (`.nh-clear-btn`).
+- Retains the existing `.nh-item` list rendering (icon/title/body/`relTime(at)`) and `closeNotificationHistory()`.
+- Remember: `dashboard.html`/`dashboard.css` are CRLF — preserve after editing.
+
 ## Voice Room gotchas (nexa-voice-room.js)
 - Stable peer id per user: `peerIdFor(uid)` returns `nexa_vr_<sanitized uid>`. Keep this consistent across all clients.
 - **PeerJS answer-before-handlers race (the #1 "can't hear each other" bug):**

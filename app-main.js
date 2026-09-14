@@ -613,6 +613,15 @@ async function recordNotificationHistory({ icon, title, body, at }) {
   }
 }
 
+function nhEmptyStateHtml() {
+  return `
+    <div style="text-align:center; padding:44px 20px;">
+      <div style="font-size:38px; margin-bottom:10px;">🔕</div>
+      <div style="font-size:15px; font-weight:600; color:var(--text-1);">No notifications yet</div>
+      <div style="font-size:12.5px; color:var(--text-3); margin-top:4px;">Notifications you receive will show up here.</div>
+    </div>`;
+}
+
 window.openNotificationHistory = async function () {
   const modal = document.getElementById('notifHistoryModal');
   if (!modal) return;
@@ -624,30 +633,58 @@ window.openNotificationHistory = async function () {
   list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Loading notifications…</div>';
 
   if (!currentUser) return;
-  updateNotificationHistoryBadge();
   try {
     const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
     const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
     if (!items.length) {
-      list.innerHTML = `
-        <div style="text-align:center; padding:44px 20px;">
-          <div style="font-size:38px; margin-bottom:10px;">🔕</div>
-          <div style="font-size:15px; font-weight:600; color:var(--text-1);">No notifications yet</div>
-          <div style="font-size:12.5px; color:var(--text-3); margin-top:4px;">Notifications you receive will show up here.</div>
-        </div>`;
-      return;
+      list.innerHTML = nhEmptyStateHtml();
+    } else {
+      list.innerHTML = items.map(it => `
+        <div class="nh-item">
+          <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
+          <div class="nh-item-main">
+            <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
+            ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
+          </div>
+          <div class="nh-item-time">${relTime(it.at)}</div>
+        </div>`).join('');
     }
-    list.innerHTML = items.map(it => `
-      <div class="nh-item">
-        <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
-        <div class="nh-item-main">
-          <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
-          ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
-        </div>
-        <div class="nh-item-time">${relTime(it.at)}</div>
-      </div>`).join('');
+    // Viewer has seen everything up to now — clear the unread badge.
+    await db.collection('notifHistory').doc(currentUser.uid)
+      .set({ lastViewedAt: Date.now(), updatedAt: Date.now() }, { merge: true });
+    updateNotificationHistoryBadge();
   } catch (e) {
     list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Could not load history.</div>';
+  }
+};
+
+// Clear the whole history (empty-state + the settings badge both reset).
+// Two-step confirm on the button so a stray tap can't wipe history.
+window.clearNotificationHistory = async function (btn) {
+  if (!currentUser) return;
+  if (!btn || btn.dataset.arming !== '1') {
+    if (btn) {
+      btn.dataset.arming = '1';
+      btn.textContent = 'Sure?';
+      setTimeout(() => {
+        btn.dataset.arming = '';
+        if (!btn.dataset.done) btn.textContent = 'Clear';
+      }, 2500);
+    }
+    return;
+  }
+  btn.dataset.arming = '';
+  btn.dataset.done = '1';
+  btn.textContent = 'Cleared';
+  setTimeout(() => { if (btn) btn.textContent = 'Clear'; }, 2000);
+  try {
+    await db.collection('notifHistory').doc(currentUser.uid)
+      .set({ items: [], updatedAt: Date.now(), lastViewedAt: Date.now() }, { merge: true });
+    const list = document.getElementById('notifHistoryList');
+    if (list) list.innerHTML = nhEmptyStateHtml();
+    updateNotificationHistoryBadge();
+  } catch (e) {
+    console.warn('clearNotificationHistory error:', e);
   }
 };
 
@@ -669,16 +706,19 @@ function relTime(ts) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-// Fill the small "N" count pill next to "Notification History" in the profile
-// tab without reading the whole doc (stored counts on the notifHistory doc).
+// Fill the small "N" count pill next to "Notification History" in the SETTINGS
+// tab. Shows the number of notifications that arrived since lastViewedAt, i.e.
+// the UNREAD count — opening the history (which stamps lastViewedAt) clears it.
 window.updateNotificationHistoryBadge = async function () {
   const el = document.getElementById('notifHistoryCount');
   if (!el || !currentUser) return;
   try {
     const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
-    const n = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items.length : 0;
-    el.textContent = n ? String(n) : '';
-    el.style.display = n ? '' : 'none';
+    const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+    const lastViewed = doc.exists ? (Number(doc.data().lastViewedAt) || 0) : 0;
+    const unread = items.filter(it => Number(it.at || 0) > lastViewed).length;
+    el.textContent = unread ? String(unread) : '';
+    el.style.display = unread ? '' : 'none';
   } catch (e) {
     el.style.display = 'none';
   }
@@ -1700,6 +1740,7 @@ window.dismissReturningWelcome = dismissReturningWelcome;
 function renderSettingsTab() {
   loadNotificationSettings();
   initReferralCard();
+  updateNotificationHistoryBadge();
   const msgToggle = document.getElementById("tabNotifMessages");
   if (msgToggle) msgToggle.classList.toggle("active", notificationSettings.messages);
   const stToggle = document.getElementById("tabNotifStories");
@@ -1737,7 +1778,6 @@ function renderSettingsTab() {
 
 function renderProfileTab() {
   if (!currentUser) return;
-  updateNotificationHistoryBadge();
   const myPic = document.getElementById("myPic")?.src || "https://i.imgur.com/HeIi0wU.png";
   const myName = document.getElementById("myName")?.textContent || currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : "User");
 

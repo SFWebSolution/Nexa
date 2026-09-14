@@ -279,6 +279,7 @@
                 <label class="notif-item-label"><i data-lucide="clock" style="width: 14px; height: 14px;"></i> Notification History</label>
                 <div class="notif-item-desc">Browse notifications you've received</div>
               </div>
+              <span class="notif-item-count" id="notifHistoryCount"></span>
               <div class="notif-item-chev"><i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i></div>
             </div>
           </div>
@@ -419,13 +420,6 @@
               <div class="profile-field-hint">Your note appears on your profile and auto-clears after 24 hours.</div>
             </div>
           </div>
-
-          <button class="profile-notif-history-btn" onclick="openNotificationHistory()">
-            <span class="nh-prof-icon"><i data-lucide="clock" style="width: 16px; height: 16px;"></i></span>
-            <span class="nh-prof-label">Notification History</span>
-            <span class="nh-prof-count" id="notifHistoryCount"></span>
-            <span class="nh-prof-chev"><i data-lucide="chevron-right" style="width: 15px; height: 15px;"></i></span>
-          </button>
 
           <button class="profile-logout-btn" onclick="handleLogout()">
             <span><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Sign Out</span>
@@ -1049,6 +1043,7 @@
   <div class="notif-settings-modal nh-modal">
     <div class="notif-hdr">
       <div class="notif-title"><i data-lucide="bell" style="width:16px;height:16px;margin-right:6px;color:var(--primary);"></i> Notification History</div>
+      <button class="nh-clear-btn" id="clearNotifHistoryBtn" onclick="clearNotificationHistory(this)">Clear</button>
       <button class="notif-close" onclick="closeNotificationHistory()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     </div>
     <div class="nh-list-scroll" id="notifHistoryList">

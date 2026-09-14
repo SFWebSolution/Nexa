@@ -11419,6 +11419,34 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   margin-left: auto;
   line-height: 1;
 }
+.notif-item-count {
+  font-size: 11px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+  border-radius: 20px;
+  padding: 3px 9px;
+  min-width: 22px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+.nh-clear-btn {
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-xs, 8px);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--danger, #ff6b6b);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: background var(--tf), color var(--tf);
+}
+.nh-clear-btn:hover {
+  background: rgba(255, 56, 96, 0.14);
+  color: var(--danger, #ff385f);
+}
 .nh-modal { max-width: 420px; display: flex; flex-direction: column; }
 .nh-list-scroll {
   overflow-y: auto;
@@ -11468,7 +11496,7 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 /* =====================================================================
-   PROFILE TAB POLISH + NOTIFICATION HISTORY BUTTON
+   PROFILE TAB POLISH
    ===================================================================== */
 .profile-tab-content {
   padding: 22px 18px 30px;
@@ -11524,28 +11552,7 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   overflow-wrap: anywhere;
   user-select: text;
 }
-.profile-notif-history-btn {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  background: var(--bg-2);
-  border: 1px solid var(--border-md, rgba(127,127,127,0.16));
-  border-radius: 16px;
-  padding: 13px 16px;
-  cursor: pointer;
-  color: var(--text-1);
-  transition: transform .15s ease, box-shadow .15s ease, background var(--tf);
-}
-.profile-notif-history-btn:hover { background: var(--bg-3, rgba(127,127,127,0.08)); }
-.profile-notif-history-btn:active { transform: scale(.985); }
-.nh-prof-icon { font-size: 20px; line-height: 1; }
-.nh-prof-label { font-size: 14.5px; font-weight: 650; flex: 1; text-align: left; }
-.nh-prof-chev { font-size: 20px; color: var(--text-3); }
-.nh-prof-count {
-  font-size: 11px; font-weight: 700;
-  background: linear-gradient(135deg, var(--primary), #8b5cf6);
-  color: #fff; border-radius: 20px;
-  padding: 3px 9px; min-width: 22px; text-align: center;
-  font-variant-numeric: tabular-nums;
-}
+
 /* Display-name / @username semantics — the @handle sits in its own subdued
    line right under the display name (chat list, chat header, profile modal). */
 .user-handle {
