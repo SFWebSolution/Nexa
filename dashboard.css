@@ -9895,6 +9895,21 @@ input:user-valid {
   display: block;
 }
 
+/* Voice notes broadcast to a channel use the same modern waveform player as
+   1:1/group chats; widen it to fill the post card and drop the max-width cap
+   the base .nexa-vn-player sets for chat bubbles. */
+.channel-post-audio {
+  width: 100%;
+  margin: 2px 0;
+}
+.channel-post-audio .nexa-vn-player {
+  max-width: 100%;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+  margin-top: 0;
+}
+
 .channel-post-footer {
   display: flex;
   align-items: center;

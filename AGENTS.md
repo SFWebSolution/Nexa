@@ -223,6 +223,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Older pages live in `_olderMsgsA/B` (NOT `_msgsA/B`, which the live listener replaces wholesale). `renderMessageList` merges all four and DEDUPES by id (a seam-healed message can later slide back into the window).
 - Features that now must account for unloaded history: `clearChat` (deletes the WHOLE conversation via full-conversation queries, batched ≤400/batch, own messages only per rules), message search (full-history fetch cached 60s per chat + 250ms debounce), `scrollToMsg` (pages older chunks until the target renders), `saveEditMessage`/`deleteMsg` (patch older pages locally since they aren't live-listened).
 - Remote deletes of messages that only live in `_olderMsgs` are NOT live-propagated (ghost until chat re-open) — accepted tradeoff to keep the listener windowed.
+- **Older-page cursor MUST be `startAfter(oldestA)`, NOT `endBefore`** (the "show older messages stopped working" bug). The page query is `orderBy("createdAt","desc").startAfter(msgPaging.oldestA).limit(25)`. Firestore cursor semantics are relative to the QUERY ordering: on a DESC query `endBefore(X)` returns docs that sort BEFORE X = **NEWER** messages, i.e. exactly the ones already in the live window — every older-page fetch got deduped to nothing, `oldestA` never advanced, and history falsely appeared exhausted. `startAfter` returns docs AFTER the cursor in DESC order = genuinely older. The seam-heal query IS correctly an ASC query (`orderBy("createdAt","asc").startAfter(range.after).endBefore(range.before)` — after=older ts, before=newer ts) — do NOT "fix" the seam query to match.
 - `autoSaveMedia` caches the parsed `nexa_autosaved_media` localStorage map in memory (`_autoSavedMediaCache`) instead of re-parsing per media message per render; the map is capped at 500 entries.
 
 ## Admin backend (`server/admin-api.js`)
@@ -444,6 +445,22 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `NexaVoiceRoom.bindInviteListener()` so the re-bind is deterministic. Do
   NOT revert `window.currentUser` being set early, and do NOT go back to a
   one-shot `setTimeout(setupFirestoreListeners, 1000)` with no uid check.
+
+## Recent UX fixes (do NOT regress)
+- **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
+  (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,
+  post.duration || 0, false)` inside a `.channel-post-audio` wrapper — NOT a stock
+  `<audio controls>` element. CSS `.channel-post-audio .nexa-vn-player { max-width:100%;
+  width:100%; }` lets the player fill the post card (the base `.nexa-vn-player` caps at
+  ~300px for chat bubbles). `post.duration` is in ms, same field the chat modes use.
+- **Polls work in groups AND channels.** `updatePollButtonVisibility()` shows `#pollBtn`
+  when `currentChatMode === 'channel' && selectedChannel || currentChatMode === 'group' &&
+  selectedGroup` (previously channel-only, so groups never saw the button).
+  `openPollModal()`'s gate allows `selectedChannel` too — before the fix it early-returned
+  with "Select a chat or group..." whenever only a channel was open (the "asking me to
+  select something" bug). Poll post/vote paths already supported all three modes
+  (`submitPoll` → `sendGroupMessageWithExtras`/`sendChannelPostWithExtras`; `votePollOption`
+  picks `channels`/`groups`/`chats` by `currentChatMode`).
 
 ## Voice note recording gotchas (dashboard.html, VOICE RECORDING section)
 - The mic record button is PRESS-AND-HOLD (WhatsApp-style). The old code
