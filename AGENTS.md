@@ -453,6 +453,17 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `<audio controls>` element. CSS `.channel-post-audio .nexa-vn-player { max-width:100%;
   width:100%; }` lets the player fill the post card (the base `.nexa-vn-player` caps at
   ~300px for chat bubbles). `post.duration` is in ms, same field the chat modes use.
+- **Channel player must be MOUNTED as a real DOM node, never stringified**
+  (the "channel voice note no day work / play dead" bug). `renderChannelPostsList`
+  builds each card into a template string (`wrap.innerHTML`), and interpolating
+  `renderVoiceNotePlayer(...)` via its `outerHTML` into that string DROPS every
+  DOM event listener the player attaches (play/seek/speed/audio). Fix (current
+  code): the audio branch emits a placeholder
+  `<div class="channel-post-audio" data-vn-for="${post.id}" ...></div>`, and
+  after `box.appendChild(wrap)` the loop does
+  `slot.appendChild(renderVoiceNotePlayer(post.id, post.audio, post.duration||0, false))`
+  so the node is appended live with listeners intact. Keep this mount step; do
+  NOT go back to `vnHost.outerHTML` / innerHTML for the player.
 - **Polls work in groups AND channels.** `updatePollButtonVisibility()` shows `#pollBtn`
   when `currentChatMode === 'channel' && selectedChannel || currentChatMode === 'group' &&
   selectedGroup` (previously channel-only, so groups never saw the button).
