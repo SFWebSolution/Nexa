@@ -10119,10 +10119,13 @@ function renderChannelPostsList(posts) {
       // stock <audio controls> element. duration is in ms (same field the
       // other chat modes use); pass fromMe=false so the player uses the
       // neutral/incoming styling, which fits a broadcast post.
-      const vnHost = document.createElement('div');
-      vnHost.className = 'channel-post-audio';
-      vnHost.appendChild(renderVoiceNotePlayer(post.id, post.audio, post.duration || 0, false));
-      mediaHtml = vnHost.outerHTML;
+      //
+      // NOTE: mediaHtml becomes part of a template STRING (wrap.innerHTML),
+      // so we cannot embed a live DOM node here — outerHTML would strip all
+      // the player's DOM event listeners (play/seek/speed) and it would be
+      // dead on arrival. Instead we emit a placeholder and mount the real
+      // node AFTER box.appendChild(wrap) below.
+      mediaHtml = `<div class="channel-post-audio" data-vn-for="${post.id}" style="min-height: 46px;"></div>`;
     }
 
     const isChannelAdmin = selectedChannel && (selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid));
@@ -10220,6 +10223,15 @@ function renderChannelPostsList(posts) {
       </div>
     `;
     box.appendChild(wrap);
+
+    // Mount live voice-note players into their placeholders (outerHTML above
+    // could not carry DOM listeners, so the node must be attached here).
+    if (post.audio) {
+      const slot = wrap.querySelector('[data-vn-for="' + post.id + '"]');
+      if (slot) {
+        slot.appendChild(renderVoiceNotePlayer(post.id, post.audio, post.duration || 0, false));
+      }
+    }
   });
 
   scrollMessagesToBottom();
