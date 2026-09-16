@@ -83,6 +83,21 @@ window.userPresenceCache = {};
 // importing firebase directly (it only has access to window.db).
 window.db.fieldValue = firebase.firestore.FieldValue;
 
+// Shared mic capture constraints. The legacy goog* flags are what actually
+// engage Chromium's hardware AEC pipeline — a bare echoCancellation:true leaks
+// speaker output back into the mic, so callers hear themselves. Use this on
+// every audio capture site.
+const NEXA_AUDIO_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  googEchoCancellation: true,
+  googEchoCancellation2: true,
+  googNoiseSuppression: true,
+  googAutoGainControl: true,
+  googHighpassFilter: true
+};
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/[&<>"']/g, c => ({
@@ -458,6 +473,9 @@ auth.onAuthStateChanged(async (user) => {
 
   currentUser = user;
   window.currentUser = user;
+  // Device-local PIN gate: shown once per browser session when App Lock is on.
+  // Runs before the app paints so no chat content flashes behind the lock.
+  maybeShowAppLock();
   // The voice-room module only has window.*, and its invite listener binds to
   // the real uid — tell it to (re)bind now that the real user is known so
   // cross-device voice invites actually arrive.
@@ -735,6 +753,9 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   if (isReaction && !notificationSettings.reactions) return;
   if (!isCall && !isReaction && !notificationSettings.messages) return;
 
+  // Lock-screen privacy: strip the message text from the push body.
+  if (!isCall && hideNotifPreviewOn()) body = 'New message';
+
   // A single stable id for THIS notification. The receiver's service worker
   // uses it as the notification tag so that if the backend delivers the same
   // message to several of the user's FCM tokens, the resulting notifications
@@ -973,6 +994,7 @@ let unreadMessages = {};
 let mutedChats = {};
 let favoritedChats = {};
 let blockedUsers = {};
+let enterToSendPref = true;
 let deletedChats = {};
 let latestMsgTime = {};
 let latestMsgText = {};
@@ -1453,7 +1475,10 @@ function switchTab(tabName) {
   } else if (tabName === 'settings') {
     renderSettingsTab();
   } else if (tabName === 'profile') {
-    renderProfileTab();
+    // Profile is no longer a tab of its own — it lives inside Settings.
+    switchTab('settings');
+    openSettingsSubPage('personal');
+    return;
   } else if (tabName === 'community') {
     renderCommunityTab();
   }
@@ -1738,9 +1763,15 @@ window.showReturningWelcome = showReturningWelcome;
 window.dismissReturningWelcome = dismissReturningWelcome;
 
 function renderSettingsTab() {
+  // Never leave a stale sub-page open when the tab is (re)entered.
+  closeSettingsSubPage();
+  renderSettingsProfileCard();
   loadNotificationSettings();
   initReferralCard();
   updateNotificationHistoryBadge();
+  updateAutoSaveToggleUI();
+  updateEnterToSendToggleUI();
+  updateHideNotifPreviewToggleUI();
   const msgToggle = document.getElementById("tabNotifMessages");
   if (msgToggle) msgToggle.classList.toggle("active", notificationSettings.messages);
   const stToggle = document.getElementById("tabNotifStories");
@@ -1774,6 +1805,316 @@ function renderSettingsTab() {
     grid.appendChild(card);
   });
   if (window.lucide) lucide.createIcons();
+}
+
+/* ── Settings sub-page router ─────────────────────────────────────────────
+   Settings is a classified list; each row opens a sub-page inside the same
+   pane (WhatsApp-style drill-down). Rendering is pure visibility toggling so
+   every element id stays stable. */
+
+let settingsActiveSubPage = null;
+
+const SETTINGS_SUBPAGE_TITLES = {
+  personal: 'Personal Info',
+  privacy: 'Privacy & Security',
+  account: 'Account',
+  notifications: 'Notifications',
+  appearance: 'Appearance & Theme',
+  wallpaper: 'Chat Wallpaper',
+  media: 'Messages & Media',
+  invite: 'Invite Friends',
+  ai: 'AI Assistant',
+  storage: 'Storage & Cache',
+  about: 'About Nexa'
+};
+
+function openSettingsSubPage(name) {
+  const root = document.getElementById('settingsRoot');
+  const page = document.querySelector('.settings-subpage[data-subpage="' + name + '"]');
+  if (!page) return;
+  document.querySelectorAll('.settings-subpage').forEach(p => p.classList.remove('active'));
+  if (root) root.classList.add('hidden');
+  page.classList.add('active');
+  settingsActiveSubPage = name;
+
+  // Paint per-page dynamic content lazily.
+  if (name === 'personal') renderProfileTab();
+  if (name === 'privacy') { renderBlockedContactsList(); updateAppLockToggleUI(); updateHideNotifPreviewToggleUI(); }
+  if (name === 'account') {
+    const em = document.getElementById('accountEmail');
+    if (em) em.textContent = (currentUser && currentUser.email) || 'No email';
+  }
+  if (name === 'storage') renderStorageUsage();
+  if (name === 'about') renderAboutInfo();
+
+  const scroller = page.querySelector('.settings-subpage-body');
+  if (scroller) scroller.scrollTop = 0;
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeSettingsSubPage() {
+  document.querySelectorAll('.settings-subpage').forEach(p => p.classList.remove('active'));
+  const root = document.getElementById('settingsRoot');
+  if (root) root.classList.remove('hidden');
+  settingsActiveSubPage = null;
+}
+
+window.openSettingsSubPage = openSettingsSubPage;
+window.closeSettingsSubPage = closeSettingsSubPage;
+
+// Header card at the top of Settings (avatar + name + handle).
+function renderSettingsProfileCard() {
+  if (!currentUser) return;
+  const pic = document.getElementById('myPic');
+  const nameEl = document.getElementById('myName');
+  const card = document.getElementById('settingsProfilePic');
+  if (card && pic && pic.src) card.src = pic.src;
+  const name = (nameEl && nameEl.textContent && nameEl.textContent !== 'Loading…') ? nameEl.textContent
+             : (currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'));
+  const nEl = document.getElementById('settingsProfileName');
+  if (nEl) nEl.textContent = name;
+  const hEl = document.getElementById('settingsProfileHandle');
+  if (hEl) {
+    const meDoc = allUsersData.find(u => u.uid === currentUser.uid);
+    const uname = (meDoc && (meDoc.username || meDoc.usernameField)) || _myUsername || '';
+    hEl.textContent = uname ? '@' + uname : 'Set your @username';
+  }
+}
+
+/* ── Blocked contacts ───────────────────────────────────────────────────── */
+
+function renderBlockedContactsList() {
+  const box = document.getElementById('blockedContactsList');
+  if (!box) return;
+  const uids = Object.keys(blockedUsers).filter(uid => blockedUsers[uid]);
+  if (!uids.length) {
+    box.innerHTML = '<div class="settings-empty">No blocked contacts.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  uids.forEach(uid => {
+    const u = allUsersData.find(x => x.uid === uid) || {};
+    const row = document.createElement('div');
+    row.className = 'blocked-contact-row';
+    const img = document.createElement('img');
+    img.className = 'blocked-contact-avatar';
+    img.src = safeMediaUrl(u.photo) || 'https://i.imgur.com/HeIi0wU.png';
+    img.alt = '';
+    const txt = document.createElement('div');
+    txt.className = 'blocked-contact-text';
+    const nm = document.createElement('div');
+    nm.className = 'blocked-contact-name';
+    nm.textContent = u.displayName || u.name || 'Nexa user';
+    const sub = document.createElement('div');
+    sub.className = 'blocked-contact-sub';
+    sub.textContent = u.username ? '@' + u.username : 'Blocked';
+    txt.appendChild(nm);
+    txt.appendChild(sub);
+    const btn = document.createElement('button');
+    btn.className = 'blocked-contact-unblock';
+    btn.textContent = 'Unblock';
+    btn.onclick = () => setBlocked(uid, false);
+    row.appendChild(img);
+    row.appendChild(txt);
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
+
+function setBlocked(uid, blocked) {
+  if (!uid) return;
+  if (blocked) blockedUsers[uid] = true; else delete blockedUsers[uid];
+  savePrefs();
+  scheduleRender();
+  renderBlockedContactsList();
+  if (document.getElementById('userProfileModal')) updateBlockButtonUI();
+  showNotifToast(blocked ? 'User blocked' : 'User unblocked', blocked ? 'info' : 'success');
+}
+
+window.setBlocked = setBlocked;
+
+function toggleBlockSelectedUser() {
+  if (!selectedUser) return;
+  setBlocked(selectedUser.uid, !blockedUsers[selectedUser.uid]);
+}
+
+function updateBlockButtonUI() {
+  const label = document.getElementById('upBlockLabel');
+  const btn = document.getElementById('upBlockBtn');
+  if (!label || !selectedUser) return;
+  const isBlocked = !!blockedUsers[selectedUser.uid];
+  label.textContent = isBlocked ? 'Unblock' : 'Block';
+  if (btn) btn.classList.toggle('blocked', isBlocked);
+}
+
+/* ── Change password ───────────────────────────────────────────────────── */
+
+async function sendPasswordResetFromSettings() {
+  if (!currentUser || !currentUser.email) {
+    showNotifToast('No email on this account', 'error');
+    return;
+  }
+  if (!confirm('Send a password reset link to ' + currentUser.email + '?')) return;
+  try {
+    await auth.sendPasswordResetEmail(currentUser.email);
+    showNotifToast('Reset link sent — check your inbox', 'success');
+  } catch (e) {
+    showNotifToast('Could not send reset link: ' + e.message, 'error');
+  }
+}
+
+/* ── App Lock (device-local PIN) ────────────────────────────────────────── */
+
+const APP_LOCK_KEY = 'nexa_app_lock_hash';
+const APP_LOCK_SESSION_KEY = 'nexa_app_lock_unlocked';
+
+function hashAppLockPin(pin) {
+  // Lightweight device-local digest — this is a convenience lock on the local
+  // device, not a server credential, so a full KDF isn't warranted here.
+  let h = 5381;
+  const salted = 'nexa:' + pin + ':lock';
+  for (let i = 0; i < salted.length; i++) h = ((h * 33) ^ salted.charCodeAt(i)) >>> 0;
+  return h.toString(16);
+}
+
+function toggleAppLock() {
+  if (localStorage.getItem(APP_LOCK_KEY)) {
+    const pin = prompt('Enter your current PIN to turn off App Lock');
+    if (pin === null) return;
+    if (hashAppLockPin(pin) !== localStorage.getItem(APP_LOCK_KEY)) {
+      showNotifToast('Incorrect PIN', 'error');
+      return;
+    }
+    localStorage.removeItem(APP_LOCK_KEY);
+    sessionStorage.removeItem(APP_LOCK_SESSION_KEY);
+    updateAppLockToggleUI();
+    showNotifToast('App Lock turned off', 'info');
+    return;
+  }
+  const pin = prompt('Choose a 4-digit PIN for Nexa');
+  if (pin === null) return;
+  if (!/^\d{4}$/.test(pin)) {
+    showNotifToast('PIN must be exactly 4 digits', 'error');
+    return;
+  }
+  const again = prompt('Enter the same PIN again');
+  if (again !== pin) {
+    showNotifToast("PINs didn't match", 'error');
+    return;
+  }
+  localStorage.setItem(APP_LOCK_KEY, hashAppLockPin(pin));
+  sessionStorage.setItem(APP_LOCK_SESSION_KEY, '1');
+  updateAppLockToggleUI();
+  showNotifToast('App Lock enabled', 'success');
+}
+
+function updateAppLockToggleUI() {
+  const t = document.getElementById('appLockToggle');
+  if (t) t.classList.toggle('active', !!localStorage.getItem(APP_LOCK_KEY));
+}
+
+// Gate shown once per browser session when App Lock is on.
+function maybeShowAppLock() {
+  if (!localStorage.getItem(APP_LOCK_KEY)) return;
+  if (sessionStorage.getItem(APP_LOCK_SESSION_KEY) === '1') return;
+  const gate = document.getElementById('appLockGate');
+  if (!gate) return;
+  gate.classList.add('active');
+  const input = document.getElementById('appLockPinInput');
+  const err = document.getElementById('appLockError');
+  if (err) err.textContent = '';
+  if (input) { input.value = ''; setTimeout(() => input.focus(), 120); }
+  if (window.lucide) lucide.createIcons();
+}
+
+function submitAppLockPin() {
+  const input = document.getElementById('appLockPinInput');
+  const err = document.getElementById('appLockError');
+  const pin = (input && input.value) || '';
+  if (hashAppLockPin(pin) === localStorage.getItem(APP_LOCK_KEY)) {
+    sessionStorage.setItem(APP_LOCK_SESSION_KEY, '1');
+    document.getElementById('appLockGate').classList.remove('active');
+    if (input) input.value = '';
+  } else {
+    if (err) err.textContent = 'Wrong PIN — try again';
+    if (input) { input.value = ''; input.focus(); }
+  }
+}
+
+window.maybeShowAppLock = maybeShowAppLock;
+
+/* ── Enter-to-send preference ──────────────────────────────────────────── */
+
+function toggleAutoSaveMedia() { /* reserved for future media caching */ }
+
+function updateAutoSaveToggleUI() {}
+
+/* ── Hide notification previews ─────────────────────────────────────────
+   When on, message pushes arrive as a generic "New message" so the text
+   never shows on a lock screen. Calls and reactions are never redacted. */
+
+const HIDE_PREVIEW_KEY = 'nexa_hide_notif_preview';
+
+function hideNotifPreviewOn() {
+  return localStorage.getItem(HIDE_PREVIEW_KEY) === '1';
+}
+
+function toggleHideNotifPreview() {
+  const on = !hideNotifPreviewOn();
+  localStorage.setItem(HIDE_PREVIEW_KEY, on ? '1' : '0');
+  updateHideNotifPreviewToggleUI();
+  showNotifToast(on ? 'Notification previews hidden' : 'Notification previews shown', 'info');
+}
+
+function updateHideNotifPreviewToggleUI() {
+  const t = document.getElementById('hidePreviewToggle');
+  if (t) t.classList.toggle('active', hideNotifPreviewOn());
+}
+
+window.toggleHideNotifPreview = toggleHideNotifPreview;
+
+function toggleEnterToSend() {
+  enterToSendPref = !enterToSendPref;
+  savePrefs();
+  updateEnterToSendToggleUI();
+  showNotifToast(enterToSendPref ? 'Enter now sends messages' : 'Enter now adds a new line', 'info');
+}
+
+function updateEnterToSendToggleUI() {
+  const t = document.getElementById('enterToSendToggle');
+  if (t) t.classList.toggle('active', !!enterToSendPref);
+}
+
+/* ── Storage usage meter ───────────────────────────────────────────────── */
+
+function renderStorageUsage() {
+  const valEl = document.getElementById('storageUsageValue');
+  const fillEl = document.getElementById('storageUsageFill');
+  const hintEl = document.getElementById('storageUsageHint');
+  let bytes = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const v = localStorage.getItem(k) || '';
+      bytes += (k.length + v.length) * 2; // UTF-16 code units
+    }
+  } catch (e) {}
+  const kb = bytes / 1024;
+  const text = kb < 1024 ? kb.toFixed(1) + ' KB' : (kb / 1024).toFixed(2) + ' MB';
+  if (valEl) valEl.textContent = text;
+  // The browser quota is ~5MB per origin; show it as a proportion of that.
+  const pct = Math.min(100, (bytes / (5 * 1024 * 1024)) * 100);
+  if (fillEl) fillEl.style.width = pct.toFixed(1) + '%';
+  if (hintEl) hintEl.textContent = pct < 20 ? 'Plenty of space left' : (pct < 60 ? 'Storage is filling up' : 'Consider clearing the cache');
+}
+
+/* ── About ────────────────────────────────────────────────────────────── */
+
+const NEXA_APP_VERSION = '1.0.0';
+
+function renderAboutInfo() {
+  const el = document.getElementById('aboutVersion');
+  if (el) el.textContent = 'Version ' + NEXA_APP_VERSION;
 }
 
 function renderProfileTab() {
@@ -2132,6 +2473,7 @@ async function changeDisappearingSetting(value) {
 }
 
 function selectChat(user, el) {
+  closeAttachMenu();
   if (currentChatMode !== 'direct') resetCommunityChatMode();
   currentChatMode = 'direct';
   selectedGroup = null;
@@ -2183,6 +2525,8 @@ function selectChat(user, el) {
   if (typingTimeout) { clearTimeout(typingTimeout); typingTimeout = null; }
   listenDisappearingSettings();
   document.getElementById("typingBar").innerHTML = "";
+  closeAttachMenu();
+  cancelVoice();
   closeChatInfo();
   scrollDownNewCount = 0;
   updateScrollDownBtn();
@@ -3335,9 +3679,9 @@ let isViewOnceActive = false;
 
 function toggleViewOnceMode() {
   isViewOnceActive = !isViewOnceActive;
-  const btn = document.getElementById("viewOnceToggleBtn");
-  if (btn) btn.classList.toggle("active", isViewOnceActive);
-  showNotifToast(isViewOnceActive ? "1 View Once enabled for next media" : "View Once disabled", "info");
+  const check = document.getElementById("viewOnceCheck");
+  if (check) check.style.display = isViewOnceActive ? "flex" : "none";
+  showNotifToast(isViewOnceActive ? "View Once enabled for next media" : "View Once disabled", "info");
 }
 
 function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
@@ -4016,6 +4360,7 @@ function pickImage() {
 
 // WhatsApp-style: the media button lets the user CHOOSE Photo or Video.
 function pickMedia() {
+  closeAttachMenu();
   if (!selectedUser && !selectedGroup && !selectedChannel) { alert("Select a conversation first"); return; }
   // If the device supports a combined image+video picker, use one input that
   // accepts both and route by the picked type — simplest, most native feel.
@@ -4040,6 +4385,7 @@ function pickMedia() {
 }
 
 function pickFile() {
+  closeAttachMenu();
   if (!selectedUser && !selectedGroup && !selectedChannel) { alert("Select a conversation first"); return; }
   document.getElementById("fileInput").click();
 }
@@ -4214,9 +4560,10 @@ function handleKeyPress(e) {
   // leave Enter as a newline (mobile keyboards rely on it) and the user sends
   // via the send button.
   const isTouch = (navigator.maxTouchPoints || 0) > 0 && window.matchMedia("(pointer: coarse)").matches;
-  if (!e.shiftKey && !isTouch) {
+  const wantsEnterToSend = (typeof enterToSendPref === 'boolean') ? enterToSendPref : !isTouch;
+  if (!e.shiftKey && wantsEnterToSend) {
     e.preventDefault();
-    sendMessage();
+    handleComposerSend();
   }
 }
 
@@ -4224,26 +4571,66 @@ function updatePollButtonVisibility() {
   const pollBtn = document.getElementById("pollBtn");
   if (!pollBtn) return;
   // Polls are supported in groups (submitPoll -> sendGroupMessageWithExtras)
-  // AND channels (submitPoll -> sendChannelPostWithExtras); the button is
-  // hidden only in direct chat / elsewhere.
+  // AND channels (submitPoll -> sendChannelPostWithExtras); the row is hidden
+  // in direct chat / anywhere else.
   const pollableChat = (currentChatMode === 'channel' && !!selectedChannel)
                     || (currentChatMode === 'group' && !!selectedGroup);
-  if (!pollableChat) {
-    pollBtn.style.display = 'none';
-    pollBtn.classList.add("hidden");
+  pollBtn.style.display = pollableChat ? 'flex' : 'none';
+}
+
+// The composer keeps the mic permanently visible (voice is the one action that
+// never hides). Everything else lives behind the "+" attach menu, so this only
+// refreshes that menu's stateful rows.
+function toggleActionButtons() {
+  updatePollButtonVisibility();
+  const check = document.getElementById("viewOnceCheck");
+  if (check) check.style.display = isViewOnceActive ? 'flex' : 'none';
+}
+
+/* ── Composer attach (+) menu ─────────────────────────────────────────────── */
+
+function toggleAttachMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById("attachMenu");
+  const btn = document.getElementById("attachToggleBtn");
+  if (!menu) return;
+  const open = menu.style.display !== "none";
+  if (open) {
+    closeAttachMenu();
   } else {
-    const hasText = (document.getElementById("text")?.value || "").trim().length > 0;
-    pollBtn.style.display = 'inline-flex';
-    pollBtn.classList.toggle("hidden", hasText);
+    menu.style.display = "block";
+    if (btn) btn.classList.add("active");
+    updatePollButtonVisibility();
+    toggleActionButtons();
+    if (window.lucide) lucide.createIcons();
   }
 }
 
-function toggleActionButtons() {
-  const has = document.getElementById("text").value.trim().length > 0;
-  document.getElementById("imgBtn").classList.toggle("hidden", has);
-  document.getElementById("fileBtn").classList.toggle("hidden", has);
-  document.getElementById("recordBtn").classList.toggle("hidden", has);
-  updatePollButtonVisibility();
+function closeAttachMenu() {
+  const menu = document.getElementById("attachMenu");
+  const btn = document.getElementById("attachToggleBtn");
+  if (menu) menu.style.display = "none";
+  if (btn) btn.classList.remove("active");
+}
+
+function handleAttachMenuOutsideClick(e) {
+  const menu = document.getElementById("attachMenu");
+  if (!menu || menu.style.display === "none") return;
+  if (menu.contains(e.target)) return;
+  if (e.target.closest && e.target.closest("#attachToggleBtn")) return;
+  closeAttachMenu();
+}
+
+document.addEventListener("click", handleAttachMenuOutsideClick);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeAttachMenu();
+});
+
+// Voice-note send is the composer's send button while a clip is held; the
+// "+" menu closes before any picker opens so it never floats over a dialog.
+function handleComposerSend() {
+  if (pendingVoiceBlob) { sendVoice(); return; }
+  sendMessage();
 }
 
 async function sendMessage() {
@@ -4365,22 +4752,88 @@ let recDuration = 0;
 let isRecording = false;
 let recStart = 0;
 let recTimer = null;
+let pendingVoiceBlob = null;      // held clip awaiting Send / Discard
+let voicePreviewUrl = null;
+let voicePlaybackSpeed = 1;
 
 const recordBtn = document.getElementById("recordBtn");
 const voicePanel = document.getElementById("voicePanel");
 const voiceTimerEl = document.getElementById("voiceTimer");
+const voiceDiscardBtn = document.getElementById("voiceDiscardBtn");
+const voicePreviewPlay = document.getElementById("voicePreviewPlay");
+const voiceSpeedBtn = document.getElementById("voiceSpeedBtn");
+const voicePreviewAudio = document.getElementById("voicePreviewAudio");
+const composerSendBtn = document.getElementById("composerSendBtn");
+const inputAreaEl = document.querySelector(".input-area");
+const inputWrapEl = document.getElementById("inputWrap");
 
-recordBtn.addEventListener("mousedown", startRec);
-recordBtn.addEventListener("touchstart", e => { e.preventDefault(); startRec(e); });
+const VOICE_WAVE_BARS = 22;
 
-// Releasing the press just STOPS the recording (keeps the clip ready). The
-// user then taps Send or Discard explicitly — send sends, discard discards.
-document.addEventListener("mouseup", () => { if (isRecording) stopRec(); });
-document.addEventListener("touchend", () => { if (isRecording) stopRec(); });
+// Decorative waveform: bars pulse while recording, then flatten into a static
+// profile once a clip is held. Pure CSS/JS — no audio analysis, so it stays
+// cheap on low-end devices.
+function buildVoiceWave() {
+  const wave = document.getElementById("voiceWave");
+  if (!wave || wave.childElementCount) return;
+  for (let i = 0; i < VOICE_WAVE_BARS; i++) {
+    const bar = document.createElement("span");
+    bar.className = "vnb-bar";
+    bar.style.animationDelay = ((i % 7) * 0.09).toFixed(2) + "s";
+    bar.style.setProperty("--vnb-seed", (0.35 + ((i * 37) % 60) / 100).toFixed(2));
+    wave.appendChild(bar);
+  }
+}
+
+function setVoiceUI(state) {
+  // state: 'idle' | 'recording' | 'preview'
+  if (inputAreaEl) inputAreaEl.classList.toggle("voice-active", state !== "idle");
+  if (inputWrapEl) inputWrapEl.classList.toggle("voice-recording", state === "recording");
+  if (voicePanel) voicePanel.style.display = state === "idle" ? "none" : "flex";
+  if (recordBtn) recordBtn.style.display = state === "preview" ? "none" : "flex";
+  if (voiceDiscardBtn) voiceDiscardBtn.style.display = state === "idle" ? "none" : "flex";
+  if (voicePreviewPlay) voicePreviewPlay.style.display = state === "preview" ? "flex" : "none";
+  if (voiceSpeedBtn) voiceSpeedBtn.style.display = state === "preview" ? "flex" : "none";
+  const dot = document.getElementById("voiceDot");
+  if (dot) dot.style.display = state === "recording" ? "inline-block" : "none";
+  const sendBtn = document.getElementById("composerSendBtn");
+  if (sendBtn) {
+    const label = state === "idle" ? "Send (Shift+Enter)" : "Send voice note";
+    sendBtn.title = label;
+    sendBtn.setAttribute("aria-label", label);
+    sendBtn.classList.toggle("voice-armed", state === "preview");
+  }
+  if (state !== "idle") buildVoiceWave();
+  if (window.lucide) lucide.createIcons();
+}
+
+/* Press-and-hold recording. Release STOPS and holds the clip; the composer's
+   send button then commits it and the trash discards it (WhatsApp-style).
+
+   The stop listeners are bound to the BUTTON and the BAR — never to document.
+   A global mouseup/touchend fires on any release anywhere on the page and
+   silently truncates long recordings. The bar listener is required because the
+   bar covers the button once recording starts, so the release lands on it. */
+
+recordBtn.addEventListener("pointerdown", e => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  e.preventDefault();
+  // Capture the pointer so the release is delivered to this button even if the
+  // finger drifts off it during the hold (touch already captures implicitly).
+  if (e.pointerId !== undefined && recordBtn.setPointerCapture) {
+    try { recordBtn.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+  startRec(e);
+});
+
+function onVoiceBarPointerUp(e) {
+  if (e.target.closest && e.target.closest(".vnb-icon, .vnb-speed")) return;
+  if (isRecording) stopRec();
+}
 
 async function startRec(e) {
-  if (isRecording || (!selectedUser && !selectedGroup && !selectedChannel)) {
-    if (!selectedUser && !selectedGroup && !selectedChannel) alert("Select a conversation first");
+  if (isRecording || pendingVoiceBlob) return;
+  if (!selectedUser && !selectedGroup && !selectedChannel) {
+    showNotifToast("Select a conversation first", "error");
     return;
   }
   if (currentChatMode === 'channel' && selectedChannel) {
@@ -4390,39 +4843,45 @@ async function startRec(e) {
       return;
     }
   }
+  closeAttachMenu();
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true }
-    });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: NEXA_AUDIO_CONSTRAINTS, video: false });
     // Pick the best supported audio container so the blob is natively playable
-    // (opus/webm on Chrome/Android, mp4 on iOS/Safari) — this removes the "can't
-    // play it right away" problem from a mismatched container.
+    // (opus/webm on Chrome/Android, mp4 on iOS/Safari).
     const VN_MIME = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
       .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
     mediaRecorder = VN_MIME ? new MediaRecorder(stream, { mimeType: VN_MIME }) : new MediaRecorder(stream);
     audioChunks = [];
     mediaRecorder.addEventListener("dataavailable", e => { if (e.data && e.data.size) audioChunks.push(e.data); });
     mediaRecorder.addEventListener("stop", () => {
-      // Use the recorder's actual MIME so the saved clip matches what was captured.
       const type = (mediaRecorder && mediaRecorder.mimeType) || VN_MIME || "audio/webm";
       recordingBlob = new Blob(audioChunks, { type });
       recordingMime = type;
       recDuration = Date.now() - recStart; // capture duration NOW (not at send)
+      if (recordingBlob.size > 0) {
+        pendingVoiceBlob = recordingBlob;
+        enterVoicePreview();
+      } else {
+        cancelVoice();
+      }
     });
-    // Start WITH a 250ms timeslice so dataavailable fires continuously — the
-    // blob is already mostly formed when you hit stop, so sending is instant
-    // instead of waiting for the whole clip to finalize.
+    // An interrupted recorder would otherwise silently drop the clip.
+    mediaRecorder.addEventListener("error", () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        try { mediaRecorder.stop(); } catch (_) {}
+      }
+    });
+    // 250ms timeslice keeps partial audio if the recorder is cut off.
     mediaRecorder.start(250);
     isRecording = true;
     recStart = Date.now();
-    recordBtn.classList.add("active");
-    voicePanel.classList.add("active");
+    setVoiceUI("recording");
     recTimer = setInterval(() => {
       const s = Math.floor((Date.now() - recStart) / 1000);
-      voiceTimerEl.textContent = `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+      if (voiceTimerEl) voiceTimerEl.textContent = Math.floor(s / 60) + ":" + (s % 60).toString().padStart(2, "0");
     }, 200);
-  } catch (e) {
-    alert("Microphone access denied");
+  } catch (err) {
+    showNotifToast("Microphone access denied", "error");
   }
 }
 
@@ -4430,26 +4889,63 @@ function stopRec() {
   if (!isRecording) return;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
-    if (mediaRecorder.stream) {
-      mediaRecorder.stream.getTracks().forEach(t => t.stop());
-    }
+    if (mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(t => t.stop());
   }
   isRecording = false;
-  recordBtn.classList.remove("active");
   clearInterval(recTimer);
 }
 
+// Hold the finished clip in the composer and offer playback before sending.
+function enterVoicePreview() {
+  releaseVoicePreviewUrl();
+  voicePreviewUrl = URL.createObjectURL(pendingVoiceBlob);
+  if (voicePreviewAudio) {
+    voicePreviewAudio.src = voicePreviewUrl;
+    voicePreviewAudio.playbackRate = voicePlaybackSpeed;
+  }
+  if (voiceTimerEl) {
+    const s = Math.floor(recDuration / 1000);
+    voiceTimerEl.textContent = Math.floor(s / 60) + ":" + (s % 60).toString().padStart(2, "0");
+  }
+  setVoiceUI("preview");
+}
+
+function toggleVoicePreview() {
+  if (!voicePreviewAudio || !voicePreviewUrl) return;
+  if (voicePreviewAudio.paused) {
+    voicePreviewAudio.playbackRate = voicePlaybackSpeed;
+    voicePreviewAudio.play().then(() => {
+      if (voicePreviewPlay) voicePreviewPlay.innerHTML = '<i data-lucide="pause" style="width: 16px; height: 16px;"></i>';
+      if (window.lucide) lucide.createIcons();
+    }).catch(() => {});
+  } else {
+    voicePreviewAudio.pause();
+    if (voicePreviewPlay) voicePreviewPlay.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px;"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function cycleVoiceSpeed() {
+  voicePlaybackSpeed = voicePlaybackSpeed === 1 ? 1.5 : (voicePlaybackSpeed === 1.5 ? 2 : 1);
+  if (voicePreviewAudio) voicePreviewAudio.playbackRate = voicePlaybackSpeed;
+  if (voiceSpeedBtn) voiceSpeedBtn.textContent = voicePlaybackSpeed + "\u00d7";
+}
+
+function releaseVoicePreviewUrl() {
+  if (voicePreviewAudio) { try { voicePreviewAudio.pause(); } catch (_) {} voicePreviewAudio.removeAttribute("src"); }
+  if (voicePreviewUrl) { try { URL.revokeObjectURL(voicePreviewUrl); } catch (_) {} voicePreviewUrl = null; }
+  if (voicePreviewPlay) voicePreviewPlay.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px;"></i>';
+}
+
 async function sendVoice() {
+  if (!pendingVoiceBlob) return;
   if (!selectedUser && !selectedGroup && !selectedChannel) return;
-  if (!recordingBlob) { showNotifToast("No recording to send", "error"); return; }
 
-  const btn = document.getElementById("vSendBtn");
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="send" style="width: 15px; height: 15px;"></i> Sending…'; if (window.lucide) lucide.createIcons(); }
-
-  // Capture the blob/mime/duration BEFORE cancelVoice() clears them.
-  const blob = recordingBlob;
+  const blob = pendingVoiceBlob;
   const mime = recordingMime;
   const dur = recDuration || 0;
+  const ta = document.getElementById("text");
+  if (ta) ta.value = "";
 
   let tempMsg = null;
   if (currentChatMode === 'direct' && selectedUser) {
@@ -4461,21 +4957,21 @@ async function sendVoice() {
     renderMessageList();
     scrollMessagesToBottom();
   } else {
-    showNotifToast("Uploading voice note…", "info");
+    showNotifToast("Uploading voice note\u2026", "info");
   }
-  cancelVoice(); // hide the panel + reset state right away
+  cancelVoice(); // reset the composer immediately
 
   try {
     const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
-    const f = new File([blob], `voice.${ext}`, { type: mime });
+    const f = new File([blob], "voice." + ext, { type: mime });
     const url = await uploadFile(f);
     if (url) {
       if (currentChatMode === 'group') {
         await sendGroupMessageWithExtras({ audio: url, duration: dur });
-        showNotifToast("✓ Voice note sent to group!", "success");
+        showNotifToast("\u2713 Voice note sent to group!", "success");
       } else if (currentChatMode === 'channel') {
-        await sendChannelPostWithExtras({ audio: url, duration: dur, text: '🎤 Voice Broadcast' });
-        showNotifToast("✓ Voice broadcast posted!", "success");
+        await sendChannelPostWithExtras({ audio: url, duration: dur, text: '\uD83C\uDFA4 Voice Broadcast' });
+        showNotifToast("\u2713 Voice broadcast posted!", "success");
       } else if (selectedUser) {
         await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
         // Replace the optimistic local-blob bubble with the stored one.
@@ -4484,7 +4980,7 @@ async function sendVoice() {
           if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
         }
         const senderName = document.getElementById('myName').textContent || 'Nexa User';
-        sendPushNotification(senderName, 'You have received a new message (🎤 Voice note)', selectedUser.uid);
+        sendPushNotification(senderName, 'You have received a new message (\uD83C\uDFA4 Voice note)', selectedUser.uid);
       }
     }
   } catch (e) {
@@ -4494,22 +4990,40 @@ async function sendVoice() {
     }
     showNotifToast("Failed to send voice note: " + e.message, "error");
   }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="send" style="width: 15px; height: 15px;"></i> Send'; if (window.lucide) lucide.createIcons(); }
 }
 
 function cancelVoice() {
-  // Stop any in-flight recording, then clear state. Discard just discards.
+  // Tear down an in-flight recorder/mic, then clear the held clip.
   if (mediaRecorder && mediaRecorder.state === "recording") {
-    try { mediaRecorder.stop(); } catch (e) {}
+    try { mediaRecorder.stop(); } catch (_) {}
     if (mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(t => t.stop());
   }
   isRecording = false;
   recordingBlob = null;
+  pendingVoiceBlob = null;
   audioChunks = [];
-  recordBtn.classList.remove("active");
   clearInterval(recTimer);
-  voicePanel.classList.remove("active");
-  voiceTimerEl.textContent = "0:00";
+  releaseVoicePreviewUrl();
+  voicePlaybackSpeed = 1;
+  if (voiceSpeedBtn) voiceSpeedBtn.textContent = "1\u00d7";
+  if (voiceTimerEl) voiceTimerEl.textContent = "0:00";
+  setVoiceUI("idle");
+}
+
+/* Bind the release listeners to the mic AND the bar. The bar used to be a
+   full-screen overlay that covered the button (so its release landed on the
+   overlay); now it is inline beside the button, so the button must handle its
+   own release or a press-and-hold would never stop. Both are kept off
+   `document` so an unrelated release elsewhere on the page can't end a
+   recording. */
+if (recordBtn) {
+  recordBtn.addEventListener("pointerup", onVoiceBarPointerUp);
+  recordBtn.addEventListener("pointercancel", onVoiceBarPointerUp);
+  recordBtn.addEventListener("lostpointercapture", () => { if (isRecording) stopRec(); });
+}
+if (voicePanel) {
+  voicePanel.addEventListener("pointerup", onVoiceBarPointerUp);
+  voicePanel.addEventListener("pointercancel", onVoiceBarPointerUp);
 }
 
 function viewImg(url) {
@@ -5446,7 +5960,7 @@ async function startCall(type) {
   // Get local media stream
   try {
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: NEXA_AUDIO_CONSTRAINTS,
       video: type === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -5646,7 +6160,7 @@ async function answerCall() {
   // Get local media
   try {
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: NEXA_AUDIO_CONSTRAINTS,
       video: callType === 'video' ? { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false
     };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -6170,6 +6684,7 @@ function openUserProfile() {
     }
   });
 
+  updateBlockButtonUI();
   document.getElementById('userProfileModal').classList.add('active');
 }
 
@@ -7979,6 +8494,7 @@ function savePrefs() {
     muted: mutedChats,
     favorited: favoritedChats,
     blocked: blockedUsers,
+    enterToSend: enterToSendPref,
     globalWallpaper: globalWallpaper,
     perChatWallpapers: perChatWallpapers
   };
@@ -7998,6 +8514,7 @@ function loadPrefs() {
     mutedChats = prefs.muted || {};
     favoritedChats = prefs.favorited || {};
     blockedUsers = prefs.blocked || {};
+    enterToSendPref = typeof prefs.enterToSend === 'boolean' ? prefs.enterToSend : true;
     globalWallpaper = prefs.globalWallpaper || null;
     perChatWallpapers = prefs.perChatWallpapers || {};
     setTheme(currentTheme);
