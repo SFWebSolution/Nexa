@@ -3146,11 +3146,20 @@ function formatLastSeen(ts) {
 let typingTimeout;
 let typingCurrentlyActive = false; // guard: only write typing:true once per typing session
 
+/* Auto-grow the composer textarea from one line up to ~4, then scroll. Setting
+   `style.height = "auto"` first is required to re-measure, but on its own it
+   snaps the box back to its CSS height (one line) — so the grow must follow in
+   the same frame, or the composer visibly jumps before settling. */
+function autoGrowComposer(ta) {
+  if (!ta) return;
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
+}
+
 document.addEventListener("input", function(e) {
   if (e.target.id !== "text" || !selectedUser) return;
   const ta = document.getElementById("text");
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
+  autoGrowComposer(ta);
   // Only write typing:true ONCE per typing session (transition from idle→typing),
   // not on every keystroke. Previously this wrote on every input event, which
   // was many writes/second during fast typing.
@@ -5216,7 +5225,7 @@ async function sendMessage() {
   if (!text) return;
   document.getElementById("text").value = "";
   const ta = document.getElementById("text");
-  ta.style.height = "auto";
+  autoGrowComposer(ta);
   toggleActionButtons();
 
   const extras = { text };
@@ -10041,7 +10050,7 @@ async function sendGroupMessage() {
   const text = ta.value.trim();
   if (!text) return;
   ta.value = '';
-  ta.style.height = 'auto';
+  autoGrowComposer(ta);
   toggleActionButtons();
 
   const extras = { text };
@@ -11481,7 +11490,7 @@ async function sendChannelPost() {
   const text = ta.value.trim();
   if (!text) return;
   ta.value = '';
-  ta.style.height = 'auto';
+  autoGrowComposer(ta);
   toggleActionButtons();
 
   await sendChannelPostWithExtras({ text });

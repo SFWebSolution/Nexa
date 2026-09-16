@@ -932,7 +932,7 @@
       </div>
       <div class="input-wrap" id="inputWrap">
         <button class="iact-btn attach-toggle-btn" id="attachToggleBtn" onclick="toggleAttachMenu(event)" title="Attach" aria-label="Attach"><i data-lucide="plus" style="width: 21px; height: 21px;"></i></button>
-        <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
+        <textarea id="text" rows="1" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); autoGrowComposer(this); toggleActionButtons()"></textarea>
         <div class="voice-bar" id="voicePanel" style="display: none;" role="group" aria-label="Voice note">
           <button class="vnb-icon" id="voicePreviewPlay" onclick="toggleVoicePreview()" title="Play" aria-label="Play recording" style="display: none;"><i data-lucide="play" style="width: 16px; height: 16px;"></i></button>
           <span class="vnb-dot" id="voiceDot"></span>
