@@ -3832,14 +3832,42 @@ function renderVoiceNotePlayer(msgId, audioUrl, durationMs, fromMe) {
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  if (durationMs && durationMs > 0 && durationMs < 3600000) {
-    timeEl.textContent = fmtVnTime(durationMs / 1000);
+  const knownSec = (durationMs && durationMs > 0 && durationMs < 3600000) ? durationMs / 1000 : 0;
+
+  if (knownSec > 0) {
+    timeEl.textContent = fmtVnTime(knownSec);
+    timeEl.title = `Duration ${fmtVnTime(knownSec)}`;
   }
 
   audio.addEventListener("loadedmetadata", () => {
-    timeEl.textContent = fmtVnTime(audio.duration);
-    timeEl.title = `Duration ${fmtVnTime(audio.duration)}`;
+    // Never clobber a good duration with the media element's own value: a
+    // streamed clip reports Infinity/NaN until fully buffered, which used to
+    // overwrite the captured duration with "0:00".
+    const meta = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : 0;
+    const best = knownSec || meta;
+    if (best > 0) {
+      timeEl.textContent = fmtVnTime(best);
+      timeEl.title = `Duration ${fmtVnTime(best)}`;
+    }
   });
+
+  // Force the element to resolve a real duration for streamed/Infinity media by
+  // seeking past the end; the browser then corrects audio.duration. Only used
+  // when we have no captured duration to fall back on.
+  if (!knownSec) {
+    const fixStreamDuration = () => {
+      if (audio.duration === Infinity) {
+        audio.currentTime = 1e101;
+        const onSeeked = () => {
+          audio.removeEventListener("seeked", onSeeked);
+          audio.currentTime = 0;
+          if (isFinite(audio.duration) && audio.duration > 0) timeEl.textContent = fmtVnTime(audio.duration);
+        };
+        audio.addEventListener("seeked", onSeeked);
+      }
+    };
+    audio.addEventListener("loadedmetadata", fixStreamDuration);
+  }
 
   audio.addEventListener("timeupdate", () => {
     if (!audio.duration) return;
@@ -5160,8 +5188,9 @@ document.addEventListener("keydown", e => {
 
 // Voice-note send is the composer's send button while a clip is held; the
 // "+" menu closes before any picker opens so it never floats over a dialog.
-function handleComposerSend() {
-  if (pendingVoiceBlob) { sendVoice(); return; }
+async function handleComposerSend() {
+  if (isRecording) { await commitAndSendVoice(); return; }
+  if (pendingVoiceBlob) { await sendVoice(); return; }
   sendMessage();
 }
 
@@ -5287,6 +5316,8 @@ let recordingMime = "audio/webm";
 let recDuration = 0;
 let isRecording = false;
 let recStart = 0;
+let recStoppedAt = 0;
+let recStarting = false;
 let recTimer = null;
 let pendingVoiceBlob = null;      // held clip awaiting Send / Discard
 let voicePreviewUrl = null;
@@ -5368,17 +5399,24 @@ function onVoiceBarPointerUp(e) {
 
 async function startRec(e) {
   if (isRecording || pendingVoiceBlob) return;
+  // Ignore a second pointerdown while getUserMedia is still resolving, or a
+  // quick tap-tap would start two recorders and clobber the first one's chunks.
+  if (recStarting) return;
+  recStarting = true;
   if (!selectedUser && !selectedGroup && !selectedChannel) {
+    recStarting = false;
     showNotifToast("Select a conversation first", "error");
     return;
   }
   if (currentChatMode === 'direct' && selectedUser && !isSelfChat() && blockedUsers[selectedUser.uid]) {
+    recStarting = false;
     showNotifToast("You blocked this contact. Unblock them to record.", "error");
     return;
   }
   if (currentChatMode === 'channel' && selectedChannel) {
     const isAdmin = (selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid;
     if (!isAdmin) {
+      recStarting = false;
       showNotifToast("Only channel admins can record voice broadcasts", "error");
       return;
     }
@@ -5397,9 +5435,16 @@ async function startRec(e) {
       const type = (mediaRecorder && mediaRecorder.mimeType) || VN_MIME || "audio/webm";
       recordingBlob = new Blob(audioChunks, { type });
       recordingMime = type;
-      recDuration = Date.now() - recStart; // capture duration NOW (not at send)
+      // Capture duration NOW (not at send): if the user pauses before sending,
+      // the elapsed wall-clock would otherwise keep growing.
+      recDuration = Math.max(recDuration, recStoppedAt ? recStoppedAt - recStart : Date.now() - recStart);
+      recStoppedAt = recStoppedAt || Date.now();
       if (recordingBlob.size > 0) {
+        // Commit the clip locally the instant recording stops. This is the hard
+        // guarantee that "release to stop" ALWAYS yields a sendable voice note:
+        // even before stopRec() flips isRecording, the clip is already held.
         pendingVoiceBlob = recordingBlob;
+        syncPendingVoiceDuration();
         enterVoicePreview();
       } else {
         cancelVoice();
@@ -5415,24 +5460,63 @@ async function startRec(e) {
     mediaRecorder.start(250);
     isRecording = true;
     recStart = Date.now();
+    recStoppedAt = 0;
+    recDuration = 0;
+    recStarting = false;
     setVoiceUI("recording");
     recTimer = setInterval(() => {
       const s = Math.floor((Date.now() - recStart) / 1000);
       if (voiceTimerEl) voiceTimerEl.textContent = Math.floor(s / 60) + ":" + (s % 60).toString().padStart(2, "0");
     }, 200);
   } catch (err) {
+    recStarting = false;
     showNotifToast("Microphone access denied", "error");
   }
 }
 
 function stopRec() {
   if (!isRecording) return;
+  // Freeze the duration at the moment the user released the button. Without
+  // this the preview/save duration keeps counting up while they decide.
+  recStoppedAt = Date.now();
+  recDuration = Math.max(recDuration, recStoppedAt - recStart);
+  syncPendingVoiceDuration();
+  clearInterval(recTimer);
+  isRecording = false;
+  recStarting = false;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     if (mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(t => t.stop());
   }
-  isRecording = false;
-  clearInterval(recTimer);
+}
+
+/* Mirror the frozen duration onto the already-held clip. The recorder's `stop`
+   event can land a tick after the release handler runs, so whichever of the
+   two fires last must push the final duration onto the preview + payload. */
+function syncPendingVoiceDuration() {
+  if (!pendingVoiceBlob) return;
+  if (voiceTimerEl && recDuration > 0) {
+    const s = Math.floor(recDuration / 1000);
+    voiceTimerEl.textContent = Math.floor(s / 60) + ":" + (s % 60).toString().padStart(2, "0");
+  }
+}
+
+/* Send an already-recorded clip. WhatsApp behaviour: tapping Send while still
+   holding the mic commits the note immediately instead of waiting for release.
+   We stop the recorder synchronously and wait briefly for the async `stop`
+   event to hand us the blob (mirrors the old overlay-overlay race fix). */
+async function commitAndSendVoice() {
+  const MAX_WAIT_STEPS = 15; // up to ~1.5s
+  stopRec();
+  for (let i = 0; i < MAX_WAIT_STEPS && !pendingVoiceBlob; i++) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (!pendingVoiceBlob) {
+    showNotifToast("Could not finish the recording. Try again.", "error");
+    cancelVoice();
+    return;
+  }
+  await sendVoice();
 }
 
 // Hold the finished clip in the composer and offer playback before sending.
@@ -5478,6 +5562,8 @@ function releaseVoicePreviewUrl() {
 }
 
 async function sendVoice() {
+  // Tapping Send mid-recording commits the note first (WhatsApp-style).
+  if (isRecording) { await commitAndSendVoice(); return; }
   if (!pendingVoiceBlob) return;
   if (!selectedUser && !selectedGroup && !selectedChannel) return;
   if (currentChatMode === 'direct' && selectedUser && !isSelfChat() && blockedUsers[selectedUser.uid]) {
@@ -5487,7 +5573,13 @@ async function sendVoice() {
 
   const blob = pendingVoiceBlob;
   const mime = recordingMime;
-  const dur = recDuration || 0;
+  // Prefer the frozen wall-clock duration, but never ship a bogus 0. When it is
+  // 0 the player falls back to the file's own metadata, which is accurate for
+  // every container we record.
+  let dur = recDuration || 0;
+  if (dur <= 0 && recStart) dur = Math.max(0, Date.now() - recStart);
+  if (dur > 0 && dur < 400) dur = 0;
+  if (dur >= 3600000) dur = 0;
   const ta = document.getElementById("text");
   if (ta) ta.value = "";
 
@@ -5543,9 +5635,12 @@ function cancelVoice() {
     if (mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(t => t.stop());
   }
   isRecording = false;
+  recStarting = false;
   recordingBlob = null;
   pendingVoiceBlob = null;
   audioChunks = [];
+  recDuration = 0;
+  recStoppedAt = 0;
   clearInterval(recTimer);
   releaseVoicePreviewUrl();
   voicePlaybackSpeed = 1;
