@@ -12707,3 +12707,62 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 @media (prefers-reduced-motion: reduce) {
   .settings-subpage { animation: none; }
 }
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* COMPOSER RHYTHM - SEND BUTTON & INPUT PILL (authoritative, keep last)       */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* The send button was 44x42 - it set `width` and `height` to different values
+   with no `min-height`, so any override that only touched `height` (the 480px
+   breakpoint, the theme blocks) squashed it into an oval. It is now a true
+   circle bound to one token, so width and height can never drift apart.
+
+   The pill was also ~76px tall at rest because a <textarea> with no `rows`
+   defaults to TWO rows. That made the 44px button read as small and off-centre
+   next to a very tall pill. The composer starts at one line and auto-grows. */
+:root {
+  --composer-ctl: 44px;
+  --composer-line: 22px;
+}
+
+.input-area .btn-send {
+  width: var(--composer-ctl) !important;
+  height: var(--composer-ctl) !important;
+  min-width: var(--composer-ctl) !important;
+  min-height: var(--composer-ctl) !important;
+  border-radius: var(--radius-full) !important;
+  padding: 0 !important;
+  flex-shrink: 0;
+}
+
+.input-area .btn-send svg,
+.input-area .btn-send i {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+/* Resting height of the composer. `min-height` (not `height`) so the inline
+   auto-grow styles can still expand it well past one line. */
+.input-area .input-wrap {
+  min-height: var(--composer-ctl) !important;
+}
+
+/* One line at rest. Giving the textarea a real CSS height matters: the send
+   path resets it with `style.height = "auto"`, which now falls back to this
+   single-line height instead of snapping back to the 2-row default. */
+.input-area .input-wrap textarea#text {
+  height: var(--composer-line);
+  min-height: var(--composer-line);
+  padding: 0;
+  line-height: var(--composer-line);
+  align-self: center;
+}
+
+@media (max-width: 480px) {
+  /* Keep the same square button on phones - 44px is still a full-size touch
+     target, and matching the desktop size keeps the composer identical. */
+  .input-area .btn-send {
+    width: var(--composer-ctl) !important;
+    height: var(--composer-ctl) !important;
+    min-width: var(--composer-ctl) !important;
+    min-height: var(--composer-ctl) !important;
+  }
+}

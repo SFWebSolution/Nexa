@@ -475,6 +475,25 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   Don't nest a second `.profile-tab-content` (it doubles the padding and
   inflates the layout).
 
+## Composer send button + input pill (do NOT regress)
+- The send button (`#composerSendBtn .btn-send`) sets ONE token for both axes:
+  `--composer-ctl` (44px), applied as width/height/min-width/min-height. It used
+  to hardcode `width:44px; height:42px` with no `min-height`, so the 480px
+  breakpoint and the theme blocks (which only override `height`) squashed it
+  into a 44x42 OVAL. Never give it independent width/height values, and always
+  set `min-height` alongside `height` on any future override.
+- The pill is `min-height: var(--composer-ctl)` (44px) so the button bottom-aligns
+  with it (`.input-area` is `align-items:flex-end`).
+- `#text` has `rows="1"` and `height: var(--composer-line)` (22px). Without
+  `rows`, a <textarea> defaults to TWO rows (~62px), which inflated the pill to
+  ~76px at rest and made the 44px button read as small/unbalanced. The CSS
+  height also matters because the send paths reset the box with
+  `style.height = "auto"`, which then falls back to one line instead of two.
+- `autoGrowComposer(ta)` (app-main.js) is the single grow path, used by the
+  input listener and all three send paths (1:1 / group / channel). Do not
+  revert to a bare `ta.style.height = "auto"` reset - that leaves the composer
+  stuck at whatever height the inline style last had.
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,
