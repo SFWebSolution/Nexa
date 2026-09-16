@@ -438,7 +438,7 @@ function listenCurrentAccountStatus(uid) {
   accountStatusUnsub = db.collection("users").doc(uid).onSnapshot(doc => {
     if (!doc.exists) {
       if (hasLoadedOnce) {
-        alert("❌ Your account has been deleted by an administrator.");
+        nexaAlert("❌ Your account has been deleted by an administrator.");
         auth.signOut().then(() => {
           window.location.href = "login.html?deleted=1";
         });
@@ -449,7 +449,7 @@ function listenCurrentAccountStatus(uid) {
     hasLoadedOnce = true;
     const data = doc.data();
     if (data && data.banned === true) {
-      alert("🚫 Your account has been banned by an administrator.");
+      nexaAlert("🚫 Your account has been banned by an administrator.");
       auth.signOut().then(() => {
         window.location.href = "login.html?banned=1";
       });
@@ -973,8 +973,8 @@ async function installPWA() {
   triggerPWAInstall();
 }
 
-function handleLogout() {
-  if (confirm('Logout?')) {
+async function handleLogout() {
+  if (await nexaConfirm('Are you sure you want to sign out of Nexa on this device?', { title: 'Log Out', okLabel: 'Log Out', danger: true })) {
     try { localStorage.removeItem("nexa_signed_in"); } catch (e) {}
     auth.signOut();
   }
@@ -1389,13 +1389,13 @@ function renderUsers() {
       let isLongPress = false;
 
       el.addEventListener("touchstart", (e) => {
-        if (el._userData && el._userData.isSelf) return; // no delete on self-chat
+        if (el._userData && el._userData.isSelf) return; // no actions on self-chat
         isLongPress = false;
         clearTimeout(pressTimer);
         pressTimer = setTimeout(() => {
           isLongPress = true;
           if (navigator.vibrate) navigator.vibrate(40);
-          if (el._userData) openDeleteChatModal(el._userData);
+          if (el._userData) openChatActionSheet(el._userData);
         }, 500);
       }, { passive: true });
 
@@ -1404,10 +1404,10 @@ function renderUsers() {
       el.addEventListener("touchcancel", () => clearTimeout(pressTimer));
 
       el.addEventListener("contextmenu", (e) => {
-        if (el._userData && el._userData.isSelf) return; // no delete on self-chat
+        if (el._userData && el._userData.isSelf) return; // no actions on self-chat
         e.preventDefault();
         e.stopPropagation();
-        if (el._userData) openDeleteChatModal(el._userData);
+        if (el._userData) openChatActionSheet(el._userData);
       });
 
       el.addEventListener("click", (e) => {
@@ -1537,6 +1537,7 @@ function renderStoriesTab() {
   let count = 0;
 
   allUsersData.forEach(user => {
+    if (blockedUsers[user.uid]) return; // blocked contacts' stories stay hidden
     const statuses = userStatuses[user.uid];
     if (!statuses || !statuses.length) return;
     count++;
@@ -1947,6 +1948,108 @@ function updateBlockButtonUI() {
   if (btn) btn.classList.toggle('blocked', isBlocked);
 }
 
+/* ── Blocking from inside a chat ────────────────────────────────────────── */
+
+// Chat Info panel action: reflect the current block state and let the user
+// toggle it without leaving the conversation.
+function updateInfoBlockAction() {
+  const text = document.getElementById('infoBlockText');
+  if (!text) return;
+  if (!selectedUser || isSelfChat()) {
+    const wrap = document.getElementById('infoBlockAction');
+    if (wrap) wrap.style.display = 'none';
+    return;
+  }
+  const isBlocked = !!blockedUsers[selectedUser.uid];
+  text.textContent = isBlocked ? 'Unblock Contact' : 'Block Contact';
+}
+
+async function toggleBlockSelectedUserFromInfo() {
+  if (!selectedUser || isSelfChat()) return;
+  const uid = selectedUser.uid;
+  const willBlock = !blockedUsers[uid];
+  const name = selectedUser.displayName || selectedUser.name || 'this contact';
+  if (willBlock && !await nexaConfirm(
+    "They won't be able to message you or see your stories, and their chat will be hidden from your list.",
+    { title: 'Block ' + name + '?', okLabel: 'Block', danger: true }
+  )) return;
+  setBlocked(uid, willBlock);
+  updateInfoBlockAction();
+  updateBlockedChatBanner();
+  renderMessageList();
+}
+
+// Composer banner: makes a blocked conversation self-explanatory and gives a
+// one-tap way back. Also locks the composer so nothing can be sent.
+function updateBlockedChatBanner() {
+  const banner = document.getElementById('blockedChatBanner');
+  if (!banner) return;
+  const blocked = !!(selectedUser && !isSelfChat() && blockedUsers[selectedUser.uid]);
+  banner.style.display = blocked ? 'flex' : 'none';
+  // The banner sits just above .input-area (a sibling, not a parent), so target
+  // the composer itself to lock the text box and hide the attach/record buttons.
+  const inputArea = banner.nextElementSibling && banner.nextElementSibling.classList.contains('input-area')
+    ? banner.nextElementSibling
+    : document.querySelector('.input-area');
+  if (inputArea) inputArea.classList.toggle('blocked-chat', blocked);
+  if (blocked && window.lucide) lucide.createIcons();
+}
+
+function unblockCurrentChat() {
+  if (!selectedUser) return;
+  setBlocked(selectedUser.uid, false);
+  updateBlockedChatBanner();
+  updateInfoBlockAction();
+  renderMessageList();
+}
+
+/* ── Chat list long-press action sheet (Block / Delete) ─────────────────── */
+
+let actionSheetUser = null;
+
+function openChatActionSheet(user) {
+  if (!user || user.isSelf) return;
+  actionSheetUser = user;
+  const title = document.getElementById('chatActionSheetTitle');
+  if (title) title.textContent = user.displayName || user.name || 'Chat Options';
+  const label = document.getElementById('chatActionBlockLabel');
+  if (label) label.textContent = blockedUsers[user.uid] ? 'Unblock Contact' : 'Block Contact';
+  const sheet = document.getElementById('chatActionSheet');
+  if (sheet) sheet.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeChatActionSheet() {
+  actionSheetUser = null;
+  const sheet = document.getElementById('chatActionSheet');
+  if (sheet) sheet.classList.remove('active');
+}
+
+async function blockFromActionSheet() {
+  if (!actionSheetUser) return;
+  const user = actionSheetUser;
+  const willBlock = !blockedUsers[user.uid];
+  const name = user.displayName || user.name || 'this contact';
+  closeChatActionSheet();
+  if (willBlock && !await nexaConfirm(
+    "They won't be able to message you or see your stories, and their chat will be hidden from your list.",
+    { title: 'Block ' + name + '?', okLabel: 'Block', danger: true }
+  )) return;
+  setBlocked(user.uid, willBlock);
+  if (selectedUser && selectedUser.uid === user.uid) {
+    updateBlockedChatBanner();
+    updateInfoBlockAction();
+    renderMessageList();
+  }
+}
+
+function deleteFromActionSheet() {
+  if (!actionSheetUser) return;
+  const user = actionSheetUser;
+  closeChatActionSheet();
+  openDeleteChatModal(user);
+}
+
 /* ── Change password ───────────────────────────────────────────────────── */
 
 async function sendPasswordResetFromSettings() {
@@ -1954,7 +2057,7 @@ async function sendPasswordResetFromSettings() {
     showNotifToast('No email on this account', 'error');
     return;
   }
-  if (!confirm('Send a password reset link to ' + currentUser.email + '?')) return;
+  if (!await nexaConfirm("We will email a reset link to " + currentUser.email + '.', { title: 'Reset password?', okLabel: 'Send Link' })) return;
   try {
     await auth.sendPasswordResetEmail(currentUser.email);
     showNotifToast('Reset link sent — check your inbox', 'success');
@@ -1963,10 +2066,185 @@ async function sendPasswordResetFromSettings() {
   }
 }
 
-/* ── App Lock (device-local PIN) ────────────────────────────────────────── */
+/* ── Modern dialog engine (replaces native alert/confirm/prompt) ─────────
+   Native dialogs render the browser's own chrome ("This page says…"), look
+   dated, block the JS thread, and can't be themed. These promise-based
+   replacements use the app's own card UI so every confirmation matches the
+   product. Browser-level guards (beforeunload, FCM permission, file pickers)
+   still use native APIs where the platform requires them. */
+
+let _nexaDialogResolve = null;
+
+function _nexaDialogOpen(opts) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('nexaDialog');
+    if (!overlay) { // markup missing — fall back so callers never hang
+      resolve(opts.type === 'prompt' ? null : (opts.type === 'confirm' ? false : undefined));
+      return;
+    }
+    _nexaDialogResolve = resolve;
+
+    const iconEl = document.getElementById('nexaDialogIcon');
+    const titleEl = document.getElementById('nexaDialogTitle');
+    const msgEl = document.getElementById('nexaDialogMessage');
+    const inputEl = document.getElementById('nexaDialogInput');
+    const errEl = document.getElementById('nexaDialogError');
+    const actionsEl = document.getElementById('nexaDialogActions');
+
+    const kind = opts.type || 'alert';
+    const tone = opts.tone || (kind === 'confirm' && opts.danger ? 'danger' : kind === 'prompt' ? 'primary' : 'info');
+    const icons = { info: 'info', success: 'check-circle-2', error: 'alert-circle', danger: 'alert-triangle', warning: 'alert-triangle', primary: 'info' };
+    const iconName = icons[tone] || 'info';
+
+    overlay.className = 'nexa-dialog-overlay tone-' + tone + ' kind-' + kind;
+    iconEl.innerHTML = iconName ? `<i data-lucide="${iconName}" style="width: 22px; height: 22px;"></i>` : '';
+    iconEl.style.display = iconName ? 'flex' : 'none';
+    titleEl.textContent = opts.title || (kind === 'confirm' ? 'Are you sure?' : 'Nexa');
+    titleEl.style.display = (opts.title || kind !== 'alert') ? 'block' : 'none';
+    msgEl.textContent = opts.message || '';
+    msgEl.style.display = opts.message ? 'block' : 'none';
+
+    if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+    if (kind === 'prompt') {
+      inputEl.style.display = 'block';
+      inputEl.type = opts.inputType || 'text';
+      inputEl.value = opts.value != null ? opts.value : '';
+      inputEl.placeholder = opts.placeholder || '';
+      inputEl.maxLength = opts.maxLength || 200;
+      inputEl.inputMode = opts.inputMode || 'text';
+    } else {
+      inputEl.style.display = 'none';
+    }
+
+    const listEl = document.getElementById('nexaDialogList');
+    if (listEl) {
+      listEl.innerHTML = '';
+      if (kind === 'select' && Array.isArray(opts.options)) {
+        listEl.style.display = 'flex';
+        const search = document.createElement('input');
+        search.className = 'nexa-dialog-input';
+        search.placeholder = opts.searchPlaceholder || 'Search…';
+        const renderItems = (filter) => {
+          listEl.querySelectorAll('.nexa-dialog-item').forEach(n => n.remove());
+          const f = (filter || '').toLowerCase();
+          opts.options
+            .filter(o => !f || String(o.label).toLowerCase().includes(f))
+            .forEach(o => {
+              const b = document.createElement('button');
+              b.className = 'nexa-dialog-item';
+              b.textContent = o.label;
+              b.onclick = () => _nexaDialogClose(o.value);
+              listEl.appendChild(b);
+            });
+          if (!listEl.querySelector('.nexa-dialog-item')) {
+            const empty = document.createElement('div');
+            empty.className = 'nexa-dialog-empty';
+            empty.textContent = 'No matches';
+            listEl.appendChild(empty);
+          }
+        };
+        if (opts.options.length > 6) {
+          search.oninput = () => renderItems(search.value);
+          listEl.appendChild(search);
+        }
+        renderItems('');
+      } else {
+        listEl.style.display = 'none';
+      }
+    }
+
+    const okLabel = opts.okLabel || (kind === 'confirm' ? 'Confirm' : kind === 'prompt' ? 'OK' : 'OK');
+    const cancelLabel = opts.cancelLabel || 'Cancel';
+    actionsEl.innerHTML = '';
+    if (kind !== 'alert') {
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'nexa-dialog-btn ghost';
+      cancelBtn.textContent = cancelLabel;
+      cancelBtn.onclick = () => _nexaDialogClose(kind === 'confirm' ? false : null);
+      actionsEl.appendChild(cancelBtn);
+    }
+    if (kind !== 'select') {
+      const okBtn = document.createElement('button');
+      okBtn.className = 'nexa-dialog-btn ' + (tone === 'danger' ? 'danger' : 'primary');
+      okBtn.textContent = okLabel;
+      okBtn.onclick = () => {
+        if (kind === 'prompt') {
+          const val = inputEl.value.trim();
+          if (opts.validate) {
+            const err = opts.validate(val);
+            if (err) {
+              if (errEl) { errEl.textContent = err; errEl.style.display = 'block'; }
+              inputEl.focus();
+              return;
+            }
+          }
+          _nexaDialogClose(val);
+        } else {
+          _nexaDialogClose(kind === 'confirm' ? true : undefined);
+        }
+      };
+      actionsEl.appendChild(okBtn);
+      if (kind === 'prompt') setTimeout(() => inputEl.focus(), 120);
+      else setTimeout(() => okBtn.focus(), 120);
+    }
+
+    overlay.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+    if (kind === 'prompt') setTimeout(() => { inputEl.select && inputEl.select(); }, 140);
+  });
+}
+
+function _nexaDialogClose(result) {
+  const overlay = document.getElementById('nexaDialog');
+  if (overlay) overlay.classList.remove('active');
+  const resolve = _nexaDialogResolve;
+  _nexaDialogResolve = null;
+  if (resolve) resolve(result);
+}
+
+function nexaAlert(message, opts) {
+  opts = opts || {};
+  return _nexaDialogOpen(Object.assign({ type: 'alert', message }, opts));
+}
+
+function nexaConfirm(message, opts) {
+  opts = opts || {};
+  return _nexaDialogOpen(Object.assign({ type: 'confirm', message }, opts));
+}
+
+function nexaPrompt(message, opts) {
+  opts = opts || {};
+  return _nexaDialogOpen(Object.assign({ type: 'prompt', message }, opts));
+}
+
+// Picker dialog: opts.options is [{ label, value }]; resolves the chosen value
+// or null when dismissed.
+function nexaSelect(message, opts) {
+  opts = opts || {};
+  return _nexaDialogOpen(Object.assign({ type: 'select', message }, opts));
+}
+
+function handleNexaDialogBackdrop(e) {
+  const overlay = document.getElementById('nexaDialog');
+  if (e.target !== overlay) return;
+  // Backdrop tap = dismiss. Prompts resolve null, confirms resolve false.
+  const kind = overlay.classList.contains('kind-prompt') ? null : false;
+  _nexaDialogClose(kind);
+}
+
+window.nexaAlert = nexaAlert;
+window.nexaConfirm = nexaConfirm;
+window.nexaPrompt = nexaPrompt;
+window.nexaSelect = nexaSelect;
+window.handleNexaDialogBackdrop = handleNexaDialogBackdrop;
+
+/* ── App Lock (device-local PIN, optional biometric unlock) ─────────────── */
 
 const APP_LOCK_KEY = 'nexa_app_lock_hash';
 const APP_LOCK_SESSION_KEY = 'nexa_app_lock_unlocked';
+const APP_LOCK_BIO_KEY = 'nexa_app_lock_bio';
+const APP_LOCK_CRED_KEY = 'nexa_app_lock_cred';
 
 function hashAppLockPin(pin) {
   // Lightweight device-local digest — this is a convenience lock on the local
@@ -1977,44 +2255,275 @@ function hashAppLockPin(pin) {
   return h.toString(16);
 }
 
-function toggleAppLock() {
-  if (localStorage.getItem(APP_LOCK_KEY)) {
-    const pin = prompt('Enter your current PIN to turn off App Lock');
-    if (pin === null) return;
-    if (hashAppLockPin(pin) !== localStorage.getItem(APP_LOCK_KEY)) {
-      showNotifToast('Incorrect PIN', 'error');
-      return;
+/* ─ Biometric (WebAuthn platform authenticator) helpers ──────────────────
+   The credential never leaves the device and no server is involved: this is
+   a local convenience unlock, so the assertion is only used to prove the
+   device authenticated its owner. The PIN stays as a permanent fallback so a
+   device with no enrolled biometrics can never lock the user out. */
+
+function _b64urlEncode(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function _b64urlDecode(str) {
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+  const bin = atob(pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function biometricSupported() {
+  try {
+    if (!window.PublicKeyCredential || !navigator.credentials) return false;
+    if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== 'function') return false;
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch (_) {
+    return false;
+  }
+}
+
+function biometricEnabled() {
+  return localStorage.getItem(APP_LOCK_BIO_KEY) === '1' && !!localStorage.getItem(APP_LOCK_CRED_KEY);
+}
+
+// Registers a platform credential (fingerprint / Face ID / Windows Hello) and
+// returns true when the authenticator accepted it.
+async function registerBiometric() {
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const userId = crypto.getRandomValues(new Uint8Array(16));
+  const cred = await navigator.credentials.create({
+    publicKey: {
+      challenge,
+      rp: { name: 'Nexa Messenger' },
+      user: { id: userId, name: 'nexa-lock', displayName: 'Nexa App Lock' },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },
+        { type: 'public-key', alg: -257 }
+      ],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+      timeout: 60000,
+      attestation: 'none'
     }
-    localStorage.removeItem(APP_LOCK_KEY);
-    sessionStorage.removeItem(APP_LOCK_SESSION_KEY);
-    updateAppLockToggleUI();
-    showNotifToast('App Lock turned off', 'info');
+  });
+  if (!cred || !cred.rawId) return false;
+  localStorage.setItem(APP_LOCK_CRED_KEY, _b64urlEncode(cred.rawId));
+  localStorage.setItem(APP_LOCK_BIO_KEY, '1');
+  return true;
+}
+
+// Prompts for the device biometric and returns true on a successful assertion.
+async function verifyBiometric() {
+  const credId = localStorage.getItem(APP_LOCK_CRED_KEY);
+  if (!credId) return false;
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        timeout: 60000,
+        userVerification: 'required',
+        allowCredentials: [{ id: _b64urlDecode(credId), type: 'public-key', transports: ['internal'] }]
+      }
+    });
+    return !!assertion;
+  } catch (_) {
+    return false;
+  }
+}
+
+/* ── App Lock setup modal ────────────────────────────────────────────────── */
+
+async function toggleAppLock() {
+  if (localStorage.getItem(APP_LOCK_KEY)) {
+    openAppLockDisableModal();
     return;
   }
-  const pin = prompt('Choose a 4-digit PIN for Nexa');
-  if (pin === null) return;
-  if (!/^\d{4}$/.test(pin)) {
-    showNotifToast('PIN must be exactly 4 digits', 'error');
-    return;
-  }
-  const again = prompt('Enter the same PIN again');
-  if (again !== pin) {
-    showNotifToast("PINs didn't match", 'error');
-    return;
-  }
+  openAppLockSetupModal();
+}
+
+function handleAppLockSetupOverlayClick(e) {
+  if (e.target === e.currentTarget) closeAppLockSetup();
+}
+
+function closeAppLockSetup() {
+  const modal = document.getElementById('appLockSetupModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function openAppLockSetupModal() {
+  const modal = document.getElementById('appLockSetupModal');
+  const body = document.getElementById('appLockSetupBody');
+  const title = document.getElementById('appLockSetupTitle');
+  if (!modal || !body) { showNotifToast('Unable to open App Lock setup', 'error'); return; }
+  if (title) title.textContent = 'Set up App Lock';
+
+  const hasBio = await biometricSupported();
+  body.innerHTML = `
+    <div class="als-intro">Choose how Nexa should be unlocked on this device.</div>
+    <button class="als-method" id="alsMethodPin" onclick="startPinSetup(false)">
+      <span class="als-method-icon"><i data-lucide="lock-keyhole" style="width: 20px; height: 20px;"></i></span>
+      <span class="als-method-text">
+        <span class="als-method-title">PIN only</span>
+        <span class="als-method-sub">Use a 4-digit PIN every time Nexa opens</span>
+      </span>
+      <span class="als-method-go"><i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i></span>
+    </button>
+    ${hasBio ? `
+    <button class="als-method" id="alsMethodBio" onclick="startPinSetup(true)">
+      <span class="als-method-icon bio"><i data-lucide="fingerprint" style="width: 20px; height: 20px;"></i></span>
+      <span class="als-method-text">
+        <span class="als-method-title">PIN + Fingerprint / Face</span>
+        <span class="als-method-sub">Unlock with your device biometrics, PIN as backup</span>
+      </span>
+      <span class="als-method-go"><i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i></span>
+    </button>` : `
+    <div class="als-note">Biometric unlock isn't available on this device or browser — you can still use a PIN.</div>`}
+  `;
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+// PIN entry step. `withBio` requests a biometric credential after the PIN is set.
+function startPinSetup(withBio) {
+  const body = document.getElementById('appLockSetupBody');
+  const title = document.getElementById('appLockSetupTitle');
+  if (!body) return;
+  if (title) title.textContent = 'Create your PIN';
+  body.innerHTML = `
+    <div class="als-field">
+      <label class="als-label">4-digit PIN</label>
+      <input class="als-input" id="alsPin1" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    </div>
+    <div class="als-field">
+      <label class="als-label">Confirm PIN</label>
+      <input class="als-input" id="alsPin2" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    </div>
+    <div class="als-error" id="alsError"></div>
+    <div class="als-actions">
+      <button class="als-btn ghost" onclick="openAppLockSetupModal()">Back</button>
+      <button class="als-btn primary" onclick="confirmPinSetup(${withBio ? 'true' : 'false'})">Enable App Lock</button>
+    </div>
+  `;
+  const p1 = document.getElementById('alsPin1');
+  if (p1) setTimeout(() => p1.focus(), 120);
+  if (window.lucide) lucide.createIcons();
+}
+
+async function confirmPinSetup(withBio) {
+  const errEl = document.getElementById('alsError');
+  const pin = (document.getElementById('alsPin1') || {}).value || '';
+  const again = (document.getElementById('alsPin2') || {}).value || '';
+  const fail = msg => { if (errEl) errEl.textContent = msg; };
+  if (!/^\d{4}$/.test(pin)) { fail('PIN must be exactly 4 digits'); return; }
+  if (again !== pin) { fail("PINs didn't match"); return; }
+
   localStorage.setItem(APP_LOCK_KEY, hashAppLockPin(pin));
   sessionStorage.setItem(APP_LOCK_SESSION_KEY, '1');
+
+  if (withBio) {
+    try {
+      await registerBiometric();
+    } catch (_) {
+      localStorage.removeItem(APP_LOCK_BIO_KEY);
+      localStorage.removeItem(APP_LOCK_CRED_KEY);
+      showNotifToast('Biometric setup was cancelled — PIN unlock is active', 'info');
+      updateAppLockToggleUI();
+      closeAppLockSetup();
+      return;
+    }
+  } else {
+    localStorage.removeItem(APP_LOCK_BIO_KEY);
+    localStorage.removeItem(APP_LOCK_CRED_KEY);
+  }
   updateAppLockToggleUI();
-  showNotifToast('App Lock enabled', 'success');
+  closeAppLockSetup();
+  showNotifToast(biometricEnabled() ? 'App Lock enabled with biometrics' : 'App Lock enabled', 'success');
+}
+
+function openAppLockDisableModal() {
+  const setTitle = (t) => {
+    const el = document.getElementById('appLockSetupTitle');
+    if (el) el.textContent = t;
+  };
+  const modal = document.getElementById('appLockSetupModal');
+  const body = document.getElementById('appLockSetupBody');
+  if (!modal || !body) return;
+  setTitle('Turn off App Lock');
+  const bioOn = biometricEnabled();
+  body.innerHTML = `
+    <div class="als-intro">Confirm it's you before App Lock is removed from this device.</div>
+    ${bioOn ? `
+    <button class="als-method" onclick="disableAppLockWithBiometric()">
+      <span class="als-method-icon bio"><i data-lucide="fingerprint" style="width: 20px; height: 20px;"></i></span>
+      <span class="als-method-text">
+        <span class="als-method-title">Use fingerprint / Face</span>
+        <span class="als-method-sub">Verify with your device biometrics</span>
+      </span>
+      <span class="als-method-go"><i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i></span>
+    </button>` : ''}
+    <div class="als-field">
+      <label class="als-label">${bioOn ? 'Or enter your PIN' : 'Enter your PIN'}</label>
+      <input class="als-input" id="alsPinOff" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    </div>
+    <div class="als-error" id="alsError"></div>
+    <div class="als-actions">
+      <button class="als-btn ghost" onclick="closeAppLockSetup()">Cancel</button>
+      <button class="als-btn danger" onclick="disableAppLockWithPin()">Turn Off</button>
+    </div>
+  `;
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function disableAppLockWithPin() {
+  const pin = (document.getElementById('alsPinOff') || {}).value || '';
+  const errEl = document.getElementById('alsError');
+  if (hashAppLockPin(pin) !== localStorage.getItem(APP_LOCK_KEY)) {
+    if (errEl) errEl.textContent = 'Wrong PIN — try again';
+    return;
+  }
+  removeAppLock();
+}
+
+async function disableAppLockWithBiometric() {
+  const errEl = document.getElementById('alsError');
+  const ok = await verifyBiometric();
+  if (!ok) {
+    if (errEl) errEl.textContent = "Biometric check failed — enter your PIN instead";
+    return;
+  }
+  removeAppLock();
+}
+
+function removeAppLock() {
+  localStorage.removeItem(APP_LOCK_KEY);
+  localStorage.removeItem(APP_LOCK_BIO_KEY);
+  localStorage.removeItem(APP_LOCK_CRED_KEY);
+  sessionStorage.removeItem(APP_LOCK_SESSION_KEY);
+  updateAppLockToggleUI();
+  closeAppLockSetup();
+  showNotifToast('App Lock turned off', 'info');
 }
 
 function updateAppLockToggleUI() {
   const t = document.getElementById('appLockToggle');
   if (t) t.classList.toggle('active', !!localStorage.getItem(APP_LOCK_KEY));
+  const sub = document.getElementById('appLockSubText');
+  if (sub) {
+    const enabled = !!localStorage.getItem(APP_LOCK_KEY);
+    sub.textContent = !enabled
+      ? 'Require a PIN or biometrics when Nexa opens'
+      : biometricEnabled() ? 'On · PIN + biometrics' : 'On · PIN only';
+  }
 }
 
 // Gate shown once per browser session when App Lock is on.
-function maybeShowAppLock() {
+async function maybeShowAppLock() {
   if (!localStorage.getItem(APP_LOCK_KEY)) return;
   if (sessionStorage.getItem(APP_LOCK_SESSION_KEY) === '1') return;
   const gate = document.getElementById('appLockGate');
@@ -2022,9 +2531,26 @@ function maybeShowAppLock() {
   gate.classList.add('active');
   const input = document.getElementById('appLockPinInput');
   const err = document.getElementById('appLockError');
+  const sub = document.getElementById('appLockSub');
   if (err) err.textContent = '';
   if (input) { input.value = ''; setTimeout(() => input.focus(), 120); }
+
+  const bioBtn = document.getElementById('appLockBioBtn');
+  const canBio = biometricEnabled() && await biometricSupported();
+  if (bioBtn) bioBtn.style.display = canBio ? 'flex' : 'none';
+  if (sub) sub.textContent = canBio ? 'Unlock with your biometrics or PIN' : 'Enter your 4-digit PIN to continue';
   if (window.lucide) lucide.createIcons();
+}
+
+async function submitAppLockBiometric() {
+  const err = document.getElementById('appLockError');
+  const ok = await verifyBiometric();
+  if (ok) {
+    sessionStorage.setItem(APP_LOCK_SESSION_KEY, '1');
+    document.getElementById('appLockGate').classList.remove('active');
+  } else if (err) {
+    err.textContent = 'Biometric check failed — use your PIN';
+  }
 }
 
 function submitAppLockPin() {
@@ -2382,8 +2908,8 @@ function triggerProfilePhotoUpload() {
   if (input) input.click();
 }
 
-function clearAppCache() {
-  if (confirm("Clear local cache and saved preferences?")) {
+async function clearAppCache() {
+  if (await nexaConfirm("This removes locally cached data and saved preferences on this device. You will stay signed in.", { title: "Clear local cache?", okLabel: "Clear", danger: true })) {
     localStorage.clear();
     showNotifToast("✓ Cache cleared", "success");
     setTimeout(() => window.location.reload(), 1000);
@@ -2511,6 +3037,8 @@ function selectChat(user, el) {
   updateTotalUnreadBadge();
   renderUsers(); // Move selected user to the top immediately
   loadMessages();
+  updateBlockedChatBanner();
+  updateInfoBlockAction();
   // Typing + presence don't apply to the self-chat — skip those listeners.
   if (isSelfChat()) {
     if (unsubTyping) { unsubTyping(); unsubTyping = null; }
@@ -4121,7 +4649,7 @@ function clearReply() {
 
 function startEdit(msgId) {
   const msg = allMessages.find(m => m.id === msgId);
-  if (!msg || !msg.text) { alert("Cannot edit this message"); return; }
+  if (!msg || !msg.text) { nexaAlert("Cannot edit this message"); return; }
   editingMessageId = msgId;
   document.getElementById("editText").value = msg.text;
   document.getElementById("editModal").classList.add("active");
@@ -4138,7 +4666,7 @@ function closeEditModal() {
 function saveEditMessage() {
   if (!editingMessageId) return;
   const newText = document.getElementById("editText").value.trim();
-  if (!newText) { alert("Cannot be empty"); return; }
+  if (!newText) { nexaAlert("Cannot be empty"); return; }
   db.collection("chats").doc(editingMessageId).update({ text: newText, edited: true, editedAt: Date.now() })
     .then(() => {
       // The live listener covers the newest window; patch older pages locally.
@@ -4146,7 +4674,7 @@ function saveEditMessage() {
       if (m) { m.text = newText; m.edited = true; renderMessageList(); }
       closeEditModal();
     })
-    .catch(e => alert("Error: " + e.message));
+    .catch(e => nexaAlert("Error: " + e.message));
 }
 
 function showCtxMenu(e, id, msg) {
@@ -4192,9 +4720,9 @@ function copyMsg(id) {
   closeCtxMenu();
 }
 
-function deleteGroupMsg(id) {
+async function deleteGroupMsg(id) {
   if (!selectedGroup) return;
-  if (confirm("Delete this group message?")) {
+  if (await nexaConfirm("This message will be removed for everyone in the group.", { title: "Delete message?", okLabel: "Delete", danger: true })) {
     db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id).delete()
       .catch(e => console.error("deleteGroupMsg error:", e));
   }
@@ -4231,8 +4759,8 @@ async function toggleGroupMsgReact(msgId, emoji) {
   }
 }
 
-function deleteMsg(id) {
-  if (confirm("Delete this message?")) {
+async function deleteMsg(id) {
+  if (await nexaConfirm("This message will be removed for everyone in this chat.", { title: "Delete message?", okLabel: "Delete", danger: true })) {
     db.collection("chats").doc(id).delete().then(() => {
       // The live listener prunes window messages; older pages are pruned here.
       [_olderMsgsA, _olderMsgsB].forEach(arr => {
@@ -4354,14 +4882,14 @@ async function uploadFile(file) {
 }
 
 function pickImage() {
-  if (!selectedUser) { alert("Select a user first"); return; }
+  if (!selectedUser) { nexaAlert("Select a user first"); return; }
   document.getElementById("img").click();
 }
 
 // WhatsApp-style: the media button lets the user CHOOSE Photo or Video.
 function pickMedia() {
   closeAttachMenu();
-  if (!selectedUser && !selectedGroup && !selectedChannel) { alert("Select a conversation first"); return; }
+  if (!selectedUser && !selectedGroup && !selectedChannel) { nexaAlert("Select a conversation first"); return; }
   // If the device supports a combined image+video picker, use one input that
   // accepts both and route by the picked type — simplest, most native feel.
   const inp = document.getElementById("mediaPickerInput") || (() => {
@@ -4386,7 +4914,7 @@ function pickMedia() {
 
 function pickFile() {
   closeAttachMenu();
-  if (!selectedUser && !selectedGroup && !selectedChannel) { alert("Select a conversation first"); return; }
+  if (!selectedUser && !selectedGroup && !selectedChannel) { nexaAlert("Select a conversation first"); return; }
   document.getElementById("fileInput").click();
 }
 
@@ -4494,6 +5022,10 @@ function closeMediaComposer() {
 
 async function sendMediaComposer() {
   if (!mcPendingFile || (!selectedUser && !selectedGroup && !selectedChannel)) return;
+  if (currentChatMode === 'direct' && selectedUser && !isSelfChat() && blockedUsers[selectedUser.uid]) {
+    showNotifToast("You blocked this contact. Unblock them to send media.", "error");
+    return;
+  }
   const caption = document.getElementById("mcCaption").value.trim();
   const btn = document.querySelector("#mediaComposer .mc-send-btn");
   btn.disabled = true;
@@ -4642,7 +5174,11 @@ async function sendMessage() {
     await sendChannelPost();
     return;
   }
-  if (!selectedUser) { alert("Select a user first"); return; }
+  if (!selectedUser) { nexaAlert("Select a user first"); return; }
+  if (!isSelfChat() && blockedUsers[selectedUser.uid]) {
+    showNotifToast("You blocked this contact. Unblock them to send messages.", "error");
+    return;
+  }
   if (deletedChats[selectedUser.uid]) {
     delete deletedChats[selectedUser.uid];
     saveDeletedChats();
@@ -4836,6 +5372,10 @@ async function startRec(e) {
     showNotifToast("Select a conversation first", "error");
     return;
   }
+  if (currentChatMode === 'direct' && selectedUser && !isSelfChat() && blockedUsers[selectedUser.uid]) {
+    showNotifToast("You blocked this contact. Unblock them to record.", "error");
+    return;
+  }
   if (currentChatMode === 'channel' && selectedChannel) {
     const isAdmin = (selectedChannel.admins || []).includes(currentUser.uid) || selectedChannel.ownerUid === currentUser.uid;
     if (!isAdmin) {
@@ -4940,6 +5480,10 @@ function releaseVoicePreviewUrl() {
 async function sendVoice() {
   if (!pendingVoiceBlob) return;
   if (!selectedUser && !selectedGroup && !selectedChannel) return;
+  if (currentChatMode === 'direct' && selectedUser && !isSelfChat() && blockedUsers[selectedUser.uid]) {
+    showNotifToast("You blocked this contact. Unblock them to send messages.", "error");
+    return;
+  }
 
   const blob = pendingVoiceBlob;
   const mime = recordingMime;
@@ -5034,8 +5578,9 @@ function viewImg(url) {
    CHAT INFO PANEL
    ========================================================================= */
 function openChatInfo() {
-  if (!selectedUser) { alert("Select a user first"); return; }
+  if (!selectedUser) { nexaAlert("Select a user first"); return; }
   renderInfoContact();
+  updateInfoBlockAction();
   document.getElementById("infoPanel").classList.add("active");
   loadMediaGrid();
   renderThemeGrid();
@@ -5323,7 +5868,7 @@ function updateWallpaperUIIndicators(isPerChat, config) {
 function openWallpaperModal(scope = 'current') {
   if (scope === 'current' && !selectedUser) {
     if (typeof showNotifToast === 'function') showNotifToast("Please select a chat first to customize its wallpaper", "info");
-    else alert("Please select a chat first to customize its wallpaper");
+    else nexaAlert("Please select a chat first to customize its wallpaper");
     return;
   }
   wallpaperModalState.scope = scope;
@@ -5360,7 +5905,7 @@ function closeWallpaperModal() {
 function switchWallpaperModalScope(scope) {
   if (scope === 'current' && !selectedUser) {
     if (typeof showNotifToast === 'function') showNotifToast("Select a chat first to apply wallpaper specifically to it", "info");
-    else alert("Select a chat first to apply wallpaper specifically to it");
+    else nexaAlert("Select a chat first to apply wallpaper specifically to it");
     return;
   }
   wallpaperModalState.scope = scope;
@@ -5474,7 +6019,7 @@ function handleWallpaperFileUpload(e) {
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) {
     if (typeof showNotifToast === 'function') showNotifToast("Image size must be less than 5MB", "error");
-    else alert("Image size must be less than 5MB");
+    else nexaAlert("Image size must be less than 5MB");
     return;
   }
   const reader = new FileReader();
@@ -5515,7 +6060,7 @@ function updateLivePreview() {
 function saveWallpaperFromModal() {
   if (!wallpaperModalState.selectedUrl) {
     if (typeof showNotifToast === 'function') showNotifToast("Please select or upload an image first", "info");
-    else alert("Please select or upload an image first");
+    else nexaAlert("Please select or upload an image first");
     return;
   }
 
@@ -5584,7 +6129,7 @@ function favoriteChat() {
 }
 
 async function clearChat() {
-  if (!selectedUser || !confirm("Clear all messages?")) return;
+  if (!selectedUser || !await nexaConfirm("All messages in this chat will be deleted for you. This cannot be undone.", { title: "Clear all messages?", okLabel: "Clear All", danger: true })) return;
   const me = currentUser.uid;
   const other = selectedUser.uid;
   try {
@@ -6624,17 +7169,19 @@ function logCallToChat(result, type, durationSec) {
 async function openVoiceCall() {
   if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
   if (isSelfChat()) { showNotifToast("You can't call yourself", "info"); return; }
+  if (blockedUsers[selectedUser.uid]) { showNotifToast("You blocked this contact. Unblock them to call.", "error"); return; }
   startCall('voice');
 }
 
 function openCallModal(type) {
   if (!selectedUser) { showNotifToast("Select a user first", "error"); return; }
   if (isSelfChat()) { showNotifToast("You can't call yourself", "info"); return; }
+  if (blockedUsers[selectedUser.uid]) { showNotifToast("You blocked this contact. Unblock them to call.", "error"); return; }
   startCall(type || 'video');
 }
 
 function openUserProfile() {
-  if (!selectedUser) { alert("Select a user first"); return; }
+  if (!selectedUser) { nexaAlert("Select a user first"); return; }
   const u = selectedUser;
   const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
 
@@ -6830,6 +7377,7 @@ function renderStoriesBar() {
 
   const seenMap = getSeenStories();
   allUsersData.forEach(user => {
+    if (blockedUsers[user.uid]) return; // blocked contacts' stories stay hidden
     const statuses = userStatuses[user.uid];
     if (!statuses || !statuses.length) return;
     const allSeen = statuses.every(s => seenMap[s.id]);
@@ -7323,7 +7871,7 @@ async function answerStoryQuestion(story) {
   const question = (sticker && sticker.type === "question" && sticker.text)
     || story.questionText || story.text || "";
   const qId = (sticker && sticker.id) || story.questionId || null;
-  const answer = window.prompt("Answer: " + question, "");
+  const answer = await nexaPrompt("Answer: " + question, { value: "", title: "Your Answer", okLabel: "Send" });
   if (answer === null || !answer.trim()) return;
   const reply = answer.trim();
   try {
@@ -7509,10 +8057,10 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-function deleteStory() {
+async function deleteStory() {
   if (!storyViewerData || storyViewerIndex >= storyViewerData.length) return;
   const story = storyViewerData[storyViewerIndex];
-  if (confirm("Delete this story?")) {
+  if (await nexaConfirm("Your story will be removed immediately.", { title: "Delete story?", okLabel: "Delete", danger: true })) {
     db.collection("status").doc(story.id).delete().then(() => {
       storyViewerData.splice(storyViewerIndex, 1);
       if (storyViewerIndex >= storyViewerData.length) storyViewerIndex--;
@@ -7747,7 +8295,7 @@ function renderStoryStickerPreview() {
     </div>`;
 }
 
-function attachStorySticker(type) {
+async function attachStorySticker(type) {
   if (!currentUser) { showNotifToast("Please login first", "error"); return; }
   // Stickers ride on photo/video/text/music stories — require content first.
   const hasMedia = (statusTab === "image" || statusTab === "video") && statusFile;
@@ -7764,7 +8312,7 @@ function attachStorySticker(type) {
     closeStickerTray();
     return;
   }
-  const text = window.prompt(type === "question" ? "Ask a question:" : "Add Yours prompt:", "");
+  const text = await nexaPrompt(type === "question" ? "Ask a question" : "Add Yours prompt", { value: "", title: type === "question" ? "Ask a Question" : "Add Yours", okLabel: "Continue", maxLength: 120 });
   if (text === null) { pendingStickerChoice = null; return; }
   const t = text.trim();
   if (!t) { showNotifToast("Please type something for the sticker", "error"); return; }
@@ -9600,7 +10148,7 @@ async function editGroupName() {
     showNotifToast('Only group admins can edit the name', 'info');
     return;
   }
-  const newName = prompt('Enter new group subject:', selectedGroup.name || '');
+  const newName = await nexaPrompt('Enter new group subject', { value: selectedGroup.name || '', title: 'Group Name', okLabel: 'Save', maxLength: 60 });
   if (!newName || !newName.trim() || newName.trim() === selectedGroup.name) return;
   try {
     const val = newName.trim().slice(0, 50);
@@ -9623,7 +10171,7 @@ async function editGroupDesc() {
     showNotifToast('Only group admins can edit the description', 'info');
     return;
   }
-  const newDesc = prompt('Enter group description:', selectedGroup.description || '');
+  const newDesc = await nexaPrompt('Enter group description', { value: selectedGroup.description || '', title: 'Group Description', okLabel: 'Save', maxLength: 200 });
   if (newDesc === null) return;
   try {
     const val = newDesc.trim().slice(0, 300);
@@ -9676,7 +10224,7 @@ async function deleteCurrentGroup() {
   }
 
   const groupName = selectedGroup.name || 'Group';
-  if (!confirm(`Permanently delete "${groupName}" and remove all messages? This cannot be undone.`)) return;
+  if (!await nexaConfirm(`This permanently deletes "${groupName}" and all of its messages. This cannot be undone.`, { title: 'Delete group?', okLabel: 'Delete Group', danger: true })) return;
 
   try {
     const groupId = selectedGroup.id;
@@ -9705,7 +10253,7 @@ async function toggleGroupOnlyAdminsCanPost(checked) {
 
 async function leaveCurrentGroup() {
   if (!selectedGroup) return;
-  if (!confirm(`Are you sure you want to leave "${selectedGroup.name}"?`)) return;
+  if (!await nexaConfirm(`You'll stop receiving messages from "${selectedGroup.name}".`, { title: 'Leave group?', okLabel: 'Leave', danger: true })) return;
 
   try {
     const groupId = selectedGroup.id;
@@ -9830,8 +10378,9 @@ async function openMemberActionsMenu(targetUid, currentRole) {
   const name = targetUser.displayName || 'Member';
   const isTargetAdmin = currentRole === 'admin';
 
-  const action = prompt(
-    `Manage ${name}:\n1. ${isTargetAdmin ? 'Dismiss as Admin' : 'Make Group Admin'}\n2. Remove from Group\n\nEnter 1 or 2 (or Cancel):`
+  const action = await nexaPrompt(
+    `1. ${isTargetAdmin ? 'Dismiss as Admin' : 'Make Group Admin'}\n2. Remove from Group\n\nEnter 1 or 2`,
+    { title: `Manage ${name}`, inputMode: 'numeric', okLabel: 'Continue', maxLength: 2 }
   );
 
   if (action === '1') {
@@ -9854,7 +10403,7 @@ async function openMemberActionsMenu(targetUid, currentRole) {
       showNotifToast('Failed to update role: ' + e.message, 'error');
     }
   } else if (action === '2') {
-    if (!confirm(`Remove ${name} from this group?`)) return;
+    if (!await nexaConfirm(`They'll be removed from the group and won't be able to see new messages.`, { title: `Remove ${name}?`, okLabel: 'Remove', danger: true })) return;
     try {
       const batch = db.batch();
       const groupRef = db.collection('groups').doc(selectedGroup.id);
@@ -9887,11 +10436,17 @@ async function openAddChannelAdminModal() {
     return `${i + 1}. ${user.displayName || 'Subscriber'} (${user.email || u})`;
   }).join('\n');
 
-  const pickedIndex = prompt(`Select subscriber to make Admin:\n${promptList}\n\nEnter number:`);
-  if (!pickedIndex) return;
-  const idx = parseInt(pickedIndex) - 1;
-  if (idx >= 0 && idx < subs.length) {
-    const targetUid = subs[idx];
+  const picked = await nexaSelect('Who should become a channel admin?', {
+    title: 'Add Channel Admin',
+    options: subs.map(u => {
+      const user = (allUsersData || []).find(usr => usr.uid === u) || {};
+      return { label: `${user.displayName || 'Subscriber'}${user.email ? ' · ' + user.email : ''}`, value: u };
+    }),
+    searchPlaceholder: 'Search subscribers…'
+  });
+  if (!picked) return;
+  {
+    const targetUid = picked;
     try {
       await db.collection('channels').doc(selectedChannel.id).update({
         admins: firebase.firestore.FieldValue.arrayUnion(targetUid)
@@ -10762,7 +11317,7 @@ async function deleteChannelPost(postId) {
     showNotifToast('Only channel admins can delete posts', 'error');
     return;
   }
-  if (!confirm('Delete this broadcast post? This cannot be undone.')) return;
+  if (!await nexaConfirm('This broadcast post will be permanently removed. This cannot be undone.', { title: 'Delete post?', okLabel: 'Delete', danger: true })) return;
   try {
     await db.collection('channels').doc(selectedChannel.id).collection('posts').doc(postId).delete();
     const cachedPosts = window._nexaChannelPostsCache || [];
@@ -11230,7 +11785,7 @@ function renderChannelComments(comments) {
 
 async function deleteChannelComment(commentId) {
   if (!selectedChannel || !activeCommentPostId) return;
-  if (!confirm('Delete this comment?')) return;
+  if (!await nexaConfirm('This comment will be permanently removed.', { title: 'Delete comment?', okLabel: 'Delete', danger: true })) return;
   try {
     const postRef = db.collection('channels').doc(selectedChannel.id).collection('posts').doc(activeCommentPostId);
     await postRef.collection('comments').doc(commentId).delete();
@@ -11406,7 +11961,7 @@ async function dismissChannelAdmin(targetUid) {
   if (!selectedChannel) return;
   const isOwner = selectedChannel.ownerUid === currentUser.uid;
   if (!isOwner) return;
-  if (!confirm('Dismiss this user as channel admin?')) return;
+  if (!await nexaConfirm("They'll lose admin privileges in this channel.", { title: 'Dismiss as admin?', okLabel: 'Dismiss', danger: true })) return;
 
   try {
     await db.collection('channels').doc(selectedChannel.id).update({
@@ -11529,7 +12084,7 @@ async function editChannelName() {
     showNotifToast('Only channel admins can edit the name', 'info');
     return;
   }
-  const newName = prompt('Enter new channel name:', selectedChannel.name || '');
+  const newName = await nexaPrompt('Enter new channel name', { value: selectedChannel.name || '', title: 'Channel Name', okLabel: 'Save', maxLength: 60 });
   if (!newName || !newName.trim() || newName.trim() === selectedChannel.name) return;
   try {
     const val = newName.trim().slice(0, 50);
@@ -11552,7 +12107,7 @@ async function editChannelDesc() {
     showNotifToast('Only channel admins can edit description', 'info');
     return;
   }
-  const newDesc = prompt('Enter channel description:', selectedChannel.description || '');
+  const newDesc = await nexaPrompt('Enter channel description', { value: selectedChannel.description || '', title: 'Channel Description', okLabel: 'Save', maxLength: 200 });
   if (newDesc === null) return;
   try {
     const val = newDesc.trim().slice(0, 300);
@@ -11579,7 +12134,7 @@ async function deleteCurrentChannel() {
   }
 
   const channelName = selectedChannel.name || 'Channel';
-  if (!confirm(`Permanently delete channel "${channelName}"? All posts and subscriber records will be removed. This cannot be undone.`)) return;
+  if (!await nexaConfirm(`This permanently deletes "${channelName}", all posts and subscriber records. This cannot be undone.`, { title: 'Delete channel?', okLabel: 'Delete Channel', danger: true })) return;
 
   try {
     const channelId = selectedChannel.id;
@@ -12780,7 +13335,7 @@ async function resetGroupInviteLink() {
   const isAdmin = selectedGroup.ownerUid === currentUser.uid || (selectedGroup.admins || []).includes(currentUser.uid);
   if (!isAdmin) { showNotifToast('Only admins can reset the invite link', 'error'); return; }
 
-  if (!confirm('Reset the invite link? The old link will stop working.')) return;
+  if (!await nexaConfirm('The current link will stop working immediately and a new one will be generated.', { title: 'Reset invite link?', okLabel: 'Reset', danger: true })) return;
 
   const code = generateInviteCode();
   await db.collection('groups').doc(selectedGroup.id).update({ inviteCode: code });
@@ -12882,7 +13437,7 @@ async function checkChannelInviteUrlParam() {
     return;
   }
 
-  const confirmFollow = confirm(`You have been invited to follow the channel "${chan.name}". Do you want to follow?`);
+  const confirmFollow = await nexaConfirm(`You've been invited to follow the channel "${chan.name}".`, { title: 'Follow channel?', okLabel: 'Follow' });
   if (!confirmFollow) return;
 
   await db.collection('channels').doc(channelId).collection('subscribers').doc(currentUser.uid).set({
@@ -12931,7 +13486,7 @@ async function checkGroupInviteUrlParam() {
       return;
     }
 
-    const confirmJoin = confirm(`You have been invited to join the group "${group.name}". Do you want to join?`);
+    const confirmJoin = await nexaConfirm(`You've been invited to join the group "${group.name}".`, { title: 'Join group?', okLabel: 'Join' });
     if (!confirmJoin) return;
 
     const myName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';

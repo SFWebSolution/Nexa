@@ -11962,6 +11962,112 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   padding: 10px 2px;
 }
 
+/* ── Blocked chat: composer banner + disabled composer ── */
+.blocked-chat-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 18px 0;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-2);
+  animation: bcb-in 0.22s ease both;
+}
+
+@keyframes bcb-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.blocked-chat-banner .bcb-icon {
+  display: inline-flex;
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.blocked-chat-banner .bcb-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.blocked-chat-banner .bcb-unblock {
+  flex-shrink: 0;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform var(--tf), filter var(--tf);
+}
+
+.blocked-chat-banner .bcb-unblock:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.input-area.blocked-chat .input-wrap textarea {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.input-area.blocked-chat .record-btn,
+.input-area.blocked-chat .attach-toggle-btn {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ── Chat list action sheet (long-press: Block / Delete) ── */
+.chat-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 2px;
+}
+
+.chat-action-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text-1);
+  transition: background var(--tf), transform var(--tf);
+}
+
+.chat-action-item:hover {
+  background: var(--bg-3);
+  transform: translateX(2px);
+}
+
+.chat-action-item .chat-action-icon {
+  display: inline-flex;
+  color: var(--text-2);
+}
+
+.chat-action-item.danger,
+.chat-action-item.danger .chat-action-icon {
+  color: var(--danger);
+}
+
+.chat-action-item.danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* The Chat Info block action uses the existing .info-action.danger styling. */
+.info-action.danger .ia-icon {
+  color: var(--danger);
+}
+
 /* ── Blocked contacts ── */
 .blocked-contacts-list {
   display: flex;
@@ -12106,6 +12212,389 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 /* ── App Lock gate ── */
+/* ── Nexa dialog (modern alert / confirm / prompt) ── */
+.nexa-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgba(6, 10, 18, 0.62);
+  backdrop-filter: blur(9px);
+}
+
+.nexa-dialog-overlay.active {
+  display: flex;
+}
+
+.nexa-dialog-card {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 24px 20px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-md);
+  border-radius: 22px;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  animation: ndt-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ndt-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexa-dialog-card { animation: none; }
+}
+
+.nexa-dialog-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.nexa-dialog-overlay.tone-danger .nexa-dialog-icon,
+.nexa-dialog-overlay.tone-error .nexa-dialog-icon {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.nexa-dialog-overlay.tone-success .nexa-dialog-icon {
+  background: color-mix(in srgb, #22c55e 16%, transparent);
+  color: #22c55e;
+}
+
+.nexa-dialog-overlay.tone-warning .nexa-dialog-icon {
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+  color: #f59e0b;
+}
+
+.nexa-dialog-title {
+  font-size: 16.5px;
+  font-weight: 750;
+  color: var(--text-0);
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.nexa-dialog-message {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-line;
+  max-width: 34ch;
+}
+
+.nexa-dialog-input {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-radius: 13px;
+  border: 1px solid var(--border-md);
+  background: var(--bg-2);
+  color: var(--text-0);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--tf), box-shadow var(--tf);
+}
+
+.nexa-dialog-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.nexa-dialog-error {
+  display: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.nexa-dialog-actions {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.nexa-dialog-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 13px;
+  font-size: 14px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform var(--tf), filter var(--tf), background var(--tf);
+}
+
+.nexa-dialog-btn:hover { transform: translateY(-1px); }
+.nexa-dialog-btn:active { transform: none; }
+
+.nexa-dialog-btn.primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dk));
+  color: #fff;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 32%, transparent);
+}
+
+.nexa-dialog-btn.danger {
+  background: linear-gradient(135deg, #ff3860, #d91b42);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(255, 56, 96, 0.34);
+}
+
+.nexa-dialog-btn.ghost {
+  background: var(--bg-3);
+  color: var(--text-1);
+  border: 1px solid var(--border-md);
+}
+
+.nexa-dialog-btn.ghost:hover { background: var(--bg-2); }
+
+@media (max-width: 420px) {
+  .nexa-dialog-actions { flex-direction: column-reverse; }
+}
+
+/* ── App Lock setup / disable modal ── */
+.nexa-dialog-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.nexa-dialog-list .nexa-dialog-input {
+  margin: 0 0 4px;
+}
+
+.nexa-dialog-item {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-md);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-size: 13.5px;
+  font-weight: 550;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--tf), background var(--tf);
+}
+
+.nexa-dialog-item:hover {
+  border-color: var(--primary);
+  background: var(--bg-3);
+}
+
+.nexa-dialog-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.app-lock-setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 2px;
+}
+
+.als-intro {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-bottom: 2px;
+}
+
+.als-method {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 14px 13px;
+  border-radius: 15px;
+  border: 1px solid var(--border-md);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--tf), background var(--tf), transform var(--tf);
+}
+
+.als-method:hover {
+  border-color: var(--primary);
+  background: var(--bg-3);
+  transform: translateY(-1px);
+}
+
+.als-method-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.als-method-icon.bio {
+  background: color-mix(in srgb, #22c55e 15%, transparent);
+  color: #22c55e;
+}
+
+.als-method-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.als-method-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-0);
+}
+
+.als-method-sub {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+
+.als-method-go {
+  display: inline-flex;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.als-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.5;
+  padding: 6px 2px;
+}
+
+.als-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.als-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.als-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 13px;
+  border: 1px solid var(--border-md);
+  background: var(--bg-2);
+  color: var(--text-0);
+  font-size: 16px;
+  font-family: inherit;
+  letter-spacing: 6px;
+  outline: none;
+  transition: border-color var(--tf), box-shadow var(--tf);
+}
+
+.als-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.als-error {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+  min-height: 15px;
+}
+
+.als-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.als-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 13px;
+  font-size: 13.5px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform var(--tf), filter var(--tf), background var(--tf);
+}
+
+.als-btn:hover { transform: translateY(-1px); }
+
+.als-btn.primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dk));
+  color: #fff;
+}
+
+.als-btn.danger {
+  background: linear-gradient(135deg, #ff3860, #d91b42);
+  color: #fff;
+}
+
+.als-btn.ghost {
+  background: var(--bg-3);
+  color: var(--text-1);
+  border: 1px solid var(--border-md);
+}
+
+/* ── App Lock gate biometric button ── */
+.app-lock-bio-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform var(--tf), filter var(--tf);
+}
+
+.app-lock-bio-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
 .app-lock-gate {
   position: fixed;
   inset: 0;

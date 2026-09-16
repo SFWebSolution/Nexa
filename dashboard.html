@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src https://askifyai.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src https://askifyai.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'; publickey-credentials-get *; publickey-credentials-create *">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Nexa Messenger - Premium Chat & Stories Platform with Music Integration">
   <meta name="theme-color" content="#ffffff">
@@ -459,7 +459,7 @@
                 <span class="settings-row-icon"><i data-lucide="fingerprint" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
                   <span class="settings-row-title">App Lock</span>
-                  <span class="settings-row-sub">Require a PIN when Nexa opens</span>
+                  <span class="settings-row-sub" id="appLockSubText">Require a PIN or biometrics when Nexa opens</span>
                 </span>
                 <div class="notif-toggle" id="appLockToggle" onclick="toggleAppLock()"></div>
               </div>
@@ -900,6 +900,13 @@
     <div class="typing-bar" id="typingBar"></div>
     <div id="replyStripWrap"></div>
 
+    <!-- BLOCKED CONTACT BAR — shown in the composer when the open 1:1 chat is blocked -->
+    <div id="blockedChatBanner" class="blocked-chat-banner" style="display: none;">
+      <span class="bcb-icon"><i data-lucide="user-x" style="width: 15px; height: 15px;"></i></span>
+      <span class="bcb-text">You blocked this contact. They can't message you or see your stories.</span>
+      <button class="bcb-unblock" onclick="unblockCurrentChat()">Unblock</button>
+    </div>
+
     <div class="input-area">
       <div class="mentions-popup" id="mentionsPopup" style="display: none;">
         <div class="mentions-list" id="mentionsList"></div>
@@ -1013,11 +1020,14 @@
   <div class="app-lock-card">
     <div class="app-lock-icon"><i data-lucide="lock-keyhole" style="width: 26px; height: 26px;"></i></div>
     <div class="app-lock-title">Nexa is locked</div>
-    <div class="app-lock-sub">Enter your 4-digit PIN to continue</div>
+    <div class="app-lock-sub" id="appLockSub">Enter your 4-digit PIN to continue</div>
+    <button class="app-lock-bio-btn" id="appLockBioBtn" style="display: none;" onclick="submitAppLockBiometric()">
+      <i data-lucide="fingerprint" style="width: 20px; height: 20px;"></i> Unlock with Fingerprint / Face
+    </button>
     <input type="password" id="appLockPinInput" class="app-lock-input" inputmode="numeric" maxlength="4"
            placeholder="••••" onkeypress="if(event.key==='Enter')submitAppLockPin()">
     <div class="app-lock-error" id="appLockError"></div>
-    <button class="app-lock-btn" onclick="submitAppLockPin()">Unlock</button>
+    <button class="app-lock-btn" onclick="submitAppLockPin()">Unlock with PIN</button>
   </div>
 </div>
 
@@ -1277,6 +1287,31 @@
     <div class="info-action" onclick="muteChat()"><span class="ia-icon" id="muteIcon"><i data-lucide="bell-off" style="width: 16px; height: 16px;"></i></span><span class="ia-text" id="muteText">Mute Notifications</span></div>
     <div class="info-action" onclick="favoriteChat()"><span class="ia-icon" id="favIcon"><i data-lucide="star" style="width: 16px; height: 16px;"></i></span><span class="ia-text">Favourite Chat</span></div>
     <div class="info-action" onclick="clearChat()"><span class="ia-icon"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></span><span class="ia-text">Clear Chat</span></div>
+    <div class="info-action danger" id="infoBlockAction" onclick="toggleBlockSelectedUserFromInfo()"><span class="ia-icon"><i data-lucide="user-x" style="width: 16px; height: 16px;"></i></span><span class="ia-text" id="infoBlockText">Block Contact</span></div>
+  </div>
+</div>
+
+<!-- NEXA DIALOG — modern replacement for native alert/confirm/prompt -->
+<div class="nexa-dialog-overlay" id="nexaDialog" onclick="handleNexaDialogBackdrop(event)">
+  <div class="nexa-dialog-card" role="dialog" aria-modal="true" aria-labelledby="nexaDialogTitle">
+    <div class="nexa-dialog-icon" id="nexaDialogIcon"></div>
+    <div class="nexa-dialog-title" id="nexaDialogTitle">Nexa</div>
+    <div class="nexa-dialog-message" id="nexaDialogMessage"></div>
+    <div class="nexa-dialog-list" id="nexaDialogList" style="display: none;"></div>
+    <input class="nexa-dialog-input" id="nexaDialogInput" style="display: none;" autocomplete="off">
+    <div class="nexa-dialog-error" id="nexaDialogError"></div>
+    <div class="nexa-dialog-actions" id="nexaDialogActions"></div>
+  </div>
+</div>
+
+<!-- APP LOCK SETUP MODAL — choose PIN or fingerprint -->
+<div class="notif-settings-overlay" id="appLockSetupModal" onclick="handleAppLockSetupOverlayClick(event)">
+  <div class="notif-settings-modal">
+    <div class="notif-hdr">
+      <div class="notif-title" id="appLockSetupTitle">Set up App Lock</div>
+      <button class="notif-close" onclick="closeAppLockSetup()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    </div>
+    <div class="app-lock-setup-body" id="appLockSetupBody"></div>
   </div>
 </div>
 
@@ -1395,6 +1430,26 @@
     <div class="delete-chat-actions">
       <button class="delete-chat-btn cancel" onclick="closeDeleteChatModal()">Cancel</button>
       <button class="delete-chat-btn danger" onclick="confirmDeleteChat()">Delete Chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHAT LIST LONG-PRESS ACTION SHEET — Block / Delete, WhatsApp-style -->
+<div class="delete-chat-overlay" id="chatActionSheet" onclick="if(event.target===this)closeChatActionSheet()">
+  <div class="delete-chat-modal">
+    <div class="delete-chat-hdr">
+      <div class="delete-chat-title" id="chatActionSheetTitle">Chat Options</div>
+      <button class="delete-chat-close" onclick="closeChatActionSheet()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    </div>
+    <div class="chat-action-list">
+      <div class="chat-action-item" id="chatActionBlock" onclick="blockFromActionSheet()">
+        <span class="chat-action-icon"><i data-lucide="user-x" style="width: 18px; height: 18px;"></i></span>
+        <span class="chat-action-text" id="chatActionBlockLabel">Block Contact</span>
+      </div>
+      <div class="chat-action-item danger" onclick="deleteFromActionSheet()">
+        <span class="chat-action-icon"><i data-lucide="trash-2" style="width: 18px; height: 18px;"></i></span>
+        <span class="chat-action-text">Delete Chat</span>
+      </div>
     </div>
   </div>
 </div>
