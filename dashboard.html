@@ -138,7 +138,6 @@
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
-        <button class="s-tab-btn" id="sTabProfile" onclick="switchTab('profile')" title="Profile"><i data-lucide="user"></i></button>
       </div>
     </div>
 
@@ -247,125 +246,134 @@
 
       <!-- 3. SETTINGS TAB -->
       <div class="tab-pane" id="tabPaneSettings">
-        <div class="tab-pane-header">
-          <h2>Settings</h2>
+
+        <!-- ─ ROOT: classified category list ─────────────────────────── -->
+        <div class="settings-root" id="settingsRoot">
+          <div class="tab-pane-header">
+            <h2>Settings</h2>
+          </div>
+          <div class="settings-scroll-area">
+
+            <div class="settings-profile-card" onclick="openSettingsSubPage('personal')">
+              <img src="https://i.imgur.com/HeIi0wU.png" id="settingsProfilePic" class="settings-profile-avatar" alt="Profile photo">
+              <div class="settings-profile-meta">
+                <div class="settings-profile-name" id="settingsProfileName">Loading…</div>
+                <div class="settings-profile-handle" id="settingsProfileHandle">@—</div>
+              </div>
+              <i data-lucide="chevron-right" class="settings-profile-chev"></i>
+            </div>
+
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="user" style="width: 15px; height: 15px;"></i> Account</div>
+              <button class="settings-row" onclick="openSettingsSubPage('personal')">
+                <span class="settings-row-icon"><i data-lucide="user" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Personal Info</span>
+                  <span class="settings-row-sub">Name, username, photo, note</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('privacy')">
+                <span class="settings-row-icon"><i data-lucide="shield-check" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Privacy &amp; Security</span>
+                  <span class="settings-row-sub">Blocked contacts, password, app lock</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('account')">
+                <span class="settings-row-icon"><i data-lucide="key-round" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Account</span>
+                  <span class="settings-row-sub">Status, email, sign out</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+            </div>
+
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="sliders-horizontal" style="width: 15px; height: 15px;"></i> Preferences</div>
+              <button class="settings-row" onclick="openSettingsSubPage('notifications')">
+                <span class="settings-row-icon"><i data-lucide="bell" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Notifications</span>
+                  <span class="settings-row-sub">Messages, stories, calls, history</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('appearance')">
+                <span class="settings-row-icon"><i data-lucide="palette" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Appearance &amp; Theme</span>
+                  <span class="settings-row-sub">Theme and font style</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('wallpaper')">
+                <span class="settings-row-icon"><i data-lucide="image" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Chat Wallpaper</span>
+                  <span class="settings-row-sub">Global background for all chats</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('media')">
+                <span class="settings-row-icon"><i data-lucide="star" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Messages &amp; Media</span>
+                  <span class="settings-row-sub">Starred messages and auto-save</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+            </div>
+
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="sparkles" style="width: 15px; height: 15px;"></i> More</div>
+              <button class="settings-row" onclick="openSettingsSubPage('invite')">
+                <span class="settings-row-icon"><i data-lucide="gift" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Invite Friends</span>
+                  <span class="settings-row-sub">Share your personal link</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('ai')">
+                <span class="settings-row-icon"><i data-lucide="bot" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">AI Assistant</span>
+                  <span class="settings-row-sub">Launch Askify AI</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('storage')">
+                <span class="settings-row-icon"><i data-lucide="hard-drive" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Storage &amp; Cache</span>
+                  <span class="settings-row-sub">Local data usage and cleanup</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openSettingsSubPage('about')">
+                <span class="settings-row-icon"><i data-lucide="info" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">About Nexa</span>
+                  <span class="settings-row-sub">Version and app info</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+            </div>
+
+          </div>
         </div>
-        <div class="settings-scroll-area">
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="bell" style="width: 15px; height: 15px;"></i> Notifications</div>
-            <div class="notif-item">
-              <div class="notif-item-info">
-                <label class="notif-item-label">Messages</label>
-                <div class="notif-item-desc">Notifications for new messages</div>
-              </div>
-              <div class="notif-toggle" id="tabNotifMessages" onclick="toggleNotif('messages')"></div>
-            </div>
-            <div class="notif-item">
-              <div class="notif-item-info">
-                <label class="notif-item-label">Stories</label>
-                <div class="notif-item-desc">Notifications when contacts post stories</div>
-              </div>
-              <div class="notif-toggle" id="tabNotifStories" onclick="toggleNotif('stories')"></div>
-            </div>
-            <div class="notif-item">
-              <div class="notif-item-info">
-                <label class="notif-item-label">Calls</label>
-                <div class="notif-item-desc">Incoming call notifications</div>
-              </div>
-              <div class="notif-toggle" id="tabNotifCalls" onclick="toggleNotif('calls')"></div>
-            </div>
-            <div class="notif-item notif-item-btn" onclick="openNotificationHistory()">
-              <div class="notif-item-info">
-                <label class="notif-item-label"><i data-lucide="clock" style="width: 14px; height: 14px;"></i> Notification History</label>
-                <div class="notif-item-desc">Browse notifications you've received</div>
-              </div>
-              <span class="notif-item-count" id="notifHistoryCount"></span>
-              <div class="notif-item-chev"><i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i></div>
-            </div>
-          </div>
 
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="palette" style="width: 15px; height: 15px;"></i> Appearance & Theme</div>
-            <div class="theme-picker-grid" id="settingsThemeGrid">
-              <!-- Themes rendered by JS -->
-            </div>
-            <button class="settings-action-btn" id="fontPickerBtn" onclick="openFontPickerModal()" style="margin-top: 10px;">
-              <span><i data-lucide="pen-line" style="width: 16px; height: 16px;"></i> Font Style</span>
-              <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
-            </button>
+        <!-- ── SUB-PAGE: Personal Info ────────────────────────────────── -->
+        <div class="settings-subpage" id="subpagePersonal" data-subpage="personal">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Personal Info</div>
           </div>
-
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="image" style="width: 15px; height: 15px;"></i> Global Chat Wallpaper</div>
-            <div class="wallpaper-settings-card">
-              <div class="wallpaper-preview-strip" id="settingsWallpaperPreview" onclick="openWallpaperModal('global')">
-                <div class="wp-preview-thumb" id="settingsWpThumb"></div>
-                <div class="wp-preview-info">
-                  <div class="wp-preview-title" id="settingsWpTitle">Default Theme Background</div>
-                  <div class="wp-preview-sub" id="settingsWpSub">Applies to all chats unless overridden</div>
-                </div>
-                <button class="wp-change-btn">Change</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="bot" style="width: 15px; height: 15px;"></i> AI Assistant</div>
-            <button class="settings-action-btn" onclick="openAskifyComingSoon()">
-              <span><i data-lucide="bot" style="width: 16px; height: 16px;"></i> Launch Askify AI</span>
-              <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
-            </button>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="star" style="width: 15px; height: 15px;"></i> Messages & Media</div>
-            <button class="settings-action-btn" onclick="openStarredDrawer()">
-              <span><i data-lucide="star" style="width: 16px; height: 16px;"></i> Starred Messages</span>
-              <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
-            </button>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="gift" style="width: 15px; height: 15px;"></i> Invite Friends</div>
-            <div class="referral-card">
-              <div class="referral-hero">
-                <div class="referral-hero-icon"><i data-lucide="gift" style="width: 20px; height: 20px;"></i></div>
-                <div class="referral-hero-text">
-                  <div class="referral-title">Share Nexa, grow your circle</div>
-                  <div class="referral-sub">Invite friends with your personal link — track how many join.</div>
-                </div>
-              </div>
-              <div class="referral-link-row">
-                <div class="referral-link-pill">
-                  <span class="referral-link-text" id="referralLinkText"></span>
-                  <input type="text" id="referralLinkInput" class="referral-link-input" readonly value="">
-                </div>
-                <button class="referral-copy-btn" onclick="copyReferralLink()" title="Copy link"><i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copy</button>
-              </div>
-              <div class="referral-actions">
-                <button class="referral-share-btn" onclick="shareReferralLink()"><i data-lucide="share-2" style="width: 14px; height: 14px;"></i> Share link</button>
-                <div class="referral-count"><span class="referral-count-num" id="referralCount">0</span> friends joined</div>
-              </div>
-              <div class="referral-list" id="referralList" style="display:none;"></div>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group-title"><i data-lucide="hard-drive" style="width: 15px; height: 15px;"></i> Storage & Cache</div>
-            <button class="settings-action-btn danger" onclick="clearAppCache()">
-              <span><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Clear Local Cache</span>
-              <span style="color: var(--text-3); font-size: 12px; font-weight: 600;">Clean</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 4. PROFILE TAB -->
-      <div class="tab-pane" id="tabPaneProfile">
-        <div class="tab-pane-header">
-          <h2>Profile</h2>
-        </div>
-        <div class="profile-tab-content">
+          <div class="settings-subpage-body">
+            <div class="profile-tab-content">
           <!-- Cover + Avatar hero -->
           <div class="profile-hero">
             <div class="profile-hero-cover"></div>
@@ -421,11 +429,306 @@
             </div>
           </div>
 
-          <button class="profile-logout-btn" onclick="handleLogout()">
-            <span><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Sign Out</span>
-          </button>
+            </div>
+          </div>
         </div>
+
+        <!-- ── SUB-PAGE: Privacy & Security ───────────────────────────── -->
+        <div class="settings-subpage" id="subpagePrivacy" data-subpage="privacy">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Privacy &amp; Security</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="user-x" style="width: 15px; height: 15px;"></i> Blocked Contacts</div>
+              <div class="settings-note">Blocked people can't message you or see your stories. They are hidden from your chat list on this device.</div>
+              <div id="blockedContactsList" class="blocked-contacts-list"></div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="lock" style="width: 15px; height: 15px;"></i> Security</div>
+              <button class="settings-row" onclick="sendPasswordResetFromSettings()">
+                <span class="settings-row-icon"><i data-lucide="key-round" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Change Password</span>
+                  <span class="settings-row-sub">Send a reset link to your email</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="fingerprint" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">App Lock</span>
+                  <span class="settings-row-sub">Require a PIN when Nexa opens</span>
+                </span>
+                <div class="notif-toggle" id="appLockToggle" onclick="toggleAppLock()"></div>
+              </div>
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="bell-off" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Hide Notification Preview</span>
+                  <span class="settings-row-sub">Show "New message" instead of the text</span>
+                </span>
+                <div class="notif-toggle" id="hidePreviewToggle" onclick="toggleHideNotifPreview()"></div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="info" style="width: 15px; height: 15px;"></i> Good to know</div>
+              <div class="settings-note">Nexa never shows your password to anyone. Your messages are delivered over an encrypted connection. Only people you invite can join your Voice Chats.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Account ──────────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageAccount" data-subpage="account">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Account</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="circle-check" style="width: 15px; height: 15px;"></i> Status</div>
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="mail" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Email Address</span>
+                  <span class="settings-row-sub" id="accountEmail">loading…</span>
+                </span>
+              </div>
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="circle-check" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Account Status</span>
+                  <span class="settings-row-sub">Active &amp; Connected</span>
+                </span>
+              </div>
+            </div>
+            <button class="profile-logout-btn" onclick="handleLogout()">
+              <span><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Sign Out</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Notifications ───────────────────────────────── -->
+        <div class="settings-subpage" id="subpageNotifications" data-subpage="notifications">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Notifications</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Messages</label>
+                  <div class="notif-item-desc">Notifications for new messages</div>
+                </div>
+                <div class="notif-toggle" id="tabNotifMessages" onclick="toggleNotif('messages')"></div>
+              </div>
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Stories</label>
+                  <div class="notif-item-desc">Notifications when contacts post stories</div>
+                </div>
+                <div class="notif-toggle" id="tabNotifStories" onclick="toggleNotif('stories')"></div>
+              </div>
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Calls</label>
+                  <div class="notif-item-desc">Incoming call notifications</div>
+                </div>
+                <div class="notif-toggle" id="tabNotifCalls" onclick="toggleNotif('calls')"></div>
+              </div>
+              <div class="notif-item notif-item-btn" onclick="openNotificationHistory()">
+                <div class="notif-item-info">
+                  <label class="notif-item-label"><i data-lucide="clock" style="width: 14px; height: 14px;"></i> Notification History</label>
+                  <div class="notif-item-desc">Browse notifications you've received</div>
+                </div>
+                <span class="notif-item-count" id="notifHistoryCount"></span>
+                <div class="notif-item-chev"><i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Appearance ───────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageAppearance" data-subpage="appearance">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Appearance &amp; Theme</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="theme-picker-grid" id="settingsThemeGrid">
+                <!-- Themes rendered by JS -->
+              </div>
+              <button class="settings-action-btn" id="fontPickerBtn" onclick="openFontPickerModal()" style="margin-top: 10px;">
+                <span><i data-lucide="pen-line" style="width: 16px; height: 16px;"></i> Font Style</span>
+                <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Wallpaper ───────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageWallpaper" data-subpage="wallpaper">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Chat Wallpaper</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="wallpaper-settings-card">
+                <div class="wallpaper-preview-strip" id="settingsWallpaperPreview" onclick="openWallpaperModal('global')">
+                  <div class="wp-preview-thumb" id="settingsWpThumb"></div>
+                  <div class="wp-preview-info">
+                    <div class="wp-preview-title" id="settingsWpTitle">Default Theme Background</div>
+                    <div class="wp-preview-sub" id="settingsWpSub">Applies to all chats unless overridden</div>
+                  </div>
+                  <button class="wp-change-btn">Change</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─ SUB-PAGE: Messages & Media ─────────────────────────────── -->
+        <div class="settings-subpage" id="subpageMedia" data-subpage="media">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Messages &amp; Media</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <button class="settings-row" onclick="openStarredDrawer()">
+                <span class="settings-row-icon"><i data-lucide="star" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Starred Messages</span>
+                  <span class="settings-row-sub">Everything you saved for later</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="corner-down-left" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Press Enter to Send</span>
+                  <span class="settings-row-sub">Off keeps Enter as a new line</span>
+                </span>
+                <div class="notif-toggle" id="enterToSendToggle" onclick="toggleEnterToSend()"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Invite Friends ───────────────────────────────── -->
+        <div class="settings-subpage" id="subpageInvite" data-subpage="invite">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Invite Friends</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="referral-card">
+                <div class="referral-hero">
+                  <div class="referral-hero-icon"><i data-lucide="gift" style="width: 20px; height: 20px;"></i></div>
+                  <div class="referral-hero-text">
+                    <div class="referral-title">Share Nexa, grow your circle</div>
+                    <div class="referral-sub">Invite friends with your personal link — track how many join.</div>
+                  </div>
+                </div>
+                <div class="referral-link-row">
+                  <div class="referral-link-pill">
+                    <span class="referral-link-text" id="referralLinkText"></span>
+                    <input type="text" id="referralLinkInput" class="referral-link-input" readonly value="">
+                  </div>
+                  <button class="referral-copy-btn" onclick="copyReferralLink()" title="Copy link"><i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copy</button>
+                </div>
+                <div class="referral-actions">
+                  <button class="referral-share-btn" onclick="shareReferralLink()"><i data-lucide="share-2" style="width: 14px; height: 14px;"></i> Share link</button>
+                  <div class="referral-count"><span class="referral-count-num" id="referralCount">0</span> friends joined</div>
+                </div>
+                <div class="referral-list" id="referralList" style="display:none;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: AI Assistant ─────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageAi" data-subpage="ai">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">AI Assistant</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="settings-note">Askify AI helps you draft replies, summarise conversations and answer questions without leaving Nexa.</div>
+              <button class="settings-action-btn" onclick="openAskifyComingSoon()">
+                <span><i data-lucide="bot" style="width: 16px; height: 16px;"></i> Launch Askify AI</span>
+                <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Storage & Cache ──────────────────────────────── -->
+        <div class="settings-subpage" id="subpageStorage" data-subpage="storage">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Storage &amp; Cache</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="hard-drive" style="width: 15px; height: 15px;"></i> On this device</div>
+              <div class="storage-meter">
+                <div class="storage-meter-row">
+                  <span>Local data used</span>
+                  <span class="storage-meter-value" id="storageUsageValue">—</span>
+                </div>
+                <div class="storage-meter-track"><div class="storage-meter-fill" id="storageUsageFill" style="width: 0%;"></div></div>
+                <div class="storage-meter-hint" id="storageUsageHint">Calculating…</div>
+              </div>
+              <button class="settings-action-btn danger" onclick="clearAppCache()" style="margin-top: 4px;">
+                <span><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Clear Local Cache</span>
+                <span style="color: var(--text-3); font-size: 12px; font-weight: 600;">Clean</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: About ────────────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageAbout" data-subpage="about">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">About Nexa</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-about-hero">
+              <img src="icon-192.png" alt="Nexa" class="settings-about-logo">
+              <div class="settings-about-name">Nexa Messenger</div>
+              <div class="settings-about-version" id="aboutVersion">Version —</div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="message-square" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Messages, calls &amp; stories</span>
+                  <span class="settings-row-sub">Private chat, groups, channels and Voice Rooms</span>
+                </span>
+              </div>
+              <div class="settings-row settings-row-static">
+                <span class="settings-row-icon"><i data-lucide="wifi-off" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Works as an app</span>
+                  <span class="settings-row-sub">Install Nexa from your browser menu</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
+
+
+      <!-- 4. PROFILE TAB -->
 
       <!-- 5. COMMUNITY TAB (WHATSAPP STYLE) -->
       <div class="tab-pane" id="tabPaneCommunity">
@@ -601,15 +904,40 @@
       <div class="mentions-popup" id="mentionsPopup" style="display: none;">
         <div class="mentions-list" id="mentionsList"></div>
       </div>
-      <div class="input-wrap">
-        <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
-        <button class="view-once-btn-toggle" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" title="Send as View Once (1)">1</button>
-        <button class="iact-btn" id="imgBtn" onclick="pickMedia()" title="Photo or Video"><i data-lucide="image" style="width: 20px; height: 20px;"></i></button>
-        <button class="iact-btn" id="fileBtn" onclick="pickFile()" title="File"><i data-lucide="paperclip" style="width: 20px; height: 20px;"></i></button>
-        <button class="iact-btn" id="pollBtn" onclick="openPollModal()" title="Create Poll" style="display: none;"><i data-lucide="bar-chart-2" style="width: 20px; height: 20px;"></i></button>
-        <button class="iact-btn record-btn" id="recordBtn" title="Hold to record"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
+      <div class="attach-menu" id="attachMenu" style="display: none;" role="menu" aria-label="Attach">
+        <button class="attach-menu-item" id="imgBtn" onclick="pickMedia()" role="menuitem">
+          <span class="attach-menu-icon"><i data-lucide="image" style="width: 18px; height: 18px;"></i></span>
+          <span class="attach-menu-text"><span class="attach-menu-title">Photos &amp; Videos</span><span class="attach-menu-sub">From your gallery</span></span>
+        </button>
+        <button class="attach-menu-item" id="fileBtn" onclick="pickFile()" role="menuitem">
+          <span class="attach-menu-icon"><i data-lucide="paperclip" style="width: 18px; height: 18px;"></i></span>
+          <span class="attach-menu-text"><span class="attach-menu-title">Document</span><span class="attach-menu-sub">PDF, docs, any file</span></span>
+        </button>
+        <button class="attach-menu-item" id="pollBtn" onclick="openPollModal()" style="display: none;" role="menuitem">
+          <span class="attach-menu-icon"><i data-lucide="bar-chart-2" style="width: 18px; height: 18px;"></i></span>
+          <span class="attach-menu-text"><span class="attach-menu-title">Poll</span><span class="attach-menu-sub">Ask a question</span></span>
+        </button>
+        <button class="attach-menu-item" id="viewOnceToggleBtn" onclick="toggleViewOnceMode()" role="menuitem">
+          <span class="attach-menu-icon"><i data-lucide="timer" style="width: 18px; height: 18px;"></i></span>
+          <span class="attach-menu-text"><span class="attach-menu-title">View Once</span><span class="attach-menu-sub">Disappears after opening</span></span>
+          <span class="attach-menu-check" id="viewOnceCheck"><i data-lucide="check" style="width: 14px; height: 14px;"></i></span>
+        </button>
       </div>
-      <button class="btn-send" onclick="sendMessage()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
+      <div class="input-wrap" id="inputWrap">
+        <button class="iact-btn attach-toggle-btn" id="attachToggleBtn" onclick="toggleAttachMenu(event)" title="Attach" aria-label="Attach"><i data-lucide="plus" style="width: 21px; height: 21px;"></i></button>
+        <textarea id="text" placeholder="Type a message…" maxlength="5000" onkeypress="handleKeyPress(event)" onfocus="handleStoryPauseOnTyping()" onblur="handleStoryResumeOnTyping()" oninput="handleStoryResumeOnTyping(); toggleActionButtons()"></textarea>
+        <div class="voice-bar" id="voicePanel" style="display: none;" role="group" aria-label="Voice note">
+          <button class="vnb-icon" id="voicePreviewPlay" onclick="toggleVoicePreview()" title="Play" aria-label="Play recording" style="display: none;"><i data-lucide="play" style="width: 16px; height: 16px;"></i></button>
+          <span class="vnb-dot" id="voiceDot"></span>
+          <span class="vnb-timer" id="voiceTimer">0:00</span>
+          <span class="vnb-wave" id="voiceWave" aria-hidden="true"></span>
+          <button class="vnb-speed" id="voiceSpeedBtn" onclick="cycleVoiceSpeed()" title="Playback speed" aria-label="Playback speed" style="display: none;">1×</button>
+        </div>
+        <button class="iact-btn record-btn" id="recordBtn" title="Hold to record" aria-label="Record voice note"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
+        <button class="iact-btn voice-discard-btn" id="voiceDiscardBtn" onclick="cancelVoice()" title="Discard" aria-label="Discard recording" style="display: none;"><i data-lucide="trash-2" style="width: 18px; height: 18px;"></i></button>
+      </div>
+      <button class="btn-send" id="composerSendBtn" onclick="handleComposerSend()" title="Send (Shift+Enter)"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
+      <audio id="voicePreviewAudio" style="display: none;"></audio>
     </div>
 
     <div class="ai-panel" id="aiPanel">
@@ -678,10 +1006,19 @@
     <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Settings</span>
   </button>
-  <button class="nav-item" id="navBtnProfile" onclick="switchTab('profile')">
-    <span class="nav-icon"><i data-lucide="user" style="width: 20px; height: 20px;"></i></span>
-    <span class="nav-label">Profile</span>
-  </button>
+</div>
+
+<!-- APP LOCK GATE (device-local PIN) -->
+<div class="app-lock-gate" id="appLockGate">
+  <div class="app-lock-card">
+    <div class="app-lock-icon"><i data-lucide="lock-keyhole" style="width: 26px; height: 26px;"></i></div>
+    <div class="app-lock-title">Nexa is locked</div>
+    <div class="app-lock-sub">Enter your 4-digit PIN to continue</div>
+    <input type="password" id="appLockPinInput" class="app-lock-input" inputmode="numeric" maxlength="4"
+           placeholder="••••" onkeypress="if(event.key==='Enter')submitAppLockPin()">
+    <div class="app-lock-error" id="appLockError"></div>
+    <button class="app-lock-btn" onclick="submitAppLockPin()">Unlock</button>
+  </div>
 </div>
 
 <!-- STORY VIEWER OVERLAY -->
@@ -865,16 +1202,6 @@
 </div>
 
 <!-- VOICE RECORDING PANEL -->
-<div class="voice-panel" id="voicePanel">
-  <div class="voice-circle">🎤</div>
-  <div class="voice-timer-txt" id="voiceTimer">0:00</div>
-  <div class="voice-hint">Recording… tap Send or Discard</div>
-  <div class="voice-actions">
-    <button class="vbtn vbtn-del" onclick="cancelVoice()"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Discard</button>
-    <button class="vbtn vbtn-send" id="vSendBtn" onclick="sendVoice()"><i data-lucide="send" style="width: 15px; height: 15px;"></i> Send</button>
-  </div>
-</div>
-
 <!-- EDIT MESSAGE MODAL -->
 <div class="edit-modal-overlay" id="editModal">
   <div class="edit-modal">
@@ -1205,6 +1532,9 @@
       </button>
       <button class="up-action-btn" onclick="openCallModal('video')">
         <span class="up-action-icon">📹</span><span class="up-action-label">Video</span>
+      </button>
+      <button class="up-action-btn up-action-block" id="upBlockBtn" onclick="toggleBlockSelectedUser()">
+        <span class="up-action-icon">🚫</span><span class="up-action-label" id="upBlockLabel">Block</span>
       </button>
     </div>
   </div>

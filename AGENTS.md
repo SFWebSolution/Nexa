@@ -446,6 +446,35 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   NOT revert `window.currentUser` being set early, and do NOT go back to a
   one-shot `setTimeout(setupFirestoreListeners, 1000)` with no uid check.
 
+## Composer "+" menu (WhatsApp-style) + Settings reorganization
+- **Chat composer is mic-primary with everything else behind a `+` menu.** The
+  mic (`#recordBtn`) stays permanently visible in `.input-wrap`; photos, files,
+  polls and View Once live inside `#attachMenu`, opened by `#attachToggleBtn`
+  (`toggleAttachMenu` / `closeAttachMenu` / `handleAttachMenuOutsideClick`).
+  `toggleActionButtons()` no longer hides the whole row — it only refreshes the
+  menu's stateful rows (poll visibility + the View Once check mark), because a
+  hidden row would otherwise take the mic with it. Works in direct, group and
+  channel chats; `updatePollButtonVisibility()` shows `#pollBtn` only for
+  group/channel. Do NOT move the mic inside the menu.
+- **Profile is no longer a tab.** `#tabPaneProfile` and its rail button are
+  gone; the profile UI now lives in the Settings "Personal Info" sub-page
+  (`openSettingsSubPage('personal')`). `switchTab('profile')` is kept as a
+  defensive redirect to Settings→Personal (it has no callers). If you add
+  profile fields, put them in `subpagePersonal`, not a resurrected tab.
+- **Settings is a classified root list + sub-pages.** `#settingsRoot` lists 11
+  categories (Personal Info, Privacy & Security, Account, Notifications,
+  Appearance & Theme, Chat Wallpaper, Messages & Media, Invite Friends,
+  AI Assistant, Storage & Cache, About Nexa); each row calls
+  `openSettingsSubPage(<key>)` and `.settings-subpage[data-subpage=<key>]`
+  renders it, with `closeSettingsSubPage()` / the `.settings-back-btn`
+  returning to the root. The root list scrolls inside `.settings-scroll-area`
+  (the content is taller than the pane — don't remove that scroller).
+- **Personal Info body:** the sub-page body wraps the profile markup in ONE
+  `.profile-tab-content`; `.settings-subpage-body > .profile-tab-content`
+  resets its padding to 0 so it doesn't double-pad inside the sub-page shell.
+  Don't nest a second `.profile-tab-content` (it doubles the padding and
+  inflates the layout).
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,
@@ -482,17 +511,26 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   to `pointerup`/`pointercancel`/`pointerleave` ON THE BUTTON ONLY, with
   `touch-action:none` + `user-select:none` to stop the browser stealing the
   long press. Do NOT re-introduce global mouseup/touchend stop listeners.
-- CRITICAL: `#voicePanel` is a FULL-SCREEN OVERLAY (`position:fixed;
-  inset:0; z-index:9999`) that is shown DURING recording (live timer).
-  Because it covers the record button, the `pointerup` release lands on the
-  OVERLAY, not the button — so a stop listener bound only to the button
-  never fires, `stopRec()` never runs, `recordingBlob` stays null, and
-  `sendVoice()` silently returns at `if (!recordingBlob) return`. This was
-  the "I'm sending, it is not sending" bug. Fix: `startRec()` also binds
-  `pointerup`/`pointercancel` on `#voicePanel` (`onOverlayRecEnd`) while
-  recording, and `stopRec()`/`cancelVoice()` remove them. The overlay
-  handler ignores clicks on `.vbtn-del`/`.vbtn-send` so Discard/Send keep
-  their own behavior. Keep this overlay-listener binding or sending breaks.
+- **`#voicePanel` is now an INLINE bar (`.voice-bar`), NOT a full-screen
+  overlay.** The composer capsule keeps its layout; the textarea collapses
+  (`display:none`) and the bar slides into its place beside the mic. States
+  are driven by ONE function, `setVoiceUI('idle'|'recording'|'preview')`
+  (app-main.js), which toggles `.voice-active` on `.input-area`,
+  `.voice-recording` on `#inputWrap`, and the bar/mic/discard/play/speed
+  visibility. Do NOT go back to a `position:fixed; inset:0` overlay.
+- **Hold-to-record release MUST be bound to the MIC (`#recordBtn`) as well as
+  the bar.** The bar used to be a full-screen overlay that covered the record
+  button, so the release landed on the overlay and a bar-only listener
+  sufficed. Inline, the bar sits BESIDE the mic (bar ~x74–294, mic ~x301–337
+  at 420px wide) so the two do NOT overlap — a bar-only listener means the
+  release never reaches any handler, `stopRec()` never runs, the recorder
+  stays `isRecording:true` forever and the clip is never held (the exact
+  "sending, it is not sending" failure). Wire `pointerup`/`pointercancel` on
+  `#recordBtn` AND keep them on `#voicePanel`, plus
+  `recordBtn.setPointerCapture(e.pointerId)` in `pointerdown` and a
+  `lostpointercapture` → `stopRec()` fallback so a finger drifting off the mic
+  (or a cancelled touch) still ends the recording. Never move these to
+  `document` (a global release truncates long recordings).
 - `sendVoice()` no longer silently returns on a missing blob. If recording
   is still active when Send is tapped, it calls `stopRec()` and waits (up
   to 1.5s) for the async `stop` event to produce the blob, then proceeds.
