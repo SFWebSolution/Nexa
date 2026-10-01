@@ -13328,17 +13328,9 @@ if (inviteModalMode === 'invite') {
     });
   });
 
-  // Add channels the user follows
-  (myChannels || []).forEach(c => {
-    const name = c.name || 'Channel';
-    if (q && !name.toLowerCase().includes(q)) return;
-    targets.push({
-      id: c.id,
-      name: name,
-      photo: c.avatarUrl || 'https://i.imgur.com/HeIi0wU.png',
-      type: 'channel'
-    });
-  });
+  // Channels are intentionally NOT forward targets: a channel is a
+  // broadcast feed (only owner/admins may post), so a subscriber must
+  // never be able to push a message into it. Forwarding = contacts + groups.
 
   if (!targets.length) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">No contacts or groups found</div>';
@@ -13456,42 +13448,8 @@ async function executeForward() {
           updatedAt: Date.now()
         });
       } else if (targetType === 'channel') {
-        // Forward to channel (visible to subscribers in the feed)
-        const senderName = document.getElementById('myName')?.textContent || currentUser.displayName || 'Member';
-        const payload = {
-          authorUid: currentUser.uid,
-          authorName: senderName,
-          senderAvatar: currentUser.photoURL || 'https://i.imgur.com/HeIi0wU.png',
-          channelId: targetId,
-          createdAt: Date.now(),
-          forwarded: true,
-          forwardedFrom: msg.senderName || msg.from || 'Unknown'
-        };
-        if (msg.text) payload.text = msg.text;
-        if (msg.image) payload.image = msg.image;
-        if (msg.video) payload.video = msg.video;
-        if (msg.audio) payload.audio = msg.audio;
-        if (msg.fileUrl) { payload.fileUrl = msg.fileUrl; payload.fileName = msg.fileName; payload.fileSize = msg.fileSize; }
-        if (msg.caption) payload.caption = msg.caption;
-        if (msg.type === 'poll') {
-          payload.type = 'poll';
-          payload.pollQuestion = msg.pollQuestion;
-          // Reset voters on forward
-          const newOpts = {};
-          for (const k of Object.keys(msg.pollOptions || {})) {
-            newOpts[k] = { text: msg.pollOptions[k].text, voters: [] };
-          }
-          payload.pollOptions = newOpts;
-          payload.pollMultiVote = msg.pollMultiVote;
-        }
-        await db.collection('channels').doc(targetId).collection('posts').add(cleanPayload(payload));
-        const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : 'Attachment');
-        await db.collection('channels').doc(targetId).update({
-          lastPost: '⤳ ' + snippet,
-          lastPostTime: Date.now(),
-          lastPosterName: senderName,
-          updatedAt: Date.now()
-        });
+        // Channels are not valid forward targets (broadcast feed, admins only).
+        continue;
       } else {
         // Forward to 1:1 contact
         const payload = {
