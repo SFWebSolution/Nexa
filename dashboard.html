@@ -136,6 +136,7 @@
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
         <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
+        <button class="s-tab-btn" id="sTabConnect" onclick="switchTab('connect')" title="Connect"><i data-lucide="user-plus"></i><span class="connect-tab-dot" id="connectTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
       </div>
@@ -182,11 +183,14 @@
             var texts = JSON.parse(localStorage.getItem("nexa_latest_msg_text") || "{}");
             var unread = JSON.parse(localStorage.getItem("nexa_unread_" + uid) || "{}");
             var deleted = JSON.parse(localStorage.getItem("nexa_deleted_chats_" + uid) || "{}");
+            var conns = JSON.parse(localStorage.getItem("nexa_connections_" + uid) || "{}");
+            var connected = {};
+            for (var ck in conns) { if (conns[ck] && conns[ck].status === "accepted") connected[ck] = 1; }
             var box = document.getElementById("users");
             if (!box) return;
             var esc = function (s) { return String(s || "").replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
             var okUrl = function (u) { return (u && /^(https?:|data:image\/|blob:)/.test(u)) ? u : "https://i.imgur.com/HeIi0wU.png"; };
-            var list = users.filter(function (u) { return !deleted[u.uid]; });
+            var list = users.filter(function (u) { return !deleted[u.uid] && connected[u.uid]; });
             list.sort(function (a, b) { return (times[b.uid] || 0) - (times[a.uid] || 0); });
             var html = "";
             list.forEach(function (u) {
@@ -244,7 +248,31 @@
         </div>
       </div>
 
-      <!-- 3. SETTINGS TAB -->
+      <!-- 3. CONNECT TAB -->
+      <div class="tab-pane" id="tabPaneConnect">
+        <div class="tab-pane-header">
+          <h2>Connect</h2>
+        </div>
+        <div class="connect-subtabs">
+          <button class="connect-subtab active" id="connectSubTabDiscover" onclick="switchConnectSubTab('discover')">Discover</button>
+          <button class="connect-subtab" id="connectSubTabRequests" onclick="switchConnectSubTab('requests')">Requests<span class="connect-req-count" id="connectReqCount" style="display:none;">0</span></button>
+        </div>
+        <div class="search-wrap" id="connectSearchWrap">
+          <input type="text" id="connectSearch" placeholder="🔍  Search all users…" onkeyup="searchConnectUsers()">
+        </div>
+        <div class="connect-view active" id="connectDiscoverView">
+          <div class="connect-list" id="connectDiscoverList">
+            <div class="no-users">Loading users…</div>
+          </div>
+        </div>
+        <div class="connect-view" id="connectRequestsView">
+          <div class="connect-list" id="connectRequestsList">
+            <div class="no-users">No requests yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. SETTINGS TAB -->
       <div class="tab-pane" id="tabPaneSettings">
 
         <!-- ─ ROOT: classified category list ─────────────────────────── -->
@@ -1003,6 +1031,11 @@
     <span class="nav-icon"><i data-lucide="circle-dot" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Stories</span>
     <span class="story-tab-dot" id="storyTabDotMobile" style="display:none;"></span>
+  </button>
+  <button class="nav-item" id="navBtnConnect" onclick="switchTab('connect')">
+    <span class="nav-icon"><i data-lucide="user-plus" style="width: 20px; height: 20px;"></i></span>
+    <span class="nav-label">Connect</span>
+    <span class="connect-tab-dot" id="connectTabDotMobile" style="display:none;"></span>
   </button>
   <button class="nav-item" id="navBtnCommunity" onclick="switchTab('community')">
     <span class="nav-icon"><i data-lucide="users" style="width: 20px; height: 20px;"></i></span>

@@ -499,6 +499,7 @@ auth.onAuthStateChanged(async (user) => {
   }).catch(() => {});
   loadLatestMsgState();
   loadDeletedChats();
+  loadCachedConnections();
   await initFCM(user.uid);
 
   initPeerJS();
@@ -508,6 +509,7 @@ auth.onAuthStateChanged(async (user) => {
   if (!profileSetupRequired) {
     startUsersListener();
     startSharedPresenceListener();
+    startConnectionsListener();
     loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
@@ -988,6 +990,7 @@ function _refreshMyProfile() {
   try {
     const me = allUsersData.find(u => u.uid === currentUser.uid);
     if (me) window.profileObj = me;
+    if (me && typeof renderProfileTab === 'function') renderProfileTab();
   } catch (e) {}
 }
 let unreadMessages = {};
@@ -1165,7 +1168,7 @@ function renderActiveNowBar() {
   if (!scroller) return;
 
   const onlineUsers = allUsersData
-    .filter(u => !blockedUsers[u.uid] && isUserOnline(userPresenceCache[u.uid]))
+    .filter(u => !blockedUsers[u.uid] && isConnectedTo(u.uid) && isUserOnline(userPresenceCache[u.uid]))
     .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
 
   if (!onlineUsers.length) {
@@ -1235,22 +1238,27 @@ function setChatHandle(text) {
   }
 }
 
+// The 1:1 Chats tab shows ONLY accepted connections (+ the pinned self-chat).
+// Everyone else is discoverable in the Connect tab. Search here is scoped to
+// connections too (renderSearchResults), so the tab never surfaces a stranger.
 function renderUsers() {
+  const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
+  let list = allUsersData.filter(u => !blockedUsers[u.uid] && isConnectedTo(u.uid));
+  if (!q) list = list.filter(u => !deletedChats[u.uid]);
+  renderUserList(list);
+}
+
+function renderUserList(list) {
   const box = document.getElementById("users");
   if (!box) return;
 
   const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
-  let list = allUsersData.filter(u => !blockedUsers[u.uid]);
-  if (!q) {
-    list = list.filter(u => !deletedChats[u.uid]);
-  } else {
+  list = (list || []).filter(u => !blockedUsers[u.uid]);
+  if (q) {
     const digits = q.replace(/\D/g, "");
     list = list.filter(u => {
       const name = (u.displayName || "").toLowerCase();
       const handle = (u.username || "").toLowerCase();
-      // "@name" or plain handles sort by username first so people can be found
-      // by the handle they share, even without a prior chat (deleted chats are
-      // NOT hidden during a search, so results still appear).
       if (q.startsWith("@")) {
         const bare = q.slice(1);
         return handle === bare || handle.includes(bare) || name.includes(bare);
@@ -1432,8 +1440,396 @@ let searchUsersTimer = null;
 function searchUsers() {
   clearTimeout(searchUsersTimer);
   searchUsersTimer = setTimeout(() => {
-    renderUsers();
+    renderSearchResults();
   }, 100);
+}
+
+// Chats-tab search is scoped to your connections (global user discovery now
+// lives in the Connect tab), so the list never surfaces a non-connection.
+function renderSearchResults() {
+  const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
+  if (!q) { renderUsers(); return; }
+  const list = (allUsersData || []).filter(u => isConnectedTo(u.uid));
+  const matches = list.filter(u => {
+    const name = (u.displayName || "").toLowerCase();
+    const handle = (u.username || "").toLowerCase();
+    const digits = q.replace(/\D/g, "");
+    if (q.startsWith("@")) {
+      const bare = q.slice(1);
+      return handle === bare || handle.includes(bare) || name.includes(bare);
+    }
+    return name.includes(q) || handle.includes(q) || (digits && (u.phone || "").replace(/\D/g, "").includes(digits));
+  });
+  renderUserList(matches);
+}
+
+/* =========================================================================
+   CONNECT — connection-gated 1:1 chat
+   One Firestore doc per user pair in the `connections` collection, id =
+   the two uids sorted and joined with "_". status "pending" until the
+   recipient accepts, then "accepted". The 1:1 Chats tab shows ONLY accepted
+   connections (+ the self-chat); everyone else lives in the Connect tab.
+   Stories are visible only to connections.
+   ========================================================================= */
+let myConnections = {};        // otherUid -> {id, status, from, to, otherUid, createdAt, updatedAt}
+let connectListenerUnsub = null;
+let connectMigrationDone = false;
+let activeConnectSubTab = 'discover';
+
+function connKey(a, b) {
+  return [String(a), String(b)].sort().join('_');
+}
+
+function loadCachedConnections() {
+  if (!currentUser) return;
+  try {
+    const saved = localStorage.getItem('nexa_connections_' + currentUser.uid);
+    myConnections = saved ? JSON.parse(saved) : {};
+  } catch (e) {
+    myConnections = {};
+  }
+}
+
+function saveCachedConnections() {
+  if (!currentUser) return;
+  try {
+    localStorage.setItem('nexa_connections_' + currentUser.uid, JSON.stringify(myConnections));
+  } catch (e) {}
+}
+
+// Single listener scoped to MY pair-docs (array-contains = single-field
+// auto-index, no composite index needed). Mirrors the shared-presence pattern
+// so we never open a listener per contact.
+function startConnectionsListener() {
+  if (connectListenerUnsub || !db || !currentUser) return;
+  loadCachedConnections();
+  connectListenerUnsub = db.collection('connections')
+    .where('members', 'array-contains', currentUser.uid)
+    .onSnapshot(snap => {
+      myConnections = {};
+      snap.forEach(doc => {
+        const d = doc.data() || {};
+        const otherUid = (d.members || []).find(u => u !== currentUser.uid);
+        if (!otherUid) return;
+        myConnections[otherUid] = {
+          id: doc.id,
+          status: d.status || 'pending',
+          from: d.from,
+          to: d.to,
+          otherUid: otherUid,
+          createdAt: d.createdAt || 0,
+          updatedAt: d.updatedAt || d.createdAt || 0
+        };
+      });
+      saveCachedConnections();
+      renderUsers();
+      renderActiveNowBar();
+      renderConnectTab();
+      renderStoriesBar();
+      updateConnectTabDot();
+      // Already looking at the tab? Keep it marked seen so the dot doesn't
+      // pop while the user is on the Connect screen.
+      if (currentTab === 'connect') markConnectRequestsSeen();
+      maybeMigrateExistingChats();
+    }, err => console.error('Connections listener error:', err));
+}
+
+function getConnectionWith(uid) {
+  return myConnections[uid] || null;
+}
+
+function isConnectedTo(uid) {
+  const c = myConnections[uid];
+  return !!(c && c.status === 'accepted');
+}
+
+// One-time migration: everyone you already exchanged a chat with becomes an
+// accepted connection, so existing conversations are not lost when the Chats
+// tab starts filtering by connection.
+function maybeMigrateExistingChats() {
+  if (connectMigrationDone || !currentUser || !db) return;
+  if (localStorage.getItem('nexa_conn_migrated_' + currentUser.uid) === '1') {
+    connectMigrationDone = true;
+    return;
+  }
+  connectMigrationDone = true;
+  Promise.all([
+    db.collection('chats').where('from', '==', currentUser.uid).orderBy('createdAt', 'desc').limit(200).get(),
+    db.collection('chats').where('to', '==', currentUser.uid).orderBy('createdAt', 'desc').limit(200).get()
+  ]).then(([sentSnap, recvSnap]) => {
+    const partners = new Set();
+    sentSnap.forEach(d => { const t = d.data().to; if (t && t !== currentUser.uid) partners.add(t); });
+    recvSnap.forEach(d => { const f = d.data().from; if (f && f !== currentUser.uid) partners.add(f); });
+    const writes = [];
+    partners.forEach(uid => {
+      // Skip anyone who already has a connection doc (accepted OR pending) —
+      // overwriting an existing pending request would be denied by the rules.
+      if (myConnections[uid]) return;
+      const key = connKey(currentUser.uid, uid);
+      writes.push({ key: key, other: uid });
+    });
+    if (!writes.length) return;
+    let batch = db.batch();
+    let n = 0;
+    writes.forEach(w => {
+      const ref = db.collection('connections').doc(w.key);
+      batch.set(ref, {
+        members: [String(currentUser.uid), String(w.other)].sort(),
+        from: currentUser.uid,
+        to: w.other,
+        status: 'accepted',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+      n++;
+      if (n % 400 === 0) { batch.commit(); batch = db.batch(); }
+    });
+    if (n % 400 !== 0) batch.commit();
+    localStorage.setItem('nexa_conn_migrated_' + currentUser.uid, '1');
+    console.log('Auto-connected', writes.length, 'existing chats.');
+  }).catch(err => console.warn('Connection migration error:', err.message));
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function sendConnectRequest(uid) {
+  if (!currentUser || !uid || uid === currentUser.uid) return;
+  if (myConnections[uid]) return;
+  const key = connKey(currentUser.uid, uid);
+  db.collection('connections').doc(key).set({
+    members: [String(currentUser.uid), String(uid)].sort(),
+    from: currentUser.uid,
+    to: uid,
+    status: 'pending',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }).then(() => {
+    showNotifToast('Connection request sent', 'success');
+    renderConnectTab();
+  }).catch(err => {
+    console.error('sendConnectRequest', err);
+    showNotifToast('Could not send request', 'error');
+  });
+}
+
+function acceptConnectRequest(uid) {
+  const c = getConnectionWith(uid);
+  if (!c || !db) return;
+  db.collection('connections').doc(c.id).update({
+    status: 'accepted',
+    updatedAt: Date.now()
+  }).then(() => {
+    showNotifToast('Connected! You can now chat.', 'success');
+    renderConnectTab();
+  }).catch(err => {
+    console.error('acceptConnectRequest', err);
+    showNotifToast('Could not accept request', 'error');
+  });
+}
+
+function declineConnectRequest(uid) {
+  const c = getConnectionWith(uid);
+  if (!c || !db) return;
+  db.collection('connections').doc(c.id).delete().then(() => {
+    showNotifToast('Request declined', 'info');
+    renderConnectTab();
+  }).catch(err => {
+    console.error('declineConnectRequest', err);
+    showNotifToast('Could not decline request', 'error');
+  });
+}
+
+function cancelConnectRequest(uid) {
+  const c = getConnectionWith(uid);
+  if (!c || !db) return;
+  db.collection('connections').doc(c.id).delete().then(() => {
+    renderConnectTab();
+  }).catch(err => console.error('cancelConnectRequest', err));
+}
+
+function disconnectUser(uid) {
+  const c = getConnectionWith(uid);
+  if (!c || !db) return;
+  db.collection('connections').doc(c.id).delete().then(() => {
+    showNotifToast('Disconnected', 'info');
+    renderConnectTab();
+  }).catch(err => {
+    console.error('disconnectUser', err);
+    showNotifToast('Could not disconnect', 'error');
+  });
+}
+
+function openConnectedChat(uid) {
+  const user = (allUsersData || []).find(u => u.uid === uid);
+  if (!user) return;
+  switchTab('chats');
+  selectChat(user, document.querySelector('.user-item[data-uid="' + uid + '"]'));
+}
+
+// ── Connect tab rendering ───────────────────────────────────────────────────
+function switchConnectSubTab(tab) {
+  activeConnectSubTab = tab;
+  const d = document.getElementById('connectSubTabDiscover');
+  const r = document.getElementById('connectSubTabRequests');
+  const dv = document.getElementById('connectDiscoverView');
+  const rv = document.getElementById('connectRequestsView');
+  if (d) d.classList.toggle('active', tab === 'discover');
+  if (r) r.classList.toggle('active', tab === 'requests');
+  if (dv) dv.classList.toggle('active', tab === 'discover');
+  if (rv) rv.classList.toggle('active', tab === 'requests');
+  const sw = document.getElementById('connectSearchWrap');
+  if (sw) sw.style.display = tab === 'requests' ? 'none' : '';
+  renderConnectTab();
+}
+
+function renderConnectTab() {
+  if (!currentUser) return;
+  const incoming = Object.values(myConnections).filter(c => c.status === 'pending' && c.to === currentUser.uid);
+  const badge = document.getElementById('connectReqCount');
+  if (badge) {
+    badge.textContent = incoming.length > 99 ? '99+' : String(incoming.length);
+    badge.style.display = incoming.length ? '' : 'none';
+  }
+  if (activeConnectSubTab === 'requests') renderConnectRequests();
+  else renderConnectDiscover();
+}
+
+function searchConnectUsers() {
+  clearTimeout(window._connectSearchTimer);
+  window._connectSearchTimer = setTimeout(() => renderConnectDiscover(), 120);
+}
+
+function connectRowHtml(user, actionHtml) {
+  const name = escapeHtml(user.displayName || 'User');
+  const photo = user.photo || 'https://i.imgur.com/HeIi0wU.png';
+  const handle = (user.username && user.username !== (user.displayName || '').toLowerCase()) ? '@' + escapeHtml(user.username) : '';
+  const online = isUserOnline(userPresenceCache[user.uid]);
+  return '<div class="connect-item">' +
+    '<div class="user-avatar-wrap">' +
+      '<img src="' + photo + '" class="user-avatar" loading="lazy" decoding="async" onerror="this.src=\'https://i.imgur.com/HeIi0wU.png\'">' +
+      '<div class="status-dot ' + (online ? 'online' : '') + '"></div>' +
+    '</div>' +
+    '<div class="connect-info">' +
+      '<div class="connect-name">' + name + '</div>' +
+      (handle ? '<div class="connect-handle">' + handle + '</div>' : '') +
+    '</div>' +
+    '<div class="connect-action">' + actionHtml + '</div>' +
+  '</div>';
+}
+
+function renderConnectDiscover() {
+  const box = document.getElementById('connectDiscoverList');
+  if (!box) return;
+  const q = (document.getElementById('connectSearch')?.value || '').trim().toLowerCase();
+
+  let list = (allUsersData || []).filter(u => u.uid !== currentUser.uid && !blockedUsers[u.uid]);
+  if (q) {
+    const digits = q.replace(/\D/g, '');
+    list = list.filter(u => {
+      const name = (u.displayName || '').toLowerCase();
+      const handle = (u.username || '').toLowerCase();
+      if (q.startsWith('@')) {
+        const bare = q.slice(1);
+        return handle === bare || handle.includes(bare) || name.includes(bare);
+      }
+      return name.includes(q) || handle.includes(q) || (digits && (u.phone || '').replace(/\D/g, '').includes(digits));
+    });
+  }
+
+  list.sort((a, b) => {
+    const ca = getConnectionWith(a.uid), cb = getConnectionWith(b.uid);
+    const ra = ca ? (ca.status === 'accepted' ? 2 : 1) : 0;
+    const rb = cb ? (cb.status === 'accepted' ? 2 : 1) : 0;
+    if (ra !== rb) return rb - ra;
+    const oa = isUserOnline(userPresenceCache[a.uid]) ? 1 : 0;
+    const ob = isUserOnline(userPresenceCache[b.uid]) ? 1 : 0;
+    if (oa !== ob) return ob - oa;
+    return (a.displayName || '').localeCompare(b.displayName || '');
+  });
+
+  if (!list.length) {
+    box.innerHTML = '<div class="no-users">No users found</div>';
+    return;
+  }
+
+  box.innerHTML = list.map(u => {
+    const c = getConnectionWith(u.uid);
+    let action;
+    if (c && c.status === 'accepted') {
+      action = '<button class="connect-btn connect-btn-msg" onclick="openConnectedChat(\'' + u.uid + '\')">Message</button>';
+    } else if (c && c.status === 'pending' && c.from === currentUser.uid) {
+      action = '<button class="connect-btn connect-btn-pending" onclick="cancelConnectRequest(\'' + u.uid + '\')" title="Tap to cancel">Requested</button>';
+    } else if (c && c.status === 'pending' && c.to === currentUser.uid) {
+      action = '<button class="connect-btn connect-btn-accept" onclick="acceptConnectRequest(\'' + u.uid + '\')">Accept</button>';
+    } else {
+      action = '<button class="connect-btn connect-btn-connect" onclick="sendConnectRequest(\'' + u.uid + '\')">Connect</button>';
+    }
+    return connectRowHtml(u, action);
+  }).join('');
+}
+
+function renderConnectRequests() {
+  const box = document.getElementById('connectRequestsList');
+  if (!box) return;
+  const incoming = Object.values(myConnections)
+    .filter(c => c.status === 'pending' && c.to === currentUser.uid)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const outgoing = Object.values(myConnections)
+    .filter(c => c.status === 'pending' && c.from === currentUser.uid)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const findUser = uid => (allUsersData || []).find(u => u.uid === uid) || { uid: uid, displayName: 'User', photo: 'https://i.imgur.com/HeIi0wU.png' };
+
+  let html = '';
+  html += '<div class="connect-section-title">Requests</div>';
+  if (!incoming.length) {
+    html += '<div class="no-users">No incoming requests</div>';
+  } else {
+    html += incoming.map(c => {
+      const u = findUser(c.otherUid);
+      const action = '<button class="connect-btn connect-btn-accept" onclick="acceptConnectRequest(\'' + c.otherUid + '\')">Accept</button>' +
+                     '<button class="connect-btn connect-btn-decline" onclick="declineConnectRequest(\'' + c.otherUid + '\')">Decline</button>';
+      return connectRowHtml(u, action);
+    }).join('');
+  }
+  if (outgoing.length) {
+    html += '<div class="connect-section-title">Sent</div>';
+    html += outgoing.map(c => {
+      const u = findUser(c.otherUid);
+      const action = '<button class="connect-btn connect-btn-pending" onclick="cancelConnectRequest(\'' + c.otherUid + '\')" title="Tap to cancel">Requested</button>';
+      return connectRowHtml(u, action);
+    }).join('');
+  }
+  box.innerHTML = html;
+}
+
+// ── Green "update" dot on the Connect tab ───────────────────────────────────
+function getConnectSeenAt() {
+  if (!currentUser) return 0;
+  return Number(localStorage.getItem('nexa_connect_seen_' + currentUser.uid) || 0);
+}
+
+function updateConnectTabDot() {
+  if (!currentUser) return;
+  const seenAt = getConnectSeenAt();
+  let hasUpdate = false;
+  for (const uid in myConnections) {
+    const c = myConnections[uid];
+    const t = c.updatedAt || c.createdAt || 0;
+    if (t <= seenAt) continue;
+    // New incoming request, or a request I sent that was accepted.
+    if (c.status === 'pending' && c.to === currentUser.uid) { hasUpdate = true; break; }
+    if (c.status === 'accepted' && c.from === currentUser.uid) { hasUpdate = true; break; }
+  }
+  ['connectTabDotDesktop', 'connectTabDotMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = hasUpdate ? 'block' : 'none';
+  });
+}
+
+function markConnectRequestsSeen() {
+  if (!currentUser) return;
+  localStorage.setItem('nexa_connect_seen_' + currentUser.uid, String(Date.now()));
+  updateConnectTabDot();
 }
 
 /* =========================================================================
@@ -1481,6 +1877,10 @@ function switchTab(tabName) {
     return;
   } else if (tabName === 'community') {
     renderCommunityTab();
+  } else if (tabName === 'connect') {
+    renderConnectTab();
+    // Opening the tab counts as "seen" — clears the green update dot.
+    markConnectRequestsSeen();
   }
 
   // Strictly enforce that call buttons NEVER show in Community tab
@@ -1538,6 +1938,7 @@ function renderStoriesTab() {
 
   allUsersData.forEach(user => {
     if (blockedUsers[user.uid]) return; // blocked contacts' stories stay hidden
+    if (!isConnectedTo(user.uid)) return; // stories are for connections only
     const statuses = userStatuses[user.uid];
     if (!statuses || !statuses.length) return;
     count++;
@@ -7482,6 +7883,7 @@ function renderStoriesBar() {
   const seenMap = getSeenStories();
   allUsersData.forEach(user => {
     if (blockedUsers[user.uid]) return; // blocked contacts' stories stay hidden
+    if (!isConnectedTo(user.uid)) return; // stories are for connections only
     const statuses = userStatuses[user.uid];
     if (!statuses || !statuses.length) return;
     const allSeen = statuses.every(s => seenMap[s.id]);
@@ -7525,6 +7927,7 @@ function updateStoryTabDot() {
   let hasUnseen = false;
   for (const uid in userStatuses) {
     if (uid === myUid) continue; // your own story isn't a "new story" alert
+    if (!isConnectedTo(uid)) continue; // only connections' stories count
     const statuses = userStatuses[uid] || [];
     if (statuses.some(s => !seenMap[s.id])) { hasUnseen = true; break; }
   }
@@ -7535,6 +7938,10 @@ function updateStoryTabDot() {
 }
 
 function openStoryViewer(uid, storyId = null) {
+  if (uid !== currentUser.uid && !isConnectedTo(uid)) {
+    showNotifToast("Connect with this person to see their story", "info");
+    return;
+  }
   const statuses = userStatuses[uid];
   if (!statuses || !statuses.length) {
     showNotifToast("This story is no longer available", "error");

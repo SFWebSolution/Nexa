@@ -137,6 +137,39 @@ service cloud.firestore {
       );
     }
 
+    // ── Connections (1:1 connect requests) ──
+    // One doc per user pair, id = the two uids sorted and joined with "_".
+    // A request starts "pending"; only the recipient may flip it to
+    // "accepted". Either member may delete (decline / cancel / disconnect).
+    // Auto-connect migration writes already-"accepted" docs.
+    match /connections/{connId} {
+      function isMember() {
+        return isSignedIn() && request.auth.uid in resource.data.members;
+      }
+      function validPair() {
+        return request.resource.data.members is list
+          && request.resource.data.members.size() == 2
+          && request.auth.uid in request.resource.data.members;
+      }
+      allow read: if isMember();
+      allow create: if isSignedIn()
+                    && validPair()
+                    && request.resource.data.from == request.auth.uid
+                    && request.resource.data.to is string
+                    && request.resource.data.to != request.auth.uid
+                    && request.resource.data.to in request.resource.data.members
+                    && (request.resource.data.status == 'pending'
+                        || request.resource.data.status == 'accepted');
+      allow update: if isMember()
+                    && request.auth.uid == resource.data.to
+                    && request.resource.data.members == resource.data.members
+                    && request.resource.data.from == resource.data.from
+                    && request.resource.data.to == resource.data.to
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isMember();
+    }
+
     // ── Profile notes ──
     match /profile_notes/{uid} {
       allow read: if isSignedIn();
