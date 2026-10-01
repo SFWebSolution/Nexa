@@ -1099,7 +1099,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .nexa-vr-ctrl-btn:active {
   transform: scale(0.92) !important;
-}
+}
+
 /* ---------- Live rooms: voice/video mode, video tile wall, mode chooser ---------- */
 
 .nexa-vr-mode-badge {
@@ -1276,20 +1277,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* Phones: keep the header/controls compact so the tiles get the room. */
 @media (max-width: 600px) {
+  /* Two tiles per row so several faces are visible at once instead of one
+     giant tile with a long scroll. */
   .nexa-vr-grid-video {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
 
   .nexa-vr-video-card {
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 3 / 4;
   }
 
-  /* More tiles than fit? scroll the grid instead of shrinking everything. */
+  /* More tiles than fit? scroll the grid instead of shrinking everything.
+     grid-auto-rows:max-content + align-content:start keep every row as tall
+     as its card; without them a height-constrained grid squishes the rows and
+     the aspect-ratio'd cards overlap each other ("scattered" layout). */
   .nexa-vr-grid-video {
     max-height: 58vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    grid-auto-rows: max-content;
+    align-content: start;
   }
 
   .nexa-vr-footer {

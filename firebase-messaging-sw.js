@@ -115,7 +115,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v6-perf';
+const CACHE_NAME = 'nexa-v7-av';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -168,7 +168,13 @@ self.addEventListener('fetch', (event) => {
     (req.headers.get('accept') || '').includes('text/html') ||
     /\.(html)$/i.test(url.pathname);
 
-  if (isNavigation && url.origin === self.location.origin) {
+  // First-party JS/CSS: NETWORK-FIRST. Stale-While-Revalidate would hand back
+  // the previous deploy's code on the first load after an update, so a fix
+  // silently didn't apply until a second reload.
+  const isFirstPartyCode =
+    url.origin === self.location.origin && /\.(js|css)$/i.test(url.pathname);
+
+  if ((isNavigation || isFirstPartyCode) && url.origin === self.location.origin) {
     event.respondWith(
       fetch(req).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
@@ -176,7 +182,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
         }
         return networkResponse;
-      }).catch(() => caches.match(req).then((cached) => cached || caches.match('/dashboard.html')))
+      }).catch(() => caches.match(req).then((cached) => cached || (isNavigation ? caches.match('/dashboard.html') : undefined)))
     );
     return;
   }
