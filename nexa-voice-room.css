@@ -1100,3 +1100,165 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nexa-vr-ctrl-btn:active {
   transform: scale(0.92) !important;
 }
+/* ---------- Live rooms: voice/video mode, video tiles, mode chooser ---------- */
+
+.nexa-vr-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(37, 211, 102, 0.14);
+  color: #25d366;
+  border: 1px solid rgba(37, 211, 102, 0.35);
+  vertical-align: middle;
+}
+
+/* Start-mode chooser */
+.nexa-vr-mode-card {
+  max-width: 380px;
+  width: 92vw;
+}
+
+.nexa-vr-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 6px 4px 4px;
+}
+
+.nexa-vr-mode-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.nexa-vr-mode-opt:hover {
+  background: rgba(37, 211, 102, 0.12);
+  border-color: rgba(37, 211, 102, 0.5);
+}
+
+.nexa-vr-mode-opt:active {
+  transform: scale(0.98);
+}
+
+.nexa-vr-mode-opt-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.nexa-vr-mode-opt-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.nexa-vr-mode-opt-sub {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Local self-view in the stage */
+.nexa-vr-local-video {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #000;
+  transform: scaleX(-1);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* Video participant tiles */
+.nexa-vr-video-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  aspect-ratio: 4 / 3;
+  background: #0b0f14;
+}
+
+.nexa-vr-card-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0b0f14;
+}
+
+.nexa-vr-card-video-fallback {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: #0b0f14;
+}
+
+.nexa-vr-card-video-fallback .nexa-vr-card-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+}
+
+.nexa-vr-video-card .nexa-vr-card-name {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  color: #fff;
+}
+
+.nexa-vr-video-card .nexa-vr-card-role {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  margin: 0;
+}
+
+.nexa-vr-video-card .nexa-vr-card-mic-status {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  margin: 0;
+}
+
+.nexa-vr-video-empty {
+  grid-column: 1 / -1;
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.65;
+}
+
+.nexa-vr-video-card[data-speaking="true"] {
+  box-shadow: 0 0 0 3px #25d366, 0 0 22px rgba(37, 211, 102, 0.5);
+}
+
+.nexa-vr-video-card .nexa-vr-card-hand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  margin: 0;
+}

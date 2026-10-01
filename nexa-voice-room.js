@@ -30,8 +30,15 @@
       this.roomChatUnsub = null;
       this.roomDocUnsub = null;
 
-      // Maximum participants per voice room (mesh audio — 10 keeps it stable).
-      this.maxParticipants = 10;
+      // Room media mode ('voice' | 'video') and its capacity. The audio mesh
+      // stays stable up to 10; video is bandwidth-heavy (each peer uploads its
+      // camera to every other peer) so it is capped at 6.
+      this.roomMode = 'voice';
+      this.isCameraOn = true;
+      this.remoteStreams = new Map(); // peerId -> MediaStream (for video re-attach)
+      this.maxParticipantsVoice = 10;
+      this.maxParticipantsVideo = 6;
+      this.maxParticipants = this.maxParticipantsVoice;
 
       // Broadcast channel for multi-tab / local client signaling
       this.channel = new BroadcastChannel('nexa_voice_room_channel');
@@ -86,6 +93,7 @@
               title: data.title || 'Live room',
               hostId: data.hostId,
               hostName: data.hostName,
+              mode: data.mode || 'voice',
               startTime: data.startTime || data.updatedAt || Date.now()
             });
           }).catch(() => {
@@ -227,6 +235,7 @@
                 <div class="nexa-vr-avatar-ring"></div>
                 <img src="${user.avatar}" alt="Main Speaker" class="nexa-vr-main-avatar" id="nexaVrMainAvatar" onerror="this.src='icon-192.png'">
               </div>
+              <video id="nexaVrLocalVideo" class="nexa-vr-local-video" autoplay muted playsinline style="display:none;"></video>
               <div class="nexa-vr-speaker-name" id="nexaVrMainSpeakerName">${this.escapeHTML(user.name)}</div>
               <div class="nexa-vr-speaker-status" id="nexaVrMainSpeakerStatus">
                 <span>🎙️ Tap to speak</span>
@@ -268,6 +277,9 @@
           <div class="nexa-vr-footer">
             <button class="nexa-vr-ctrl-btn active-mic" id="nexaVrMicBtn" title="Toggle Mic (Mute/Unmute)">
               🎙️
+            </button>
+            <button class="nexa-vr-ctrl-btn" id="nexaVrCamBtn" title="Toggle Camera" style="display:none;">
+              📹
             </button>
             <button class="nexa-vr-ctrl-btn" id="nexaVrSpeakerBtn" title="Toggle Speaker/Headphones">
               🔊
@@ -320,7 +332,7 @@
       inviteModal.innerHTML = `
         <div class="nexa-vr-modal-card">
           <div class="nexa-vr-modal-hdr">
-            <h4 class="nexa-vr-modal-title">Invite your connections</h4>
+            <h4 class="nexa-vr-modal-title" id="nexaVrInviteModalTitle">Invite your connections</h4>
             <button class="nexa-vr-hdr-btn close-btn" id="nexaVrCloseInviteBtn">✕</button>
           </div>
           <input type="text" class="nexa-vr-search-box" id="nexaVrUserSearch" placeholder="Search your connections...">
@@ -335,6 +347,33 @@
         </div>
       `;
       document.body.appendChild(inviteModal);
+
+      // Start-mode chooser. Shown EVERY time a Live room is started; the mode
+      // is stored on the room doc and inherited by everyone who joins.
+      const modeModal = document.createElement('div');
+      modeModal.id = 'nexaVrModeModal';
+      modeModal.className = 'nexa-vr-modal-overlay';
+      modeModal.innerHTML = `
+        <div class="nexa-vr-modal-card nexa-vr-mode-card">
+          <div class="nexa-vr-modal-hdr">
+            <h4 class="nexa-vr-modal-title">Start a Live room</h4>
+            <button class="nexa-vr-hdr-btn close-btn" id="nexaVrModeCloseBtn">✕</button>
+          </div>
+          <div class="nexa-vr-mode-options">
+            <button class="nexa-vr-mode-opt" id="nexaVrModeVoiceBtn">
+              <span class="nexa-vr-mode-opt-icon">🎙️</span>
+              <span class="nexa-vr-mode-opt-title">Voice room</span>
+              <span class="nexa-vr-mode-opt-sub">Talk with up to ${this.maxParticipantsVoice} people</span>
+            </button>
+            <button class="nexa-vr-mode-opt" id="nexaVrModeVideoBtn">
+              <span class="nexa-vr-mode-opt-icon">📹</span>
+              <span class="nexa-vr-mode-opt-title">Video room</span>
+              <span class="nexa-vr-mode-opt-sub">Camera + mic, up to ${this.maxParticipantsVideo} people</span>
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modeModal);
 
       // Incoming Call Toast
       const incToast = document.createElement('div');
@@ -376,9 +415,18 @@
         this.toggleMic();
       });
 
-      // Speaker & Hand
+      // Speaker, Hand & Camera
       document.getElementById('nexaVrSpeakerBtn')?.addEventListener('click', () => this.toggleSpeaker());
       document.getElementById('nexaVrHandBtn')?.addEventListener('click', () => this.raiseHand());
+      document.getElementById('nexaVrCamBtn')?.addEventListener('click', () => this.toggleCamera());
+
+      // Start-mode chooser
+      document.getElementById('nexaVrModeVoiceBtn')?.addEventListener('click', () => this.chooseMode('voice'));
+      document.getElementById('nexaVrModeVideoBtn')?.addEventListener('click', () => this.chooseMode('video'));
+      document.getElementById('nexaVrModeCloseBtn')?.addEventListener('click', () => this.closeModeChooser());
+      document.getElementById('nexaVrModeModal')?.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'nexaVrModeModal') this.closeModeChooser();
+      });
 
       // Invite buttons
       document.getElementById('nexaVrHdrInviteBtn')?.addEventListener('click', () => this.openInviteModal());
@@ -406,7 +454,75 @@
         const btn = e.target.closest('.start-voice-chat-btn, [data-action="voice-chat"]');
         if (btn) {
           e.preventDefault();
-          this.startRoom();
+          this.openModeChooser();
+        }
+      });
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 2b. ROOM MODE (VOICE / VIDEO) + CAMERA CONTROLS                       */
+    /* --------------------------------------------------------------------- */
+
+    modeLabel() { return this.isVideoRoom() ? '📹 Video' : '🎙️ Voice'; }
+    isVideoRoom() { return this.roomMode === 'video'; }
+    capForMode(mode) { return mode === 'video' ? this.maxParticipantsVideo : this.maxParticipantsVoice; }
+
+    openModeChooser() {
+      if (this.activeRoom) { this.expandOverlay(); return; }
+      const modal = document.getElementById('nexaVrModeModal');
+      if (modal) modal.classList.add('active');
+    }
+
+    closeModeChooser() {
+      const modal = document.getElementById('nexaVrModeModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    chooseMode(mode) {
+      this.closeModeChooser();
+      this.startRoom(null, mode === 'video' ? 'video' : 'voice');
+    }
+
+    toggleCamera() {
+      if (!this.localStream || !this.isVideoRoom()) return;
+      this.isCameraOn = !this.isCameraOn;
+      this.localStream.getVideoTracks().forEach(t => t.enabled = this.isCameraOn);
+
+      const btn = document.getElementById('nexaVrCamBtn');
+      if (btn) {
+        btn.classList.toggle('muted-mic', !this.isCameraOn);
+        btn.innerHTML = this.isCameraOn ? '📹' : '🚫';
+      }
+      const lv = document.getElementById('nexaVrLocalVideo');
+      if (lv) lv.style.visibility = this.isCameraOn ? 'visible' : 'hidden';
+      this.showToast(this.isCameraOn ? '📹 Camera on' : '🚫 Camera off');
+
+      this.playChime('tick');
+      this.syncMuteState();
+      this.updateUI();
+    }
+
+    playRemoteVideoStream(peerId, stream) {
+      this.remoteStreams.set(peerId, stream);
+      if (!this.isVideoRoom()) return;
+      const v = document.getElementById('nexaVrRemoteVideo_' + peerId);
+      if (v && v.srcObject !== stream) {
+        v.srcObject = stream;
+        const pr = v.play();
+        if (pr && pr.catch) pr.catch(() => {});
+      }
+    }
+
+    // Re-attach stored remote streams after updateUI() rebuilds the grid (the
+    // video elements are recreated, so their srcObject must be restored).
+    reapplyRemoteVideos() {
+      if (!this.isVideoRoom()) return;
+      this.remoteStreams.forEach((stream, peerId) => {
+        const v = document.getElementById('nexaVrRemoteVideo_' + peerId);
+        if (v && v.srcObject !== stream) {
+          v.srcObject = stream;
+          const pr = v.play();
+          if (pr && pr.catch) pr.catch(() => {});
         }
       });
     }
@@ -415,11 +531,15 @@
     /* 3. VOICE ROOM ENGINE LIFECYCLE (Start, Join, Leave)                  */
     /* --------------------------------------------------------------------- */
 
-    async startRoom(roomTitle = null) {
+    async startRoom(roomTitle = null, mode = 'voice') {
       if (this.activeRoom) {
         this.expandOverlay();
         return;
       }
+
+      this.roomMode = mode === 'video' ? 'video' : 'voice';
+      this.maxParticipants = this.capForMode(this.roomMode);
+      this.isCameraOn = true;
 
       const user = this.getCurrentUser();
       const title = roomTitle || `${user.name}'s Live room`;
@@ -428,6 +548,7 @@
       this.activeRoom = {
         id: roomId,
         title: title,
+        mode: this.roomMode,
         hostId: user.id,
         hostName: user.name,
         isHost: true,
@@ -499,6 +620,11 @@
 
       const user = this.getCurrentUser();
 
+      // Inherit the room's mode (chosen by the host) and its capacity.
+      this.roomMode = roomData.mode === 'video' ? 'video' : 'voice';
+      this.maxParticipants = this.capForMode(this.roomMode);
+      this.isCameraOn = true;
+
       // Enforce the room capacity cap before joining.
       if (window.db) {
         try {
@@ -529,6 +655,7 @@
       this.activeRoom = {
         id: roomData.id,
         title: roomData.title || 'Live room',
+        mode: this.roomMode,
         hostId: roomData.hostId,
         hostName: roomData.hostName || 'Host',
         isHost: roomData.hostId === user.id,
@@ -601,6 +728,14 @@
         } catch (e) {}
       });
 
+      // Remove remote video elements and forget stored streams.
+      document.querySelectorAll('video[id^="nexaVrRemoteVideo_"]').forEach(el => {
+        try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
+      });
+      this.remoteStreams.clear();
+      const localVid = document.getElementById('nexaVrLocalVideo');
+      if (localVid) { localVid.srcObject = null; localVid.style.display = 'none'; }
+
       // Stop audio tracks
       if (this.localStream) {
         this.localStream.getTracks().forEach(t => t.stop());
@@ -669,6 +804,9 @@
       const wasHost = this.activeRoom && this.activeRoom.isHost;
       this.activeRoom = null;
       this.participants.clear();
+      this.roomMode = 'voice';
+      this.isCameraOn = true;
+      this.maxParticipants = this.maxParticipantsVoice;
 
       // Hide UI
       document.getElementById('nexaVrOverlay')?.classList.remove('active');
@@ -693,6 +831,12 @@
       document.querySelectorAll('audio[id^="audio_"]').forEach(el => {
         try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
       });
+      document.querySelectorAll('video[id^="nexaVrRemoteVideo_"]').forEach(el => {
+        try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
+      });
+      this.remoteStreams.clear();
+      const localVid2 = document.getElementById('nexaVrLocalVideo');
+      if (localVid2) { localVid2.srcObject = null; localVid2.style.display = 'none'; }
       if (this.localStream) { this.localStream.getTracks().forEach(t => t.stop()); this.localStream = null; }
       if (this.audioCtx && this.audioCtx.state !== 'closed') { this.audioCtx.close().catch(() => {}); this.audioCtx = null; }
       if (this.timerInterval) clearInterval(this.timerInterval);
@@ -704,6 +848,9 @@
 
       this.activeRoom = null;
       this.participants.clear();
+      this.roomMode = 'voice';
+      this.isCameraOn = true;
+      this.maxParticipants = this.maxParticipantsVoice;
       document.getElementById('nexaVrOverlay')?.classList.remove('active');
       const miniBar = document.getElementById('nexaVrMiniBar');
       if (miniBar) miniBar.style.display = 'none';
@@ -876,6 +1023,7 @@
 
       call.on('stream', (remoteStream) => {
         this.playRemoteAudioStream(targetPeerId, remoteStream);
+        this.playRemoteVideoStream(targetPeerId, remoteStream);
       });
 
       const onFail = (reason) => {
@@ -974,16 +1122,37 @@
     }
 
     async initMicrophone() {
+      const wantVideo = this.isVideoRoom();
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 48000
+      };
+      const videoConstraints = {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24 },
+        facingMode: 'user'
+      };
+
       try {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 48000
-          },
-          video: false
-        });
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: wantVideo ? videoConstraints : false
+          });
+        } catch (camErr) {
+          if (!wantVideo) throw camErr;
+          // Camera blocked/unavailable — fall back to audio so the room still
+          // works; the user can still SEE everyone else's video.
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: false
+          });
+          this.isCameraOn = false;
+          this.showToast('📹 Camera unavailable — joined with audio only.');
+        }
 
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         this.audioCtx = new AudioContext();
@@ -1182,6 +1351,8 @@
       const modal = document.getElementById('nexaVrInviteModal');
       if (modal) {
         modal.classList.add('active');
+        const inviteTitle = document.getElementById('nexaVrInviteModalTitle');
+        if (inviteTitle) inviteTitle.textContent = `${this.modeLabel()} room — invite your connections`;
         this.renderUserInviteList();
         // Re-render periodically while the modal is open so the online-first
         // sort + dots stay live as users come and go (presence is fed by the
@@ -1388,6 +1559,7 @@
         titleEl.innerHTML = `
           ${this.escapeHTML(this.activeRoom.title)}
           <span class="nexa-vr-status-badge">${this.participants.size} Connected</span>
+          <span class="nexa-vr-mode-badge">${this.modeLabel()}</span>
         `;
       }
 
@@ -1402,25 +1574,66 @@
       if (mainAvatar && hostParticipant.avatar) mainAvatar.src = hostParticipant.avatar;
       if (mainName) mainName.textContent = hostParticipant.name;
 
+      // Video rooms show the local self-view in the stage instead of the avatar.
+      const localVideo = document.getElementById('nexaVrLocalVideo');
+      const mainAvatarWrap = document.getElementById('nexaVrMainAvatarWrap');
+      const camBtn = document.getElementById('nexaVrCamBtn');
+      if (camBtn) camBtn.style.display = this.isVideoRoom() ? 'inline-flex' : 'none';
+      if (localVideo) {
+        if (this.isVideoRoom()) {
+          localVideo.style.display = 'block';
+          localVideo.style.visibility = this.isCameraOn ? 'visible' : 'hidden';
+          if (this.localStream && localVideo.srcObject !== this.localStream) {
+            localVideo.srcObject = this.localStream;
+          }
+        } else {
+          localVideo.style.display = 'none';
+          localVideo.srcObject = null;
+        }
+      }
+      if (mainAvatarWrap) mainAvatarWrap.style.display = this.isVideoRoom() ? 'none' : '';
+
       // Render Participant Cards
       const grid = document.getElementById('nexaVrParticipantGrid');
       const miniAvatars = document.getElementById('nexaVrMiniAvatars');
 
       if (grid) {
-        grid.innerHTML = Array.from(this.participants.values()).map(p => `
-          <div class="nexa-vr-card" id="nexaVrCard_${p.id}" data-speaking="${p.isSpeaking ? 'true' : 'false'}">
-            ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
-            <div class="nexa-vr-card-avatar-wrap">
-              <div class="nexa-vr-card-ring"></div>
-              <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
+        if (this.isVideoRoom()) {
+          const me = this.getCurrentUser();
+          const others = Array.from(this.participants.values()).filter(p => p.id !== me.id);
+          grid.innerHTML = others.length ? others.map(p => {
+            const pid = p.peerId || this.peerIdFor(p.id);
+            return `
+            <div class="nexa-vr-card nexa-vr-video-card" id="nexaVrCard_${p.id}" data-speaking="${p.isSpeaking ? 'true' : 'false'}">
+              ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
+              <video class="nexa-vr-card-video" id="nexaVrRemoteVideo_${pid}" autoplay playsinline></video>
+              <div class="nexa-vr-card-video-fallback" style="display:${p.isCameraOn === false ? 'flex' : 'none'};">
+                <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
+              </div>
+              <div class="nexa-vr-card-name">${this.escapeHTML(p.name)}</div>
+              ${p.isHost ? '<div class="nexa-vr-card-role">HOST</div>' : ''}
+              <div class="nexa-vr-card-mic-status ${p.isMuted ? 'muted' : ''}">
+                ${p.isMuted ? '🔇' : '🎙️'}
+              </div>
+            </div>`;
+          }).join('') : '<div class="nexa-vr-video-empty">Waiting for others to join…</div>';
+          this.reapplyRemoteVideos();
+        } else {
+          grid.innerHTML = Array.from(this.participants.values()).map(p => `
+            <div class="nexa-vr-card" id="nexaVrCard_${p.id}" data-speaking="${p.isSpeaking ? 'true' : 'false'}">
+              ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
+              <div class="nexa-vr-card-avatar-wrap">
+                <div class="nexa-vr-card-ring"></div>
+                <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
+              </div>
+              <div class="nexa-vr-card-name">${this.escapeHTML(p.name)}</div>
+              ${p.isHost ? '<div class="nexa-vr-card-role">HOST</div>' : ''}
+              <div class="nexa-vr-card-mic-status ${p.isMuted ? 'muted' : ''}">
+                ${p.isMuted ? '🔇' : '🎙️'}
+              </div>
             </div>
-            <div class="nexa-vr-card-name">${this.escapeHTML(p.name)}</div>
-            ${p.isHost ? '<div class="nexa-vr-card-role">HOST</div>' : ''}
-            <div class="nexa-vr-card-mic-status ${p.isMuted ? 'muted' : ''}">
-              ${p.isMuted ? '🔇' : '🎙️'}
-            </div>
-          </div>
-        `).join('');
+          `).join('');
+        }
       }
 
       if (miniAvatars) {
@@ -1460,6 +1673,7 @@
       const roomMeta = {
         id: this.activeRoom.id,
         title: this.activeRoom.title,
+        mode: this.roomMode,
         hostId: this.activeRoom.hostId,
         hostName: this.activeRoom.hostName,
         updatedAt: Date.now()
@@ -1494,6 +1708,7 @@
           isMuted: this.isMuted,
           isSpeaking: false,
           handRaised: !!this.handRaised,
+          isCameraOn: this.isCameraOn,
           updatedAt: Date.now(),
           ...(extra || {})
         }, { merge: true }).catch(err => console.warn('[VoiceRoom] Participant upsert error:', err));
@@ -1542,7 +1757,8 @@
                 isHost: !!p.isHost,
                 isMuted: !!p.isMuted,
                 isSpeaking: !!p.isSpeaking,
-                handRaised: !!p.handRaised
+                handRaised: !!p.handRaised,
+                isCameraOn: p.isCameraOn !== false
               });
               this.peerIdToUid.set(peerId, p.id);
               if (isNew) {
@@ -1628,6 +1844,10 @@
         mic.classList.toggle('muted', p.isMuted);
         mic.textContent = p.isMuted ? '🔇' : '🎙️';
       }
+      const vid = card.querySelector('.nexa-vr-card-video');
+      if (vid) vid.style.visibility = p.isCameraOn === false ? 'hidden' : 'visible';
+      const fb = card.querySelector('.nexa-vr-card-video-fallback');
+      if (fb) fb.style.display = p.isCameraOn === false ? 'flex' : 'none';
     }
 
     /* --------------------------------------------------------------------- */
@@ -1828,7 +2048,7 @@
       const avatarEl = document.getElementById('nexaVrIncAvatar');
 
       if (toast && payload.room) {
-        titleEl.textContent = `🎙️ ${payload.room.title}`;
+        titleEl.textContent = `${payload.room.mode === 'video' ? '📹' : '🎙️'} ${payload.room.title}`;
         subEl.textContent = `${payload.inviter.name} invited you to a Live room`;
         avatarEl.src = payload.inviter.avatar || 'icon-192.png';
 
