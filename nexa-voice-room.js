@@ -516,6 +516,7 @@
       if (!this.isVideoRoom()) return;
       const v = document.getElementById('nexaVrRemoteVideo_' + uid);
       if (v && v.srcObject !== stream) {
+        v.muted = true; // audio plays via the hidden <audio> element only
         v.srcObject = stream;
         const pr = v.play();
         if (pr && pr.catch) pr.catch(() => {});
@@ -558,7 +559,7 @@
              data-speaking="${p.isSpeaking ? 'true' : 'false'}"
              data-self="${p.__self ? 'true' : 'false'}">
           ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
-          <video class="nexa-vr-card-video" id="${vid}" autoplay playsinline ${p.__self ? 'muted' : ''}></video>
+          <video class="nexa-vr-card-video" id="${vid}" autoplay playsinline muted></video>
           <div class="nexa-vr-card-video-fallback" style="display:${camOff ? 'flex' : 'none'};">
             <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
           </div>
@@ -1187,7 +1188,14 @@
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        sampleRate: 48000
+        sampleRate: 48000,
+        // Chromium's hardware AEC/NS/AGC pipeline. Without these the bare
+        // flags above often do nothing and the room echoes (you hear yourself).
+        googEchoCancellation: true,
+        googEchoCancellation2: true,
+        googNoiseSuppression: true,
+        googAutoGainControl: true,
+        googHighpassFilter: true
       };
       const videoConstraints = {
         width: { ideal: 1280 },
