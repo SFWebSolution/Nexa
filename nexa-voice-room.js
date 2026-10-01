@@ -35,7 +35,7 @@
       // camera to every other peer) so it is capped at 6.
       this.roomMode = 'voice';
       this.isCameraOn = true;
-      this.remoteStreams = new Map(); // peerId -> MediaStream (for video re-attach)
+      this.remoteStreams = new Map(); // uid -> MediaStream (for video re-attach)
       this.maxParticipantsVoice = 10;
       this.maxParticipantsVideo = 6;
       this.maxParticipants = this.maxParticipantsVoice;
@@ -235,7 +235,6 @@
                 <div class="nexa-vr-avatar-ring"></div>
                 <img src="${user.avatar}" alt="Main Speaker" class="nexa-vr-main-avatar" id="nexaVrMainAvatar" onerror="this.src='icon-192.png'">
               </div>
-              <video id="nexaVrLocalVideo" class="nexa-vr-local-video" autoplay muted playsinline style="display:none;"></video>
               <div class="nexa-vr-speaker-name" id="nexaVrMainSpeakerName">${this.escapeHTML(user.name)}</div>
               <div class="nexa-vr-speaker-status" id="nexaVrMainSpeakerStatus">
                 <span>🎙️ Tap to speak</span>
@@ -493,7 +492,7 @@
         btn.classList.toggle('muted-mic', !this.isCameraOn);
         btn.innerHTML = this.isCameraOn ? '📹' : '🚫';
       }
-      const lv = document.getElementById('nexaVrLocalVideo');
+      const lv = document.getElementById('nexaVrSelfVideo');
       if (lv) lv.style.visibility = this.isCameraOn ? 'visible' : 'hidden';
       this.showToast(this.isCameraOn ? '📹 Camera on' : '🚫 Camera off');
 
@@ -503,9 +502,19 @@
     }
 
     playRemoteVideoStream(peerId, stream) {
-      this.remoteStreams.set(peerId, stream);
+      // Key by the stable UID, never the transient peerId: a peer can reconnect
+      // with a fallback id (unavailable-id), and a peerId-keyed tile would then
+      // never receive the stream (the "host can't see them" bug).
+      let uid = this.peerIdToUid.get(peerId);
+      if (!uid) {
+        for (const [id, pp] of this.participants) {
+          if (pp.peerId === peerId) { uid = id; break; }
+        }
+      }
+      if (!uid) uid = peerId;
+      this.remoteStreams.set(uid, stream);
       if (!this.isVideoRoom()) return;
-      const v = document.getElementById('nexaVrRemoteVideo_' + peerId);
+      const v = document.getElementById('nexaVrRemoteVideo_' + uid);
       if (v && v.srcObject !== stream) {
         v.srcObject = stream;
         const pr = v.play();
@@ -517,14 +526,69 @@
     // video elements are recreated, so their srcObject must be restored).
     reapplyRemoteVideos() {
       if (!this.isVideoRoom()) return;
-      this.remoteStreams.forEach((stream, peerId) => {
-        const v = document.getElementById('nexaVrRemoteVideo_' + peerId);
+      this.remoteStreams.forEach((stream, uid) => {
+        const v = document.getElementById('nexaVrRemoteVideo_' + uid);
         if (v && v.srcObject !== stream) {
           v.srcObject = stream;
           const pr = v.play();
           if (pr && pr.catch) pr.catch(() => {});
         }
       });
+    }
+
+    // Attach the local camera to the self tile (muted + mirrored). Called after
+    // every grid rebuild.
+    attachLocalSelfVideo() {
+      const v = document.getElementById('nexaVrSelfVideo');
+      if (!v) return;
+      if (this.localStream && v.srcObject !== this.localStream) {
+        v.srcObject = this.localStream;
+        const pr = v.play();
+        if (pr && pr.catch) pr.catch(() => {});
+      }
+      v.style.visibility = this.isCameraOn ? 'visible' : 'hidden';
+    }
+
+    // Uniform video tile. `p.__self` marks the local user's tile.
+    videoTileHtml(p) {
+      const camOff = p.isCameraOn === false;
+      const vid = p.__self ? 'nexaVrSelfVideo' : ('nexaVrRemoteVideo_' + p.id);
+      return `
+        <div class="nexa-vr-card nexa-vr-video-card" id="nexaVrCard_${p.id}"
+             data-speaking="${p.isSpeaking ? 'true' : 'false'}"
+             data-self="${p.__self ? 'true' : 'false'}">
+          ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
+          <video class="nexa-vr-card-video" id="${vid}" autoplay playsinline ${p.__self ? 'muted' : ''}></video>
+          <div class="nexa-vr-card-video-fallback" style="display:${camOff ? 'flex' : 'none'};">
+            <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
+          </div>
+          <div class="nexa-vr-card-name">${p.__self ? 'You' : this.escapeHTML(p.name)}</div>
+          ${p.isHost ? '<div class="nexa-vr-card-role">HOST</div>' : ''}
+          <div class="nexa-vr-card-mic-status ${p.isMuted ? 'muted' : ''}">
+            ${p.isMuted ? '🔇' : '🎙️'}
+          </div>
+        </div>`;
+    }
+
+    // Video layout: a uniform wall of tiles (self first), no avatar stage.
+    renderVideoUI() {
+      const grid = document.getElementById('nexaVrParticipantGrid');
+      if (!grid) return;
+      grid.classList.add('nexa-vr-grid-video');
+
+      const me = this.getCurrentUser();
+      const selfP = this.participants.get(me.id) || {
+        id: me.id, name: me.name, avatar: me.avatar,
+        isHost: this.activeRoom && this.activeRoom.isHost,
+        isMuted: this.isMuted, isSpeaking: false, handRaised: false,
+        isCameraOn: this.isCameraOn
+      };
+      const self = Object.assign({}, selfP, { __self: true, isCameraOn: this.isCameraOn });
+      const others = Array.from(this.participants.values()).filter(p => p.id !== me.id);
+
+      grid.innerHTML = [self].concat(others).map(p => this.videoTileHtml(p)).join('');
+      this.attachLocalSelfVideo();
+      this.reapplyRemoteVideos();
     }
 
     /* --------------------------------------------------------------------- */
@@ -733,8 +797,6 @@
         try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
       });
       this.remoteStreams.clear();
-      const localVid = document.getElementById('nexaVrLocalVideo');
-      if (localVid) { localVid.srcObject = null; localVid.style.display = 'none'; }
 
       // Stop audio tracks
       if (this.localStream) {
@@ -835,8 +897,6 @@
         try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {}
       });
       this.remoteStreams.clear();
-      const localVid2 = document.getElementById('nexaVrLocalVideo');
-      if (localVid2) { localVid2.srcObject = null; localVid2.style.display = 'none'; }
       if (this.localStream) { this.localStream.getTracks().forEach(t => t.stop()); this.localStream = null; }
       if (this.audioCtx && this.audioCtx.state !== 'closed') { this.audioCtx.close().catch(() => {}); this.audioCtx = null; }
       if (this.timerInterval) clearInterval(this.timerInterval);
@@ -1574,51 +1634,25 @@
       if (mainAvatar && hostParticipant.avatar) mainAvatar.src = hostParticipant.avatar;
       if (mainName) mainName.textContent = hostParticipant.name;
 
-      // Video rooms show the local self-view in the stage instead of the avatar.
-      const localVideo = document.getElementById('nexaVrLocalVideo');
-      const mainAvatarWrap = document.getElementById('nexaVrMainAvatarWrap');
       const camBtn = document.getElementById('nexaVrCamBtn');
       if (camBtn) camBtn.style.display = this.isVideoRoom() ? 'inline-flex' : 'none';
-      if (localVideo) {
-        if (this.isVideoRoom()) {
-          localVideo.style.display = 'block';
-          localVideo.style.visibility = this.isCameraOn ? 'visible' : 'hidden';
-          if (this.localStream && localVideo.srcObject !== this.localStream) {
-            localVideo.srcObject = this.localStream;
-          }
-        } else {
-          localVideo.style.display = 'none';
-          localVideo.srcObject = null;
-        }
-      }
-      if (mainAvatarWrap) mainAvatarWrap.style.display = this.isVideoRoom() ? 'none' : '';
 
       // Render Participant Cards
       const grid = document.getElementById('nexaVrParticipantGrid');
       const miniAvatars = document.getElementById('nexaVrMiniAvatars');
+      const stage = document.getElementById('nexaVrStage');
+      const mainAvatarWrap = document.getElementById('nexaVrMainAvatarWrap');
 
-      if (grid) {
-        if (this.isVideoRoom()) {
-          const me = this.getCurrentUser();
-          const others = Array.from(this.participants.values()).filter(p => p.id !== me.id);
-          grid.innerHTML = others.length ? others.map(p => {
-            const pid = p.peerId || this.peerIdFor(p.id);
-            return `
-            <div class="nexa-vr-card nexa-vr-video-card" id="nexaVrCard_${p.id}" data-speaking="${p.isSpeaking ? 'true' : 'false'}">
-              ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
-              <video class="nexa-vr-card-video" id="nexaVrRemoteVideo_${pid}" autoplay playsinline></video>
-              <div class="nexa-vr-card-video-fallback" style="display:${p.isCameraOn === false ? 'flex' : 'none'};">
-                <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
-              </div>
-              <div class="nexa-vr-card-name">${this.escapeHTML(p.name)}</div>
-              ${p.isHost ? '<div class="nexa-vr-card-role">HOST</div>' : ''}
-              <div class="nexa-vr-card-mic-status ${p.isMuted ? 'muted' : ''}">
-                ${p.isMuted ? '🔇' : '🎙️'}
-              </div>
-            </div>`;
-          }).join('') : '<div class="nexa-vr-video-empty">Waiting for others to join…</div>';
-          this.reapplyRemoteVideos();
-        } else {
+      if (this.isVideoRoom()) {
+        // Video rooms use the grid as a uniform tile wall (self included), so
+        // the avatar stage is hidden and the layout stays clean on phones.
+        if (stage) stage.style.display = 'none';
+        this.renderVideoUI();
+      } else {
+        if (stage) stage.style.display = '';
+        if (mainAvatarWrap) mainAvatarWrap.style.display = '';
+        if (grid) {
+          grid.classList.remove('nexa-vr-grid-video');
           grid.innerHTML = Array.from(this.participants.values()).map(p => `
             <div class="nexa-vr-card" id="nexaVrCard_${p.id}" data-speaking="${p.isSpeaking ? 'true' : 'false'}">
               ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
@@ -1761,6 +1795,10 @@
                 isCameraOn: p.isCameraOn !== false
               });
               this.peerIdToUid.set(peerId, p.id);
+              if (peerId !== p.id && this.remoteStreams.has(peerId)) {
+                this.remoteStreams.set(p.id, this.remoteStreams.get(peerId));
+              }
+              this.reapplyRemoteVideos();
               if (isNew) {
                 this.updateUI();
                 // Build the mesh: only the lower-uid initiates the call
@@ -1780,6 +1818,7 @@
                   this.peerIdToUid.delete(prev.peerId);
                   this.pendingAudioPlays.delete(prev.peerId);
                   this.retriedPeers.delete(prev.peerId);
+                  this.remoteStreams.delete(p.id);
                 }
                 if (p.id !== this.getCurrentUser().id && this.peerOpen && this.shouldInitiateCallTo(p.id)) {
                   this.callPeer(peerId, p.id);

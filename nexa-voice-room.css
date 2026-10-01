@@ -1099,8 +1099,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .nexa-vr-ctrl-btn:active {
   transform: scale(0.92) !important;
-}
-/* ---------- Live rooms: voice/video mode, video tiles, mode chooser ---------- */
+}
+/* ---------- Live rooms: voice/video mode, video tile wall, mode chooser ---------- */
 
 .nexa-vr-mode-badge {
   display: inline-flex;
@@ -1170,25 +1170,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   opacity: 0.7;
 }
 
-/* Local self-view in the stage */
-.nexa-vr-local-video {
-  width: 100%;
-  max-width: 420px;
-  aspect-ratio: 16 / 9;
-  border-radius: 16px;
-  object-fit: cover;
-  background: #000;
-  transform: scaleX(-1);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+/* ---------- Video layout: uniform tile wall (self included) ---------- */
+
+/* In video mode the participant grid is the whole stage. Use one column on
+   phones (big tiles) and 2-3 columns on wider screens. */
+.nexa-vr-grid-video {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
 }
 
-/* Video participant tiles */
 .nexa-vr-video-card {
   position: relative;
   overflow: hidden;
   padding: 0;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 4;
   background: #0b0f14;
+  border-radius: 16px;
 }
 
 .nexa-vr-card-video {
@@ -1198,6 +1195,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   height: 100%;
   object-fit: cover;
   background: #0b0f14;
+}
+
+/* Your own camera is mirrored like a selfie. */
+.nexa-vr-video-card[data-self="true"] .nexa-vr-card-video {
+  transform: scaleX(-1);
 }
 
 .nexa-vr-card-video-fallback {
@@ -1219,12 +1221,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   left: 8px;
   bottom: 8px;
   z-index: 2;
+  max-width: 65%;
   margin: 0;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   font-size: 12px;
   color: #fff;
+  text-align: left;
 }
 
 .nexa-vr-video-card .nexa-vr-card-role {
@@ -1233,6 +1237,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   left: 8px;
   z-index: 2;
   margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(37, 211, 102, 0.9);
+  color: #04120a;
 }
 
 .nexa-vr-video-card .nexa-vr-card-mic-status {
@@ -1241,6 +1249,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   bottom: 8px;
   z-index: 2;
   margin: 0;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+}
+
+.nexa-vr-video-card .nexa-vr-card-hand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  margin: 0;
+}
+
+.nexa-vr-video-card[data-speaking="true"] {
+  box-shadow: 0 0 0 3px #25d366, 0 0 22px rgba(37, 211, 102, 0.5);
 }
 
 .nexa-vr-video-empty {
@@ -1251,14 +1274,49 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   opacity: 0.65;
 }
 
-.nexa-vr-video-card[data-speaking="true"] {
-  box-shadow: 0 0 0 3px #25d366, 0 0 22px rgba(37, 211, 102, 0.5);
+/* Phones: keep the header/controls compact so the tiles get the room. */
+@media (max-width: 600px) {
+  .nexa-vr-grid-video {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .nexa-vr-video-card {
+    aspect-ratio: 4 / 5;
+  }
+
+  /* More tiles than fit? scroll the grid instead of shrinking everything. */
+  .nexa-vr-grid-video {
+    max-height: 58vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nexa-vr-footer {
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .nexa-vr-ctrl-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 17px;
+  }
+
+  .nexa-vr-body {
+    padding: 12px 14px;
+    gap: 12px;
+  }
 }
 
-.nexa-vr-video-card .nexa-vr-card-hand {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
-  margin: 0;
+/* Two side-by-side tiles on short-but-wide phones. */
+@media (max-width: 600px) and (min-width: 480px) and (orientation: landscape) {
+  .nexa-vr-grid-video {
+    grid-template-columns: repeat(2, 1fr);
+    max-height: 62vh;
+  }
+
+  .nexa-vr-video-card {
+    aspect-ratio: 16 / 10;
+  }
 }
