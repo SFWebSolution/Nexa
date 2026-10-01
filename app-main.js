@@ -9882,12 +9882,13 @@ function renderCreateGroupContacts(filterText = '') {
   const picker = document.getElementById('groupContactsPicker');
   if (!picker) return;
   const q = (filterText || '').toLowerCase().trim();
-  let contacts = (allUsersData || []).filter(u => u.uid !== currentUser?.uid);
+  // Only ACCEPTED connections can be added to a group you create.
+  let contacts = (allUsersData || []).filter(u => u.uid !== currentUser?.uid && isConnectedTo(u.uid));
   if (q) {
     contacts = contacts.filter(u => (u.displayName || u.name || '').toLowerCase().includes(q));
   }
   if (!contacts.length) {
-    picker.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px;">${q ? `No contacts match "${escapeHtml(q)}"` : 'No contacts found yet.'}</div>`;
+    picker.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px;">${q ? `No connections match "${escapeHtml(q)}"` : 'Connect with people first — only your connections can join a group.'}</div>`;
     return;
   }
   picker.innerHTML = contacts.map(u => {
@@ -10807,14 +10808,15 @@ function renderAddMemberContacts(filterText = '') {
   if (!picker) return;
 
   const currentUids = new Set(selectedGroup.memberUids || []);
-  let availableContacts = (allUsersData || []).filter(u => !currentUids.has(u.uid) && u.uid !== currentUser?.uid);
+  // Only ACCEPTED connections can be added to an existing group.
+  let availableContacts = (allUsersData || []).filter(u => !currentUids.has(u.uid) && u.uid !== currentUser?.uid && isConnectedTo(u.uid));
   const q = (filterText || '').toLowerCase().trim();
   if (q) {
     availableContacts = availableContacts.filter(u => (u.displayName || u.name || '').toLowerCase().includes(q));
   }
 
   if (!availableContacts.length) {
-    picker.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">${q ? `No contacts match "${escapeHtml(q)}"` : 'All your contacts are already in this group!'}</div>`;
+    picker.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">${q ? `No connections match "${escapeHtml(q)}"` : 'All your connections are already in this group!'}</div>`;
     return;
   }
 
@@ -11389,6 +11391,7 @@ async function resolveGroupFromInvite(groupId, groupName) {
 // Send a group invite as a chat message to a 1:1 contact
 async function sendGroupInviteToChat(contactUid) {
   if (!selectedGroup || !contactUid) return;
+  if (!isConnectedTo(contactUid)) { showNotifToast('You can only invite your connections', 'error'); return; }
   const me = document.getElementById('myName')?.textContent || currentUser.displayName || 'Nexa User';
   const inv = {
     kind: 'group',
@@ -11414,6 +11417,7 @@ async function sendGroupInviteToChat(contactUid) {
 // Send a channel invite as a chat message to a 1:1 contact
 async function sendChannelInviteToChat(contactUid) {
   if (!selectedChannel || !contactUid) return;
+  if (!isConnectedTo(contactUid)) { showNotifToast('You can only invite your connections', 'error'); return; }
   const me = document.getElementById('myName')?.textContent || currentUser.displayName || 'Nexa User';
   const inv = {
     kind: 'channel',
@@ -13281,9 +13285,11 @@ function renderForwardTargets(filterText) {
 
   let targets = [];
 
-  // Add contacts
+  // Add contacts — ACCEPTED connections only. Strangers you have not
+  // connected with must never appear as a forward/invite target.
   (allUsersData || []).forEach(u => {
     if (u.uid === currentUser.uid) return;
+    if (!isConnectedTo(u.uid)) return;
     const name = u.displayName || u.name || 'User';
     if (q && !name.toLowerCase().includes(q)) return;
     targets.push({
