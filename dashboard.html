@@ -134,7 +134,7 @@
       <div class="sidebar-tab-switcher">
         <span class="nx-brand-mobile">Nexa<span class="nx-brand-dot"></span></span>
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
-        <button class="s-tab-btn start-voice-chat-btn" title="Start Voice Chat" style="color: #25d366;"><i data-lucide="radio"></i></button>
+        <button class="s-tab-btn start-voice-chat-btn" title="Start a Live room" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabConnect" onclick="switchTab('connect')" title="Connect"><i data-lucide="user-plus"></i><span class="connect-tab-dot" id="connectTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
@@ -147,9 +147,9 @@
       <!-- 1. CHATS TAB -->
       <div class="tab-pane active" id="tabPaneChats">
         <div class="voice-chat-start-strip" style="padding: 10px 14px 2px 14px; display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-size: 12px; font-weight: 700; color: var(--text-3, #8b949e); text-transform: uppercase; letter-spacing: 0.5px;">Voice Rooms</span>
+          <span style="font-size: 12px; font-weight: 700; color: var(--text-3, #8b949e); text-transform: uppercase; letter-spacing: 0.5px;">Live Rooms</span>
           <button class="start-voice-chat-btn" style="background: rgba(37, 211, 102, 0.12); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.4); font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; transition: all 0.2s ease;">
-            <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start Voice Chat
+            <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start a Live room
           </button>
         </div>
         <div class="active-now-bar" id="activeNowBar" aria-label="Active now">
@@ -502,7 +502,7 @@
             </div>
             <div class="settings-group">
               <div class="settings-group-title"><i data-lucide="info" style="width: 15px; height: 15px;"></i> Good to know</div>
-              <div class="settings-note">Nexa never shows your password to anyone. Your messages are delivered over an encrypted connection. Only people you invite can join your Voice Chats.</div>
+              <div class="settings-note">Nexa never shows your password to anyone. Your messages are delivered over an encrypted connection. Only your connections can join your Live rooms.</div>
             </div>
           </div>
         </div>
@@ -739,7 +739,7 @@
                 <span class="settings-row-icon"><i data-lucide="message-square" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
                   <span class="settings-row-title">Messages, calls &amp; stories</span>
-                  <span class="settings-row-sub">Private chat, groups, channels and Voice Rooms</span>
+                  <span class="settings-row-sub">Private chat, groups, channels and Live rooms</span>
                 </span>
               </div>
               <div class="settings-row settings-row-static">
@@ -2149,7 +2149,7 @@
   </div>
 </div>
 
-<!-- Nexa WhatsApp Multi-User Voice Chat System -->
+<!-- Nexa Live Rooms (multi-user audio) -->
 <script src="nexa-voice-room.js"></script>
 </body>
 </html>
