@@ -360,6 +360,14 @@
                 </span>
                 <i data-lucide="chevron-right" class="settings-row-chev"></i>
               </button>
+              <button class="settings-row" onclick="openSettingsSubPage('language')">
+                <span class="settings-row-icon"><i data-lucide="languages" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Language</span>
+                  <span class="settings-row-sub">Translate received messages</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
             </div>
 
             <div class="settings-group">
@@ -649,6 +657,48 @@
                   <span class="settings-row-sub">Off keeps Enter as a new line</span>
                 </span>
                 <div class="notif-toggle" id="enterToSendToggle" onclick="toggleEnterToSend()"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: Language ─────────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageLanguage" data-subpage="language">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">Language</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="languages" style="width: 15px; height: 15px;"></i> Translate messages to</div>
+              <div class="lang-picker" id="langPicker">
+                <div class="lang-option" data-lang="en" onclick="selectLanguage('en')">
+                  <span class="lang-option-flag">🇬🇧</span>
+                  <span class="lang-option-name">English<span class="lang-option-sub">Everything you receive shows in English</span></span>
+                  <span class="lang-option-check">✓</span>
+                </div>
+                <div class="lang-option" data-lang="fr" onclick="selectLanguage('fr')">
+                  <span class="lang-option-flag">🇫🇷</span>
+                  <span class="lang-option-name">Français<span class="lang-option-sub">Tout ce que vous recevez s'affiche en français</span></span>
+                  <span class="lang-option-check">✓</span>
+                </div>
+              </div>
+              <div class="settings-note" style="margin-top:12px;">Messages you receive are shown in this language. What your friends receive is translated by <em>their</em> language setting — so you always send in your own words.</div>
+            </div>
+            <div class="settings-group" style="margin-top:14px;">
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Auto-translate incoming messages</label>
+                  <div class="notif-item-desc">Translate received messages automatically</div>
+                </div>
+                <div class="notif-toggle" id="autoTranslateToggle" onclick="toggleAutoTranslate()"></div>
+              </div>
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Show original text</label>
+                  <div class="notif-item-desc">Show the untranslated message under the translation</div>
+                </div>
+                <div class="notif-toggle" id="showOriginalToggle" onclick="toggleShowOriginalPref()"></div>
               </div>
             </div>
           </div>
