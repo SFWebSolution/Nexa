@@ -63,10 +63,10 @@ function requireAdminSecret(req, res, next) {
 }
 
 // ── POST /api/admin/edit-user ───────────────────────────────────────────────
-// Body: { uid, displayName, email? }
+// Body: { uid, displayName, email?, phone? }
 app.post("/api/admin/edit-user", requireAdminSecret, async (req, res) => {
   try {
-    const { uid, displayName, email } = req.body || {};
+    const { uid, displayName, email, phone } = req.body || {};
     if (!uid || typeof uid !== "string") {
       return res.status(400).json({ success: false, error: "uid required" });
     }
@@ -82,6 +82,10 @@ app.post("/api/admin/edit-user", requireAdminSecret, async (req, res) => {
     };
     if (email && typeof email === "string" && email.includes("@")) {
       update.email = email.trim().slice(0, 200);
+    }
+    if (phone && typeof phone === "string" && phone.trim()) {
+      // Keep the same normalized form signup.html stores (digits + leading +).
+      update.phone = phone.trim().replace(/[^\d+]/g, "").slice(0, 20);
     }
     await db.collection("users").doc(uid).update(update);
     res.json({ success: true });
