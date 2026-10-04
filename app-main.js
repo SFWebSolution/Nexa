@@ -2324,6 +2324,7 @@ function openSettingsSubPage(name) {
   }
   if (name === 'storage') renderStorageUsage();
   if (name === 'about') renderAboutInfo();
+  if (name === 'language') updateLanguageUI();
 
   const scroller = page.querySelector('.settings-subpage-body');
   if (scroller) scroller.scrollTop = 0;
@@ -5004,6 +5005,7 @@ function buildMessage(id, msg, fromMe) {
       inner += buildPollHTML(id, msg);
     } else if (msg.text) {
       inner += `<div class="msg-text">${linkify(msg.text)}</div>`;
+      inner += maybeTranslationStrip(id, msg.text, fromMe);
     }
 
     if (msg.image) {
@@ -10624,6 +10626,7 @@ function buildGroupMessage(id, msg, fromMe) {
   if (msg.text && msg.type !== 'poll') {
     const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text)) : linkify(msg.text);
     inner += `<div class="msg-text">${textHtml}</div>`;
+    inner += maybeTranslationStrip(id, msg.text, fromMe);
   }
 
   // 4. Image
@@ -12047,6 +12050,7 @@ function renderChannelPostsList(posts) {
         ${post.forwarded ? `<div class="forwarded-label" style="margin-bottom: 6px;"><i data-lucide="forward" style="width: 12px; height: 12px;"></i> Forwarded${post.forwardedFrom ? ` from ${escapeHtml(post.forwardedFrom)}` : ''}</div>` : ''}
         ${mediaHtml}
         <div class="channel-post-text">${formatMessageText(post.text || '')}</div>
+        ${maybeTranslationStrip(post.id, post.text || '', post.authorUid === currentUser.uid)}
         <div class="channel-post-footer">
           ${isChannelAdmin ? `
           <div class="channel-post-views">
@@ -12104,6 +12108,17 @@ function renderChannelPostsList(posts) {
       const slot = wrap.querySelector('[data-vn-for="' + post.id + '"]');
       if (slot) {
         slot.appendChild(renderVoiceNotePlayer(post.id, post.audio, post.duration || 0, false));
+      }
+    }
+
+    // Stamp the detected source/target so the async patch can name them.
+    const tStrip = wrap.querySelector('[data-translation-for="' + post.id + '"]');
+    if (tStrip) {
+      const tSrc = detectLang(post.text || '');
+      tStrip.setAttribute('data-source-lang', tSrc || '');
+      tStrip.setAttribute('data-target-lang', getUserLang());
+      if (tStrip.getAttribute('data-translated') === '0' && getAutoTranslate()) {
+        requestTranslation(post.id, post.text || '', getUserLang(), tSrc);
       }
     }
   });
@@ -14136,6 +14151,7 @@ showCtxMenu = function(e, id, msg) {
     <div class="ctx-item" onclick="openForwardModal('${id}')"><i data-lucide="forward" style="width: 15px; height: 15px;"></i> Forward</div>
     <div class="ctx-item" onclick="toggleStarMessage('${id}')"><i data-lucide="${starred ? 'star-off' : 'star'}" style="width: 15px; height: 15px;"></i> ${starred ? 'Unstar' : 'Star'}</div>
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy" style="width: 15px; height: 15px;"></i> Copy</div>` : ''}
+    ${msg.text && !fromMe ? `<div class="ctx-item" onclick="translateMsg('${id}')"><i data-lucide="languages" style="width: 15px; height: 15px;"></i> Translate</div>` : ''}
     ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin" style="width: 15px; height: 15px;"></i> Pin</div>` : ''}
     ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
     ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Delete</div>` : ''}
@@ -14287,4 +14303,390 @@ function handleHeaderInfoClick() {
   } else if (selectedUser) {
     if (typeof openChatInfo === 'function') openChatInfo();
   }
+}
+
+/* =========================================================================
+   MESSAGE TRANSLATION (translate-on-receive)
+   -------------------------------------------------------------------------
+   Each device translates whatever it DISPLAYS into its owner's chosen
+   language, so "every message I receive shows in my language and vice versa"
+   needs no knowledge of anyone else's language — my friend picking English
+   is what makes MY messages appear in English on their screen. Works
+   identically for 1:1, groups and channels.
+
+   Engine: free MyMemory API, with Google's public gtx endpoint as fallback.
+   Both live behind translateText(), so swapping in a paid Google/DeepL
+   proxy later is a one-function change. No API key, no backend deploy.
+
+   Every result is cached (memory + localStorage) keyed by text+target, so a
+   message is translated at most once per device. Nothing is ever written to
+   Firestore.
+   ========================================================================= */
+const NEXA_LANGS = [
+  { code: 'en', label: 'English', name: 'English' },
+  { code: 'fr', label: 'Français', name: 'French' }
+];
+const NEXA_LANG_DEFAULT = 'en';
+const NEXA_TRANSLATE_CACHE_MAX = 400;
+const _translateCache = new Map();   // `${from}|${to}|${text}` -> translated string
+const _translateInFlight = new Map();   // cache key -> in-flight Promise (dedupe)
+const _translateQueue = [];             // pending jobs while the limit is full
+const TRANSLATE_MAX_CONCURRENCY = 3;
+let _translateActive = 0;
+let _translateCacheDirty = false;
+let _translateCacheSaveTimer = null;
+
+function langLabel(code) {
+  const l = NEXA_LANGS.find(x => x.code === code);
+  return l ? l.label : String(code || '').toUpperCase();
+}
+function langEnglishName(code) {
+  const l = NEXA_LANGS.find(x => x.code === code);
+  return l ? l.name : String(code || '').toUpperCase();
+}
+
+// ── Settings (device-local, like theme/wallpaper) ──────────────────────────
+function getUserLang() {
+  try {
+    const v = localStorage.getItem('nexa_translate_lang');
+    return NEXA_LANGS.some(l => l.code === v) ? v : NEXA_LANG_DEFAULT;
+  } catch (e) { return NEXA_LANG_DEFAULT; }
+}
+function getAutoTranslate() {
+  try { return localStorage.getItem('nexa_translate_auto') !== '0'; } catch (e) { return true; }
+}
+function getShowOriginal() {
+  try { return localStorage.getItem('nexa_translate_show_original') === '1'; } catch (e) { return false; }
+}
+function setUserLang(code) {
+  if (!NEXA_LANGS.some(l => l.code === code)) return;
+  try { localStorage.setItem('nexa_translate_lang', code); } catch (e) {}
+  renderMessageList();
+  if (typeof renderGroupMessageList === 'function' && currentGroupMessages) renderGroupMessageList(currentGroupMessages);
+  if (typeof renderChannelPostsList === 'function' && window._nexaChannelPostsCache) renderChannelPostsList(window._nexaChannelPostsCache);
+  if (typeof updateLanguageUI === 'function') updateLanguageUI();
+}
+function setAutoTranslate(on) {
+  try { localStorage.setItem('nexa_translate_auto', on ? '1' : '0'); } catch (e) {}
+  if (typeof updateLanguageUI === 'function') updateLanguageUI();
+  renderMessageList();
+}
+function setShowOriginal(on) {
+  try { localStorage.setItem('nexa_translate_show_original', on ? '1' : '0'); } catch (e) {}
+  if (typeof updateLanguageUI === 'function') updateLanguageUI();
+  renderMessageList();
+}
+
+// ── Cache ──────────────────────────────────────────────────────────────────
+function loadTranslateCache() {
+  if (_translateCache.size) return;
+  try {
+    const raw = JSON.parse(localStorage.getItem('nexa_translate_cache') || '{}');
+    Object.keys(raw).forEach(k => _translateCache.set(k, raw[k]));
+  } catch (e) {}
+}
+function saveTranslateCache() {
+  if (!_translateCacheDirty) return;
+  _translateCacheDirty = false;
+  try {
+    const obj = {};
+    let n = 0;
+    // Newest wins — Map preserves insertion order, so walk backwards.
+    const entries = Array.from(_translateCache.entries());
+    for (let i = entries.length - 1; i >= 0 && n < NEXA_TRANSLATE_CACHE_MAX; i--, n++) {
+      obj[entries[i][0]] = entries[i][1];
+    }
+    localStorage.setItem('nexa_translate_cache', JSON.stringify(obj));
+  } catch (e) {}
+}
+function putTranslateCache(key, val) {
+  _translateCache.set(key, val);
+  _translateCacheDirty = true;
+  clearTimeout(_translateCacheSaveTimer);
+  _translateCacheSaveTimer = setTimeout(saveTranslateCache, 1500);
+}
+
+// ── Detection + lookup ─────────────────────────────────────────────────────
+function detectLang(text) {
+  if (!text || typeof text !== 'string') return '';
+  const t = text.trim();
+  if (t.length < 2) return '';
+  if (/[\u0600-\u06FF]/.test(t)) return 'ar';
+  if (/[\u0400-\u04FF]/.test(t)) return 'ru';
+  if (/[\u3040-\u30ff]/.test(t)) return 'ja';
+  if (/[\u4e00-\u9fff]/.test(t)) return 'zh';
+  if (/[\uac00-\ud7af]/.test(t)) return 'ko';
+  if (/[\u0900-\u097F]/.test(t)) return 'hi';
+  if (/[\u0590-\u05FF]/.test(t)) return 'he';
+  // Latin: score common stopwords so English/French (and close cousins) are
+  // told apart without an API round-trip.
+  const w = t.toLowerCase().split(/[^a-zà-ÿ]+/).filter(Boolean);
+  if (!w.length) return '';
+  const en = new Set(['the', 'and', 'you', 'are', 'is', 'to', 'of', 'in', 'it', 'that', 'this', 'for', 'on', 'with', 'have', 'what', 'how', 'not', 'but', 'my', 'your', 'me', 'we', 'they', 'she', 'he', 'at', 'be', 'was', 'were', 'will', 'would', 'can', 'do', 'does', 'from', 'about', 'so', 'if', 'just', 'get', 'got', 'there', 'here', 'when', 'where', 'why', 'who', 'all', 'like', 'want', 'need', 'know', 'good', 'well', 'very', 'too', 'also', 'than', 'then', 'them', 'his', 'her', 'out', 'up', 'down', 'over', 'some', 'any', 'no', 'yes', 'okay', 'ok']);
+  const fr = new Set(['le', 'la', 'les', 'un', 'une', 'des', 'et', 'est', 'sont', 'tu', 'vous', 'je', 'nous', 'il', 'elle', 'ils', 'elles', 'que', 'qui', 'quoi', 'pour', 'avec', 'dans', 'sur', 'pas', 'ne', 'plus', 'mais', 'ou', 'où', 'ce', 'cette', 'ces', 'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses', 'au', 'aux', 'du', 'de', 'à', 'comment', 'merci', 'bonjour', 'salut', 'bien', 'très', 'tout', 'tous', 'être', 'avoir', 'fait', 'faire', 'dit', 'comme', 'aussi', 'encore', 'déjà', 'oui', 'non', 'aujourd', 'hui', 'demain', 'hier', 'nous', 'vous', 'leur', 'votre', 'notre']);
+  let se = 0, sf = 0;
+  for (const x of w) { if (en.has(x)) se++; if (fr.has(x)) sf++; }
+  if (/[àâäéèêëîïôöùûüÿçœ]/i.test(t) && sf >= se) return 'fr';
+  if (se === 0 && sf === 0) return '';  // too ambiguous to guess — treat as unknown
+  return sf > se ? 'fr' : 'en';
+}
+
+// Skip translating things that aren't prose (URLs, numbers, emoji, code).
+function isTranslatableText(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.trim();
+  if (t.length < 2) return false;
+  if (/^(https?:\/\/|www\.)\S+$/i.test(t)) return false;
+  if (!/[\p{L}]/u.test(t)) return false;           // no letters at all
+  if (!/\s/.test(t) && t.length < 4) return false; // single short token
+  return true;
+}
+
+// ── Engine ─────────────────────────────────────────────────────────────────
+// Rate-limit + dedupe so a screenful of messages never hammers the API.
+function _enqueueTranslation(job) {
+  return new Promise((resolve, reject) => {
+    _translateQueue.push({ job, resolve, reject });
+    _pumpTranslateQueue();
+  });
+}
+function _pumpTranslateQueue() {
+  while (_translateActive < TRANSLATE_MAX_CONCURRENCY && _translateQueue.length) {
+    const item = _translateQueue.shift();
+    _translateActive++;
+    Promise.resolve()
+      .then(item.job)
+      .then(item.resolve, item.reject)
+      .finally(() => { _translateActive--; _pumpTranslateQueue(); });
+  }
+}
+
+function translateText(text, targetLang, sourceLang) {
+  const src = (text || '').trim();
+  const from = sourceLang || 'auto';
+  const to = targetLang || getUserLang();
+  if (!src) return Promise.resolve('');
+  loadTranslateCache();
+  const key = from + '|' + to + '|' + src;
+  if (_translateCache.has(key)) return Promise.resolve(_translateCache.get(key));
+  if (_translateInFlight.has(key)) return _translateInFlight.get(key);
+
+  const job = () => _fetchTranslation(src, to, from, key);
+  const p = _enqueueTranslation(job).finally(() => _translateInFlight.delete(key));
+  _translateInFlight.set(key, p);
+  return p;
+}
+
+function _fetchTranslation(src, to, from, key) {
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(src.slice(0, 480))
+    + '&langpair=' + encodeURIComponent(from) + '|' + encodeURIComponent(to);
+  return fetch(url)
+    .then(r => r.json())
+    .then(j => {
+      let out = j && j.responseData && j.responseData.translatedText;
+      if (!out || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(out)) {
+        return translateViaGtx(src, to, from);
+      }
+      out = decodeHtmlEntities(out);
+      if (!out || out.trim().toLowerCase() === src.toLowerCase()) {
+        return translateViaGtx(src, to, from);
+      }
+      putTranslateCache(key, out);
+      return out;
+    })
+    .catch(() => translateViaGtx(src, to, from));
+}
+
+function translateViaGtx(text, to, from) {
+  const sl = (from && from !== 'auto') ? from : 'auto';
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' + sl
+    + '&tl=' + to + '&dt=t&q=' + encodeURIComponent(text.slice(0, 1000));
+  return fetch(url)
+    .then(r => r.json())
+    .then(j => {
+      if (Array.isArray(j) && Array.isArray(j[0])) {
+        const out = j[0].map(seg => (seg && seg[0]) || '').join('');
+        if (out && out.trim().toLowerCase() !== text.trim().toLowerCase()) {
+          const key = (from || 'auto') + '|' + to + '|' + text.trim();
+          putTranslateCache(key, out);
+          return out;
+        }
+      }
+      return '';
+    })
+    .catch(() => '');
+}
+
+function decodeHtmlEntities(s) {
+  if (!s || s.indexOf('&') === -1) return s;
+  return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, ent) => {
+    if (ent.charAt(0) === '#') {
+      const code = ent.charAt(1).toLowerCase() === 'x'
+        ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+      return isNaN(code) ? m : String.fromCharCode(code);
+    }
+    const map = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+    return map[ent.toLowerCase()] || m;
+  });
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function translationCacheKey(text, targetLang, sourceLang) {
+  return (sourceLang || 'auto') + '|' + (targetLang || getUserLang()) + '|' + String(text || '').trim();
+}
+
+// Returns the cached translation for a message, or null when it isn't ready.
+function getCachedTranslation(text, targetLang, sourceLang) {
+  loadTranslateCache();
+  return _translateCache.get(translationCacheKey(text, targetLang, sourceLang)) || null;
+}
+
+function buildTranslationStripHtml(msgId, text, targetLang, sourceLang, translated, origText) {
+  const fromName = sourceLang ? langEnglishName(sourceLang) : 'another language';
+  const toName = langEnglishName(targetLang);
+  const arrow = '🌐';
+  const head = translated
+    ? arrow + ' Translated from ' + escapeHtml(fromName) + ' to ' + escapeHtml(toName)
+    : arrow + ' Translating from ' + escapeHtml(fromName) + '…';
+  const body = translated
+    ? '<div class="msg-translation-text">' + linkify(translated) + '</div>'
+    : '<div class="msg-translation-text msg-translation-pending">Translating…</div>';
+  const showOrig = translated
+    ? '<button class="msg-translation-btn" onclick="event.stopPropagation();toggleShowOriginal(\'' + msgId + '\')">' + (getShowOriginal() ? 'Hide original' : 'Show original') + '</button>'
+    : '';
+  const originalBlock = (translated && getShowOriginal())
+    ? '<div class="msg-translation-original">' + linkify(origText) + '</div>'
+    : '';
+  return '<div class="msg-translation" data-translation-for="' + msgId + '" data-translated="' + (translated ? '1' : '0') + '">'
+    + '<div class="msg-translation-head">' + head + showOrig + '</div>'
+    + body + originalBlock
+    + '</div>';
+}
+
+// Fire a translation for a message and patch the strip in place when it
+// lands, so the bubble never has to be re-rendered.
+function requestTranslation(msgId, text, targetLang, sourceLang) {
+  const cached = getCachedTranslation(text, targetLang, sourceLang);
+  if (cached) return;
+  translateText(text, targetLang, sourceLang === 'auto' ? '' : sourceLang).then(out => {
+    if (!out) { removeTranslationStrip(msgId); return; }
+    patchTranslationStrip(msgId, out);
+  });
+}
+
+function removeTranslationStrip(msgId) {
+  document.querySelectorAll('[data-translation-for="' + msgId + '"]').forEach(el => el.remove());
+}
+
+function patchTranslationStrip(msgId, translated) {
+  document.querySelectorAll('[data-translation-for="' + msgId + '"]').forEach(strip => {
+    strip.setAttribute('data-translated', '1');
+    const head = strip.querySelector('.msg-translation-head');
+    const src = strip.getAttribute('data-source-lang') || '';
+    const to = strip.getAttribute('data-target-lang') || getUserLang();
+    if (head) {
+      head.innerHTML = '🌐 Translated from ' + escapeHtml(src ? langEnglishName(src) : 'another language')
+        + ' to ' + escapeHtml(langEnglishName(to))
+        + '<button class="msg-translation-btn" onclick="event.stopPropagation();toggleShowOriginal(\'' + msgId + '\')">'
+        + (getShowOriginal() ? 'Hide original' : 'Show original') + '</button>';
+    }
+    const body = strip.querySelector('.msg-translation-text');
+    if (body) {
+      body.classList.remove('msg-translation-pending');
+      body.innerHTML = linkify(translated);
+    }
+  });
+}
+
+function toggleShowOriginal(msgId) {
+  setShowOriginal(!getShowOriginal());
+}
+
+// Decides whether a given message should get an inline translation strip,
+// and returns its markup (or ''). `text` is the raw message text.
+function maybeTranslationStrip(msgId, text, fromMe) {
+  if (fromMe) return '';                       // never translate your own words
+  if (!isTranslatableText(text)) return '';
+  const target = getUserLang();
+  const src = detectLang(text);
+  if (src && src === target) return '';        // already my language
+  if (!src && !/\s/.test(text.trim())) return ''; // unknown single token = a name
+  if (!src && !getAutoTranslate()) return '';  // can't tell, and auto is off
+  const cached = getCachedTranslation(text, target, src);
+  const auto = getAutoTranslate();
+  if (!cached && !auto) return '';             // unknown language, auto off → skip
+  const html = buildTranslationStripHtml(msgId, text, target, src, cached, text);
+  if (!cached && auto) requestTranslation(msgId, text, target, src);
+  return html;
+}
+
+// ── Manual "Translate" action from the long-press menu ─────────────────────
+function translateMsg(id) {
+  closeCtxMenu();
+  const text = getMsgTextById(id);
+  if (!text) { showNotifToast('Nothing to translate', 'info'); return; }
+  const target = getUserLang();
+  const src = detectLang(text);
+  if (src && src === target) { showNotifToast('Already in ' + langEnglishName(target), 'info'); return; }
+  translateText(text, target, src === 'auto' ? '' : src).then(out => {
+    if (!out) { showNotifToast('Translation unavailable right now', 'error'); return; }
+    showNotifToast('Translated to ' + langEnglishName(target), 'success');
+    const container = document.querySelector('[data-msg-id="' + id + '"]');
+    if (container) {
+      let strip = container.querySelector('[data-translation-for="' + id + '"]');
+      if (!strip) {
+        strip = document.createElement('div');
+        strip.innerHTML = buildTranslationStripHtml(id, text, target, src, out, text);
+        strip = strip.firstChild;
+        strip.setAttribute('data-source-lang', src || '');
+        strip.setAttribute('data-target-lang', target);
+        const bubble = container.querySelector('.bubble');
+        if (bubble) bubble.appendChild(strip);
+      } else {
+        patchTranslationStrip(id, out);
+      }
+    }
+  });
+}
+
+function getMsgTextById(id) {
+  if (typeof currentChatMode !== 'undefined' && currentChatMode === 'group' && typeof currentGroupMessages !== 'undefined') {
+    const m = (currentGroupMessages || []).find(x => x.id === id);
+    if (m) return m.text || '';
+  }
+  if (typeof allMessages !== 'undefined') {
+    const m = (allMessages || []).find(x => x.id === id);
+    if (m) return m.text || '';
+  }
+  const posts = window._nexaChannelPostsCache || [];
+  const p = posts.find(x => x.id === id);
+  return p ? (p.text || '') : '';
+}
+
+
+/* ── Settings → Language UI ─────────────────────────────────────────────── */
+function updateLanguageUI() {
+  const cur = getUserLang();
+  document.querySelectorAll('#langPicker .lang-option').forEach(el => {
+    el.classList.toggle('selected', el.getAttribute('data-lang') === cur);
+  });
+  const at = document.getElementById('autoTranslateToggle');
+  if (at) at.classList.toggle('active', getAutoTranslate());
+  const so = document.getElementById('showOriginalToggle');
+  if (so) so.classList.toggle('active', getShowOriginal());
+}
+function selectLanguage(code) {
+  setUserLang(code);
+  updateLanguageUI();
+  showNotifToast('Messages will be shown in ' + langEnglishName(code), 'success');
+}
+function toggleAutoTranslate() {
+  setAutoTranslate(!getAutoTranslate());
+  updateLanguageUI();
+  showNotifToast(getAutoTranslate() ? 'Auto-translate turned on' : 'Auto-translate turned off', 'info');
+}
+function toggleShowOriginalPref() {
+  setShowOriginal(!getShowOriginal());
+  updateLanguageUI();
+  renderMessageList();
 }
