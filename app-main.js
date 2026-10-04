@@ -28,6 +28,14 @@ let statusTab = 'image';
 let statusFile = null;
 let storyAudioElement = null;
 
+// Story editor element positions, normalized 0..1 (x,y = centre of the element
+// within the canvas). Dragging on the canvas updates these; they're saved with
+// the story so the viewer can place the caption + sticker exactly where the
+// author put them. Defaults match the historical layout (caption low-centre,
+// sticker bottom-centre) for older stories that carry no position.
+let statusCaptionPos = { x: 0.5, y: 0.62 };
+let statusStickerPos = { x: 0.5, y: 0.8 };
+
 /// Story pause/resume handling
 let typingResumeTimer = null;
 function pauseStory() {
@@ -489,6 +497,7 @@ auth.onAuthStateChanged(async (user) => {
     localStorage.setItem("nexa_last_uid", user.uid);
   } catch (e) {}
   console.log("👤 User:", user.email);
+  nexaBootStep('auth');
   listenCurrentAccountStatus(user.uid);
   showNotifToast("Welcome to Nexa Messenger", "info");
   // If this account was created via a referral link, greet them by their
@@ -505,28 +514,38 @@ auth.onAuthStateChanged(async (user) => {
   initPeerJS();
 
   await loadProfile();
+  nexaBootStep('profile');
 
   if (!profileSetupRequired) {
     startUsersListener();
     startSharedPresenceListener();
     startConnectionsListener();
+    nexaBootStep('listeners');
     loadInitialChatTimestamps();
     setupHeartbeat();
     loadUnreadCounts();
     listenIncoming();
     initPWA();
     await updateOnline(true);
+    nexaBootStep('chats');
     maybeReopenLastChat();
     listenMyGroups();
     listenMyChannels();
     listenDiscoverChannels();
     checkGroupInviteUrlParam();
     checkChannelInviteUrlParam();
+    nexaBootStep('community');
     console.log("✅ App fully ready");
-    revealNexaApp();
+    // Final milestone: let the browser paint the ready dashboard behind the
+    // splash, then fade it. Reaching 100% here is what actually reveals the app.
+    requestAnimationFrame(() => requestAnimationFrame(() => nexaBootStep('paint')));
     // Re-engagement nudge: pops a fun welcome-back popup when the user
     // returns after being offline for ~2.5+ days (once per 30 days).
     checkReturningUserWelcome();
+  } else {
+    // First-run profile setup: there's no dashboard to wait for, so finish the
+    // bar immediately and reveal the setup overlay.
+    nexaBootFinish();
   }
 });
 
@@ -536,6 +555,60 @@ auth.onAuthStateChanged(async (user) => {
    A hard timeout guarantees the interface is never hidden indefinitely,
    even if an upstream init call hangs. */
 let _nexaSplashShown = false;
+
+/* ── Real boot progress (0 → 100%) ─────────────────────────────────────
+   The splash bar tracks ACTUAL init milestones instead of a fixed timer, so
+   a fast connection races to 100% while a slow one crawls — and 100% really
+   does mean "the dashboard is ready". Each milestone has a weight; the bar
+   animates smoothly toward the achieved total and never goes backwards.
+   revealNexaApp() is only called once every milestone is done (or the hard
+   timeout fires), so the user never lands on a half-loaded dashboard. */
+const NEXA_BOOT_STEPS = {
+  auth: 15,        // Firebase session resolved
+  profile: 10,     // profile doc loaded
+  users: 15,       // users list ready
+  listeners: 20,   // presence + connections listeners up
+  chats: 20,       // chats / unread / FCM ready
+  community: 15,   // groups + channels + stories ready
+  paint: 5         // dashboard painted
+};
+let _nexaBootDone = new Set();
+let _nexaBootShownPct = 0;
+
+function nexaBootPct() {
+  let sum = 0;
+  _nexaBootDone.forEach(k => { sum += (NEXA_BOOT_STEPS[k] || 0); });
+  return Math.min(100, sum);
+}
+
+function nexaBootPaint(pct) {
+  const fill = document.getElementById('nexaSplashBarFill');
+  const label = document.getElementById('nexaSplashPct');
+  if (fill) fill.style.width = pct + '%';
+  if (label) label.textContent = pct + '%';
+}
+
+// Mark a milestone complete. Idempotent, and paints a smooth intermediate
+// value so the bar glides instead of snapping.
+function nexaBootStep(name) {
+  if (!NEXA_BOOT_STEPS[name] || _nexaBootDone.has(name)) return;
+  _nexaBootDone.add(name);
+  const pct = nexaBootPct();
+  if (pct > _nexaBootShownPct) {
+    _nexaBootShownPct = pct;
+    nexaBootPaint(pct);
+  }
+  if (pct >= 100) revealNexaApp();
+}
+
+// Force the bar to 100% (used by the safety timeout so a hung upstream call
+// can never trap the user behind the splash).
+function nexaBootFinish() {
+  _nexaBootShownPct = 100;
+  nexaBootPaint(100);
+  revealNexaApp();
+}
+
 function revealNexaApp() {
   if (_nexaSplashShown) return;
   _nexaSplashShown = true;
@@ -549,14 +622,14 @@ function revealNexaApp() {
     }, 650);
   });
 }
-// Hard timeout: never trap the user behind the splash (8s, well past init).
+// Hard timeout: never trap the user behind the splash (10s, well past init).
 (function () {
   setTimeout(() => {
     try {
       const splash = document.getElementById('nexaSplash');
-      if (splash && !_nexaSplashShown) revealNexaApp();
+      if (splash && !_nexaSplashShown) nexaBootFinish();
     } catch (e) {}
-  }, 8000);
+  }, 10000);
 })();
 
 /* Play the send button's "sent" pulse once — a tiny tactile confirmation
@@ -1135,6 +1208,9 @@ function startUsersListener() {
     saveCachedUsers();
     renderUsers();
     renderActiveNowBar();
+    // The chat list is the real "ready" signal — the dashboard is only worth
+    // revealing once the user list has actually arrived from Firestore.
+    nexaBootStep('users');
   });
 }
 
@@ -5296,27 +5372,38 @@ async function scrollToMsg(msgId) {
 /* =========================================================================
    FILE UPLOAD
    ========================================================================= */
-async function uploadFile(file) {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("upload_preset", UPLOAD_PRESET);
-  try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
-      method: "POST",
-      body: form
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error?.message || "Upload failed");
+// Uploads to Cloudinary. Optional onProgress(percent 0..100, loaded, total)
+// lets callers drive a real progress bar (XHR exposes upload progress events;
+// fetch does not). All other callers pass no callback and behave as before.
+function uploadFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", UPLOAD_PRESET);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`);
+    if (typeof onProgress === "function") {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress((e.loaded / e.total) * 100, e.loaded, e.total);
+      };
     }
-    if (!data.secure_url) {
-      throw new Error("No URL returned from server");
-    }
-    return data.secure_url;
-  } catch (err) {
-    console.error("Upload error:", err);
-    throw err;
-  }
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (_) {}
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error((data.error && data.error.message) || "Upload failed"));
+        return;
+      }
+      if (!data.secure_url) {
+        reject(new Error("No URL returned from server"));
+        return;
+      }
+      resolve(data.secure_url);
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onabort = () => reject(new Error("Upload cancelled"));
+    xhr.send(form);
+  });
 }
 
 function pickImage() {
@@ -8133,7 +8220,8 @@ function renderStorySlide(idx) {
 
     if (story.text) {
       const txt = document.createElement("div");
-      txt.style.cssText = "position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 20px; word-break: break-word; line-height: 1.4; z-index: 5;";
+      const cp = (story.captionPos && typeof story.captionPos.x === "number") ? story.captionPos : { x: 0.5, y: 0.78 };
+      txt.style.cssText = "position: absolute; left: " + (cp.x * 100) + "%; top: " + (cp.y * 100) + "%; transform: translate(-50%, -50%); max-width: 86%; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 8px; word-break: break-word; line-height: 1.4; z-index: 5;";
       txt.innerHTML = linkify(story.text);
       content.appendChild(txt);
     }
@@ -8196,7 +8284,8 @@ function renderStorySlide(idx) {
 
     if (story.text) {
       const txt = document.createElement("div");
-      txt.style.cssText = "position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 20px; word-break: break-word; line-height: 1.4; z-index: 5;";
+      const cp = (story.captionPos && typeof story.captionPos.x === "number") ? story.captionPos : { x: 0.5, y: 0.78 };
+      txt.style.cssText = "position: absolute; left: " + (cp.x * 100) + "%; top: " + (cp.y * 100) + "%; transform: translate(-50%, -50%); max-width: 86%; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 8px; word-break: break-word; line-height: 1.4; z-index: 5;";
       txt.innerHTML = linkify(story.text);
       content.appendChild(txt);
     }
@@ -8333,6 +8422,9 @@ function renderStorySlide(idx) {
     const isQ = sk.type === "question";
     const skEl = document.createElement("div");
     skEl.className = "story-sticker-overlay";
+    const skPos = (sk.pos && typeof sk.pos.x === "number") ? sk.pos : { x: 0.5, y: 0.5 };
+    skEl.style.left = (skPos.x * 100) + "%";
+    skEl.style.top = (skPos.y * 100) + "%";
     skEl.innerHTML = `
       <div class="ws-sticker-card ${isQ ? "ws-sticker-card--question" : "ws-sticker-card--addyours"}">
         <div class="ws-sticker-accent"></div>
@@ -8730,6 +8822,64 @@ function updateStoryStickerPreview() {
   refreshStickerToolButton();
   renderStoryStickerPreview();
   renderStickerOnImage();
+  renderStatusCaption();
+}
+
+// Render the caption ON the editor canvas at its saved (normalized) position.
+// The caption is only shown for media/text tabs when there's text — the plain
+// "text" story renders its own full-bleed slide instead.
+function renderStatusCaption() {
+  const el = document.getElementById("statusCaptionOverlay");
+  if (!el) return;
+  const ta = document.getElementById("statusTextInput");
+  const val = (ta && ta.value || "").trim();
+  const show = !!val && statusTab !== "text";
+  if (!show) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "block";
+  el.style.left = (statusCaptionPos.x * 100) + "%";
+  el.style.top = (statusCaptionPos.y * 100) + "%";
+  // linkify() escapes internally — pass RAW text so it isn't double-escaped.
+  el.innerHTML = linkify(val);
+  applyStoryDrag(el, statusCaptionPos);
+}
+
+// Make a canvas element draggable; writes its normalized centre back into the
+// given position object (clamped so it can't be dragged off the canvas).
+function applyStoryDrag(el, posObj) {
+  if (!el || el._nexaDragBound) { if (el && posObj) positionFromObj(el, posObj); return; }
+  el._nexaDragBound = true;
+  let dragging = false;
+  const wrap = () => document.getElementById("statusPreviewWrapHost") || document.querySelector("#statusModalBox .status-preview-wrap");
+  const move = (clientX, clientY) => {
+    const host = wrap();
+    if (!host) return;
+    const r = host.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    let nx = (clientX - r.left) / r.width;
+    let ny = (clientY - r.top) / r.height;
+    nx = Math.max(0.06, Math.min(0.94, nx));
+    ny = Math.max(0.06, Math.min(0.94, ny));
+    posObj.x = nx; posObj.y = ny;
+    el.style.left = (nx * 100) + "%";
+    el.style.top = (ny * 100) + "%";
+  };
+  const start = (e) => {
+    dragging = true;
+    el.classList.add("dragging");
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+  };
+  const onMove = (e) => { if (dragging) { move(e.clientX, e.clientY); e.preventDefault(); } };
+  const end = () => { dragging = false; el.classList.remove("dragging"); };
+  el.addEventListener("pointerdown", start);
+  el.addEventListener("pointermove", onMove);
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  el.addEventListener("lostpointercapture", end);
+}
+function positionFromObj(el, posObj) {
+  el.style.left = (posObj.x * 100) + "%";
+  el.style.top = (posObj.y * 100) + "%";
 }
 
 // Enable/disable the sticker toolbar button based on whether there's content
@@ -8779,6 +8929,8 @@ function renderStickerOnImage() {
   const s = pendingStorySticker;
   const isQ = s.type === "question";
   host.classList.add("has-sticker");
+  host.style.left = (statusStickerPos.x * 100) + "%";
+  host.style.top = (statusStickerPos.y * 100) + "%";
   host.innerHTML = `
     <div class="ws-sticker-card ${isQ ? "ws-sticker-card--question" : "ws-sticker-card--addyours"}">
       <div class="ws-sticker-accent"></div>
@@ -8788,6 +8940,7 @@ function renderStickerOnImage() {
       </div>
       <button class="ws-sticker-remove" onclick="event.stopPropagation(); removeStorySticker()" title="Remove sticker"><i data-lucide="x" style="width: 13px; height: 13px;"></i></button>
     </div>`;
+  applyStoryDrag(host, statusStickerPos);
 }
 
 function renderStoryStickerPreview() {
@@ -9124,20 +9277,28 @@ function openStatusModal() {
   document.getElementById("statusImageInput").value = "";
   document.getElementById("statusVideoInput").value = "";
   document.getElementById("statusTextInput").value = "";
-  document.getElementById("statusPreview").innerHTML = "<span>Preview</span>";
+  document.getElementById("statusPreview").innerHTML = `<div class="status-empty-state" id="statusEmptyState"><i data-lucide="image-plus" style="width:36px;height:36px;"></i><span>Tap a tab below to add a photo, video or text</span></div>`;
   document.getElementById("musicResults").innerHTML = "";
   document.getElementById("musicSelectedBox").innerHTML = "";
   selectedMusicData = null;
   musicDuration = 30;
   document.getElementById("musicSearchInput").value = "";
 
+  // Fresh positions each time the editor opens (caption low-centre, sticker
+  // bottom-centre) so the previous story's layout doesn't carry over. Mutate in
+  // place — the drag handlers hold a reference to these objects.
+  statusCaptionPos.x = 0.5; statusCaptionPos.y = 0.62;
+  statusStickerPos.x = 0.5; statusStickerPos.y = 0.8;
+
   pendingStorySticker = null;
   renderStoryStickerPreview();
   renderStickerOnImage();
+  renderStatusCaption();
   closeStickerTray();
 
   switchStatusTab('image');
   document.getElementById("statusModalOverlay").classList.add("active");
+  if (window.lucide) lucide.createIcons();
 }
 
 function closeStatusModal() {
@@ -9186,6 +9347,17 @@ function switchStatusTab(tab) {
   }
   refreshStickerToolButton();
   renderStickerOnImage();
+  renderStatusCaption();
+}
+
+// Paint media into the editor canvas, replacing the empty state.
+function setStatusPreview(html) {
+  const preview = document.getElementById("statusPreview");
+  if (!preview) return;
+  preview.innerHTML = html;
+  refreshStickerToolButton();
+  renderStickerOnImage();
+  renderStatusCaption();
 }
 
 function previewStatusImage(e) {
@@ -9195,9 +9367,7 @@ function previewStatusImage(e) {
   statusTab = "image";
   const reader = new FileReader();
   reader.onload = (ev) => {
-    document.getElementById("statusPreview").innerHTML = `<img src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;">`;
-    refreshStickerToolButton();
-    renderStickerOnImage();
+    setStatusPreview(`<img src="${safeMediaUrl(ev.target.result)}" alt="preview" style="width: 100%; height: 100%; object-fit: contain;">`);
     // If the user tapped a sticker before picking a photo (WhatsApp flow),
     // now that we have media, prompt for the sticker text and attach it.
     if (pendingStickerChoice) { const c = pendingStickerChoice; pendingStickerChoice = null; attachStorySticker(c); }
@@ -9212,9 +9382,7 @@ function previewStatusVideo(e) {
   statusTab = "video";
   const reader = new FileReader();
   reader.onload = (ev) => {
-    document.getElementById("statusPreview").innerHTML = `<video src="${ev.target.result}" style="width: 100%; height: 100%; object-fit: cover;" controls></video>`;
-    refreshStickerToolButton();
-    renderStickerOnImage();
+    setStatusPreview(`<video src="${safeMediaUrl(ev.target.result)}" style="width: 100%; height: 100%; object-fit: contain;" controls playsinline></video>`);
     if (pendingStickerChoice) { const c = pendingStickerChoice; pendingStickerChoice = null; attachStorySticker(c); }
   };
   reader.readAsDataURL(file);
@@ -9335,6 +9503,30 @@ function removeMusicSelection() {
   document.getElementById("musicSearchInput").focus();
 }
 
+// Posting-progress UI. The ring's circumference is 2πr (r=52 in the SVG), so
+// the fill is drawn by shrinking stroke-dashoffset as the percentage rises.
+const STORY_RING_CIRC = 2 * Math.PI * 52;
+function setStoryUploadUI(active, pct, stage) {
+  const ov = document.getElementById("storyUploadOverlay");
+  if (!ov) return;
+  if (!active) {
+    ov.classList.remove("active");
+    const ring = document.getElementById("storyUploadRingFill");
+    if (ring) ring.style.strokeDashoffset = String(STORY_RING_CIRC);
+    const pctEl = document.getElementById("storyUploadPct");
+    if (pctEl) pctEl.textContent = "0%";
+    return;
+  }
+  ov.classList.add("active");
+  const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  const ring = document.getElementById("storyUploadRingFill");
+  if (ring) ring.style.strokeDashoffset = String(STORY_RING_CIRC * (1 - p / 100));
+  const pctEl = document.getElementById("storyUploadPct");
+  if (pctEl) pctEl.textContent = p + "%";
+  const stageEl = document.getElementById("storyUploadStage");
+  if (stageEl && stage) stageEl.textContent = stage;
+}
+
 async function shareStatus() {
   if (!currentUser) {
     showNotifToast("Please login first", "error");
@@ -9344,6 +9536,10 @@ async function shareStatus() {
   const shareBtn = document.getElementById("shareStoryBtn");
   shareBtn.disabled = true;
   shareBtn.textContent = "Sharing...";
+
+  // Show the 0→100% ring immediately so the user has live feedback while the
+  // media uploads and the story is written.
+  setStoryUploadUI(true, 0, statusFile ? "Uploading…" : "Posting…");
 
   // Close the composer right away so it feels instant — the story posts in the
   // background. (Uploading media still takes a moment on slow networks, but the
@@ -9364,7 +9560,8 @@ async function shareStatus() {
 
     if (statusTab === "image" && statusFile) {
       showNotifToast("📤 Uploading photo...", "info");
-      const url = await uploadFile(fileToUpload);
+      const url = await uploadFile(fileToUpload, (p) => setStoryUploadUI(true, p, "Uploading photo…"));
+      setStoryUploadUI(true, 92, "Posting…");
       statusData.url = url;
       if (textVal) statusData.text = textVal;
       if (selectedMusicData) {
@@ -9378,7 +9575,8 @@ async function shareStatus() {
       }
     } else if (statusTab === "video" && statusFile) {
       showNotifToast("📤 Uploading video...", "info");
-      const url = await uploadFile(fileToUpload);
+      const url = await uploadFile(fileToUpload, (p) => setStoryUploadUI(true, p, "Uploading video…"));
+      setStoryUploadUI(true, 92, "Posting…");
       statusData.url = url;
       if (textVal) statusData.text = textVal;
       if (selectedMusicData) {
@@ -9393,6 +9591,7 @@ async function shareStatus() {
     } else if (statusTab === "text") {
       if (!textVal) {
         showNotifToast("Please enter some text", "error");
+        setStoryUploadUI(false);
         shareBtn.disabled = false;
         shareBtn.textContent = "Share";
         return;
@@ -9410,6 +9609,7 @@ async function shareStatus() {
     } else if (statusTab === "music") {
       if (!selectedMusicData) {
         showNotifToast("Please select a song", "error");
+        setStoryUploadUI(false);
         shareBtn.disabled = false;
         shareBtn.textContent = "Share";
         return;
@@ -9428,9 +9628,15 @@ async function shareStatus() {
     // Attach an interactive sticker (WhatsApp-style) onto the photo/video/text
     // story. The sticker rides on the image; viewers who tap it get the same
     // prompt. addYours sticker doubles as a promptId so response chains work.
+    // Persist where the author placed the caption + sticker (normalized 0..1)
+    // so the viewer reproduces the exact layout. Only for media/text stories.
+    if (statusData.type !== "text") {
+      statusData.captionPos = { x: statusCaptionPos.x, y: statusCaptionPos.y };
+    }
+
     if (pendingStorySticker && pendingStorySticker.text) {
       const s = pendingStorySticker;
-      statusData.sticker = { type: s.type, text: s.text, id: s.id };
+      statusData.sticker = { type: s.type, text: s.text, id: s.id, pos: { x: statusStickerPos.x, y: statusStickerPos.y } };
       if (s.type === "addYours") {
         statusData.promptId = s.id;
         statusData.promptText = s.text;
@@ -9440,12 +9646,18 @@ async function shareStatus() {
       }
     }
 
+    setStoryUploadUI(true, 96, "Posting…");
     await db.collection("status").add(statusData);
+    setStoryUploadUI(true, 100, "Posted!");
+    // Let the ring visibly land on 100% before the composer closes.
+    await new Promise(r => setTimeout(r, 350));
     closeStatusModal();
     showNotifToast("✓ Story shared!", "success");
 
   } catch (err) {
     showNotifToast("Failed to share: " + err.message, "error");
+  } finally {
+    setStoryUploadUI(false);
   }
 
   shareBtn.disabled = false;

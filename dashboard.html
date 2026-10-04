@@ -51,6 +51,13 @@
       <div class="nexa-splash-name">Nexa</div>
       <div class="nexa-splash-tag">Messenger</div>
       <div class="nexa-splash-dots"><span></span><span></span><span></span></div>
+      <!-- Real boot progress: advances as actual init milestones complete, so
+           100% genuinely means "everything is loaded". Driven by nexaBoot*()
+           in app-main.js; the dashboard is only revealed at 100%. -->
+      <div class="nexa-splash-progress" id="nexaSplashProgress">
+        <div class="nexa-splash-bar"><div class="nexa-splash-bar-fill" id="nexaSplashBarFill"></div></div>
+        <div class="nexa-splash-pct" id="nexaSplashPct">0%</div>
+      </div>
     </div>
   </div>
 
@@ -1174,31 +1181,29 @@
 <!-- STATUS MODAL (STORY CREATION) - FIXED LAYOUT -->
 <div class="status-modal-overlay" id="statusModalOverlay" onclick="handleStatusOverlayClick(event)">
   <div class="status-modal" id="statusModalBox">
+
+    <!-- Floating top bar over the editor canvas -->
     <div class="status-modal-header">
-      <div class="status-modal-title">Share Story</div>
-      <button class="status-modal-close" onclick="closeStatusModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
-    </div>
-    
-    <div class="status-tabs">
-      <button class="status-tab active" id="tabImage" onclick="switchStatusTab('image')">Image</button>
-      <button class="status-tab" id="tabVideo" onclick="switchStatusTab('video')">Video</button>
-      <button class="status-tab" id="tabText" onclick="switchStatusTab('text')">Text</button>
-      <button class="status-tab" id="tabMusic" onclick="switchStatusTab('music')">🎵</button>
-    </div>
-
-    <!-- PREVIEW with an interactive sticker that sits ON the image (WhatsApp-style).
-         Stickers are ATTACHMENTS — they can never be posted on their own. The
-         sticker toolbar button only works once a photo/video/text is chosen. -->
-    <div class="status-preview-wrap">
-      <div class="status-preview" id="statusPreview"><span>Preview</span></div>
-
-      <!-- Sticker rendered on top of the preview image -->
-      <div class="sticker-on-image" id="stickerOnImage"></div>
-
-      <!-- Sticker toolbar button (like WhatsApp's sticker icon). Always
-           clickable: when no media is picked yet, tapping it opens the image
-           picker (handled in toggleStickerTray) instead of silently failing. -->
+      <button class="status-modal-close" onclick="closeStatusModal()" title="Close"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      <div class="status-modal-title">New Story</div>
       <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker">😀</button>
+    </div>
+
+    <!-- Large editor canvas. The caption + sticker live ON the canvas and can
+         be dragged anywhere; their positions are saved with the story. -->
+    <div class="status-preview-wrap" id="statusPreviewWrapHost">
+      <div class="status-preview" id="statusPreview">
+        <div class="status-empty-state" id="statusEmptyState">
+          <i data-lucide="image-plus" style="width:36px;height:36px;"></i>
+          <span>Tap a tab below to add a photo, video or text</span>
+        </div>
+      </div>
+
+      <!-- Draggable caption rendered on the canvas -->
+      <div class="status-caption-overlay" id="statusCaptionOverlay" style="display:none;"></div>
+
+      <!-- Draggable interactive sticker on the canvas -->
+      <div class="sticker-on-image" id="stickerOnImage"></div>
 
       <!-- Sticker tray popup -->
       <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
@@ -1215,31 +1220,54 @@
         </div>
         <div class="sticker-tray-hint">Stickers attach to your photo — they can’t be posted alone.</div>
       </div>
+
+      <!-- Posting progress: real 0→100% driven by the actual upload bytes, so
+           the user is never left staring at a static "Sharing…" button. -->
+      <div class="story-upload-overlay" id="storyUploadOverlay">
+        <div class="story-upload-ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="su-track" cx="60" cy="60" r="52"></circle>
+            <circle class="su-fill" id="storyUploadRingFill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="story-upload-pct" id="storyUploadPct">0%</div>
+        </div>
+        <div class="story-upload-stage" id="storyUploadStage">Preparing…</div>
+      </div>
     </div>
 
-    <!-- Removable chip summary of the attached sticker -->
-    <div class="story-sticker-preview" id="storyStickerPreview"></div>
-    
-    <input type="file" id="statusImageInput" hidden accept="image/*" onchange="previewStatusImage(event)">
-    <input type="file" id="statusVideoInput" hidden accept="video/*" onchange="previewStatusVideo(event)">
-    
-    <!-- MUSIC SELECTION - ALWAYS AVAILABLE -->
-    <div class="media-controls" id="musicControls">
-      <div class="media-controls-title">🎵 Add Music (Optional)</div>
-      <div class="music-search-wrap">
-        <input type="text" id="musicSearchInput" class="music-search-inp" placeholder="Search songs (Rema, Asake, Wizkid, Burna Boy)…">
-        <button class="music-search-btn" onclick="searchTrendingMusic()" id="musicSearchBtn">Search</button>
+    <!-- Bottom sheet: everything you add to the story -->
+    <div class="status-sheet">
+      <div class="status-tabs">
+        <button class="status-tab active" id="tabImage" onclick="switchStatusTab('image')"><i data-lucide="image" style="width:15px;height:15px;"></i> Photo</button>
+        <button class="status-tab" id="tabVideo" onclick="switchStatusTab('video')"><i data-lucide="video" style="width:15px;height:15px;"></i> Video</button>
+        <button class="status-tab" id="tabText" onclick="switchStatusTab('text')"><i data-lucide="type" style="width:15px;height:15px;"></i> Text</button>
+        <button class="status-tab" id="tabMusic" onclick="switchStatusTab('music')"><i data-lucide="music" style="width:15px;height:15px;"></i> Music</button>
       </div>
-      <div class="music-results" id="musicResults"></div>
-      <div id="musicSelectedBox"></div>
-    </div>
-    
-    <!-- TEXT INPUT - VISIBLE FOR IMAGE, VIDEO, AND MUSIC TABS -->
-    <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;" oninput="updateStoryStickerPreview()"></textarea>
-    
-    <div class="status-actions">
-      <button class="status-action-btn" onclick="closeStatusModal()">Cancel</button>
-      <button class="status-action-btn primary" id="shareStoryBtn" onclick="shareStatus()">Share</button>
+
+      <!-- Removable chip summary of the attached sticker -->
+      <div class="story-sticker-preview" id="storyStickerPreview"></div>
+
+      <input type="file" id="statusImageInput" hidden accept="image/*" onchange="previewStatusImage(event)">
+      <input type="file" id="statusVideoInput" hidden accept="video/*" onchange="previewStatusVideo(event)">
+
+      <!-- MUSIC SELECTION - ALWAYS AVAILABLE -->
+      <div class="media-controls" id="musicControls">
+        <div class="media-controls-title">🎵 Add Music (Optional)</div>
+        <div class="music-search-wrap">
+          <input type="text" id="musicSearchInput" class="music-search-inp" placeholder="Search songs (Rema, Asake, Wizkid, Burna Boy)…">
+          <button class="music-search-btn" onclick="searchTrendingMusic()" id="musicSearchBtn">Search</button>
+        </div>
+        <div class="music-results" id="musicResults"></div>
+        <div id="musicSelectedBox"></div>
+      </div>
+
+      <!-- TEXT INPUT - VISIBLE FOR IMAGE, VIDEO, AND MUSIC TABS -->
+      <textarea id="statusTextInput" class="status-text-input" placeholder="Add caption (optional)…" maxlength="280" style="display: none;" oninput="updateStoryStickerPreview()"></textarea>
+
+      <div class="status-actions">
+        <button class="status-action-btn" onclick="closeStatusModal()">Cancel</button>
+        <button class="status-action-btn primary" id="shareStoryBtn" onclick="shareStatus()">Share</button>
+      </div>
     </div>
   </div>
 </div>
