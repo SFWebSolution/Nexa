@@ -8164,6 +8164,12 @@ function renderStorySlide(idx) {
 
   const content = document.getElementById("storyViewerContent");
   content.innerHTML = "";
+  // A 9:16 story frame INSIDE the padded content area, mirroring the composer's
+  // frame exactly. Caption/sticker positions are normalized to this box in both
+  // places, so a drop in the editor lands in the same spot in the viewer.
+  const storyFrame = document.createElement("div");
+  storyFrame.className = "story-viewer-frame";
+  content.appendChild(storyFrame);
 
   // Story media loading indicator — show while the image/video buffers so the
   // viewer never looks frozen, hide the moment it's ready to display.
@@ -8216,14 +8222,14 @@ function renderStorySlide(idx) {
     img.src = story.url;
     img.alt = "story";
     img.style.cssText = "width: 100%; height: 100%; object-fit: contain;";
-    content.appendChild(img);
+    storyFrame.appendChild(img);
 
     if (story.text) {
       const txt = document.createElement("div");
       const cp = (story.captionPos && typeof story.captionPos.x === "number") ? story.captionPos : { x: 0.5, y: 0.78 };
       txt.style.cssText = "position: absolute; left: " + (cp.x * 100) + "%; top: " + (cp.y * 100) + "%; transform: translate(-50%, -50%); max-width: 86%; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 8px; word-break: break-word; line-height: 1.4; z-index: 5;";
       txt.innerHTML = linkify(story.text);
-      content.appendChild(txt);
+      storyFrame.appendChild(txt);
     }
 
     let duration = 5000;
@@ -8245,7 +8251,7 @@ function renderStorySlide(idx) {
     vid.autoplay = true;
     vid.playsInline = true;
     vid.style.cssText = "width: 100%; height: 100%; object-fit: contain;";
-    content.appendChild(vid);
+    storyFrame.appendChild(vid);
 
     let metadataLoaded = false;
     let videoDuration = 0;
@@ -8287,14 +8293,14 @@ function renderStorySlide(idx) {
       const cp = (story.captionPos && typeof story.captionPos.x === "number") ? story.captionPos : { x: 0.5, y: 0.78 };
       txt.style.cssText = "position: absolute; left: " + (cp.x * 100) + "%; top: " + (cp.y * 100) + "%; transform: translate(-50%, -50%); max-width: 86%; text-align: center; font-size: 18px; font-weight: 700; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.8); padding: 0 8px; word-break: break-word; line-height: 1.4; z-index: 5;";
       txt.innerHTML = linkify(story.text);
-      content.appendChild(txt);
+      storyFrame.appendChild(txt);
     }
   } else if (story.type === "text" || story.text) {
     hideLoading();
     const div = document.createElement("div");
     div.className = "story-text-slide";
     div.innerHTML = linkify(story.text || "");
-    content.appendChild(div);
+    storyFrame.appendChild(div);
 
     let duration = 6000;
     if (story.musicData && story.musicData.previewUrl) {
@@ -8326,7 +8332,7 @@ function renderStorySlide(idx) {
     artist.textContent = story.musicData.artist;
     overlay.appendChild(artist);
 
-    content.appendChild(overlay);
+    storyFrame.appendChild(overlay);
 
     const duration = story.musicData.duration * 1000 || 30000;
     playStoryMusic(story.musicData);
@@ -8374,7 +8380,7 @@ function renderStorySlide(idx) {
       ctaWrap.appendChild(viewAll);
     }
     overlay.appendChild(ctaWrap);
-    content.appendChild(overlay);
+    storyFrame.appendChild(overlay);
 
     musicBadge.style.display = "none";
     startStoryAnimation(8000);
@@ -8404,7 +8410,7 @@ function renderStorySlide(idx) {
     answerBtn.onclick = (ev) => { ev.stopPropagation(); answerStoryQuestion(story); };
     ctaWrap.appendChild(answerBtn);
     overlay.appendChild(ctaWrap);
-    content.appendChild(overlay);
+    storyFrame.appendChild(overlay);
 
     musicBadge.style.display = "none";
     startStoryAnimation(8000);
@@ -8441,7 +8447,7 @@ function renderStorySlide(idx) {
         openAddYoursComposer(sk.id, sk.text);
       }
     };
-    content.appendChild(skEl);
+    storyFrame.appendChild(skEl);
   } else if (story.promptId && story.type !== "prompt") {
     // Legacy: an "Add Yours" response story (has promptId, isn't a prompt).
     // Tapping reopens the composer seeded with the same prompt so the viewer
@@ -8455,7 +8461,7 @@ function renderStorySlide(idx) {
         <div class="addyours-sticker-viewall" onclick="event.stopPropagation(); openPromptResponsesModal('${escapeHtml(story.promptId)}');">View all responses</div>
       </div>`;
     sticker.onclick = (ev) => { ev.stopPropagation(); openAddYoursComposer(story.promptId, story.promptText || story.text || ""); };
-    content.appendChild(sticker);
+    storyFrame.appendChild(sticker);
   }
 }
 
@@ -8821,8 +8827,40 @@ let pendingStickerChoice = null;
 function updateStoryStickerPreview() {
   refreshStickerToolButton();
   renderStoryStickerPreview();
-  renderStickerOnImage();
-  renderStatusCaption();
+  // In the plain Text tab the textarea IS the story, so the draggable caption
+  // overlay is hidden there (renderStatusCaption does that) — no re-render needed.
+  if (statusTab !== "text") {
+    renderStickerOnImage();
+    renderStatusCaption();
+  }
+}
+
+// Size the 9:16 story frame to fit the stage (the space between the floating
+// header and the bottom sheet). CSS keeps the 9:16 ratio; JS just picks the
+// limiting dimension so the frame is as large as it can be without cropping.
+function sizeStoryFrame() {
+  const stage = document.getElementById("statusPreviewWrapHost");
+  const frame = document.getElementById("statusStoryFrame");
+  if (!stage || !frame) return;
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h) return;
+  const availH = Math.max(120, h - 24);
+  const availW = Math.max(90, w - 24);
+  const byH = { w: availH * 9 / 16, h: availH };
+  const byW = { w: availW, h: availW * 16 / 9 };
+  const fit = byH.w <= availW ? byH : byW;
+  frame.style.width = Math.round(fit.w) + "px";
+  frame.style.height = Math.round(fit.h) + "px";
+}
+
+// Collapsible music panel — keeps the bottom sheet compact by default.
+function toggleMusicPanel(force) {
+  const panel = document.getElementById("musicControls");
+  const btn = document.getElementById("musicToggleBtn");
+  if (!panel) return;
+  const open = (typeof force === "boolean") ? force : panel.classList.contains("collapsed");
+  panel.classList.toggle("collapsed", !open);
+  if (btn) btn.classList.toggle("open", open);
 }
 
 // Render the caption ON the editor canvas at its saved (normalized) position.
@@ -8841,36 +8879,61 @@ function renderStatusCaption() {
   // linkify() escapes internally — pass RAW text so it isn't double-escaped.
   el.innerHTML = linkify(val);
   applyStoryDrag(el, statusCaptionPos);
+  if (!storyDragHintSeen) el.classList.add("drag-hint");
 }
 
 // Make a canvas element draggable; writes its normalized centre back into the
 // given position object (clamped so it can't be dragged off the canvas).
+let storyDragHintSeen = false;
 function applyStoryDrag(el, posObj) {
-  if (!el || el._nexaDragBound) { if (el && posObj) positionFromObj(el, posObj); return; }
+  if (!el) return;
+  if (el._nexaDragBound) { positionFromObj(el, posObj); return; }
   el._nexaDragBound = true;
   let dragging = false;
-  const wrap = () => document.getElementById("statusPreviewWrapHost") || document.querySelector("#statusModalBox .status-preview-wrap");
-  const move = (clientX, clientY) => {
-    const host = wrap();
-    if (!host) return;
-    const r = host.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    let nx = (clientX - r.left) / r.width;
-    let ny = (clientY - r.top) / r.height;
-    nx = Math.max(0.06, Math.min(0.94, nx));
-    ny = Math.max(0.06, Math.min(0.94, ny));
+  // Positions are normalized to the 9:16 STORY FRAME — the same box the viewer
+  // renders — so a drop here appears in the identical spot when viewed.
+  const host = () => document.getElementById("statusStoryFrame")
+    || document.getElementById("statusPreviewWrapHost")
+    || document.querySelector("#statusModalBox .status-preview-wrap");
+  const applyPos = (nx, ny) => {
     posObj.x = nx; posObj.y = ny;
     el.style.left = (nx * 100) + "%";
     el.style.top = (ny * 100) + "%";
   };
+  const move = (clientX, clientY) => {
+    const h = host();
+    if (!h) return;
+    const r = h.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    // Clamp by the element's OWN half-size so it can be dropped near any edge
+    // (the old fixed 6%..94% clamp let wide sticker cards clip off-frame).
+    const ew = el.offsetWidth || 0, eh = el.offsetHeight || 0;
+    const mx = Math.min(0.45, (ew / 2 + 6) / r.width);
+    const my = Math.min(0.45, (eh / 2 + 6) / r.height);
+    let nx = (clientX - r.left) / r.width;
+    let ny = (clientY - r.top) / r.height;
+    nx = Math.max(mx, Math.min(1 - mx, nx));
+    ny = Math.max(my, Math.min(1 - my, ny));
+    applyPos(nx, ny);
+  };
   const start = (e) => {
     dragging = true;
+    storyDragHintSeen = true;
     el.classList.add("dragging");
+    el.classList.remove("drag-hint");
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
   };
   const onMove = (e) => { if (dragging) { move(e.clientX, e.clientY); e.preventDefault(); } };
-  const end = () => { dragging = false; el.classList.remove("dragging"); };
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove("dragging");
+    // Gentle snap to the centre lines so it's easy to line things up.
+    const nx = Math.abs(posObj.x - 0.5) < 0.05 ? 0.5 : posObj.x;
+    const ny = Math.abs(posObj.y - 0.5) < 0.05 ? 0.5 : posObj.y;
+    if (nx !== posObj.x || ny !== posObj.y) applyPos(nx, ny);
+  };
   el.addEventListener("pointerdown", start);
   el.addEventListener("pointermove", onMove);
   el.addEventListener("pointerup", end);
@@ -8941,6 +9004,7 @@ function renderStickerOnImage() {
       <button class="ws-sticker-remove" onclick="event.stopPropagation(); removeStorySticker()" title="Remove sticker"><i data-lucide="x" style="width: 13px; height: 13px;"></i></button>
     </div>`;
   applyStoryDrag(host, statusStickerPos);
+  if (!storyDragHintSeen) host.classList.add("drag-hint");
 }
 
 function renderStoryStickerPreview() {
@@ -9298,7 +9362,18 @@ function openStatusModal() {
 
   switchStatusTab('image');
   document.getElementById("statusModalOverlay").classList.add("active");
+  // Music starts collapsed; frame must be sized AFTER the overlay is visible
+  // (clientHeight is 0 while display:none).
+  toggleMusicPanel(false);
+  requestAnimationFrame(() => { sizeStoryFrame(); });
   if (window.lucide) lucide.createIcons();
+}
+if (typeof window !== "undefined" && !window._nexaStoryResizeBound) {
+  window._nexaStoryResizeBound = true;
+  window.addEventListener("resize", () => {
+    const ov = document.getElementById("statusModalOverlay");
+    if (ov && ov.classList.contains("active")) sizeStoryFrame();
+  });
 }
 
 function closeStatusModal() {

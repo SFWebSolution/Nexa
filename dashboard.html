@@ -1189,21 +1189,24 @@
       <button class="sticker-tool-btn disabled" id="stickerToolBtn" onclick="toggleStickerTray(event)" title="Add sticker">😀</button>
     </div>
 
-    <!-- Large editor canvas. The caption + sticker live ON the canvas and can
-         be dragged anywhere; their positions are saved with the story. -->
+    <!-- Editor stage. Inside it sits the 9:16 story frame — the EXACT same box
+         the viewer uses — so a caption/sticker dropped here lands in the same
+         place when the story is viewed, on any screen size. -->
     <div class="status-preview-wrap" id="statusPreviewWrapHost">
-      <div class="status-preview" id="statusPreview">
-        <div class="status-empty-state" id="statusEmptyState">
-          <i data-lucide="image-plus" style="width:36px;height:36px;"></i>
-          <span>Tap a tab below to add a photo, video or text</span>
+      <div class="status-story-frame" id="statusStoryFrame">
+        <div class="status-preview" id="statusPreview">
+          <div class="status-empty-state" id="statusEmptyState">
+            <i data-lucide="image-plus" style="width:36px;height:36px;"></i>
+            <span>Tap a tab below to add a photo, video or text</span>
+          </div>
         </div>
+
+        <!-- Draggable caption rendered on the frame -->
+        <div class="status-caption-overlay" id="statusCaptionOverlay" style="display:none;"></div>
+
+        <!-- Draggable interactive sticker on the frame -->
+        <div class="sticker-on-image" id="stickerOnImage"></div>
       </div>
-
-      <!-- Draggable caption rendered on the canvas -->
-      <div class="status-caption-overlay" id="statusCaptionOverlay" style="display:none;"></div>
-
-      <!-- Draggable interactive sticker on the canvas -->
-      <div class="sticker-on-image" id="stickerOnImage"></div>
 
       <!-- Sticker tray popup -->
       <div class="sticker-tray" id="stickerTray" onclick="event.stopPropagation()">
@@ -1250,9 +1253,13 @@
       <input type="file" id="statusImageInput" hidden accept="image/*" onchange="previewStatusImage(event)">
       <input type="file" id="statusVideoInput" hidden accept="video/*" onchange="previewStatusVideo(event)">
 
-      <!-- MUSIC SELECTION - ALWAYS AVAILABLE -->
-      <div class="media-controls" id="musicControls">
-        <div class="media-controls-title">🎵 Add Music (Optional)</div>
+      <!-- MUSIC — collapsed behind a toggle so the sheet stays compact -->
+      <button type="button" class="status-music-toggle" id="musicToggleBtn" onclick="toggleMusicPanel()">
+        <i data-lucide="music" style="width:15px;height:15px;"></i>
+        <span id="musicToggleLabel">Add music</span>
+        <i data-lucide="chevron-down" style="width:15px;height:15px;" class="status-music-chevron"></i>
+      </button>
+      <div class="media-controls collapsed" id="musicControls">
         <div class="music-search-wrap">
           <input type="text" id="musicSearchInput" class="music-search-inp" placeholder="Search songs (Rema, Asake, Wizkid, Burna Boy)…">
           <button class="music-search-btn" onclick="searchTrendingMusic()" id="musicSearchBtn">Search</button>
