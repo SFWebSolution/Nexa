@@ -1220,6 +1220,19 @@
         </div>
         <div class="sticker-tray-hint">Stickers attach to your photo — they can’t be posted alone.</div>
       </div>
+
+      <!-- Posting progress: real 0→100% driven by the actual upload bytes, so
+           the user is never left staring at a static "Sharing…" button. -->
+      <div class="story-upload-overlay" id="storyUploadOverlay">
+        <div class="story-upload-ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="su-track" cx="60" cy="60" r="52"></circle>
+            <circle class="su-fill" id="storyUploadRingFill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="story-upload-pct" id="storyUploadPct">0%</div>
+        </div>
+        <div class="story-upload-stage" id="storyUploadStage">Preparing…</div>
+      </div>
     </div>
 
     <!-- Bottom sheet: everything you add to the story -->

@@ -13120,3 +13120,73 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   transform: translate(-50%, -50%);
 }
 #statusModalBox .sticker-on-image.dragging { outline: 2px dashed rgba(255,255,255,0.55); }
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* STORY POSTING PROGRESS — real 0→100% ring over the editor canvas            */
+/* Shown while the story's media uploads; the percentage is driven by actual   */
+/* upload progress events, so a slow network visibly crawls instead of the     */
+/* user staring at a frozen "Sharing…" button.                                  */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+.story-upload-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(5, 8, 14, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: inherit;
+}
+.story-upload-overlay.active { display: flex; }
+.story-upload-ring {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.story-upload-ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.story-upload-ring .su-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 8;
+}
+.story-upload-ring .su-fill {
+  fill: none;
+  stroke: #35c98a;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 326.7;
+  stroke-dashoffset: 326.7;
+  transition: stroke-dashoffset 0.25s linear;
+}
+.story-upload-pct {
+  position: relative;
+  z-index: 1;
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.story-upload-stage {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(230, 235, 242, 0.82);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-upload-ring .su-fill { transition: none; }
+}

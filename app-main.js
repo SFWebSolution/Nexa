@@ -5372,27 +5372,38 @@ async function scrollToMsg(msgId) {
 /* =========================================================================
    FILE UPLOAD
    ========================================================================= */
-async function uploadFile(file) {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("upload_preset", UPLOAD_PRESET);
-  try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
-      method: "POST",
-      body: form
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error?.message || "Upload failed");
+// Uploads to Cloudinary. Optional onProgress(percent 0..100, loaded, total)
+// lets callers drive a real progress bar (XHR exposes upload progress events;
+// fetch does not). All other callers pass no callback and behave as before.
+function uploadFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", UPLOAD_PRESET);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`);
+    if (typeof onProgress === "function") {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress((e.loaded / e.total) * 100, e.loaded, e.total);
+      };
     }
-    if (!data.secure_url) {
-      throw new Error("No URL returned from server");
-    }
-    return data.secure_url;
-  } catch (err) {
-    console.error("Upload error:", err);
-    throw err;
-  }
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (_) {}
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error((data.error && data.error.message) || "Upload failed"));
+        return;
+      }
+      if (!data.secure_url) {
+        reject(new Error("No URL returned from server"));
+        return;
+      }
+      resolve(data.secure_url);
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onabort = () => reject(new Error("Upload cancelled"));
+    xhr.send(form);
+  });
 }
 
 function pickImage() {
@@ -9492,6 +9503,30 @@ function removeMusicSelection() {
   document.getElementById("musicSearchInput").focus();
 }
 
+// Posting-progress UI. The ring's circumference is 2πr (r=52 in the SVG), so
+// the fill is drawn by shrinking stroke-dashoffset as the percentage rises.
+const STORY_RING_CIRC = 2 * Math.PI * 52;
+function setStoryUploadUI(active, pct, stage) {
+  const ov = document.getElementById("storyUploadOverlay");
+  if (!ov) return;
+  if (!active) {
+    ov.classList.remove("active");
+    const ring = document.getElementById("storyUploadRingFill");
+    if (ring) ring.style.strokeDashoffset = String(STORY_RING_CIRC);
+    const pctEl = document.getElementById("storyUploadPct");
+    if (pctEl) pctEl.textContent = "0%";
+    return;
+  }
+  ov.classList.add("active");
+  const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  const ring = document.getElementById("storyUploadRingFill");
+  if (ring) ring.style.strokeDashoffset = String(STORY_RING_CIRC * (1 - p / 100));
+  const pctEl = document.getElementById("storyUploadPct");
+  if (pctEl) pctEl.textContent = p + "%";
+  const stageEl = document.getElementById("storyUploadStage");
+  if (stageEl && stage) stageEl.textContent = stage;
+}
+
 async function shareStatus() {
   if (!currentUser) {
     showNotifToast("Please login first", "error");
@@ -9501,6 +9536,10 @@ async function shareStatus() {
   const shareBtn = document.getElementById("shareStoryBtn");
   shareBtn.disabled = true;
   shareBtn.textContent = "Sharing...";
+
+  // Show the 0→100% ring immediately so the user has live feedback while the
+  // media uploads and the story is written.
+  setStoryUploadUI(true, 0, statusFile ? "Uploading…" : "Posting…");
 
   // Close the composer right away so it feels instant — the story posts in the
   // background. (Uploading media still takes a moment on slow networks, but the
@@ -9521,7 +9560,8 @@ async function shareStatus() {
 
     if (statusTab === "image" && statusFile) {
       showNotifToast("📤 Uploading photo...", "info");
-      const url = await uploadFile(fileToUpload);
+      const url = await uploadFile(fileToUpload, (p) => setStoryUploadUI(true, p, "Uploading photo…"));
+      setStoryUploadUI(true, 92, "Posting…");
       statusData.url = url;
       if (textVal) statusData.text = textVal;
       if (selectedMusicData) {
@@ -9535,7 +9575,8 @@ async function shareStatus() {
       }
     } else if (statusTab === "video" && statusFile) {
       showNotifToast("📤 Uploading video...", "info");
-      const url = await uploadFile(fileToUpload);
+      const url = await uploadFile(fileToUpload, (p) => setStoryUploadUI(true, p, "Uploading video…"));
+      setStoryUploadUI(true, 92, "Posting…");
       statusData.url = url;
       if (textVal) statusData.text = textVal;
       if (selectedMusicData) {
@@ -9550,6 +9591,7 @@ async function shareStatus() {
     } else if (statusTab === "text") {
       if (!textVal) {
         showNotifToast("Please enter some text", "error");
+        setStoryUploadUI(false);
         shareBtn.disabled = false;
         shareBtn.textContent = "Share";
         return;
@@ -9567,6 +9609,7 @@ async function shareStatus() {
     } else if (statusTab === "music") {
       if (!selectedMusicData) {
         showNotifToast("Please select a song", "error");
+        setStoryUploadUI(false);
         shareBtn.disabled = false;
         shareBtn.textContent = "Share";
         return;
@@ -9603,12 +9646,18 @@ async function shareStatus() {
       }
     }
 
+    setStoryUploadUI(true, 96, "Posting…");
     await db.collection("status").add(statusData);
+    setStoryUploadUI(true, 100, "Posted!");
+    // Let the ring visibly land on 100% before the composer closes.
+    await new Promise(r => setTimeout(r, 350));
     closeStatusModal();
     showNotifToast("✓ Story shared!", "success");
 
   } catch (err) {
     showNotifToast("Failed to share: " + err.message, "error");
+  } finally {
+    setStoryUploadUI(false);
   }
 
   shareBtn.disabled = false;
