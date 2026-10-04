@@ -1138,6 +1138,310 @@ td {
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
+
+/* =====================================================
+   NEXA ADMIN — ACCURACY + RESPONSIVE POLISH (2026)
+   Appended layer. Caps the reading width on ultra-wide
+   screens, gives the stats grid deliberate column counts,
+   adds the phone column / detail drawer, and turns the
+   user table into tap-to-open cards on phones.
+   ===================================================== */
+
+/* Content column: stops 1920px from fragmenting into 6 skinny cards */
+.dashboard-content {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* Stats: deliberate column counts (the old auto-fit gave 2 cols at 1024
+   and a cramped 6 at 1920) */
+@media (min-width: 480px) and (max-width: 639px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 1024px) {
+  .stats-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  #analyticsGrid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 1024px) {
+  #analyticsGrid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Header: keep title + sync + logout on one tidy row on phones */
+@media (max-width: 767px) {
+  .dashboard-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    text-align: left;
+    gap: 10px;
+  }
+  .dashboard-title { flex: 1 1 100%; width: auto; }
+  .sync-indicator { width: auto; }
+  .logout-btn { width: auto; margin-left: auto; }
+}
+
+/* Sticky table header inside the scroll container */
+.table-scroll { max-height: 72vh; }
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #121a2b;
+}
+
+/* User cell (avatar + name + @handle) */
+.user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-md);
+  background: var(--bg-3);
+}
+.user-cell-meta { min-width: 0; }
+.user-cell-name {
+  font-weight: 700;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+.user-cell-handle {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+
+/* Phone column */
+.phone-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.phone-cell a { color: var(--primary-lt); text-decoration: none; font-weight: 600; }
+.phone-cell a:hover { text-decoration: underline; }
+.phone-cell .no-phone { color: var(--text-3); }
+
+/* Rows are click-to-open now */
+tbody tr { cursor: pointer; }
+tbody tr .actions { cursor: default; }
+
+/* Toolbar (search + export) */
+.toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  align-items: center;
+}
+.toolbar .search-input { flex: 1; min-width: 220px; }
+.export-btn {
+  padding: 11px 16px;
+  border: 1px solid var(--border-md);
+  background: rgba(26,35,50,0.5);
+  color: var(--text-1);
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.export-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+
+/* ── User detail drawer (desktop side panel / mobile bottom sheet) ── */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,0.62);
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.drawer-overlay.show { opacity: 1; }
+.user-drawer {
+  width: min(460px, 100%);
+  height: 100%;
+  background: var(--bg-1);
+  border-left: 1px solid var(--border-md);
+  box-shadow: -24px 0 64px rgba(0,0,0,0.55);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(28px);
+  transition: transform 0.26s var(--ease);
+  overflow: hidden;
+}
+.drawer-overlay.show .user-drawer { transform: translateX(0); }
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-dk);
+  flex-shrink: 0;
+}
+.drawer-head .user-avatar { width: 54px; height: 54px; }
+.drawer-head-meta { flex: 1; min-width: 0; }
+.drawer-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer-handle { font-size: 13px; color: var(--text-3); }
+.drawer-close {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border-md);
+  background: rgba(26,35,50,0.5);
+  color: var(--text-2);
+  font-size: 16px;
+  cursor: pointer;
+}
+.drawer-close:hover { border-color: var(--danger); color: var(--danger); }
+
+.drawer-body { padding: 18px 20px; overflow-y: auto; flex: 1; }
+.drawer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-dk);
+  font-size: 13px;
+}
+.drawer-row .k { color: var(--text-3); font-weight: 600; flex-shrink: 0; }
+.drawer-row .v {
+  color: var(--text-1);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+}
+.drawer-row .v.mono { font-family: 'Syne', monospace; font-size: 11px; }
+.drawer-row .v a { color: var(--primary-lt); text-decoration: none; font-weight: 600; }
+.drawer-row .v a:hover { text-decoration: underline; }
+.copy-btn {
+  margin-left: 8px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid var(--border-md);
+  background: rgba(26,35,50,0.6);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.copy-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+.drawer-actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-dk);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.drawer-actions .action-btn { flex: 1; min-width: 90px; justify-content: center; text-align: center; padding: 12px; }
+
+@media (max-width: 767px) {
+  .drawer-overlay { align-items: flex-end; justify-content: center; }
+  .user-drawer {
+    width: 100%;
+    height: auto;
+    max-height: 90vh;
+    border-left: none;
+    border-top: 1px solid var(--border-md);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(28px);
+  }
+  .drawer-overlay.show .user-drawer { transform: translateY(0); }
+}
+
+/* ── Phones & tablets: users become tap-to-open cards (no horizontal scroll) ── */
+@media (max-width: 1023px) {
+  .table-scroll { max-height: none; overflow-x: visible; }
+  .table-container { background: transparent; border: none; backdrop-filter: none; overflow: visible; }
+  table, thead, tbody, tr, td { display: block; width: 100%; }
+  thead { display: none; }
+  tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-md);
+    border-radius: 14px;
+    background: rgba(21,27,39,0.55);
+  }
+  tbody td { padding: 0; border: none; }
+  .cell-user { grid-column: 1 / -1; }
+  .cell-status { grid-column: 1; align-self: center; }
+  .cell-seen { grid-column: 2; justify-self: end; align-self: center; }
+  .cell-phone { grid-column: 1; }
+  .cell-joined { grid-column: 2; justify-self: end; }
+  .cell-email { display: none; }
+  .cell-actions { grid-column: 1 / -1; margin-top: 4px; }
+  .cell-phone::before { content: "📱 "; }
+  .cell-joined::before { content: "📅 "; }
+  .user-cell-name, .user-cell-handle { max-width: none; }
+  tbody tr .actions { flex-wrap: nowrap; }
+  tbody tr .action-btn { flex: 1; text-align: center; padding: 9px 6px; font-size: 11px; }
+}
+
+/* "Data note" helper used under section titles */
+.data-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+.data-note .dot { color: var(--online); }
+
+/* Edit-user form fields (used inside the drawer shell) */
+.edit-field { margin-bottom: 16px; }
+.edit-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.edit-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-md);
+  outline: none;
+  border-radius: 10px;
+  background: rgba(26,35,50,0.6);
+  color: var(--text-1);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.edit-input:focus {
+  border-color: var(--primary);
+  background: rgba(79,143,255,0.06);
+}
   </style>
 </head>
 <body>
@@ -1287,13 +1591,12 @@ td {
     </div>
 
     <!-- Search & Filter Controls -->
-    <div class="search-box" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
-      <input 
-        id="searchInput" 
-        type="text" 
-        class="search-input" 
-        placeholder="🔍 Search by name, email, or UID..."
-        style="flex: 1; min-width: 240px;"
+    <div class="toolbar">
+      <input
+        id="searchInput"
+        type="text"
+        class="search-input"
+        placeholder="🔍 Search name, @username, email, phone or UID..."
       >
       <div id="filterTabs" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
         <button class="filter-tab-btn active" data-filter="all" onclick="setFilter('all')">All Users</button>
@@ -1301,6 +1604,7 @@ td {
         <button class="filter-tab-btn" data-filter="online" onclick="setFilter('online')">Online</button>
         <button class="filter-tab-btn" data-filter="banned" onclick="setFilter('banned')">Banned</button>
       </div>
+      <button class="export-btn" id="exportCsvBtn" onclick="exportUsersCsv()">⬇️ Export CSV</button>
     </div>
 
     <!-- Users Table -->
@@ -1308,6 +1612,7 @@ td {
       <div>
         <div class="section-title">👤 Users</div>
         <div class="section-subtitle" id="userCount">0 users total</div>
+        <div class="data-note"><span class="dot">●</span> Totals update live; message &amp; story counts recompute every 60s.</div>
       </div>
     </div>
 
@@ -1318,6 +1623,7 @@ td {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th>Phone</th>
               <th>UID</th>
               <th>Status</th>
               <th>Joined</th>
@@ -1327,7 +1633,7 @@ td {
           </thead>
           <tbody id="usersTable">
             <tr>
-              <td colspan="7" style="text-align: center; padding: 40px;">
+              <td colspan="8" style="text-align: center; padding: 40px;">
                 <div class="empty-state">
                   <div class="empty-icon">📂</div>
                   <div class="empty-text">Loading users...</div>
@@ -1362,8 +1668,8 @@ td {
     <!-- Chart -->
     <div class="section-header" style="margin-top: 40px;">
       <div>
-        <div class="section-title">📈 Growth Chart</div>
-        <div class="section-subtitle">User registrations by day</div>
+        <div class="section-title">📈 Sign-ups by Day</div>
+        <div class="section-subtitle">New registrations per day over the last 7 days</div>
       </div>
     </div>
 
@@ -1535,6 +1841,26 @@ function checkUserOnline(u) {
   return (Date.now() - lastSeen) < PRESENCE_TIMEOUT_MS;
 }
 
+// One source of truth for a user's last-seen ms, used by the table, the
+// filters, the CSV export and the stats so they can never disagree.
+function userLastSeen(u) {
+  const p = presenceData[u.uid] || {};
+  return p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
+}
+
+function safePhoto(url) {
+  const s = String(url || "");
+  if (/^https?:\/\//i.test(s) || /^data:image\//i.test(s)) return s.replace(/["'<>]/g, "");
+  return "https://i.imgur.com/HeIi0wU.png";
+}
+
+function phoneCellHtml(phone) {
+  const raw = String(phone || "").trim();
+  if (!raw) return '<span class="no-phone">\u2014</span>';
+  const digits = raw.replace(/[^\d+]/g, "");
+  return '<a href="tel:' + escapeHtml(digits) + '" onclick="event.stopPropagation()">' + escapeHtml(raw) + '</a>';
+}
+
 /* =====================================================
    CALENDAR WEEK CALCULATIONS
    ===================================================== */
@@ -1550,39 +1876,18 @@ function getCurrentWeekStart() {
   return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()).getTime();
 }
 
-function getWeekDateRange() {
-  const weekStart = getCurrentWeekStart();
-  const monday = new Date(weekStart);
-  const sunday = new Date(weekStart + 6 * 86400000);
-  
-  const monthStart = monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const monthEnd = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  
-  return `${monthStart} - ${monthEnd}`;
-}
-
 function initWeeklyAutoRefresh() {
   currentWeekStart = getCurrentWeekStart();
-  updateWeekIndicator();
-  
-  // Check every minute if we've crossed into a new week (Monday) — refreshes
-  // the weekly analytics (msgs/stories this week). The Top Users board is
-  // all-time now, so it is unaffected by the week rollover.
+
+  // Recompute on the Monday rollover so weekly windows stay accurate.
   setInterval(() => {
     const now = getCurrentWeekStart();
     if (now !== currentWeekStart) {
       currentWeekStart = now;
-      updateWeekIndicator();
+      reloadAnalytics();
       render();
     }
   }, 60000); // Check every minute
-}
-
-function updateWeekIndicator() {
-  const indicator = document.getElementById("weekIndicator");
-  if (indicator) {
-    indicator.textContent = getWeekDateRange();
-  }
 }
 
 /* =====================================================
@@ -1595,8 +1900,9 @@ function initDashboard() {
   initWeeklyAutoRefresh();
   listenUsers();
   listenPresence();
-  listenChats();
-  listenStories();
+  // Message/story analytics are computed on demand (60s) instead of streaming
+  // every chat + story document in realtime - accurate totals, far fewer reads.
+  reloadAnalytics();
   document.getElementById("searchInput")?.addEventListener("input", applyFiltersAndRender);
 
   setInterval(() => {
@@ -1604,7 +1910,7 @@ function initDashboard() {
   }, 5000);
 
   setInterval(() => {
-    renderLeaderboard();
+    reloadAnalytics();
   }, 60000);
 }
 
@@ -1618,9 +1924,7 @@ function refreshOnlineCounts() {
 
   users.forEach(u => {
     if (checkUserOnline(u)) onlineCount++;
-    const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
-    if (lastSeen >= (now - day)) activeTodayCount++;
+    if (userLastSeen(u) >= (now - day)) activeTodayCount++;
   });
 
   document.getElementById("onlineNow").textContent = onlineCount;
@@ -1640,24 +1944,24 @@ function setFilter(filterName) {
 
 function applyFiltersAndRender() {
   const query = (document.getElementById("searchInput")?.value || "").toLowerCase().trim();
+  const queryDigits = query.replace(/\D/g, "");
   const now = Date.now();
 
   const filtered = users.filter(u => {
-    const matchesSearch = 
+    const handle = (u.username || "").toLowerCase();
+    const phoneDigits = String(u.phone || "").replace(/\D/g, "");
+    const matchesSearch =
       (u.displayName || "").toLowerCase().includes(query) ||
       (u.name || "").toLowerCase().includes(query) ||
       (u.email || "").toLowerCase().includes(query) ||
-      (u.uid || "").toLowerCase().includes(query);
+      (u.uid || "").toLowerCase().includes(query) ||
+      handle.includes(query.replace(/^@/, "")) ||
+      (queryDigits && phoneDigits.includes(queryDigits));
 
     if (!matchesSearch) return false;
 
-    const isOnline = checkUserOnline(u);
-    const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
-    const isActiveToday = lastSeen >= (now - 86400000);
-
-    if (currentFilter === "active") return isActiveToday;
-    if (currentFilter === "online") return isOnline;
+    if (currentFilter === "active") return userLastSeen(u) >= (now - 86400000);
+    if (currentFilter === "online") return checkUserOnline(u);
     if (currentFilter === "banned") return u.banned === true;
     return true;
   });
@@ -1713,74 +2017,91 @@ function listenPresence() {
   );
 }
 
-function listenChats() {
-  db.collection("chats").onSnapshot(
-    snapshot => {
-      totalMessagesCount = snapshot.size;
-      const el = document.getElementById("totalMessages");
-      if (el) el.textContent = totalMessagesCount.toLocaleString();
+// On-demand analytics. These replace the old realtime `chats`/`status`
+// listeners, which streamed every document ever created (a Spark-quota
+// burner). `chats.createdAt` is millis in this app; legacy rows may hold a
+// Firestore Timestamp, so tsMs() normalizes both.
+let chatsAnalyticsLoading = false;
+let storiesAnalyticsLoading = false;
 
-      const weekStart = getCurrentWeekStart();
-      const msgScores = {};
-      const allTimeMsgScores = {};
-      let weeklyMsgCount = 0;
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.from) {
-          allTimeMsgScores[data.from] = (allTimeMsgScores[data.from] || 0) + 1;
-        }
-        if (data.from && data.createdAt && data.createdAt >= weekStart) {
-          msgScores[data.from] = (msgScores[data.from] || 0) + 1;
-          weeklyMsgCount++;
-        }
-      });
-
-      cachedMsgScores = msgScores;
-      cachedAllTimeMsgScores = allTimeMsgScores;
-      weeklyMessagesCount = weeklyMsgCount;
-      renderLeaderboard();
-      renderAnalytics();
-    },
-    err => console.error("Chats count error:", err)
-  );
+function tsMs(v) {
+  if (!v) return 0;
+  if (typeof v === "number") return v;
+  if (typeof v.toMillis === "function") return v.toMillis();
+  if (typeof v.toDate === "function") return v.toDate().getTime();
+  const n = new Date(v).getTime();
+  return isNaN(n) ? 0 : n;
 }
 
-function listenStories() {
-  db.collection("status").onSnapshot(
-    snapshot => {
-      const now = Date.now();
-      const weekStart = getCurrentWeekStart();
-      let activeCount = 0;
-      let weeklyStoryCount = 0;
-      const storyScores = {};
-      const allTimeStoryScores = {};
+async function loadChatsAnalytics() {
+  if (chatsAnalyticsLoading) return;
+  chatsAnalyticsLoading = true;
+  try {
+    const snap = await db.collection("chats").get();
+    totalMessagesCount = snap.size;
+    const weekStart = getCurrentWeekStart();
+    const msgScores = {};
+    const allTimeMsgScores = {};
+    let weeklyMsgCount = 0;
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.from) allTimeMsgScores[data.from] = (allTimeMsgScores[data.from] || 0) + 1;
+      const ts = tsMs(data.createdAt);
+      if (data.from && ts && ts >= weekStart) {
+        msgScores[data.from] = (msgScores[data.from] || 0) + 1;
+        weeklyMsgCount++;
+      }
+    });
+    cachedMsgScores = msgScores;
+    cachedAllTimeMsgScores = allTimeMsgScores;
+    weeklyMessagesCount = weeklyMsgCount;
+    const el = document.getElementById("totalMessages");
+    if (el) el.textContent = totalMessagesCount.toLocaleString();
+  } catch (e) {
+    console.error("Chats analytics error:", e);
+  } finally {
+    chatsAnalyticsLoading = false;
+  }
+}
 
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.createdAt && (now - data.createdAt < 86400000)) {
-          activeCount++;
-        }
-        if (data.uid) {
-          allTimeStoryScores[data.uid] = (allTimeStoryScores[data.uid] || 0) + 1;
-        }
-        if (data.uid && data.createdAt && data.createdAt >= weekStart) {
-          storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
-          weeklyStoryCount++;
-        }
-      });
+async function loadStoriesAnalytics() {
+  if (storiesAnalyticsLoading) return;
+  storiesAnalyticsLoading = true;
+  try {
+    const snap = await db.collection("status").get();
+    const now = Date.now();
+    const weekStart = getCurrentWeekStart();
+    let activeCount = 0;
+    let weeklyStoryCount = 0;
+    const storyScores = {};
+    const allTimeStoryScores = {};
+    snap.docs.forEach(d => {
+      const data = d.data();
+      const ts = tsMs(data.createdAt);
+      if (ts && (now - ts < 86400000)) activeCount++;
+      if (data.uid) allTimeStoryScores[data.uid] = (allTimeStoryScores[data.uid] || 0) + 1;
+      if (data.uid && ts && ts >= weekStart) {
+        storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
+        weeklyStoryCount++;
+      }
+    });
+    activeStoriesCount = activeCount;
+    const el = document.getElementById("activeStories");
+    if (el) el.textContent = activeStoriesCount;
+    cachedStoryScores = storyScores;
+    cachedAllTimeStoryScores = allTimeStoryScores;
+    weeklyStoriesCount = weeklyStoryCount;
+  } catch (e) {
+    console.error("Stories analytics error:", e);
+  } finally {
+    storiesAnalyticsLoading = false;
+  }
+}
 
-      activeStoriesCount = activeCount;
-      const el = document.getElementById("activeStories");
-      if (el) el.textContent = activeStoriesCount;
-
-      cachedStoryScores = storyScores;
-      cachedAllTimeStoryScores = allTimeStoryScores;
-      weeklyStoriesCount = weeklyStoryCount;
-      renderLeaderboard();
-      renderAnalytics();
-    },
-    err => console.error("Stories count error:", err)
-  );
+async function reloadAnalytics() {
+  await Promise.all([loadChatsAnalytics(), loadStoriesAnalytics()]);
+  renderLeaderboard();
+  renderAnalytics();
 }
 
 /* =====================================================
@@ -1975,8 +2296,8 @@ function render() {
   const weekStart = getCurrentWeekStart();
 
   const totalUsers = users.length;
-  // Calendar "today" (local midnight) so this stat always matches the
-  // chart's last bar; users with unknown createdAt (0) are excluded.
+  // Calendar "today" (local midnight) so this stat always matches the chart's
+  // last bar; users with unknown createdAt (0) are excluded.
   const todayStart = new Date().setHours(0, 0, 0, 0);
   const todayUsers = users.filter(u => u.createdAt >= todayStart).length;
   const bannedUsers = users.filter(u => u.banned).length;
@@ -1986,11 +2307,11 @@ function render() {
   let onlineCount = 0;
 
   users.forEach(u => {
-    const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
+    const lastSeen = userLastSeen(u);
     const isOnline = checkUserOnline(u);
     const isActive = lastSeen >= (now - day);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart
+      || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
 
     if (isOnline) onlineCount++;
     if (isActive) activeTodayCount++;
@@ -2063,243 +2384,262 @@ function renderAnalytics() {
 /* =====================================================
    EDIT USER WITH MODAL & REAL-TIME SYNC
    ===================================================== */
+/* =====================================================
+   USER DETAIL DRAWER (side panel on desktop, bottom sheet on phones)
+   ===================================================== */
+function drawerRow(label, valueHtml, mono) {
+  return `<div class="drawer-row"><span class="k">${label}</span><span class="v${mono ? ' mono' : ''}">${valueHtml}</span></div>`;
+}
+
+function closeUserDrawer() {
+  const overlay = document.getElementById("userDrawerOverlay");
+  if (!overlay) return;
+  overlay.classList.remove("show");
+  setTimeout(() => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 240);
+}
+
+function closeAllEditModals() {
+  document.querySelectorAll('[id^="editModal_"]').forEach(m => { if (m.parentNode) m.parentNode.removeChild(m); });
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  closeUserDrawer();
+  closeAllEditModals();
+});
+
+function copyText(text, btn) {
+  const done = () => {
+    if (btn) { const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => { btn.textContent = old; }, 1200); }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(done);
+  } else {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta); done();
+  }
+}
+
+function openUserDrawer(uid) {
+  const user = users.find(u => u.uid === uid);
+  if (!user) return;
+
+  closeUserDrawer();
+
+  const p = presenceData[uid] || {};
+  const isOnline = checkUserOnline(user);
+  const isAway = p.status === "away" && isOnline;
+  const statusLabel = user.banned ? "🚫 Banned" : isOnline ? (isAway ? "🟡 Away" : "🟢 Online") : "⚪ Offline";
+  const statusClass = user.banned ? "status-banned" : isOnline ? "status-active" : "status-offline";
+  const name = user.displayName || user.name || "Unnamed";
+  const handle = user.username ? "@" + user.username : "no @username";
+  const photo = safePhoto(user.photo || user.photoUrl);
+  const joined = user.createdAt ? new Date(user.createdAt).toLocaleString() : "Unknown";
+  const lastSeenStr = isOnline && !user.banned ? "Online now" : formatLastSeen(userLastSeen(user));
+
+  const phoneHtml = user.phone
+    ? `<a href="tel:${escapeHtml(String(user.phone).replace(/[^\d+]/g, ""))}">${escapeHtml(user.phone)}</a>
+       <button class="copy-btn" onclick="copyText('${escapeHtml(String(user.phone))}', this)">Copy</button>`
+    : '<span class="no-phone">Not provided</span>';
+
+  const referralHtml = (user.referralCount || 0) +
+    (user.referredBy ? ` <span style="color:var(--text-3)">(via @${escapeHtml(user.referredBy)})</span>` : "");
+
+  const overlay = document.createElement("div");
+  overlay.className = "drawer-overlay";
+  overlay.id = "userDrawerOverlay";
+  overlay.innerHTML = `
+    <div class="user-drawer" role="dialog" aria-modal="true">
+      <div class="drawer-head">
+        <img class="user-avatar" src="${photo}" alt="" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="drawer-head-meta">
+          <div class="drawer-name">${escapeHtml(name)}</div>
+          <div class="drawer-handle">${escapeHtml(handle)}</div>
+        </div>
+        <button class="drawer-close" onclick="closeUserDrawer()" title="Close">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div class="drawer-row"><span class="k">Status</span><span class="v"><span class="status-badge ${statusClass}">${statusLabel}</span></span></div>
+        ${drawerRow("Email", escapeHtml(user.email || "—"))}
+        ${drawerRow("Phone", phoneHtml)}
+        ${drawerRow("Joined", escapeHtml(joined))}
+        ${drawerRow("Last seen", escapeHtml(lastSeenStr))}
+        ${drawerRow("Referrals", referralHtml)}
+        ${drawerRow("Bio", escapeHtml(user.bio || "—"))}
+        ${drawerRow("UID", `<span title="${escapeHtml(uid)}">${escapeHtml(uid)}</span>
+          <button class="copy-btn" onclick="copyText('${escapeHtml(uid)}', this)">Copy</button>`, true)}
+      </div>
+      <div class="drawer-actions">
+        <button class="action-btn warning" onclick="showEditModal('${uid}')">✏️ Edit</button>
+        <button class="action-btn warning" onclick="toggleBan('${uid}', ${user.banned === true})">${user.banned ? "✅ Unban" : "🚫 Ban"}</button>
+        <button class="action-btn danger" onclick="deleteUser('${uid}')">🗑️ Delete</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeUserDrawer(); });
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("show"));
+}
+
+/* =====================================================
+   EDIT USER (name / email / phone) — via admin backend
+   ===================================================== */
 function showEditModal(uid) {
   const user = users.find(u => u.uid === uid);
   if (!user) return;
 
-  const currentName = user.displayName || user.name || "Unnamed User";
+  const currentName = user.displayName || user.name || "";
   const currentEmail = user.email || "";
+  const currentPhone = user.phone || "";
 
   const modal = document.createElement("div");
   modal.id = "editModal_" + uid;
-  modal.style.cssText = `
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-    backdrop-filter: blur(4px);
-  `;
-
-  const modalContent = document.createElement("div");
-  modalContent.style.cssText = `
-    background: rgba(21,27,39,0.95);
-    border: 1px solid var(--border-md);
-    border-radius: 16px;
-    padding: 24px;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  `;
-
-  modalContent.innerHTML = `
-    <div style="font-size: 18px; font-weight: 700; color: var(--text-0); margin-bottom: 16px;">✏️ Edit User Profile</div>
-    
-    <div style="margin-bottom: 16px;">
-      <label style="font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Display Name</label>
-      <input id="editNameInput_${uid}" type="text" value="${escapeHtml(currentName)}" style="
-        width: 100%;
-        padding: 12px;
-        border: 1px solid var(--border-md);
-        outline: none;
-        border-radius: 10px;
-        background: rgba(26,35,50,0.6);
-        color: var(--text-1);
-        font-size: 14px;
-        font-family: inherit;
-        box-sizing: border-box;
-        transition: all 0.2s;
-      ">
-    </div>
-
-    <div style="margin-bottom: 20px;">
-      <label style="font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Email</label>
-      <input id="editEmailInput_${uid}" type="email" value="${escapeHtml(currentEmail)}" style="
-        width: 100%;
-        padding: 12px;
-        border: 1px solid var(--border-md);
-        outline: none;
-        border-radius: 10px;
-        background: rgba(26,35,50,0.6);
-        color: var(--text-1);
-        font-size: 14px;
-        font-family: inherit;
-        box-sizing: border-box;
-        transition: all 0.2s;
-      ">
-    </div>
-
-    <div style="display: flex; gap: 10px;">
-      <button id="cancelBtn_${uid}" style="
-        flex: 1;
-        padding: 12px;
-        border: 1px solid var(--border-md);
-        background: rgba(26,35,50,0.5);
-        color: var(--text-2);
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 600;
-        font-family: inherit;
-        transition: all 0.2s;
-      ">
-        Cancel
-      </button>
-      <button id="saveBtn_${uid}" style="
-        flex: 1;
-        padding: 12px;
-        border: none;
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-lt) 100%);
-        color: var(--bg-0);
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 700;
-        font-family: inherit;
-        box-shadow: 0 6px 20px rgba(79,143,255,0.3);
-        transition: all 0.2s;
-      ">
-        Save Changes
-      </button>
+  modal.className = "drawer-overlay";
+  modal.innerHTML = `
+    <div class="user-drawer" role="dialog" aria-modal="true" style="max-width:440px;">
+      <div class="drawer-head">
+        <div class="drawer-head-meta">
+          <div class="drawer-name" style="font-size:17px;">✏️ Edit User</div>
+          <div class="drawer-handle">${escapeHtml(uid)}</div>
+        </div>
+        <button class="drawer-close" onclick="closeEditModal('${uid}')" title="Close">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div class="edit-field">
+          <label class="edit-label">Display Name</label>
+          <input id="editNameInput_${uid}" class="edit-input" type="text" value="${escapeHtml(currentName)}">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Email</label>
+          <input id="editEmailInput_${uid}" class="edit-input" type="email" value="${escapeHtml(currentEmail)}">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Phone</label>
+          <input id="editPhoneInput_${uid}" class="edit-input" type="tel" value="${escapeHtml(currentPhone)}" placeholder="e.g. +2348123456789">
+        </div>
+      </div>
+      <div class="drawer-actions">
+        <button class="action-btn" onclick="closeEditModal('${uid}')">Cancel</button>
+        <button class="action-btn warning" id="saveBtn_${uid}">💾 Save Changes</button>
+      </div>
     </div>
   `;
-
-  modal.appendChild(modalContent);
+  modal.addEventListener("click", e => { if (e.target === modal) closeEditModal(uid); });
   document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add("show"));
 
-  // Properly attach event listeners
-  const cancelBtn = document.getElementById("cancelBtn_" + uid);
-  const saveBtn = document.getElementById("saveBtn_" + uid);
   const nameInput = document.getElementById("editNameInput_" + uid);
   const emailInput = document.getElementById("editEmailInput_" + uid);
-
-  // Focus and select name input
-  setTimeout(() => {
-    nameInput.focus();
-    nameInput.select();
-  }, 0);
-
-  // Add focus/blur styling to inputs
-  nameInput.addEventListener("focus", function() {
-    this.style.borderColor = "var(--primary)";
-    this.style.background = "rgba(79,143,255,0.06)";
-  });
-  nameInput.addEventListener("blur", function() {
-    this.style.borderColor = "var(--border-md)";
-    this.style.background = "rgba(26,35,50,0.6)";
-  });
-
-  emailInput.addEventListener("focus", function() {
-    this.style.borderColor = "var(--primary)";
-    this.style.background = "rgba(79,143,255,0.06)";
-  });
-  emailInput.addEventListener("blur", function() {
-    this.style.borderColor = "var(--border-md)";
-    this.style.background = "rgba(26,35,50,0.6)";
-  });
-
-  // Button hover effects
-  cancelBtn.addEventListener("mouseover", function() {
-    this.style.background = "rgba(79,143,255,0.1)";
-    this.style.borderColor = "var(--primary)";
-    this.style.color = "var(--primary)";
-  });
-  cancelBtn.addEventListener("mouseout", function() {
-    this.style.background = "rgba(26,35,50,0.5)";
-    this.style.borderColor = "var(--border-md)";
-    this.style.color = "var(--text-2)";
-  });
-
-  saveBtn.addEventListener("mouseover", function() {
-    this.style.boxShadow = "0 10px 32px rgba(79,143,255,0.4)";
-    this.style.transform = "translateY(-2px)";
-  });
-  saveBtn.addEventListener("mouseout", function() {
-    this.style.boxShadow = "0 6px 20px rgba(79,143,255,0.3)";
-    this.style.transform = "translateY(0)";
-  });
-
-  // Cancel button handler
-  cancelBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (modal.parentNode) {
-      document.body.removeChild(modal);
-    }
-  });
-
-  // Save button handler
-  saveBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    saveUserEdit(uid, modal, nameInput, emailInput);
-  });
-
-  // Close on background click
-  modal.addEventListener("click", (e) => {
-    if (e.target === modal) {
-      if (modal.parentNode) {
-        document.body.removeChild(modal);
-      }
-    }
-  });
-
-  // Allow Enter key to save
-  nameInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      saveUserEdit(uid, modal, nameInput, emailInput);
-    }
-  });
-  emailInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      saveUserEdit(uid, modal, nameInput, emailInput);
-    }
+  const phoneInput = document.getElementById("editPhoneInput_" + uid);
+  const saveBtn = document.getElementById("saveBtn_" + uid);
+  saveBtn.addEventListener("click", () => saveUserEdit(uid, nameInput, emailInput, phoneInput, saveBtn));
+  setTimeout(() => { nameInput.focus(); nameInput.select(); }, 60);
+  [nameInput, emailInput, phoneInput].forEach(inp => {
+    inp.addEventListener("keypress", e => {
+      if (e.key === "Enter") saveUserEdit(uid, nameInput, emailInput, phoneInput, saveBtn);
+    });
   });
 }
 
-function saveUserEdit(uid, modal, nameInput, emailInput) {
+function closeEditModal(uid) {
+  const modal = document.getElementById("editModal_" + uid);
+  if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+}
+
+function saveUserEdit(uid, nameInput, emailInput, phoneInput, saveBtn) {
   const newName = nameInput.value.trim();
   const newEmail = emailInput.value.trim();
+  const newPhone = phoneInput ? phoneInput.value.trim() : "";
 
-  if (!newName) {
-    alert("⚠️ Display name cannot be empty!");
-    return;
-  }
+  if (!newName) { alert("⚠️ Display name cannot be empty!"); return; }
+  if (newEmail && !newEmail.includes("@")) { alert("⚠️ Invalid email format!"); return; }
+  if (newPhone && newPhone.replace(/\D/g, "").length < 7) { alert("⚠️ Phone number looks too short."); return; }
 
-  if (newEmail && !newEmail.includes("@")) {
-    alert("⚠️ Invalid email format!");
-    return;
-  }
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "💾 Saving..."; }
 
-  const saveBtn = document.getElementById("saveBtn_" + uid);
-  if (saveBtn) {
-    saveBtn.disabled = true;
-    saveBtn.textContent = "💾 Saving...";
-  }
-
-  // Edit goes through the admin backend — the hardened Firestore rules only
-  // let a user edit their OWN profile, so a browser-side update to someone
-  // else's doc is permission-denied. The users listener re-renders on sync.
-  adminFetch("/api/admin/edit-user", { uid, displayName: newName, email: newEmail || undefined })
+  adminFetch("/api/admin/edit-user", {
+    uid,
+    displayName: newName,
+    email: newEmail || undefined,
+    phone: newPhone || undefined
+  })
     .then(res => res.json())
     .then(data => {
       if (!data.success) throw new Error(data.error || "Failed");
-      log(`✏️ Updated user ${uid}: name="${newName}" ${newEmail ? `email="${newEmail}"` : ''}`, "success");
-      if (modal.parentNode) {
-        document.body.removeChild(modal);
-      }
+      log(`✏️ Updated user ${uid}: name="${newName}"${newEmail ? ` email="${newEmail}"` : ''}${newPhone ? ` phone="${newPhone}"` : ''}`, "success");
+      closeEditModal(uid);
+      closeUserDrawer();
     })
     .catch(err => {
       console.error("Edit error:", err);
       alert("❌ Error saving changes: " + err.message);
       log(`Failed to edit user ${uid}: ${err.message}`, "error");
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.textContent = "Save Changes";
-      }
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "💾 Save Changes"; }
     });
 }
 
-function editUser(uid) {
-  showEditModal(uid);
+/* =====================================================
+   CSV EXPORT (visible / filtered users)
+   ===================================================== */
+function csvEscape(v) {
+  const s = String(v == null ? "" : v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportUsersCsv() {
+  const query = (document.getElementById("searchInput")?.value || "").toLowerCase().trim();
+  const queryDigits = query.replace(/\D/g, "");
+  const now = Date.now();
+
+  const rows = users.filter(u => {
+    const handle = (u.username || "").toLowerCase();
+    const phoneDigits = String(u.phone || "").replace(/\D/g, "");
+    const matchesSearch =
+      (u.displayName || "").toLowerCase().includes(query) ||
+      (u.name || "").toLowerCase().includes(query) ||
+      (u.email || "").toLowerCase().includes(query) ||
+      (u.uid || "").toLowerCase().includes(query) ||
+      handle.includes(query.replace(/^@/, "")) ||
+      (queryDigits && phoneDigits.includes(queryDigits));
+    if (!matchesSearch) return false;
+    if (currentFilter === "active") return userLastSeen(u) >= (now - 86400000);
+    if (currentFilter === "online") return checkUserOnline(u);
+    if (currentFilter === "banned") return u.banned === true;
+    return true;
+  });
+
+  if (!rows.length) { alert("No users to export for the current search/filter."); return; }
+
+  const header = ["Name", "Username", "Email", "Phone", "UID", "Status", "Joined", "Last Seen"];
+  const lines = [header.join(",")];
+  rows.forEach(u => {
+    const p = presenceData[u.uid] || {};
+    const isOnline = checkUserOnline(u);
+    const status = u.banned ? "Banned" : isOnline ? (p.status === "away" ? "Away" : "Online") : "Offline";
+    lines.push([
+      u.displayName || u.name || "",
+      u.username || "",
+      u.email || "",
+      u.phone || "",
+      u.uid || "",
+      status,
+      u.createdAt ? new Date(u.createdAt).toISOString() : "",
+      userLastSeen(u) ? new Date(userLastSeen(u)).toISOString() : ""
+    ].map(csvEscape).join(","));
+  });
+
+  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `nexa-users-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  log(`⬇️ Exported ${rows.length} users to CSV`, "success");
 }
 
 /* =====================================================
@@ -2376,7 +2716,7 @@ function renderTable(data) {
   if (!data || data.length === 0) {
     table.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; padding: 40px;">
+        <td colspan="8" style="text-align: center; padding: 40px;">
           <div class="empty-state">
             <div class="empty-icon">🔍</div>
             <div class="empty-text">No users found</div>
@@ -2387,42 +2727,51 @@ function renderTable(data) {
     return;
   }
 
-  const now = Date.now();
-
   table.innerHTML = data.map(u => {
     const p = presenceData[u.uid] || {};
-    const lastSeenTs = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
+    const lastSeenTs = userLastSeen(u);
     const isOnline = checkUserOnline(u);
     const isAway = p.status === "away" && isOnline;
 
-    let statusLabel = u.banned 
-      ? "🚫 Banned" 
-      : isOnline 
-        ? (isAway ? "🟡 Away" : `<span class="online-pulse-dot"></span>Online`) 
+    let statusLabel = u.banned
+      ? "🚫 Banned"
+      : isOnline
+        ? (isAway ? "🟡 Away" : `<span class="online-pulse-dot"></span>Online`)
         : "⚪ Offline";
 
     let statusClass = u.banned ? "status-banned" : isOnline ? "status-active" : "status-offline";
-    
+
     const joinedStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—";
     const lastSeenStr = isOnline && !u.banned ? "Online now" : formatLastSeen(lastSeenTs);
-    const nameDisplay = u.displayName || u.name || "—";
+    const nameDisplay = u.displayName || u.name || "Unnamed";
+    const handleDisplay = u.username ? "@" + u.username : "no @username";
+    const photo = safePhoto(u.photo || u.photoUrl);
     const emailDisplay = u.email || "—";
 
     return `
-      <tr>
-        <td><strong>${escapeHtml(nameDisplay)}</strong></td>
-        <td>${escapeHtml(emailDisplay)}</td>
+      <tr onclick="openUserDrawer('${u.uid}')">
+        <td class="cell-user">
+          <div class="user-cell">
+            <img class="user-avatar" src="${photo}" alt="" loading="lazy" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+            <div class="user-cell-meta">
+              <div class="user-cell-name">${escapeHtml(nameDisplay)}</div>
+              <div class="user-cell-handle">${escapeHtml(handleDisplay)}</div>
+            </div>
+          </div>
+        </td>
+        <td class="cell-email">${escapeHtml(emailDisplay)}</td>
+        <td class="cell-phone phone-cell">${phoneCellHtml(u.phone)}</td>
         <td><span class="uid-text" title="${escapeHtml(u.uid)}">${escapeHtml(u.uid)}</span></td>
-        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-        <td>${joinedStr}</td>
-        <td><span style="font-weight: 500; color: ${isOnline ? 'var(--online)' : 'var(--text-3)'}">${lastSeenStr}</span></td>
-        <td>
+        <td class="cell-status"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        <td class="cell-joined">${joinedStr}</td>
+        <td class="cell-seen"><span style="font-weight:500;color:${isOnline ? 'var(--online)' : 'var(--text-3)'}">${lastSeenStr}</span></td>
+        <td class="cell-actions">
           <div class="actions">
-            <button class="action-btn warning" onclick="editUser('${u.uid}')">Edit</button>
-            <button class="action-btn warning" onclick="toggleBan('${u.uid}', ${u.banned === true})">
+            <button class="action-btn warning" onclick="event.stopPropagation();openUserDrawer('${u.uid}')">View</button>
+            <button class="action-btn warning" onclick="event.stopPropagation();toggleBan('${u.uid}', ${u.banned === true})">
               ${u.banned ? "Unban" : "Ban"}
             </button>
-            <button class="action-btn danger" onclick="deleteUser('${u.uid}')">Delete</button>
+            <button class="action-btn danger" onclick="event.stopPropagation();deleteUser('${u.uid}')">Delete</button>
           </div>
         </td>
       </tr>
@@ -2474,7 +2823,7 @@ function renderChart() {
     data: {
       labels: labels,
       datasets: [{
-        label: "New Registrations",
+        label: "New Sign-ups",
         data: chartData,
         borderColor: "#4f8fff",
         backgroundColor: "rgba(79,143,255,0.12)",
