@@ -611,8 +611,222 @@ td {
 }
 
 .chart-canvas {
-  max-height: 300px;
   width: 100%;
+  height: 300px;
+  max-height: 320px;
+}
+
+.chart-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sum-item {
+  background: rgba(21,27,39,0.5);
+  border: 1px solid var(--border-md);
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+}
+.sum-val {
+  font-size: clamp(18px, 4vw, 24px);
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.sum-label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.chart-footnote {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* ⭐ Nexa Champions */
+.champions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.champions-empty {
+  background: rgba(21,27,39,0.5);
+  border: 1px solid var(--border-md);
+  border-radius: 14px;
+  padding: 22px;
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: center;
+}
+.champ-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(21,27,39,0.5);
+  border: 1px solid var(--border-md);
+  border-radius: 14px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.champ-row:hover {
+  transform: translateX(3px);
+  border-color: rgba(79,143,255,0.45);
+  background: rgba(79,143,255,0.08);
+}
+.champ-row.rank-1 { border-color: rgba(255,199,64,0.5); background: rgba(255,199,64,0.06); }
+.champ-row.rank-2 { border-color: rgba(196,204,216,0.4); }
+.champ-row.rank-3 { border-color: rgba(205,127,50,0.45); }
+.champ-rank {
+  width: 34px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.champ-av {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #1b2230;
+}
+.champ-meta { flex: 1; min-width: 0; }
+.champ-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.champ-online { color: var(--online); margin-left: 6px; font-size: 11px; }
+.champ-new {
+  margin-left: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  background: rgba(56,211,159,0.16);
+  color: #38d39f;
+  border: 1px solid rgba(56,211,159,0.4);
+  border-radius: 5px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+.champ-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 3px 0 5px;
+}
+.champ-bar {
+  height: 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+}
+.champ-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #4f8fff, #38d39f);
+  transition: width 0.4s ease;
+}
+
+/* 🩺 Data Health */
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+.health-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(21,27,39,0.5);
+  border: 1px solid var(--border-md);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.health-icon { font-size: 22px; }
+.health-value { font-size: 20px; font-weight: 800; color: var(--text-1); line-height: 1.1; }
+.health-label { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.health-hint { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+.stat-change-link { cursor: pointer; text-decoration: underline dotted; }
+.stat-change-link:hover { color: var(--accent); }
+
+/* Sortable table headers */
+th.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+th.th-sort:hover { color: var(--accent); }
+th.th-sort .th-caret { font-size: 9px; color: var(--accent); margin-left: 2px; }
+th.th-active { color: var(--accent); }
+
+/* New Today modal */
+.nt-modal {
+  background: var(--bg-2, #151b27);
+  border: 1px solid var(--border-md);
+  border-radius: 18px;
+  width: min(460px, 92vw);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  transform: translateY(10px) scale(0.98);
+  transition: transform 0.25s ease;
+}
+.drawer-overlay.show .nt-modal { transform: translateY(0) scale(1); }
+.nt-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.nt-title { font-size: 17px; font-weight: 800; color: var(--text-1); }
+.nt-count { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.nt-body { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.nt-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 10px; border-radius: 12px;
+  background: rgba(255,255,255,0.03); cursor: pointer;
+}
+.nt-row:hover { background: rgba(79,143,255,0.1); }
+.nt-row img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #1b2230; }
+.nt-meta { flex: 1; min-width: 0; }
+.nt-name { font-weight: 700; font-size: 14px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nt-sub { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nt-time { font-size: 11px; color: var(--text-3); }
+.nt-empty { padding: 30px; text-align: center; color: var(--text-3); font-size: 14px; }
+
+/* Toasts */
+.admin-toast-host {
+  position: fixed; right: 18px; bottom: 18px; z-index: 99999;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+.admin-toast {
+  background: rgba(11,15,23,0.96);
+  border: 1px solid var(--border-md);
+  border-left: 3px solid var(--accent);
+  color: var(--text-1);
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 320px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.admin-toast.show { opacity: 1; transform: translateY(0); }
+.admin-toast.success { border-left-color: #38d39f; }
+.admin-toast.error { border-left-color: #ff5c5c; }
+
+@media (max-width: 640px) {
+  .chart-summary { grid-template-columns: repeat(2, 1fr); }
+  .chart-canvas { height: 240px; }
 }
 
 /* Activity Log */
@@ -1498,7 +1712,7 @@ tbody tr .actions { cursor: default; }
         <div class="stat-icon">👥</div>
         <div class="stat-label">Total Users</div>
         <div class="stat-value" id="totalUsers">0</div>
-        <div class="stat-change" id="newUsersText">0 registered today</div>
+        <div class="stat-change stat-change-link" id="newUsersText" onclick="openNewTodayModal()" title="See exactly who registered today">0 registered today</div>
       </div>
 
       <div class="stat-card">
@@ -1529,14 +1743,7 @@ tbody tr .actions { cursor: default; }
         <div class="stat-change" id="bannedText">Restricted access</div>
       </div>
 
-      <div class="stat-card">
-        <div class="stat-icon">💬</div>
-        <div class="stat-label">Total Messages</div>
-        <div class="stat-value" id="totalMessages">0</div>
-        <div class="stat-change">Platform chats</div>
-      </div>
-
-      <div class="stat-card">
+            <div class="stat-card">
         <div class="stat-icon">⭕</div>
         <div class="stat-label">Active Stories</div>
         <div class="stat-value" id="activeStories">0</div>
@@ -1559,10 +1766,10 @@ tbody tr .actions { cursor: default; }
         <div class="stat-change">Weekly actives ÷ total users</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">💬</div>
-        <div class="stat-label">Msgs / Active User</div>
-        <div class="stat-value" id="msgsPerUser">0</div>
-        <div class="stat-change">This week</div>
+        <div class="stat-icon">🔗</div>
+        <div class="stat-label">Referrals</div>
+        <div class="stat-value" id="totalReferrals">0</div>
+        <div class="stat-change">Users invited this week</div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📸</div>
@@ -1583,10 +1790,10 @@ tbody tr .actions { cursor: default; }
         <div class="stat-change">Weekly actives who are online now</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">⏱️</div>
-        <div class="stat-label">Avg Msgs / Day (7d)</div>
-        <div class="stat-value" id="msgsPerDay">0</div>
-        <div class="stat-change">Platform-wide</div>
+        <div class="stat-icon">🩺</div>
+        <div class="stat-label">Needs Attention</div>
+        <div class="stat-value" id="needsAttention">0</div>
+        <div class="stat-change">Profiles missing data</div>
       </div>
     </div>
 
@@ -1621,13 +1828,13 @@ tbody tr .actions { cursor: default; }
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Phone</th>
+              <th class="th-sort" data-sort="name" onclick="sortUsers('name')">Name <span class="th-caret"></span></th>
+              <th class="th-sort" data-sort="email" onclick="sortUsers('email')">Email <span class="th-caret"></span></th>
+              <th class="th-sort" data-sort="phone" onclick="sortUsers('phone')">Phone <span class="th-caret"></span></th>
               <th>UID</th>
-              <th>Status</th>
-              <th>Joined</th>
-              <th>Last Seen</th>
+              <th class="th-sort" data-sort="status" onclick="sortUsers('status')">Status <span class="th-caret"></span></th>
+              <th class="th-sort" data-sort="joined" onclick="sortUsers('joined')">Joined <span class="th-caret"></span></th>
+              <th class="th-sort" data-sort="seen" onclick="sortUsers('seen')">Last Seen <span class="th-caret"></span></th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -1645,36 +1852,48 @@ tbody tr .actions { cursor: default; }
       </div>
     </div>
 
-    <!-- Weekly Leaderboard -->
+    <!-- Nexa Champions -->
     <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <div class="section-title">🏆 Top Users on Nexa</div>
-        <div class="section-subtitle" id="weeklySubtitle">Top 5 most active users of all time — by messages &amp; stories since launch</div>
+        <div class="section-title">⭐ Nexa Champions</div>
+        <div class="section-subtitle" id="championsSubtitle">Top 20 most active members of the last 7 days — by messages, stories &amp; referrals</div>
       </div>
-      <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
-        🔄 Refresh Top Users
-      </button>
-      <button class="action-btn" id="backfillReferralsBtn" onclick="backfillReferrals()" title="Recompute referral counts from referredBy fields" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
-        🔗 Backfill Referrals
-      </button>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
+          🔄 Refresh
+        </button>
+        <button class="action-btn" id="backfillReferralsBtn" onclick="backfillReferrals()" title="Recompute referral counts from referredBy fields" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
+          🔗 Backfill Referrals
+        </button>
+      </div>
     </div>
 
-    <div class="leaderboard-grid" id="leaderboardGrid">
-      <div class="leaderboard-card">
-        <div style="color: var(--text-3); font-size: 13px;">Analyzing user activity...</div>
+    <div class="champions-list" id="championsGrid">
+      <div class="champions-empty">Analyzing this week's activity…</div>
+    </div>
+
+    <!-- Data Health -->
+    <div class="section-header" style="margin-top: 36px;">
+      <div>
+        <div class="section-title">🩺 Data Health</div>
+        <div class="section-subtitle">Gaps that can skew the numbers above — worth a clean-up</div>
       </div>
     </div>
+    <div class="health-grid" id="healthGrid"></div>
 
     <!-- Chart -->
     <div class="section-header" style="margin-top: 40px;">
       <div>
-        <div class="section-title">📈 Sign-ups by Day</div>
-        <div class="section-subtitle">New registrations per day over the last 7 days</div>
+        <div class="section-title">📈 Growth</div>
+        <div class="section-subtitle">New sign-ups per day (bars) and total users (line) over the last 14 days</div>
       </div>
     </div>
 
+    <div class="chart-summary" id="chartSummary"></div>
+
     <div class="chart-container">
       <canvas id="chart" class="chart-canvas"></canvas>
+      <div class="chart-footnote" id="chartFootnote"></div>
     </div>
 
     <!-- Activity Log -->
@@ -1739,14 +1958,11 @@ function adminFetch(path, body) {
 
 let users = [];
 let presenceData = {};
-let totalMessagesCount = 0;
 let activeStoriesCount = 0;
-let weeklyMessagesCount = 0;
 let weeklyStoriesCount = 0;
+let weeklyReferralsCount = 0;
 let cachedMsgScores = {};
 let cachedStoryScores = {};
-let cachedAllTimeMsgScores = {};
-let cachedAllTimeStoryScores = {};
 let currentWeekStart = null;
 let chart = null;
 let currentUser = null;
@@ -1966,6 +2182,16 @@ function applyFiltersAndRender() {
     return true;
   });
 
+  if (sortKey) {
+    filtered.sort((a, b) => {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      if (va < vb) return -1 * sortDir;
+      if (va > vb) return 1 * sortDir;
+      return 0;
+    });
+  }
+
   renderTable(filtered);
 }
 
@@ -2021,7 +2247,6 @@ function listenPresence() {
 // listeners, which streamed every document ever created (a Spark-quota
 // burner). `chats.createdAt` is millis in this app; legacy rows may hold a
 // Firestore Timestamp, so tsMs() normalizes both.
-let chatsAnalyticsLoading = false;
 let storiesAnalyticsLoading = false;
 
 function tsMs(v) {
@@ -2033,36 +2258,9 @@ function tsMs(v) {
   return isNaN(n) ? 0 : n;
 }
 
-async function loadChatsAnalytics() {
-  if (chatsAnalyticsLoading) return;
-  chatsAnalyticsLoading = true;
-  try {
-    const snap = await db.collection("chats").get();
-    totalMessagesCount = snap.size;
-    const weekStart = getCurrentWeekStart();
-    const msgScores = {};
-    const allTimeMsgScores = {};
-    let weeklyMsgCount = 0;
-    snap.docs.forEach(d => {
-      const data = d.data();
-      if (data.from) allTimeMsgScores[data.from] = (allTimeMsgScores[data.from] || 0) + 1;
-      const ts = tsMs(data.createdAt);
-      if (data.from && ts && ts >= weekStart) {
-        msgScores[data.from] = (msgScores[data.from] || 0) + 1;
-        weeklyMsgCount++;
-      }
-    });
-    cachedMsgScores = msgScores;
-    cachedAllTimeMsgScores = allTimeMsgScores;
-    weeklyMessagesCount = weeklyMsgCount;
-    const el = document.getElementById("totalMessages");
-    if (el) el.textContent = totalMessagesCount.toLocaleString();
-  } catch (e) {
-    console.error("Chats analytics error:", e);
-  } finally {
-    chatsAnalyticsLoading = false;
-  }
-}
+// Message counts are intentionally NOT collected. The old version scanned the
+// whole `chats` collection every 60s (a large read cost) just to power a "Total
+// Messages" card and a points leaderboard. Both are gone, so the scan is too.
 
 async function loadStoriesAnalytics() {
   if (storiesAnalyticsLoading) return;
@@ -2074,14 +2272,12 @@ async function loadStoriesAnalytics() {
     let activeCount = 0;
     let weeklyStoryCount = 0;
     const storyScores = {};
-    const allTimeStoryScores = {};
     snap.docs.forEach(d => {
       const data = d.data();
       const ts = tsMs(data.createdAt);
       if (ts && (now - ts < 86400000)) activeCount++;
-      if (data.uid) allTimeStoryScores[data.uid] = (allTimeStoryScores[data.uid] || 0) + 1;
       if (data.uid && ts && ts >= weekStart) {
-        storyScores[data.uid] = (storyScores[data.uid] || 0) + 2;
+        storyScores[data.uid] = (storyScores[data.uid] || 0) + 1;
         weeklyStoryCount++;
       }
     });
@@ -2089,8 +2285,15 @@ async function loadStoriesAnalytics() {
     const el = document.getElementById("activeStories");
     if (el) el.textContent = activeStoriesCount;
     cachedStoryScores = storyScores;
-    cachedAllTimeStoryScores = allTimeStoryScores;
     weeklyStoriesCount = weeklyStoryCount;
+    // Referrals received this week (from users.createdAt + referralCount data
+    // we already have in memory — no extra reads).
+    let refWeek = 0;
+    users.forEach(u => {
+      const rc = u.referralCount || 0;
+      if (rc > 0 && u.createdAt && u.createdAt >= weekStart) refWeek += rc;
+    });
+    weeklyReferralsCount = refWeek;
   } catch (e) {
     console.error("Stories analytics error:", e);
   } finally {
@@ -2099,9 +2302,10 @@ async function loadStoriesAnalytics() {
 }
 
 async function reloadAnalytics() {
-  await Promise.all([loadChatsAnalytics(), loadStoriesAnalytics()]);
-  renderLeaderboard();
+  await loadStoriesAnalytics();
+  renderChampions();
   renderAnalytics();
+  renderDataHealth();
 }
 
 /* =====================================================
@@ -2178,84 +2382,110 @@ function reloadWeeklyStats() {
     btn.innerHTML = "⏳ Reloading...";
   }
 
-  log("🔄 Top Users refreshed by admin", "info");
+  log("🔄 Champions refreshed by admin", "info");
 
   setTimeout(() => {
     render();
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = "🔄 Refresh Top Users";
+      btn.innerHTML = "🔄 Refresh";
     }
   }, 400);
 }
 
-function renderLeaderboard() {
-  const leaderboardGrid = document.getElementById("leaderboardGrid");
-  if (!leaderboardGrid || !users.length) return;
+// ⭐ Nexa Champions — the top members of the last 7 days. Ranked by real
+// activity (messages sent + stories posted + people they referred), shown as
+// plain counts. There are deliberately NO points and no all-time inflation.
+function renderChampions() {
+  const grid = document.getElementById("championsGrid");
+  if (!grid) return;
 
-  const now = Date.now();
-
-  const userRankList = users.map(u => {
-    const msgs = cachedAllTimeMsgScores[u.uid] || 0;
-    const stories = cachedAllTimeStoryScores[u.uid] || 0;
-    const isOnline = checkUserOnline(u);
-
-    // All-time activity score: messages (2 pts) + stories (3 pts) + a small
-    // bonus for being online right now. No weekly window — this ranks the top
-    // users on Nexa since the app launched.
-    const totalScore = Math.round(msgs * 2 + stories * 3 + (isOnline ? 5 : 0));
-
-    return {
-      uid: u.uid,
-      displayName: u.displayName || u.name || "Nexa User",
-      photo: u.photo || "https://i.imgur.com/HeIi0wU.png",
-      email: u.email || "",
-      banned: u.banned === true,
-      msgs: msgs,
-      stories: stories,
-      isOnline: isOnline,
-      score: totalScore
-    };
-  }).filter(u => !u.banned);
-
-  userRankList.sort((a, b) => b.score - a.score);
-
-  const topUsers = userRankList.slice(0, 5);
-  const maxScore = topUsers.length && topUsers[0].score > 0 ? topUsers[0].score : 1;
-
-  if (!topUsers.length || topUsers[0].score === 0) {
-    leaderboardGrid.innerHTML = `
-      <div class="leaderboard-card" style="grid-column: 1 / -1;">
-        <div style="color: var(--text-3); font-size: 13px;">No user activity recorded yet.</div>
-      </div>
-    `;
+  if (!users.length) {
+    grid.innerHTML = '<div class="champions-empty">No users yet.</div>';
     return;
   }
 
-  leaderboardGrid.innerHTML = topUsers.map((u, idx) => {
-    const rank = idx + 1;
-    const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-    const rankClass = rank <= 3 ? `rank-${rank}` : "";
-    const pct = Math.min(100, Math.max(15, Math.round((u.score / maxScore) * 100)));
-    const onlineTag = u.isOnline ? ` • <span style="color: var(--online);">🟢 Online</span>` : "";
+  const ranked = users.filter(u => !u.banned).map(u => {
+    const msgs = cachedMsgScores[u.uid] || 0;
+    const stories = cachedStoryScores[u.uid] || 0;
+    const referrals = u.referralCount || 0;
+    const isOnline = checkUserOnline(u);
+    const isNew = !!u.createdAt && (Date.now() - u.createdAt) < 7 * 86400000;
+    return {
+      uid: u.uid,
+      displayName: u.displayName || u.name || "Nexa User",
+      photo: safePhoto(u.photo || u.photoUrl),
+      isOnline, msgs, stories, referrals, isNew,
+      activity: msgs + stories + referrals
+    };
+  }).filter(u => u.activity > 0);
 
+  ranked.sort((a, b) =>
+    b.activity - a.activity ||
+    b.referrals - a.referrals ||
+    b.msgs - a.msgs
+  );
+
+  const top = ranked.slice(0, 20);
+
+  if (!top.length) {
+    grid.innerHTML = '<div class="champions-empty">No activity in the last 7 days yet — champions appear here as people post and refer friends.</div>';
+    return;
+  }
+
+  const max = top[0].activity || 1;
+  grid.innerHTML = top.map((u, i) => {
+    const rank = i + 1;
+    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+    const pct = Math.max(6, Math.round((u.activity / max) * 100));
+    const dot = u.isOnline
+      ? '<span class="champ-online" title="Online now">●</span>'
+      : '';
+    const newTag = u.isNew ? '<span class="champ-new">NEW</span>' : '';
     return `
-      <div class="leaderboard-card ${rankClass}">
-        <div class="rank-badge">${rankBadge}</div>
-        <div class="leaderboard-info">
-          <div class="leaderboard-name">${escapeHtml(u.displayName)}${onlineTag}</div>
-          <div class="leaderboard-sub">💬 ${u.msgs} msg${u.msgs === 1 ? '' : 's'} • ⭕ ${u.stories} stor${u.stories === 1 ? 'y' : 'ies'}</div>
-          <div class="activity-bar-bg">
-            <div class="activity-bar-fill" style="width: ${pct}%;"></div>
+      <div class="champ-row rank-${rank <= 3 ? rank : 'x'}" onclick="openUserDrawer('${u.uid}')">
+        <div class="champ-rank">${medal}</div>
+        <img class="champ-av" src="${u.photo}" alt="" loading="lazy" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+        <div class="champ-meta">
+          <div class="champ-name">${escapeHtml(u.displayName)}${dot}${newTag}</div>
+          <div class="champ-stats">
+            <span title="Messages sent this week">💬 ${u.msgs}</span>
+            <span title="Stories posted this week">⭕ ${u.stories}</span>
+            <span title="People referred this week">🔗 ${u.referrals}</span>
           </div>
-        </div>
-        <div class="leaderboard-score">
-          <div class="score-val">${u.score}</div>
-          <div class="score-label">Points</div>
+          <div class="champ-bar"><div class="champ-bar-fill" style="width:${pct}%"></div></div>
         </div>
       </div>
     `;
   }).join("");
+}
+
+// 🩺 Data Health — surface the gaps that make the numbers above untrustworthy.
+function renderDataHealth() {
+  const grid = document.getElementById("healthGrid");
+  if (!grid) return;
+  if (!users.length) { grid.innerHTML = ""; return; }
+
+  const noDate = users.filter(u => !u.createdAt).length;
+  const noPhone = users.filter(u => !String(u.phone || "").trim()).length;
+  const noHandle = users.filter(u => !String(u.username || "").trim()).length;
+  const banned = users.filter(u => u.banned === true).length;
+
+  const card = (icon, label, value, hint) => `
+    <div class="health-card">
+      <div class="health-icon">${icon}</div>
+      <div>
+        <div class="health-value">${value}</div>
+        <div class="health-label">${label}</div>
+        <div class="health-hint">${hint}</div>
+      </div>
+    </div>`;
+
+  grid.innerHTML =
+    card("📅", "Unknown join date", noDate, noDate ? "Excluded from growth stats" : "All users dated") +
+    card("📞", "Missing phone", noPhone, noPhone ? "Can't be reached by phone" : "All have phones") +
+    card("🏷️", "Missing @username", noHandle, noHandle ? "Not searchable by handle" : "All have handles") +
+    card("🚫", "Banned", banned, banned ? "Access restricted" : "Nobody banned");
 }
 
 /* =====================================================
@@ -2329,8 +2559,9 @@ function render() {
 
   applyFiltersAndRender();
   renderChart();
-  renderLeaderboard();
+  renderChampions();
   renderAnalytics();
+  renderDataHealth();
 }
 
 /* =====================================================
@@ -2362,9 +2593,9 @@ function renderAnalytics() {
   const engagement = totalUsers > 0 ? Math.round((weeklyActive / totalUsers) * 100) : 0;
   setTxt("engagementRate", engagement + "%");
 
-  // Messages per active user this week.
-  const perUser = weeklyActive > 0 ? (weeklyMessagesCount / weeklyActive) : 0;
-  setTxt("msgsPerUser", perUser ? perUser.toFixed(1) : "0");
+  // Referrals received this week (inviter.referralCount for users who joined
+  // this week) — derived from data already in memory, no extra reads.
+  setTxt("totalReferrals", weeklyReferralsCount.toLocaleString());
 
   // Stories posted this week (all users).
   setTxt("storiesThisWeek", weeklyStoriesCount.toLocaleString());
@@ -2377,8 +2608,11 @@ function renderAnalytics() {
   const retention = weeklyActive > 0 ? Math.round((onlineNow / weeklyActive) * 100) : 0;
   setTxt("retentionRate", retention + "%");
 
-  // Average messages per day over the last 7 days (weekly count / 7).
-  setTxt("msgsPerDay", Math.round(weeklyMessagesCount / 7).toLocaleString());
+  // Profiles missing data that make the stats above unreliable.
+  const needsAttention = users.filter(u =>
+    !u.createdAt || !String(u.phone || "").trim() || !String(u.username || "").trim()
+  ).length;
+  setTxt("needsAttention", needsAttention.toLocaleString());
 }
 
 /* =====================================================
@@ -2610,7 +2844,7 @@ function exportUsersCsv() {
     return true;
   });
 
-  if (!rows.length) { alert("No users to export for the current search/filter."); return; }
+  if (!rows.length) { adminToast("No users to export for the current search/filter.", "error"); return; }
 
   const header = ["Name", "Username", "Email", "Phone", "UID", "Status", "Joined", "Last Seen"];
   const lines = [header.join(",")];
@@ -2630,16 +2864,26 @@ function exportUsersCsv() {
     ].map(csvEscape).join(","));
   });
 
-  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `nexa-users-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-  log(`⬇️ Exported ${rows.length} users to CSV`, "success");
+  try {
+    // The UTF-8 BOM makes Excel open accented names/phones correctly instead
+    // of showing mojibake.
+    const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nexa-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    log(`⬇️ Exported ${rows.length} users to CSV`, "success");
+    adminToast(`Exported ${rows.length} user${rows.length === 1 ? "" : "s"} to CSV`, "success");
+  } catch (e) {
+    console.error("CSV export failed:", e);
+    log("❌ CSV export failed: " + e.message, "error");
+    adminToast("CSV export failed: " + e.message, "error");
+  }
 }
 
 /* =====================================================
@@ -2789,76 +3033,266 @@ function escapeHtml(str) {
 }
 
 /* =====================================================
+   TABLE SORTING
+   ===================================================== */
+let sortKey = null;
+let sortDir = -1; // -1 desc, 1 asc
+
+function sortValue(u, key) {
+  switch (key) {
+    case "name": return (u.displayName || u.name || "").toLowerCase();
+    case "email": return (u.email || "").toLowerCase();
+    case "phone": return String(u.phone || "");
+    case "status": return u.banned ? 2 : (checkUserOnline(u) ? 0 : 1);
+    case "joined": return u.createdAt || 0;
+    case "seen": return userLastSeen(u) || 0;
+    default: return 0;
+  }
+}
+
+function sortUsers(key) {
+  if (sortKey === key) {
+    sortDir = -sortDir;
+  } else {
+    sortKey = key;
+    // Dates/numbers start newest-first, text starts A→Z.
+    sortDir = (key === "joined" || key === "seen" || key === "status") ? -1 : 1;
+  }
+  updateSortIndicators();
+  applyFiltersAndRender();
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll("th.th-sort").forEach(th => {
+    const caret = th.querySelector(".th-caret");
+    if (!caret) return;
+    if (th.dataset.sort === sortKey) {
+      caret.textContent = sortDir === 1 ? "▲" : "▼";
+      th.classList.add("th-active");
+    } else {
+      caret.textContent = "";
+      th.classList.remove("th-active");
+    }
+  });
+}
+
+/* =====================================================
+   NEW TODAY — make the "X registered today" stat verifiable
+   ===================================================== */
+function openNewTodayModal() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const startMs = start.getTime();
+  const today = users
+    .filter(u => u.createdAt && u.createdAt >= startMs)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const old = document.getElementById("newTodayOverlay");
+  if (old) old.remove();
+
+  const rowsHtml = today.length
+    ? today.map(u => {
+        const photo = safePhoto(u.photo || u.photoUrl);
+        const name = u.displayName || u.name || "Unnamed";
+        const when = new Date(u.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+        return `
+          <div class="nt-row" onclick="closeNewToday(); openUserDrawer('${u.uid}')">
+            <img src="${photo}" alt="" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
+            <div class="nt-meta">
+              <div class="nt-name">${escapeHtml(name)}</div>
+              <div class="nt-sub">${escapeHtml(u.username ? "@" + u.username : (u.email || "no email"))}</div>
+            </div>
+            <div class="nt-time">${when}</div>
+          </div>`;
+      }).join("")
+    : '<div class="nt-empty">🎉 No new sign-ups today.</div>';
+
+  const overlay = document.createElement("div");
+  overlay.className = "drawer-overlay";
+  overlay.id = "newTodayOverlay";
+  overlay.innerHTML = `
+    <div class="nt-modal" role="dialog" aria-modal="true">
+      <div class="nt-head">
+        <div>
+          <div class="nt-title">🆕 Registered Today</div>
+          <div class="nt-count">${today.length} new user${today.length === 1 ? "" : "s"} since midnight</div>
+        </div>
+        <button class="drawer-close" onclick="closeNewToday()" title="Close">✕</button>
+      </div>
+      <div class="nt-body">${rowsHtml}</div>
+    </div>`;
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeNewToday(); });
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("show"));
+}
+
+function closeNewToday() {
+  const overlay = document.getElementById("newTodayOverlay");
+  if (!overlay) return;
+  overlay.classList.remove("show");
+  setTimeout(() => overlay.remove(), 250);
+}
+
+/* =====================================================
+   TOAST — visible feedback (replaces silent failures)
+   ===================================================== */
+function adminToast(msg, type = "info") {
+  let host = document.getElementById("adminToastHost");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "adminToastHost";
+    host.className = "admin-toast-host";
+    document.body.appendChild(host);
+  }
+  const el = document.createElement("div");
+  el.className = "admin-toast " + type;
+  el.textContent = msg;
+  host.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 300);
+  }, 3800);
+}
+
+/* =====================================================
    CHART (Calendar Day Accuracy)
    ===================================================== */
+const CHART_DAYS = 14;
+
 function renderChart() {
   const ctx = document.getElementById("chart");
   if (!ctx) return;
 
-  const countsMap = {};
+  // Local-calendar day buckets for the last CHART_DAYS days.
   const labels = [];
+  const buckets = [];
   const now = new Date();
-
-  for (let i = 6; i >= 0; i--) {
+  const byDay = {};
+  for (let i = CHART_DAYS - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
     const key = d.toDateString();
-    countsMap[key] = 0;
-    labels.push(d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }));
+    byDay[key] = 0;
+    buckets.push(key);
+    labels.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
   }
 
+  const noDate = users.filter(u => !u.createdAt).length;
   users.forEach(u => {
     if (!u.createdAt) return;
-    const uDateKey = new Date(u.createdAt).toDateString();
-    if (countsMap.hasOwnProperty(uDateKey)) {
-      countsMap[uDateKey]++;
-    }
+    const key = new Date(u.createdAt).toDateString();
+    if (byDay.hasOwnProperty(key)) byDay[key]++;
   });
 
-  const chartData = Object.values(countsMap);
+  const daily = buckets.map(k => byDay[k]);
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (CHART_DAYS - 1)).getTime();
+  const datedTotal = users.filter(u => u.createdAt).length;
+  const beforePeriod = users.filter(u => u.createdAt && u.createdAt < start).length;
+  const cumulative = [];
+  let running = beforePeriod;
+  daily.forEach(n => { running += n; cumulative.push(running); });
+
+  const periodTotal = daily.reduce((a, b) => a + b, 0);
+  const avg = (periodTotal / CHART_DAYS);
+  const best = Math.max(0, ...daily);
+
+  // Summary strip
+  const summary = document.getElementById("chartSummary");
+  if (summary) {
+    summary.innerHTML = `
+      <div class="sum-item"><div class="sum-val">+${periodTotal}</div><div class="sum-label">New in ${CHART_DAYS} days</div></div>
+      <div class="sum-item"><div class="sum-val">${avg.toFixed(1)}</div><div class="sum-label">Avg / day</div></div>
+      <div class="sum-item"><div class="sum-val">${best}</div><div class="sum-label">Best day</div></div>
+      <div class="sum-item"><div class="sum-val">${users.length.toLocaleString()}</div><div class="sum-label">Total users</div></div>
+    `;
+  }
+
+  // Honest footnote when some users have no join date.
+  const foot = document.getElementById("chartFootnote");
+  if (foot) {
+    foot.textContent = noDate
+      ? `⚠️ ${noDate} user${noDate === 1 ? '' : 's'} have no recorded join date and are excluded from this chart.`
+      : `All ${datedTotal} users have a recorded join date.`;
+  }
 
   if (chart) chart.destroy();
 
   chart = new Chart(ctx, {
-    type: "line",
     data: {
       labels: labels,
-      datasets: [{
-        label: "New Sign-ups",
-        data: chartData,
-        borderColor: "#4f8fff",
-        backgroundColor: "rgba(79,143,255,0.12)",
-        borderWidth: 2,
-        fill: true,
-        tension: 0.35,
-        pointRadius: 5,
-        pointBackgroundColor: "#4f8fff",
-        pointBorderColor: "#fff",
-        pointBorderWidth: 2,
-        pointHoverRadius: 7,
-        pointHoverBackgroundColor: "#7ca8ff",
-      }]
+      datasets: [
+        {
+          type: "bar",
+          label: "New sign-ups",
+          data: daily,
+          backgroundColor: "rgba(79,143,255,0.55)",
+          hoverBackgroundColor: "#4f8fff",
+          borderRadius: 6,
+          maxBarThickness: 34,
+          yAxisID: "y",
+          order: 2
+        },
+        {
+          type: "line",
+          label: "Total users",
+          data: cumulative,
+          borderColor: "#38d39f",
+          backgroundColor: "rgba(56,211,159,0.10)",
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointBackgroundColor: "#38d39f",
+          yAxisID: "y1",
+          order: 1
+        }
+      ]
     },
     options: {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
           display: true,
           labels: {
             color: "#e5e9f0",
+            usePointStyle: true,
+            boxWidth: 8,
             font: { family: "'Inter', sans-serif", size: 12, weight: "600" }
+          }
+        },
+        tooltip: {
+          backgroundColor: "rgba(11,15,23,0.95)",
+          borderColor: "rgba(79,143,255,0.4)",
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            label: (c) => c.dataset.yAxisID === "y1"
+              ? ` Total users: ${c.parsed.y.toLocaleString()}`
+              : ` New sign-ups: ${c.parsed.y}`
           }
         }
       },
       scales: {
         y: {
           beginAtZero: true,
-          ticks: { color: "#a8b5cc", stepSize: 1 },
-          grid: { color: "rgba(79,143,255,0.1)" }
+          position: "left",
+          title: { display: true, text: "New sign-ups", color: "#a8b5cc", font: { size: 11 } },
+          ticks: { color: "#a8b5cc", precision: 0 },
+          grid: { color: "rgba(79,143,255,0.08)" }
+        },
+        y1: {
+          beginAtZero: true,
+          position: "right",
+          title: { display: true, text: "Total users", color: "#38d39f", font: { size: 11 } },
+          ticks: { color: "#38d39f", precision: 0 },
+          grid: { display: false }
         },
         x: {
           grid: { display: false },
-          ticks: { color: "#a8b5cc" }
+          ticks: { color: "#a8b5cc", maxRotation: 0, autoSkipPadding: 12 }
         }
       }
     }
