@@ -4785,19 +4785,43 @@ function toggleViewOnceMode() {
   showNotifToast(isViewOnceActive ? "View Once enabled for next media" : "View Once disabled", "info");
 }
 
-function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
+// Blob URL currently shown in the view-once viewer; revoked on close so the
+// ephemeral media is never retained in memory or in the media cache.
+let viewOnceBlobUrl = null;
+
+async function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
   const modal = document.getElementById("viewOnceModal");
   const container = document.getElementById("viewOnceContent");
   if (!modal || !container) return;
 
+  // Download the media FULLY before showing it, same as the normal viewer —
+  // a partially-buffered remote video is what makes view-once playback stall.
+  // There is no download button here by design (the media is ephemeral).
+  container.innerHTML = '<div class="media-viewer-loading"><div class="media-viewer-spinner"></div><div class="media-viewer-loading-text">Loading…</div></div>';
+  modal.classList.add("active");
+  if (window.lucide) lucide.createIcons();
+
+  let blobUrl;
+  try {
+    blobUrl = await fetchMediaBlobUrl(mediaUrl, { noCache: true });
+  } catch (err) {
+    container.innerHTML = '<div class="media-viewer-error"><div style="font-size:32px;">⚠️</div><div>Couldn\'t load this media. Check your connection and try again.</div></div>';
+    return;
+  }
+
+  // The user may have closed / the tab backgrounded while downloading.
+  if (!modal.classList.contains("active")) { try { URL.revokeObjectURL(blobUrl); } catch (e) {} return; }
+  viewOnceBlobUrl = blobUrl; // revoked by closeViewOnceModal()
+
   container.innerHTML = "";
   if (mediaType === "image") {
     const img = document.createElement("img");
-    img.src = mediaUrl;
+    img.src = blobUrl;
+    img.draggable = false;
     container.appendChild(img);
   } else if (mediaType === "video") {
     const vid = document.createElement("video");
-    vid.src = mediaUrl;
+    vid.src = blobUrl;
     vid.controls = true;
     vid.controlsList = "nodownload nofullscreen noremoteplayback";
     vid.disablePictureInPicture = true;
@@ -4805,7 +4829,7 @@ function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
     container.appendChild(vid);
   } else if (mediaType === "audio") {
     const aud = document.createElement("audio");
-    aud.src = mediaUrl;
+    aud.src = blobUrl;
     aud.controls = true;
     aud.autoplay = true;
     container.appendChild(aud);
@@ -4818,9 +4842,6 @@ function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
     container.appendChild(cap);
   }
 
-  modal.classList.add("active");
-  if (window.lucide) lucide.createIcons();
-
   if (docId) {
     db.collection("chats").doc(docId).update({
       viewOnceOpened: true,
@@ -4829,11 +4850,20 @@ function openViewOnceModal(mediaUrl, mediaType, docId, caption) {
   }
 }
 
+// Release the ephemeral view-once blob so the media is gone from memory too.
+function releaseViewOnceBlob() {
+  if (viewOnceBlobUrl) {
+    try { URL.revokeObjectURL(viewOnceBlobUrl); } catch (e) {}
+    viewOnceBlobUrl = null;
+  }
+}
+
 function closeViewOnceModal() {
   const modal = document.getElementById("viewOnceModal");
   const container = document.getElementById("viewOnceContent");
   if (modal) modal.classList.remove("active");
   if (container) container.innerHTML = "";
+  releaseViewOnceBlob();
   renderMessageList();
 }
 
@@ -4856,10 +4886,12 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     const modal = document.getElementById("viewOnceModal");
     if (modal && modal.classList.contains("active")) {
-      // Blank the media before closing so it isn't left on screen.
+      // Blank the media before closing so it isn't left on screen, and drop
+      // the blob so the ephemeral media isn't retained anywhere.
       const container = document.getElementById("viewOnceContent");
       if (container) container.innerHTML = "";
       modal.classList.remove("active");
+      releaseViewOnceBlob();
       renderMessageList();
     }
   }
@@ -5082,11 +5114,11 @@ function buildMessage(id, msg, fromMe) {
     if (msg.video) {
       const vidUrl = safeMediaUrl(msg.video);
       const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
-      inner += vidUrl ? `<div class="media-container">
-        <video controls preload="metadata" controlslist="nodownload" disablepictureinpicture>
+      inner += vidUrl ? `<div class="media-container media-video-poster" onclick="viewVideo('${vidUrl}')">
+        <video preload="metadata" disablepictureinpicture muted playsinline>
           <source src="${vidUrl}" type="video/mp4">
-          Your browser does not support video playback.
         </video>
+        <div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
       </div>` + (cap || "") : "";
     }
 
@@ -5099,17 +5131,11 @@ function buildMessage(id, msg, fromMe) {
       const fsize = msg.fileSize ? formatFileSize(msg.fileSize) : "";
       const ficon = fileIconFor(msg.fileName || "");
       const isAudioFile = /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(msg.fileName || "");
-      if (fUrl && isAudioFile) {
-        inner += `<div class="file-attach file-attach-audio">
-          <div class="file-attach-icon">${ficon}</div>
-          <div class="file-attach-info">
-            <div class="file-attach-name">${fname}</div>
-            ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
-            <audio controls preload="metadata" src="${fUrl}" style="width:100%;margin-top:8px;"></audio>
-          </div>
-        </div>`;
-      } else if (fUrl) {
-        inner += `<a class="file-attach" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}">
+      if (fUrl) {
+        // Same download-first model as photos/videos: the card opens the
+        // media viewer, which fully fetches the file before presenting it
+        // (audio files get an inline player there, everything else a save link).
+        inner += `<a class="file-attach${isAudioFile ? " file-attach-audio" : ""}" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}" data-media-url="${fUrl}" data-media-name="${fname}"${isAudioFile ? ' data-media-audio="1"' : ""}>
           <div class="file-attach-icon">${ficon}</div>
           <div class="file-attach-info">
             <div class="file-attach-name">${fname}</div>
@@ -6253,9 +6279,133 @@ if (voicePanel) {
   voicePanel.addEventListener("pointercancel", onVoiceBarPointerUp);
 }
 
-function viewImg(url) {
-  window.open(url, "_blank");
+// WhatsApp-style media viewer: the file is FULLY downloaded first (fetch →
+// blob URL), then displayed. Showing a partially-buffered remote file is what
+// causes the "opens then stalls / half-loads / plays choppy" problem, so we
+// never render the remote URL directly. Once fetched, the blob URL is cached
+// for the session so re-opening is instant and needs no network.
+const NEXA_MEDIA_BLOB_CACHE = new Map();
+const NEXA_MEDIA_BLOB_MAX = 60;
+
+function revokeOldMediaBlobs() {
+  while (NEXA_MEDIA_BLOB_CACHE.size > NEXA_MEDIA_BLOB_MAX) {
+    const oldestKey = NEXA_MEDIA_BLOB_CACHE.keys().next().value;
+    const url = NEXA_MEDIA_BLOB_CACHE.get(oldestKey);
+    try { URL.revokeObjectURL(url); } catch (e) {}
+    NEXA_MEDIA_BLOB_CACHE.delete(oldestKey);
+  }
 }
+
+// Resolve a media URL to a fully-downloaded blob URL, caching the result.
+// Pass { noCache: true } for ephemeral media (view-once) so the blob is NOT
+// retained in the session cache — the caller revokes it when the viewer closes.
+async function fetchMediaBlobUrl(url, opts) {
+  opts = opts || {};
+  if (!url) throw new Error("no url");
+  if (!opts.noCache && NEXA_MEDIA_BLOB_CACHE.has(url)) return NEXA_MEDIA_BLOB_CACHE.get(url);
+  const res = await fetch(url, { mode: "cors", credentials: "omit" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  if (opts.noCache) return blobUrl;
+  NEXA_MEDIA_BLOB_CACHE.set(url, blobUrl);
+  revokeOldMediaBlobs();
+  return blobUrl;
+}
+
+// Incremented on every open so a slow download can't paint over a newer one.
+let mediaViewerToken = 0;
+
+function closeMediaViewer(ev) {
+  if (ev && ev.target !== ev.currentTarget) return;
+  const modal = document.getElementById("mediaViewerModal");
+  const body = document.getElementById("mediaViewerBody");
+  mediaViewerToken++;
+  if (modal) modal.classList.remove("active");
+  if (body) body.innerHTML = "";
+}
+
+// kind: 'image' | 'video' | 'file'. Shows a spinner while the download runs,
+// then swaps in the real element so playback is always from local data.
+async function openMediaViewer(url, kind, opts) {
+  opts = opts || {};
+  const modal = document.getElementById("mediaViewerModal");
+  const body = document.getElementById("mediaViewerBody");
+  const titleEl = document.getElementById("mediaViewerTitle");
+  const dl = document.getElementById("mediaViewerDownload");
+  if (!modal || !body) return;
+
+  const isAudioFile = opts.isAudioFile || false;
+  if (titleEl) titleEl.textContent = opts.title || (kind === "image" ? "Photo" : kind === "video" ? "Video" : "File");
+  // For non-downloadable kinds (view-once) the download button is hidden.
+  if (dl) {
+    dl.style.display = opts.downloadable === false ? "none" : "flex";
+    dl.href = url;
+    dl.setAttribute("download", opts.filename || "");
+  }
+
+  const myToken = ++mediaViewerToken;
+  body.innerHTML = '<div class="media-viewer-loading"><div class="media-viewer-spinner"></div><div class="media-viewer-loading-text">Downloading…</div></div>';
+  modal.classList.add("active");
+
+  let blobUrl;
+  try {
+    blobUrl = await fetchMediaBlobUrl(url);
+  } catch (err) {
+    if (myToken !== mediaViewerToken) return;
+    body.innerHTML = '<div class="media-viewer-error"><div style="font-size:32px;">⚠️</div><div>Couldn\'t load this media. Check your connection and try again.</div><a class="media-viewer-error-link" href="' + safeMediaUrl(url) + '" target="_blank" rel="noopener noreferrer">Open in new tab</a></div>';
+    return;
+  }
+
+  // The user may have closed the viewer (or opened another item) meanwhile.
+  if (myToken !== mediaViewerToken || !modal.classList.contains("active")) return;
+
+  body.innerHTML = "";
+  if (kind === "image") {
+    const img = document.createElement("img");
+    img.src = blobUrl;
+    img.alt = "media";
+    img.draggable = false;
+    body.appendChild(img);
+  } else if (kind === "video") {
+    const vid = document.createElement("video");
+    vid.src = blobUrl;
+    vid.controls = true;
+    vid.autoplay = true;
+    vid.playsInline = true;
+    body.appendChild(vid);
+  } else if (isAudioFile) {
+    const aud = document.createElement("audio");
+    aud.src = blobUrl;
+    aud.controls = true;
+    aud.autoplay = true;
+    body.appendChild(aud);
+  } else {
+    body.innerHTML = '<div class="media-viewer-file"><div style="font-size:48px;">📄</div><div style="margin-top:8px;">' + escapeHtml(opts.title || "File") + '</div><a class="media-viewer-error-link" href="' + blobUrl + '" download="' + escapeHtml(opts.filename || "") + '">Save file</a></div>';
+  }
+}
+
+// Photo bubble / shared-media grid entry point (kept for existing call sites).
+function viewImg(url) {
+  openMediaViewer(url, "image", { title: "Photo" });
+}
+function viewVideo(url) {
+  openMediaViewer(url, "video", { title: "Video" });
+}
+
+// File attachments are opened via one document-level listener so a filename
+// containing a quote (which would break an inline onclick) is safe, and so the
+// handler works in 1:1, group and any other mode that reuses the messages box.
+document.addEventListener("click", (e) => {
+  const card = e.target.closest && e.target.closest(".file-attach[data-media-url]");
+  if (!card) return;
+  e.preventDefault();
+  openMediaViewer(card.dataset.mediaUrl, "file", {
+    title: card.dataset.mediaName || "File",
+    filename: card.dataset.mediaName || "",
+    isAudioFile: card.dataset.mediaAudio === "1"
+  });
+});
 
 /* =========================================================================
    CHAT INFO PANEL
@@ -6307,7 +6457,8 @@ function closeChatInfo() {
 function loadMediaGrid() {
   const grid = document.getElementById("mediaGrid");
   grid.innerHTML = "";
-  const media = allMessages.filter(m => m.image || m.video);
+  // View-once media is ephemeral by design — never list it in shared media.
+  const media = allMessages.filter(m => (m.image || m.video) && !m.isViewOnce);
   if (!media.length) {
     grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-3); padding: 18px; font-size: 13px;">No media shared</div>';
     return;
@@ -6319,8 +6470,8 @@ function loadMediaGrid() {
       el.innerHTML = `<img src="${safeMediaUrl(m.image)}" alt="media">`;
       el.addEventListener("click", () => viewImg(m.image));
     } else if (m.video) {
-      el.innerHTML = `<video src="${safeMediaUrl(m.video)}" style="width: 100%; height: 100%; object-fit: cover;"></video>`;
-      el.addEventListener("click", () => window.open(m.video, "_blank"));
+      el.innerHTML = `<video src="${safeMediaUrl(m.video)}" style="width: 100%; height: 100%; object-fit: cover;" preload="metadata" muted></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>`;
+      el.addEventListener("click", () => viewVideo(m.video));
     }
     grid.appendChild(el);
   });
@@ -10733,7 +10884,7 @@ function buildGroupMessage(id, msg, fromMe) {
     const vidUrl = safeMediaUrl(msg.video);
     const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
     if (vidUrl) {
-      inner += `<div class="media-container"><video controls preload="metadata" controlslist="nodownload"><source src="${vidUrl}" type="video/mp4"></video></div>${cap}`;
+      inner += `<div class="media-container media-video-poster" onclick="viewVideo('${vidUrl}')"><video preload="metadata" disablepictureinpicture muted playsinline><source src="${vidUrl}" type="video/mp4"></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>${cap}`;
     }
   }
 
@@ -10744,17 +10895,9 @@ function buildGroupMessage(id, msg, fromMe) {
     const fsize = msg.fileSize ? formatFileSize(msg.fileSize) : "";
     const ficon = fileIconFor(msg.fileName || "");
     const isAudioFile = /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(msg.fileName || "");
-    if (fUrl && isAudioFile) {
-      inner += `<div class="file-attach file-attach-audio">
-        <div class="file-attach-icon">${ficon}</div>
-        <div class="file-attach-info">
-          <div class="file-attach-name">${fname}</div>
-          ${fsize ? `<div class="file-attach-size">${fsize}</div>` : ""}
-          <audio controls preload="metadata" src="${fUrl}" style="width:100%;margin-top:8px;"></audio>
-        </div>
-      </div>`;
-    } else if (fUrl) {
-      inner += `<a class="file-attach" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}">
+    if (fUrl) {
+      // Download-first, same as the 1:1 card (see buildMessage).
+      inner += `<a class="file-attach${isAudioFile ? " file-attach-audio" : ""}" href="${fUrl}" target="_blank" rel="noopener noreferrer" download="${fname}" data-media-url="${fUrl}" data-media-name="${fname}"${isAudioFile ? ' data-media-audio="1"' : ""}>
         <div class="file-attach-icon">${ficon}</div>
         <div class="file-attach-info">
           <div class="file-attach-name">${fname}</div>
@@ -12093,9 +12236,9 @@ function renderChannelPostsList(posts) {
     if (post.type === 'poll' && post.pollOptions) {
       mediaHtml = buildPollHTML(post.id, post);
     } else if (post.image) {
-      mediaHtml = `<div class="channel-post-media" onclick="openProfilePic('${post.image}')"><img src="${escapeHtml(post.image)}" loading="lazy"></div>`;
+      mediaHtml = `<div class="channel-post-media" onclick="viewImg('${safeMediaUrl(post.image)}')"><img src="${safeMediaUrl(post.image)}" loading="lazy"></div>`;
     } else if (post.video) {
-      mediaHtml = `<div class="channel-post-media"><video src="${escapeHtml(post.video)}" controls></video></div>`;
+      mediaHtml = `<div class="channel-post-media media-video-poster" onclick="viewVideo('${safeMediaUrl(post.video)}')"><video src="${safeMediaUrl(post.video)}" preload="metadata" muted playsinline></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>`;
     } else if (post.audio) {
       // Use the SAME modern voice-note player as 1:1 and group chats (glassy
       // waveform pill with gradient play button + speed control) instead of a
@@ -13348,14 +13491,15 @@ async function loadGroupSharedMedia() {
     grid.innerHTML = mediaList.slice(0, 8).map(m => {
       if (m.image) {
         return `
-          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.image)}')">
-            <img src="${escapeHtml(m.image)}" loading="lazy">
+          <div class="comm-media-thumb" onclick="viewImg('${safeMediaUrl(m.image)}')">
+            <img src="${safeMediaUrl(m.image)}" loading="lazy">
           </div>
         `;
       } else if (m.video) {
         return `
-          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.video)}')">
-            <video src="${escapeHtml(m.video)}" preload="metadata"></video>
+          <div class="comm-media-thumb" onclick="viewVideo('${safeMediaUrl(m.video)}')">
+            <video src="${safeMediaUrl(m.video)}" preload="metadata" muted></video>
+            <div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
           </div>
         `;
       }
@@ -13396,14 +13540,15 @@ async function loadChannelSharedMedia() {
     grid.innerHTML = mediaList.slice(0, 8).map(m => {
       if (m.image) {
         return `
-          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.image)}')">
-            <img src="${escapeHtml(m.image)}" loading="lazy">
+          <div class="comm-media-thumb" onclick="viewImg('${safeMediaUrl(m.image)}')">
+            <img src="${safeMediaUrl(m.image)}" loading="lazy">
           </div>
         `;
       } else if (m.video) {
         return `
-          <div class="comm-media-thumb" onclick="openProfilePic('${escapeHtml(m.video)}')">
-            <video src="${escapeHtml(m.video)}" preload="metadata"></video>
+          <div class="comm-media-thumb" onclick="viewVideo('${safeMediaUrl(m.video)}')">
+            <video src="${safeMediaUrl(m.video)}" preload="metadata" muted></video>
+            <div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
           </div>
         `;
       }

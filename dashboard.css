@@ -1593,6 +1593,135 @@ select:focus-visible {
   transform: scale(1.02);
 }
 
+/* ── Video poster (bubble / grid / channel): static frame + play badge ──
+   The real playback happens in the download-first media viewer, so the inline
+   element is a muted, control-less thumbnail — no half-buffered video here. */
+.media-video-poster { cursor: pointer; }
+.media-video-poster video { pointer-events: none; }
+.channel-post-media.media-video-poster { position: relative; }
+.media-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.media-play-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+.media-play-overlay svg {
+  position: relative;
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* ╔─ MEDIA VIEWER (download-first, WhatsApp-style) ─╗ */
+.media-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.94);
+  z-index: 10200;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.media-viewer-overlay.active { display: flex; }
+.media-viewer-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  color: #fff;
+  z-index: 10;
+}
+.media-viewer-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-viewer-back,
+.media-viewer-download {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-decoration: none;
+}
+.media-viewer-back:hover,
+.media-viewer-download:hover { background: rgba(255, 255, 255, 0.26); }
+.media-viewer-body {
+  max-width: 94vw;
+  max-height: 86vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.media-viewer-body img,
+.media-viewer-body video {
+  max-width: 100%;
+  max-height: 86vh;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.media-viewer-body audio { width: 100%; max-width: 420px; }
+.media-viewer-loading,
+.media-viewer-error,
+.media-viewer-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #e6ecff;
+  font-size: 14px;
+  text-align: center;
+}
+.media-viewer-spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--cyan, #22d3ee);
+  animation: media-viewer-spin 0.8s linear infinite;
+}
+@keyframes media-viewer-spin { to { transform: rotate(360deg); } }
+.media-viewer-error-link {
+  color: var(--cyan, #22d3ee);
+  text-decoration: underline;
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .media-viewer-spinner { animation-duration: 1.6s; }
+}
+
 /* Universal file/document attachment card */
 .file-attach {
   display: flex;
