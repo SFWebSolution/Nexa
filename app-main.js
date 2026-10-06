@@ -1207,7 +1207,6 @@ function startUsersListener() {
 
     saveCachedUsers();
     renderUsers();
-    renderActiveNowBar();
     // The chat list is the real "ready" signal — the dashboard is only worth
     // revealing once the user list has actually arrived from Firestore.
     nexaBootStep('users');
@@ -1215,7 +1214,7 @@ function startUsersListener() {
 }
 
 // Single shared presence listener — feeds userPresenceCache for the whole app
-// (online dots, Active Now bar, chat-header last seen, voice-room invite list).
+// (online dots, chat-header last seen, voice-room invite list).
 // Do NOT re-introduce per-user presence/{uid} doc listeners OR a second
 // full-collection presence listener — each duplicates reads and races with
 // this cache.
@@ -1237,59 +1236,6 @@ function startSharedPresenceListener() {
   }, err => console.error("Shared presence listener error:", err));
 }
 
-// Facebook-style "Active Now" horizontal avatar strip. Reads from the shared
-// userPresenceCache so it stays in sync with the single presence listener.
-function renderActiveNowBar() {
-  const bar = document.getElementById("activeNowBar");
-  const scroller = document.getElementById("activeNowScroller");
-  if (!scroller) return;
-
-  // The strip lives inside the chat pane now, so it only makes sense for a
-  // real 1:1 conversation — hide it on the empty state, in groups and channels.
-  const showBar = currentChatMode === 'direct' && !!selectedUser;
-  if (bar) bar.style.display = showBar ? "" : "none";
-  if (!showBar) return;
-
-  const onlineUsers = allUsersData
-    .filter(u => !blockedUsers[u.uid] && isConnectedTo(u.uid) && isUserOnline(userPresenceCache[u.uid]))
-    .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
-
-  if (!onlineUsers.length) {
-    if (!scroller.querySelector(".active-now-empty")) {
-      scroller.innerHTML = '<div class="active-now-empty">No friends online right now</div>';
-    }
-    return;
-  }
-
-  // Avoid full re-render when the online set hasn't changed (preserves scroll).
-  const key = onlineUsers.map(u => u.uid).join(",");
-  if (scroller.dataset.key === key) return;
-  scroller.dataset.key = key;
-
-  scroller.innerHTML = onlineUsers.map(u => {
-    const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
-    const name = escapeHtml(u.displayName || "User");
-    return `
-      <button class="active-now-item" data-uid="${u.uid}" onclick="selectUserFromActiveNow('${u.uid}')" title="${name}">
-        <span class="active-now-avatar-wrap">
-          <img src="${photo}" class="active-now-avatar" loading="lazy" decoding="async" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-          <span class="active-now-dot"></span>
-        </span>
-        <span class="active-now-name">${name.split(' ')[0]}</span>
-      </button>`;
-  }).join("");
-}
-
-function selectUserFromActiveNow(uid) {
-  const u = allUsersData.find(x => x.uid === uid);
-  if (u) {
-    const el = document.querySelector(`.user-item[data-uid="${uid}"]`);
-    selectChat(u, el);
-  }
-}
-
-let lastRenderedUserOrder = "";
-
 // Render coalescer: collapses a burst of renderUsers() calls (e.g. when many
 // presence docs change at once during a heartbeat wave) into ONE render per
 // animation frame. This is the single biggest "feels instant, no jank" win —
@@ -1304,7 +1250,6 @@ function scheduleRender() {
   requestAnimationFrame(() => {
     _renderScheduled = false;
     renderUsers();
-    renderActiveNowBar();
   });
 }
 
@@ -1606,7 +1551,6 @@ function startConnectionsListener() {
       });
       saveCachedConnections();
       renderUsers();
-      renderActiveNowBar();
       renderConnectTab();
       renderStoriesBar();
       updateConnectTabDot();
@@ -3521,7 +3465,6 @@ function selectChat(user, el) {
   delete unreadMessages[user.uid];
   updateTotalUnreadBadge();
   renderUsers(); // Move selected user to the top immediately
-  renderActiveNowBar(); // Show the Active Now strip for this 1:1 chat
   loadMessages();
   updateBlockedChatBanner();
   updateInfoBlockAction();
@@ -3811,7 +3754,6 @@ function setupHeartbeat() {
     if (selectedUser) {
       updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
     }
-    renderActiveNowBar();
   }, 10000);
 
   // Backgrounding/foregrounding: do NOT write offline when hidden — the tab is
@@ -9976,7 +9918,6 @@ function restoreInstantState() {
 
     // Paint the whole thing now — no waiting for the network.
     renderUsers();
-    renderActiveNowBar();
     renderStoriesBar();
     updateTotalUnreadBadge();
     console.log("⚡ Instant state restored from cache");
@@ -10450,7 +10391,6 @@ function selectGroupChat(group) {
   selectedGroup = group;
   selectedUser = null;
   selectedChannel = null;
-  renderActiveNowBar(); // hide the 1:1-only Active Now strip
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -11859,7 +11799,6 @@ function selectChannelFeed(channel) {
   selectedChannel = channel;
   selectedGroup = null;
   selectedUser = null;
-  renderActiveNowBar(); // hide the 1:1-only Active Now strip
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');

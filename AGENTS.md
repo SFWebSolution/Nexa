@@ -89,7 +89,7 @@
 - Inactivity (3 min, `resetInactivity`): sets `userStatus = "away"` and calls
   `heartbeat()` (so an idle-but-open user shows 🟡 away, still "online" by
   freshness). Any click/key/mouse resets to "online" + heartbeat.
-- The 10s ticker also re-evaluates dots/Active Now/chat-header from the cache,
+- The 10s ticker also re-evaluates dots/chat-header from the cache,
   so a stale peer flips to offline locally without waiting for their write.
 - `updateChatHeaderPresence` shows "🟢 online" (fresh + status online),
   "🟡 away" (fresh + status away), or "⚪ last seen {formatLastSeen}".
@@ -131,16 +131,16 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Heartbeat**: 30s (was 10s) → ~3x fewer presence writes, and the presence
   listener re-fires ~3x less. `PRESENCE_TIMEOUT_MS = 90000` (was 35000) gives
   a 3x safety margin so a single missed heartbeat doesn't flicker offline.
-- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` draws a
-  horizontal row of round avatars + green dots showing ONLY currently-online
-  **connections** (`isConnectedTo()` + `isUserOnline()` freshness). It now lives
-  in the **CHAT pane** (`dashboard.html`, between `#disappearingNotice` and the
-  pinned banner), NOT in the sidebar above the search box - and
-  `renderActiveNowBar()` hides it unless `currentChatMode === 'direct' &&
-  selectedUser`, so it disappears on the empty state, in groups and channels.
-  Refreshed on `selectChat`/`selectGroupChat`/`selectChannelFeed`, `renderUsers()`,
-  `startSharedPresenceListener`, and the 10s ticker. Container `#activeNowBar`;
-  CSS `.active-now-*` in dashboard.css.
+- **"Active Now" bar — REMOVED entirely (do NOT re-add).** The Facebook-style
+  horizontal avatar strip is gone: `renderActiveNowBar()` +
+  `selectUserFromActiveNow()` and all their call sites were deleted from
+  `app-main.js`, the `#activeNowBar`/`#activeNowScroller` markup was deleted from
+  `dashboard.html`, and all `.active-now-*` CSS (both the sidebar block and the
+  "I. ACTIVE NOW HORIZONTAL SCROLLER" block) was deleted from `dashboard.css`.
+  The `.active-now-dot` selector was dropped from the shared
+  `.online-dot, .chat-status-dot.online` pulse rule (those two stay). Online
+  status is still surfaced via the chat-list green dots + the chat-header
+  "last seen" line only.
 - `nexa-voice-room.js` `isUserOnline(uid)` delegates to `window.isUserOnline`
   (the shared timestamp rule); its fallbacks use the SAME freshness rule and do
   NOT trust a stale `u.online === true` user flag.
