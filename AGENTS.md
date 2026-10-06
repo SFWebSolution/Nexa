@@ -612,6 +612,44 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   it doesn't overwrite those more important messages.
 
 
+## Media viewer — download-first (WhatsApp-style) + view-once is never saved
+- **Every photo/video/file opens in ONE viewer that downloads the media FULLY
+  before showing it.** `openMediaViewer(url, kind, opts)` (`app-main.js`) shows
+  a spinner, `await fetch(url, {mode:"cors", credentials:"omit"})` → `blob()`
+  → `URL.createObjectURL`, and only then swaps in the real `<img>/<video>/<audio>`
+  /save-link. Rendering the remote URL directly is what made media "open then
+  stall / half-load / play choppy"; never go back to `<img src=remote>` /
+  `<video src=remote>` for an opened item. Cloudinary (`res.cloudinary.com`)
+  sends `Access-Control-Allow-Origin: *`, so the fetch works — a different host
+  would need CORS.
+- **Entry points:** `viewImg(url)` (images) and `viewVideo(url)` (videos) both
+  call the viewer; inline video bubbles/grids/channel posts are now a
+  control-less muted `<video preload="metadata">` POSTER (`.media-video-poster`)
+  with a `.media-play-overlay` (inline SVG play glyph — NOT a `<i data-lucide>`,
+  because these bubbles don't re-run `lucide.createIcons()`), and clicking the
+  container opens the viewer. File attachments (`.file-attach`) carry
+  `data-media-url` / `data-media-name` / `data-media-audio` and are handled by a
+  SINGLE document-level click listener — never an inline `onclick`, because a
+  filename containing a quote would break out of the attribute. Audio files get
+  an inline player INSIDE the viewer (`isAudioFile`).
+- **Blob cache:** `NEXA_MEDIA_BLOB_CACHE` (Map, cap `NEXA_MEDIA_BLOB_MAX`=60)
+  makes re-opening instant with no network; `revokeOldMediaBlobs()` revokes the
+  oldest on overflow. `mediaViewerToken` guards the async download so a slow
+  fetch can't paint over a newer open. Keep both.
+- **View-once is NEVER saved and never listed.** `openViewOnceModal` uses the
+  same download-first path but with `fetchMediaBlobUrl(url, {noCache:true})` —
+  the blob is NOT put in `NEXA_MEDIA_BLOB_CACHE`, and `releaseViewOnceBlob()`
+  (called from `closeViewOnceModal()` AND the `visibilitychange` blank) revokes
+  it, so the ephemeral media is gone from memory once dismissed. The viewer has
+  NO download button by design. `loadMediaGrid()` filters `!m.isViewOnce`, so
+  view-once media never appears in Chat Info → shared media. Do NOT add a
+  download button to the view-once viewer or cache its blob.
+- CSS lives in dashboard.css next to `.media-container`: `.media-video-poster`,
+  `.media-play-overlay`, and the `.media-viewer-*` block (overlay z-10200, spinner
+  with a `prefers-reduced-motion` guard). Channel posts need the extra
+  `.channel-post-media.media-video-poster { position: relative; }` so the play
+  overlay anchors correctly.
+
 ## Scroll-to-bottom button (dashboard.html)
 - WhatsApp-style floating button `#scrollDownBtn` (`.scroll-down-btn` in
   dashboard.css) sits absolute inside `.chat` (bottom: 92px, right: 18px,
