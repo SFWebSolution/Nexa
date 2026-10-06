@@ -532,6 +532,7 @@ auth.onAuthStateChanged(async (user) => {
     listenMyGroups();
     listenMyChannels();
     listenDiscoverChannels();
+    maybeReopenLastChannel(); // no-op if channels haven't arrived yet — retried in listenMyChannels
     checkGroupInviteUrlParam();
     checkChannelInviteUrlParam();
     nexaBootStep('community');
@@ -3448,6 +3449,7 @@ function selectChat(user, el) {
   if (selectedUser && selectedUser.uid !== user.uid) saveChatMsgCache(selectedUser.uid);
   selectedUser = user;
   setLastOpenChat(user.uid);
+  nexaChannelReopenChecked = true; // opening a chat settles the auto-reopen for this session
   applyCurrentWallpaper();
   if (deletedChats[user.uid]) {
     delete deletedChats[user.uid];
@@ -3891,14 +3893,69 @@ function clearChatMsgCache(uid) {
 function setLastOpenChat(uid) {
   try {
     if (!currentUser) return;
-    if (uid) localStorage.setItem("nexa_last_open_chat_" + currentUser.uid, uid);
-    else localStorage.removeItem("nexa_last_open_chat_" + currentUser.uid);
+    if (uid) {
+      localStorage.setItem("nexa_last_open_chat_" + currentUser.uid, uid);
+      localStorage.setItem("nexa_last_chat_ts_" + currentUser.uid, String(Date.now()));
+    } else {
+      localStorage.removeItem("nexa_last_open_chat_" + currentUser.uid);
+    }
   } catch (e) {}
 }
 function getLastOpenChat() {
   try {
     return (currentUser && localStorage.getItem("nexa_last_open_chat_" + currentUser.uid)) || null;
   } catch (e) { return null; }
+}
+function setLastOpenChannel(id) {
+  try {
+    if (!currentUser) return;
+    if (id) {
+      localStorage.setItem("nexa_last_open_channel_" + currentUser.uid, id);
+      localStorage.setItem("nexa_last_channel_ts_" + currentUser.uid, String(Date.now()));
+    } else {
+      localStorage.removeItem("nexa_last_open_channel_" + currentUser.uid);
+    }
+  } catch (e) {}
+}
+function getLastOpenChannel() {
+  try {
+    return (currentUser && localStorage.getItem("nexa_last_open_channel_" + currentUser.uid)) || null;
+  } catch (e) { return null; }
+}
+// Which did the user open more recently — a channel or a 1:1 chat? Both are
+// "reopen on app open" targets, so the newer one wins and the older is skipped.
+function lastOpenChannelIsNewer() {
+  try {
+    if (!currentUser) return false;
+    const c = Number(localStorage.getItem("nexa_last_channel_ts_" + currentUser.uid) || 0);
+    const t = Number(localStorage.getItem("nexa_last_chat_ts_" + currentUser.uid) || 0);
+    return c > 0 && c > t;
+  } catch (e) { return false; }
+}
+
+// WhatsApp-style: on app open, jump straight back into the conversation you
+// last had open — a 1:1 chat OR a channel feed. Channels only become available
+// once the channels listeners have data, so this is called again from
+// listenMyChannels()'s first snapshot (the initial boot call may find nothing
+// and simply leave the chat list showing). Runs at most once per app open, so
+// a later channels snapshot can't yank the user back into a feed they left.
+function maybeReopenLastChannel() {
+  try {
+    if (nexaChannelReopenChecked) return;
+    if (currentChatMode === 'channel' && selectedChannel) { nexaChannelReopenChecked = true; return; }
+    if (selectedUser || selectedGroup) { nexaChannelReopenChecked = true; return; }
+    const id = getLastOpenChannel();
+    if (!id) { nexaChannelReopenChecked = true; return; }
+    // Only channels the user actually follows — never resurrect an unfollowed
+    // public channel just because it shows up in Discover.
+    const chan = (myChannels || []).find(c => c.id === id);
+    if (!chan) return; // channels not loaded yet — stay unchecked so we retry
+    // Only auto-open the channel if it's at least as recent as the last chat
+    // (a newer chat already won in maybeReopenLastChat()).
+    if (!lastOpenChannelIsNewer()) { nexaChannelReopenChecked = true; return; }
+    nexaChannelReopenChecked = true;
+    selectChannelFeed(chan);
+  } catch (e) {}
 }
 
 // WhatsApp-style: on app open, jump straight back into the conversation you
@@ -3909,6 +3966,9 @@ function maybeReopenLastChat() {
   try {
     const uid = getLastOpenChat();
     if (!uid || selectedUser) return;
+    // If the user was last in a channel (newer than their last chat), that feed
+    // wins the auto-reopen — don't also open a 1:1 chat behind it.
+    if (lastOpenChannelIsNewer()) { nexaChannelReopenChecked = false; return; }
     let user = null;
     if (currentUser && uid === currentUser.uid) {
       user = getSelfContact(); // the pinned "Message yourself" contact
@@ -9966,6 +10026,7 @@ function profilePicGoBack() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let currentChatMode = 'direct'; // 'direct' | 'group' | 'channel'
+let nexaChannelReopenChecked = false; // auto-reopen runs once per app open
 let selectedGroup = null;
 let selectedChannel = null;
 let myGroups = [];
@@ -11366,6 +11427,8 @@ function listenMyChannels() {
         renderChannelsFollowing();
       }
       updateCommunityTabDot();
+      // Auto-reopen the last channel the user was in (first snapshot only).
+      maybeReopenLastChannel();
     }, err => console.error('Channels listener error:', err));
 }
 
@@ -11799,6 +11862,8 @@ function selectChannelFeed(channel) {
   selectedChannel = channel;
   selectedGroup = null;
   selectedUser = null;
+  // Remember this channel so it auto-reopens on the next app open.
+  setLastOpenChannel(channel.id);
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -11888,10 +11953,22 @@ function loadChannelPosts(channelId) {
   const box = document.getElementById('messages');
   if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading broadcast posts…</div>';
 
+  // A fresh open must ALWAYS full-render its first snapshot. The reactions-only
+  // fast path compares the snapshot against _nexaChannelPostsCache — if we kept
+  // the previous cache, re-opening the SAME channel produces an identical
+  // snapshot that short-circuits without rendering, leaving the "Loading
+  // broadcast posts…" placeholder stuck on screen (the "2nd open shows
+  // nothing" bug). Reset it here so prev is empty and the first paint always
+  // happens; the delta optimization still applies to later live updates.
+  window._nexaChannelPostsCache = null;
+  window._nexaChannelPostsChannelId = channelId;
+
   unsubChannelPosts = db.collection('channels').doc(channelId).collection('posts')
     .orderBy('createdAt', 'desc')
     .limit(40)
     .onSnapshot(snap => {
+      // Ignore a slow snapshot from a channel we've since navigated away from.
+      if (window._nexaChannelPostsChannelId !== channelId) return;
       const posts = [];
       snap.forEach(doc => {
         posts.push({ id: doc.id, ...doc.data() });
@@ -11902,7 +11979,7 @@ function loadChannelPosts(channelId) {
       // re-rendering the whole list (no scroll jump, and recordPostView isn't
       // re-fired for every post). Full render only when content/comments/views
       // actually change.
-      let reactionsOnly = prev.length === posts.length;
+      let reactionsOnly = posts.length > 0 && prev.length === posts.length;
       if (reactionsOnly) {
         for (let i = 0; i < posts.length; i++) {
           const a = prev.find(p => p.id === posts[i].id);

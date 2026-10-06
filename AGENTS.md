@@ -682,7 +682,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Firestore `connections` collection**, one doc per pair, id = the two uids SORTED and joined with `_` (`connKey`). Fields `members:[uidA,uidB]`, `from`, `to`, `status:"pending"|"accepted"`, `createdAt`, `updatedAt`. Client listener is a SINGLE `where("members","array-contains",myUid).onSnapshot` (single-field auto-index, NO composite index) feeding global `myConnections` (otherUid -> record). Do NOT open a listener per contact.
 - **`firestore.rules` `connections` block** (must be DEPLOYED): read = member only; create = `from==auth.uid`, `to` in `members`, `to!=from`, status pending|accepted; update = ONLY the recipient (`auth.uid == resource.data.to`) changing only `status`/`updatedAt` (members/from/to must be unchanged); delete = either member. `getConnectionWith(uid)`/`isConnectedTo(uid)` (accepted only) are the client helpers.
 - **Auto-connect migration** (`maybeMigrateExistingChats`, one-time per uid via `nexa_conn_migrated_<uid>`): everyone you already exchanged a chat with is written as an `accepted` connection so existing conversations aren't lost. It SKIPS any uid already in `myConnections` (accepted OR pending) — overwriting an existing pending doc is DENIED by the rules. Runs from the connections listener so `myConnections` is populated first.
-- **1:1 Chats tab is connection-gated:** `renderUsers()` filters to `isConnectedTo` + self-chat, and is a thin wrapper over `renderUserList(list)` (which owns the sort/self-pin/paint). Chats-tab search is scoped to connections via `renderSearchResults()`; global discovery lives in the Connect tab (`#connectSearch` -> `renderConnectDiscover`). The instant-paint fallback in dashboard.html also filters by cached `nexa_connections_<uid>` (accepted only) so there's no flash of non-connections. `renderActiveNowBar()` is connection-gated too.
+- **1:1 Chats tab is connection-gated:** `renderUsers()` filters to `isConnectedTo` + self-chat, and is a thin wrapper over `renderUserList(list)` (which owns the sort/self-pin/paint). Chats-tab search is scoped to connections via `renderSearchResults()`; global discovery lives in the Connect tab (`#connectSearch` -> `renderConnectDiscover`). The instant-paint fallback in dashboard.html also filters by cached `nexa_connections_<uid>` (accepted only) so there's no flash of non-connections.
 - **Stories are connection-gated:** `renderStoriesBar`, `renderStoriesTab`, `updateStoryTabDot`, and `openStoryViewer` all skip non-connections (client-side; the `status` rules still allow any signed-in read — hardening the rules is a future option).
 - **Connect tab UI** (`#tabPaneConnect`): segmented `Discover` | `Requests` (`switchConnectSubTab`), `renderConnectDiscover` (all users, action button per relationship: Connect / Requested / Accept / Message), `renderConnectRequests` (incoming + Sent section). Requests search box (`#connectSearchWrap`) is hidden on the Requests sub-tab.
 - **Green update dot** (`.connect-tab-dot` on `sTabConnect` + `navBtnConnect`): `updateConnectTabDot()` shows it for a new incoming pending request or an accepted outgoing request newer than `nexa_connect_seen_<uid>`; opening the Connect tab (`switchTab('connect')` -> `markConnectRequestsSeen`) clears it.
@@ -690,6 +690,33 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Channels are NOT message-forward targets.** The Forward modal lists contacts (accepted connections) + groups only. A channel is a broadcast feed where only the owner/admins may post, so a follower must never be able to push a message into one. `renderForwardTargets` no longer adds `myChannels`, and `executeForward` skips a `channel` target (`continue`) instead of writing a `channels/{id}/posts` doc. Do NOT re-add channels to the forward list.
 - **Every contact picker is connection-gated (not just chat/stories/Live).** Only ACCEPTED connections (`isConnectedTo`) may be picked for: message Forward targets (`renderForwardTargets`), the "Invite to Group"/"Invite to Channel" picker (same forward modal via `openInvitePicker`), Create-Group members (`renderCreateGroupContacts`), and Add-Member-to-Group (`renderAddMemberContacts`). `sendGroupInviteToChat`/`sendChannelInviteToChat` ALSO re-check `isConnectedTo(contactUid)` server-side and refuse with "You can only invite your connections". Do NOT re-widen any of these to `allUsersData` — a stranger must never be forwardable-to or invitable into a group/channel. The Voice Room/Live invite list is gated too (`renderUserInviteList` -> `isConnection`).
 - dashboard.html & dashboard.css & app-main.js are CRLF — after editing run the normalize step or the whole file shows as changed.
+
+## Channel feed auto-open + "2nd open shows nothing" fix (app-main.js)
+- **The last opened channel auto-reopens on app open**, exactly like the last 1:1
+  chat (`maybeReopenLastChat`). `selectChannelFeed()` stamps `nexa_last_open_channel_<uid>`
+  (+ a `nexa_last_channel_ts_<uid>` timestamp); `maybeReopenLastChannel()` reads it and
+  calls `selectChannelFeed()` with the matching entry from `myChannels`/`discoverChannels`.
+- **Channels aren't loaded at boot**, so the boot call is a no-op on the first try. It is
+  retried from `listenMyChannels()`'s snapshot (where `myChannels` is finally populated),
+  and gated by `nexaChannelReopenChecked` so it runs **at most once per app open** — a
+  later channels snapshot must never yank the user back into a feed they left. `selectChat()`
+  also sets `nexaChannelReopenChecked = true` so opening a chat settles it.
+- **Precedence vs the last chat:** both are "reopen" targets, so the more recent one wins.
+  `setLastOpenChat()`/`setLastOpenChannel()` each write a `..._ts_<uid>` stamp;
+  `lastOpenChannelIsNewer()` compares them. `maybeReopenLastChat()` bails (and un-checks the
+  channel flag) when a channel is newer; `maybeReopenLastChannel()` bails when the chat is newer.
+  Do NOT drop the timestamp compare or both would open on top of each other.
+- **"Channel messages not showing (2nd open)" root cause:** `loadChannelPosts()` paints the
+  "Loading broadcast posts…" placeholder, then its `onSnapshot` compares the fresh snapshot
+  against `window._nexaChannelPostsCache`. Re-opening the SAME channel produced an identical
+  snapshot → the reactions-only fast path `return`ed early **without rendering**, leaving the
+  loading text stuck forever (and an empty channel did the same via `0 === 0`). Fix (current
+  code): `loadChannelPosts()` resets `window._nexaChannelPostsCache = null` and stamps
+  `window._nexaChannelPostsChannelId = channelId` on every open, the snapshot handler bails if
+  that marker no longer matches (a slow snapshot from a channel you left), and the delta
+  shortcut now requires `posts.length > 0`. The optimization still applies to genuine
+  live reaction updates on an already-open channel. Do NOT remove the cache reset or the
+  `posts.length > 0` guard.
 
 ## "Live" rooms — rename + connections-only gating
 - The multi-user audio feature formerly called "Voice Room / Voice Chat" is now **"Live"** in all user-facing copy (room header, mini bar, invite modal, toasts, and the `index.html` marketing page). Internal identifiers are UNCHANGED and must stay: file `nexa-voice-room.js`, class `NexaVoiceRoomManager`, CSS `nexa-vr-*`, Firestore `voice_rooms` + `voice_invites`, the `?voiceroom=` URL param, and BroadcastChannel names. Renaming the URL param would break every shared join link.
