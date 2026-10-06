@@ -260,6 +260,31 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   wasn't guaranteed to be in the locally-loaded `allMessages` (race between the
   two onSnapshot listeners, or recipient loading the reply before the original).
   Keep the snapshot self-contained; do NOT store only an id.
+- **Reply preview is clickable (jump-to-original):** the `.reply-quote` in
+  `buildMessage` (1:1) and `buildGroupMessage` (groups) carries
+  `reply-quote-clickable` + `data-reply-to` and an inline
+  `onclick="scrollToMsg('<id>')"` / `onclick="scrollToGroupMsg('<id>')"`. The id is
+  sanitized with `String(id).replace(/[^A-Za-z0-9_-]/g,"")` before interpolation
+  (it's inside an inline handler, so a crafted doc id must not break out).
+  `flashMsgEl(el)` does the shared scroll-to-centre + cyan flash. 1:1 paging is
+  handled inside `scrollToMsg` (pages older chunks until it renders); groups
+  render all loaded history, so `scrollToGroupMsg` is a straight lookup. Keep the
+  quote clickable — do NOT revert to a plain non-interactive div.
+- **Disappearing messages are READ-anchored (WhatsApp-style), and the sender is
+  the one who purges.** `msgDisappearAt(msg, msLimit)` = `(msg.readAt ||
+  msg.createdAt) + msLimit` (Firestore `Timestamp.readAt` handled via
+  `toMillis()`); `isMsgExpired` compares against `Date.now()`. Previously the
+  clock ran from `createdAt` only, so a message could expire before the recipient
+  ever opened the chat. In `renderMessageList` the filter keeps
+  `isMsgExpired(...)`, and only pushes `msg.id` to `expiredDocIds` when
+  `msg.from === currentUser.uid` — the `chats` rules allow delete only by the
+  sender, so each side purges its OWN expired messages. Do NOT go back to
+  deleting the peer's docs (silent permission-denied, message reappears).
+- **`startDisappearSweep()`** (30s `setInterval`, started at boot after
+  `setupHeartbeat()`) re-renders only when a message in the open 1:1 chat has
+  actually elapsed, so bubbles vanish while the chat sits idle instead of
+  lingering until the next open. It no-ops when the timer is Off or the mode
+  isn't `direct`, and is idempotent (single `disappearSweepInterval`).
 - **`window.*` exposure (critical for presence + voice room):** `dashboard.html`
   declares `db`, `auth`, `currentUser`, `allUsersData`, `userPresenceCache`,
   `isUserOnline` with top-level `const`/`let`/`function`. In a browser these do

@@ -1462,6 +1462,11 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 
+/* Tapping the quoted preview jumps to the original message (WhatsApp-style). */
+.reply-quote-clickable { cursor: pointer; }
+.reply-quote-clickable:hover { background: rgba(0, 0, 0, 0.32); }
+.reply-quote-clickable:active { transform: scale(0.99); }
+
 /* ╔─ REACTIONS ─╗ */
 
 .msg-reactions {

@@ -523,6 +523,7 @@ auth.onAuthStateChanged(async (user) => {
     nexaBootStep('listeners');
     loadInitialChatTimestamps();
     setupHeartbeat();
+    startDisappearSweep();
     loadUnreadCounts();
     listenIncoming();
     initPWA();
@@ -3377,6 +3378,41 @@ function formatDisappearingLabel(val) {
   return 'Off';
 }
 
+// WhatsApp-style countdown: a message's timer starts when the RECIPIENT reads
+// it (readAt), and falls back to the send time (createdAt) for messages that
+// haven't been read yet. Once now passes start+limit the message is gone.
+// Without the readAt anchor the clock ran from send time, so a message could
+// expire before the recipient ever opened the chat.
+function msgDisappearAt(msg, msLimit) {
+  if (!msLimit || !msg) return 0;
+  let start = msg.readAt || msg.createdAt || 0;
+  if (start && typeof start.toMillis === 'function') start = start.toMillis();
+  return start ? start + msLimit : 0;
+}
+function isMsgExpired(msg, msLimit, now) {
+  const at = msgDisappearAt(msg, msLimit);
+  return at > 0 && now >= at;
+}
+
+// Live sweep: a message can hit its timer while the chat just sits open with
+// no new snapshot to trigger a render. This re-checks every 30s and re-renders
+// only when something actually elapsed, so the bubble vanishes on its own
+// (WhatsApp-style) instead of lingering until the next open.
+let disappearSweepInterval = null;
+function startDisappearSweep() {
+  if (disappearSweepInterval) return;
+  disappearSweepInterval = setInterval(() => {
+    try {
+      if (!selectedUser || currentChatMode !== 'direct') return;
+      const key = getChatKey(currentUser.uid, selectedUser.uid);
+      const msLimit = parseDisappearingMs(disappearingSettings[key] || 'off');
+      if (msLimit <= 0) return;
+      const now = Date.now();
+      if (allMessages.some(m => isMsgExpired(m, msLimit, now))) renderMessageList();
+    } catch (e) {}
+  }, 30000);
+}
+
 function listenDisappearingSettings() {
   if (unsubDisappearing) { unsubDisappearing(); unsubDisappearing = null; }
   if (!selectedUser || !currentUser) return;
@@ -4559,8 +4595,11 @@ function renderMessageList() {
     const expiredDocIds = [];
 
     allMessages.forEach(msg => {
-      if (msg.createdAt && (now - msg.createdAt) > msLimit) {
-        expiredDocIds.push(msg.id);
+      if (isMsgExpired(msg, msLimit, now)) {
+        // The rules only let the SENDER delete a chat doc, so only purge our
+        // own expired messages; the peer purges theirs (their own timer, which
+        // is anchored on their read time). Each side keeps its view clean.
+        if (msg.from === currentUser.uid) expiredDocIds.push(msg.id);
       } else {
         validMsgs.push(msg);
       }
@@ -4976,7 +5015,8 @@ function buildMessage(id, msg, fromMe) {
     const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
     const rFrom = replied ? replied.from : (msg.replyToFrom || null);
     const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-    inner += `<div class="reply-quote"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
+    const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
+    inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // Forwarded label
@@ -5397,6 +5437,20 @@ async function scrollToMsg(msgId) {
     el = document.querySelector(`[data-msg-id="${msgId}"]`);
   }
   if (!el) return;
+  flashMsgEl(el);
+}
+
+// Group threads render the whole loaded history at once (no paged window), so
+// jumping to a quoted message is a straight DOM lookup + highlight.
+function scrollToGroupMsg(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  flashMsgEl(el);
+}
+
+// WhatsApp-style jump highlight: scroll the target to the middle and flash it
+// so the eye lands on the right bubble.
+function flashMsgEl(el) {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.style.outline = "2px solid var(--cyan)";
   el.style.borderRadius = "14px";
@@ -10637,7 +10691,8 @@ function buildGroupMessage(id, msg, fromMe) {
   if (msg.replyTo) {
     const rAuthor = escapeHtml(msg.replyToName || (msg.replyToFrom === currentUser.uid ? "You" : "Member"));
     const rText = linkify(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
-    inner += `<div class="reply-quote"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+    const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
+    inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToGroupMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
   }
 
   // 2b. Forwarded label
