@@ -211,21 +211,14 @@ async function completeProfileSetup() {
 
   try {
     await currentUser.updateProfile({ displayName: displayName });
-    const setupRef = db.collection("users").doc(currentUser.uid);
-    const setupSnap = await setupRef.get();
-    const setupData = {
+    await db.collection("users").doc(currentUser.uid).set({
       uid: currentUser.uid,
       email: currentUser.email,
       displayName: displayName,
       photoUrl: currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       profileSetupComplete: true
-    };
-    // Preserve the original join date — rewriting createdAt here reset an
-    // existing user's "registered" day (phantom "1 registered today").
-    if (!setupSnap.exists || !setupSnap.data().createdAt) {
-      setupData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-    }
-    await setupRef.set(setupData, { merge: true });
+    }, { merge: true });
 
     document.getElementById("myName").textContent = displayName;
     document.getElementById("profileSetupOverlay").classList.remove("active");
@@ -258,18 +251,14 @@ async function loadProfile() {
     const photoUrl = data?.photoUrl || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
 
     if (!data || !data.displayName || data.displayName === "User") {
-      const repairData = {
+      await db.collection("users").doc(currentUser.uid).set({
         uid: currentUser.uid,
         email: currentUser.email,
         displayName: displayName,
         photoUrl: photoUrl,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         profileSetupComplete: true
-      };
-      // Never overwrite an existing createdAt (see completeProfileSetup).
-      if (!data || !data.createdAt) {
-        repairData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-      }
-      await db.collection("users").doc(currentUser.uid).set(repairData, { merge: true });
+      }, { merge: true });
     }
 
     document.getElementById("myName").textContent = displayName;
@@ -1251,8 +1240,15 @@ function startSharedPresenceListener() {
 // Facebook-style "Active Now" horizontal avatar strip. Reads from the shared
 // userPresenceCache so it stays in sync with the single presence listener.
 function renderActiveNowBar() {
+  const bar = document.getElementById("activeNowBar");
   const scroller = document.getElementById("activeNowScroller");
   if (!scroller) return;
+
+  // The strip lives inside the chat pane now, so it only makes sense for a
+  // real 1:1 conversation — hide it on the empty state, in groups and channels.
+  const showBar = currentChatMode === 'direct' && !!selectedUser;
+  if (bar) bar.style.display = showBar ? "" : "none";
+  if (!showBar) return;
 
   const onlineUsers = allUsersData
     .filter(u => !blockedUsers[u.uid] && isConnectedTo(u.uid) && isUserOnline(userPresenceCache[u.uid]))
@@ -2335,7 +2331,7 @@ function openSettingsSubPage(name) {
   }
   if (name === 'storage') renderStorageUsage();
   if (name === 'about') renderAboutInfo();
-  if (name === 'language') updateLanguageUI();  if (name === 'ai') { setAskifyEnabled(isAskifyEnabled()); refreshAskifyStatus(); }
+  if (name === 'language') updateLanguageUI();
 
   const scroller = page.querySelector('.settings-subpage-body');
   if (scroller) scroller.scrollTop = 0;
@@ -3491,7 +3487,6 @@ function selectChat(user, el) {
   closeAttachMenu();
   if (currentChatMode !== 'direct') resetCommunityChatMode();
   currentChatMode = 'direct';
-  closeAskifyPopup();
   selectedGroup = null;
   selectedChannel = null;
 
@@ -3526,6 +3521,7 @@ function selectChat(user, el) {
   delete unreadMessages[user.uid];
   updateTotalUnreadBadge();
   renderUsers(); // Move selected user to the top immediately
+  renderActiveNowBar(); // Show the Active Now strip for this 1:1 chat
   loadMessages();
   updateBlockedChatBanner();
   updateInfoBlockAction();
@@ -4657,6 +4653,15 @@ function renderMessageList() {
         metaEl.innerHTML = `<span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""} ${editLabel}`;
       }
 
+      // In-place TEXT update — an edit (or a poll/vote change) must repaint the
+      // bubble immediately. Without this the bubble kept the old text until it
+      // was rebuilt on the next chat open, so edits appeared to do nothing.
+      const textEl = msgEl.querySelector(".bubble > .msg-text");
+      if (textEl && msg.text && textEl.dataset.renderedText !== msg.text) {
+        textEl.innerHTML = linkify(msg.text);
+        textEl.dataset.renderedText = msg.text;
+      }
+
       // In-place reactions update for instant visual feedback
       updateMsgReactionsInPlace(msgEl, msg.id, msg.reactions);
 
@@ -4945,7 +4950,7 @@ function updateMsgReactionsInPlace(msgEl, id, reactions) {
 
 function buildMessage(id, msg, fromMe) {
   const el = document.createElement("div");
-  el.className = `msg ${fromMe ? "me" : "them"}${msg.askifyReply ? " askify-msg" : ""}`;
+  el.className = `msg ${fromMe ? "me" : "them"}`;
   el.dataset.msgId = id;
 
   const row = document.createElement("div");
@@ -4955,9 +4960,6 @@ function buildMessage(id, msg, fromMe) {
   bubble.className = "bubble";
 
   let inner = "";
-
-  // Askify answers get a distinct bot look + quick actions.
-  if (msg.askifyReply) inner += askifyReplyHeaderHTML();
 
   // Handle story reply with WhatsApp-style preview card
   if (msg.storyReplyId && msg.storyReplyUid) {
@@ -5019,14 +5021,9 @@ function buildMessage(id, msg, fromMe) {
     if (msg.type === 'poll' && msg.pollOptions) {
       inner += buildPollHTML(id, msg);
     } else if (msg.text) {
-      if (msg.askifyReply) {
-        inner += `<div class="msg-text">${msg.askifyThinking ? '<span class="askify-thinking">Askify is thinking<span class="askify-dots"><i>.</i><i>.</i><i>.</i></span></span>' : escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>`;
-      } else {
-        inner += `<div class="msg-text">${renderMentionText(linkify(msg.text))}</div>`;
-        inner += maybeTranslationStrip(id, msg.text, fromMe);
-      }
+      inner += `<div class="msg-text" data-rendered-text="${escapeHtml(msg.text)}">${linkify(msg.text)}</div>`;
+      inner += maybeTranslationStrip(id, msg.text, fromMe);
     }
-    if (msg.askifyReply && !msg.askifyThinking) inner += askifyReplyActionsHTML(id);
 
     if (msg.image) {
       const imgUrl = safeMediaUrl(msg.image);
@@ -5259,6 +5256,13 @@ function copyMsg(id) {
 async function deleteGroupMsg(id) {
   if (!selectedGroup) return;
   if (await nexaConfirm("This message will be removed for everyone in the group.", { title: "Delete message?", okLabel: "Delete", danger: true })) {
+    // Optimistic: drop it locally and repaint now; the group listener
+    // reconciles from Firestore on the next snapshot.
+    const i = currentGroupMessages.findIndex(m => m.id === id);
+    if (i > -1) {
+      currentGroupMessages.splice(i, 1);
+      renderGroupMessageList(currentGroupMessages);
+    }
     db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id).delete()
       .catch(e => console.error("deleteGroupMsg error:", e));
   }
@@ -5295,16 +5299,25 @@ async function toggleGroupMsgReact(msgId, emoji) {
   }
 }
 
+// Drop a message id from every internal array and repaint. Used for optimistic
+// delete so the bubble vanishes the instant the user confirms, instead of
+// waiting for the Firestore snapshot to arrive (which left the message on
+// screen until the chat was re-opened).
+function purgeLocalMsg(id) {
+  [_msgsA, _msgsB, _olderMsgsA, _olderMsgsB].forEach(arr => {
+    const i = arr.findIndex(m => m.id === id);
+    if (i > -1) arr.splice(i, 1);
+  });
+  const el = document.querySelector(`.msg[data-msg-id="${CSS.escape(id)}"]`);
+  if (el) el.remove();
+}
+
 async function deleteMsg(id) {
   if (await nexaConfirm("This message will be removed for everyone in this chat.", { title: "Delete message?", okLabel: "Delete", danger: true })) {
-    db.collection("chats").doc(id).delete().then(() => {
-      // The live listener prunes window messages; older pages are pruned here.
-      [_olderMsgsA, _olderMsgsB].forEach(arr => {
-        const i = arr.findIndex(m => m.id === id);
-        if (i > -1) arr.splice(i, 1);
-      });
-      renderMessageList();
-    }).catch(e => console.error("deleteMsg error:", e));
+    purgeLocalMsg(id);
+    renderMessageList();
+    db.collection("chats").doc(id).delete()
+      .catch(e => console.error("deleteMsg error:", e));
   }
   closeCtxMenu();
 }
@@ -5738,12 +5751,6 @@ async function sendMessage() {
   autoGrowComposer(ta);
   toggleActionButtons();
 
-  // Tagging @askify turns this send into an AI question. The question itself
-  // is still posted (so both sides see what was asked), then Askify answers
-  // in-thread.
-  const _askifyTarget = selectedUser.uid;
-  const _askifyQuestion = (text.match(/@askify\b[\s,:-]*(.*)/i) || [])[1];
-
   const extras = { text };
   if (messageRepliedTo) {
     extras.replyTo = messageRepliedTo.id;
@@ -5800,10 +5807,6 @@ async function sendMessage() {
     }
   } catch (err) {
     showNotifToast("Failed to send message: " + err.message, "error");
-  }
-
-  if (_askifyQuestion !== undefined && _askifyQuestion !== null && _askifyQuestion.trim()) {
-    handleAskifySend(_askifyQuestion.trim(), _askifyTarget);
   }
 }
 
@@ -9772,12 +9775,14 @@ async function shareStatus() {
 }
 
 function openAI() {
-  // Askify now lives inside the chat as @askify — no separate panel.
-  openAskifyPopup();
+  openAskifyComingSoon();
 }
 
 function closeAI() {
-  closeAskifyPopup();
+  const panel = document.getElementById("aiPanel");
+  if (panel) {
+    panel.classList.remove("active");
+  }
 }
 
 function openCommunityComingSoon() {
@@ -9802,223 +9807,26 @@ function handleCommunityComingClick(e) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// ASKIFY AI — tag @askify inside a 1:1 chat
-// The reply is written into the SAME thread as a message flagged
-// `askifyReply:true` so it renders for both people and survives a reload.
-// The AI call itself goes through the backend (the provider key stays there).
-// ═══════════════════════════════════════════════════════════════════════
-
-// One in-flight request per chat, so a double-tap can't fire two answers.
-let _askifyPending = false;
-
-// Kept for backward compatibility — anything still calling this now just
-// points the user at the in-chat flow.
 function openAskifyComingSoon() {
-  openAskifyPopup();
-}
-
-function isAskifyEnabled() {
-  try { return localStorage.getItem('nexa_askify_enabled') !== '0'; } catch (e) { return true; }
-}
-
-function setAskifyEnabled(on) {
-  try { localStorage.setItem('nexa_askify_enabled', on ? '1' : '0'); } catch (e) {}
-  const toggle = document.getElementById('askifyEnabledToggle');
-  if (toggle) toggle.checked = !!on;
-  const sub = document.getElementById('askifyToggleSub');
-  if (sub) sub.textContent = on ? 'Tag @askify in any 1:1 chat' : 'Askify is turned off';
-  const note = document.getElementById('askifyStatusNote');
-  if (note) {
-    note.textContent = on
-      ? 'Askify is on. Type @askify in a 1:1 chat and pick an action.'
-      : 'Askify is off. Turn it back on to tag it in chats.';
-  }
-  if (on) refreshAskifyStatus();
-}
-
-function refreshAskifyStatus() {
-  const note = document.getElementById('askifyStatusNote');
-  const toggle = document.getElementById('askifyEnabledToggle');
-  if (toggle) toggle.checked = isAskifyEnabled();
-  if (!note) return;
-  if (!isAskifyEnabled()) {
-    note.textContent = 'Askify is off. Turn it back on to tag it in chats.';
+  const modal = document.getElementById("askifyComingModal");
+  if (modal) {
+    modal.classList.add("active");
     return;
   }
-  fetch(`${BACKEND_URL}/api/ai/status`)
-    .then(r => r.json())
-    .then(d => {
-      note.textContent = d && d.configured
-        ? `Askify is on and ready (${d.provider}). Type @askify in a 1:1 chat.`
-        : 'Askify is on, but the server has no AI key configured yet.';
-    })
-    .catch(() => { note.textContent = 'Askify is on. Type @askify in a 1:1 chat.'; });
+  showNotifToast("Askify AI is coming soon!", "info");
 }
 
-function openAskifyPopup() {
-  const popup = document.getElementById('askifyPopup');
-  if (!popup) return;
-  if (currentChatMode !== 'direct' || !selectedUser) {
-    showNotifToast('Open a 1:1 chat first, then tag @askify.', 'info');
-    return;
-  }
-  popup.style.display = 'block';
-  const inp = document.getElementById('askifyPopupInput');
-  if (inp) setTimeout(() => inp.focus(), 30);
-  if (window.lucide) lucide.createIcons();
-}
-
-function closeAskifyPopup() {
-  const popup = document.getElementById('askifyPopup');
-  if (popup) popup.style.display = 'none';
-  const inp = document.getElementById('askifyPopupInput');
-  if (inp) inp.value = '';
-}
-
-// Quick actions build a natural-language question for Askify.
-const ASKIFY_QUICK = {
-  whatdid: 'What did this person say? Give me the gist of what they have said in this chat.',
-  summary: 'Summarise this conversation for me.',
-  reply: 'Draft a short, friendly reply I could send next.',
-  explain: 'Explain the last thing they said in simple terms.',
-  translate: 'Translate the last message they sent into French.',
-};
-
-function askifyQuickAction(kind) {
-  const ta = document.getElementById('text');
-  if (!ta || currentChatMode !== 'direct' || !selectedUser) return;
-  let question;
-  if (kind === 'custom') {
-    const inp = document.getElementById('askifyPopupInput');
-    question = (inp && inp.value || '').trim();
-    if (!question) return;
-  } else {
-    question = ASKIFY_QUICK[kind] || '';
-  }
-  ta.value = `@askify ${question}`;
-  closeAskifyPopup();
-  autoGrowComposer(ta);
-  ta.focus();
-  sendMessage();
-}
-
-// Snapshot of the thread for Askify (last ~20 messages, oldest→newest).
-function buildAskifyContext() {
-  const out = [];
-  (allMessages || []).forEach(m => {
-    if (!m || m.askifyReply) return;
-    const text = (m.text || '').trim();
-    if (!text) return;
-    out.push({ from: m.from === currentUser.uid ? 'me' : 'them', text: text.slice(0, 800) });
-  });
-  return out.slice(-20);
-}
-
-// Called from sendMessage() when the text tags @askify.
-async function handleAskifySend(question, targetUid) {
-  if (_askifyPending) {
-    showNotifToast('Askify is still answering the last one…', 'info');
-    return;
-  }
-  if (!isAskifyEnabled()) {
-    showNotifToast('Askify is turned off. Enable it in Settings → AI Assistant.', 'info');
-    return;
-  }
-
-  _askifyPending = true;
-  const history = buildAskifyContext();
-
-  // Optimistic "thinking" bubble — replaced by the real reply in place.
-  const tempId = 'temp_askify_' + Date.now();
-  const thinking = {
-    id: tempId,
-    from: currentUser.uid,
-    to: targetUid,
-    text: 'Askify is thinking…',
-    status: 'sent',
-    createdAt: Date.now(),
-    askifyReply: true,
-    askifyThinking: true
-  };
-  _msgsA.push(thinking);
-  renderMessageList();
-  scrollMessagesToBottom();
-
-  try {
-    const token = await currentUser.getIdToken();
-    const res = await fetch(`${BACKEND_URL}/api/ai/ask`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ question, history })
-    });
-    const data = await res.json().catch(() => ({}));
-
-    // Remove the thinking bubble regardless of outcome.
-    const ti = _msgsA.findIndex(m => m.id === tempId);
-    if (ti > -1) _msgsA.splice(ti, 1);
-
-    if (!res.ok || !data || !data.answer) {
-      renderMessageList();
-      const msg = (data && data.error) || 'Askify could not answer right now.';
-      showNotifToast(msg, 'error');
-      return;
-    }
-
-    const reply = {
-      from: currentUser.uid,
-      to: targetUid,
-      text: data.answer,
-      status: 'sent',
-      createdAt: Date.now(),
-      askifyReply: true,
-      askifyQuestion: question.slice(0, 500),
-      askifyProvider: data.provider || null
-    };
-    await db.collection('chats').add(reply);
-  } catch (err) {
-    const ti = _msgsA.findIndex(m => m.id === tempId);
-    if (ti > -1) _msgsA.splice(ti, 1);
-    renderMessageList();
-    showNotifToast('Askify error: ' + err.message, 'error');
-  } finally {
-    _askifyPending = false;
+function closeAskifyComing() {
+  const modal = document.getElementById("askifyComingModal");
+  if (modal) {
+    modal.classList.remove("active");
   }
 }
 
-// Answer bubble actions.
-function copyAskifyAnswer(id) {
-  const m = (allMessages || []).find(x => x.id === id);
-  if (!m || !m.text) return;
-  const done = () => showNotifToast('Copied Askify answer', 'success');
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(m.text).then(done).catch(() => {});
-  } else {
-    const ta = document.createElement('textarea');
-    ta.value = m.text;
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); done(); } catch (e) {}
-    document.body.removeChild(ta);
+function handleAskifyComingClick(e) {
+  if (e.target === document.getElementById("askifyComingModal")) {
+    closeAskifyComing();
   }
-}
-
-function insertAskifyAnswer(id) {
-  const m = (allMessages || []).find(x => x.id === id);
-  if (!m || !m.text) return;
-  const ta = document.getElementById('text');
-  if (!ta) return;
-  ta.value = m.text;
-  autoGrowComposer(ta);
-  ta.focus();
-  showNotifToast('Inserted into the composer', 'success');
-}
-
-function regenerateAskify(id) {
-  const m = (allMessages || []).find(x => x.id === id);
-  if (!m) return;
-  const q = m.askifyQuestion || 'Answer again, a little differently.';
-  handleAskifySend(q, selectedUser ? selectedUser.uid : m.to);
 }
 
 
@@ -10642,6 +10450,7 @@ function selectGroupChat(group) {
   selectedGroup = group;
   selectedUser = null;
   selectedChannel = null;
+  renderActiveNowBar(); // hide the 1:1-only Active Now strip
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -10806,7 +10615,7 @@ function renderGroupMessageList(messages) {
 
 function buildGroupMessage(id, msg, fromMe) {
   const el = document.createElement("div");
-  el.className = `msg ${fromMe ? "me" : "them"}${msg.askifyReply ? " askify-msg" : ""}`;
+  el.className = `msg ${fromMe ? "me" : "them"}`;
   el.dataset.msgId = id;
 
   const row = document.createElement("div");
@@ -10816,9 +10625,6 @@ function buildGroupMessage(id, msg, fromMe) {
   bubble.className = "bubble";
 
   let inner = "";
-
-  // Askify answers get a distinct bot look + quick actions.
-  if (msg.askifyReply) inner += askifyReplyHeaderHTML();
 
   // 1. WhatsApp Group Sender Name for incoming messages
   if (!fromMe) {
@@ -10852,15 +10658,10 @@ function buildGroupMessage(id, msg, fromMe) {
 
   // 3. Text (skip raw text for polls since poll card shows the question)
   if (msg.text && msg.type !== 'poll') {
-    if (msg.askifyReply) {
-      inner += `<div class="msg-text">${msg.askifyThinking ? '<span class="askify-thinking">Askify is thinking<span class="askify-dots"><i>.</i><i>.</i><i>.</i></span></span>' : escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>`;
-    } else {
-      const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text)) : linkify(msg.text);
-      inner += `<div class="msg-text">${textHtml}</div>`;
-      inner += maybeTranslationStrip(id, msg.text, fromMe);
-    }
+    const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text)) : linkify(msg.text);
+    inner += `<div class="msg-text">${textHtml}</div>`;
+    inner += maybeTranslationStrip(id, msg.text, fromMe);
   }
-  if (msg.askifyReply && !msg.askifyThinking) inner += askifyReplyActionsHTML(id);
 
   // 4. Image
   if (msg.image) {
@@ -12058,6 +11859,7 @@ function selectChannelFeed(channel) {
   selectedChannel = channel;
   selectedGroup = null;
   selectedUser = null;
+  renderActiveNowBar(); // hide the 1:1-only Active Now strip
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -12138,11 +11940,6 @@ function selectChannelFeed(channel) {
     }
   }, err => console.warn('Channel doc sync error:', err));
 
-  // A stale cache from a previous visit made the first snapshot look like a
-  // "reactions-only" delta, so loadChannelPosts() returned before rendering
-  // and the "Loading broadcast posts…" placeholder stayed on screen. Drop it
-  // so opening a channel always paints the posts.
-  window._nexaChannelPostsCache = null;
   loadChannelPosts(channel.id);
   if (window.lucide) lucide.createIcons();
 }
@@ -12166,7 +11963,7 @@ function loadChannelPosts(channelId) {
       // re-rendering the whole list (no scroll jump, and recordPostView isn't
       // re-fired for every post). Full render only when content/comments/views
       // actually change.
-      let reactionsOnly = posts.length > 0 && prev.length === posts.length;
+      let reactionsOnly = prev.length === posts.length;
       if (reactionsOnly) {
         for (let i = 0; i < posts.length; i++) {
           const a = prev.find(p => p.id === posts[i].id);
@@ -14158,9 +13955,7 @@ let mentionActive = false;
 let mentionStartPos = -1;
 
 function handleMentionInput(e) {
-  const inGroup = currentChatMode === 'group' && !!selectedGroup;
-  const inDirect = currentChatMode === 'direct' && !!selectedUser;
-  if (!inGroup && !inDirect) {
+  if (currentChatMode !== 'group' || !selectedGroup) {
     hideMentionsPopup();
     return;
   }
@@ -14192,27 +13987,6 @@ function showMentionsPopup(query) {
   const list = document.getElementById('mentionsList');
   if (!popup || !list) return;
 
-  // In a 1:1 chat the only special mention is Askify (the AI assistant).
-  if (currentChatMode === 'direct' && selectedUser) {
-    const q = (query || '').toLowerCase();
-    const showAskify = !q || 'askify'.includes(q);
-    if (!showAskify) {
-      hideMentionsPopup();
-      return;
-    }
-    list.innerHTML = `
-      <div class="mention-row askify-mention-row" onclick="insertAskifyMention()">
-        <span class="mention-row-av askify-mention-av">🤖</span>
-        <div class="mention-row-meta">
-          <div class="mention-row-name">Askify</div>
-          <div class="mention-row-sub">AI assistant · ask me anything</div>
-        </div>
-      </div>
-    `;
-    popup.style.display = 'block';
-    return;
-  }
-
   const members = currentGroupMembersList || [];
   const filtered = members.filter(m => {
     if (m.uid === currentUser.uid) return false;
@@ -14241,24 +14015,6 @@ function showMentionsPopup(query) {
   popup.style.display = 'block';
 }
 
-// Picking Askify from the @ popup: drop the token and open the action popup.
-function insertAskifyMention() {
-  const ta = document.getElementById('text');
-  if (!ta) return;
-  const val = ta.value;
-  const cursorPos = ta.selectionStart;
-  const before = val.substring(0, mentionStartPos);
-  const after = val.substring(cursorPos);
-  const mentionText = '@askify ';
-  ta.value = before + mentionText + after;
-  const newPos = before.length + mentionText.length;
-  ta.setSelectionRange(newPos, newPos);
-  ta.focus();
-  hideMentionsPopup();
-  autoGrowComposer(ta);
-  openAskifyPopup();
-}
-
 function hideMentionsPopup() {
   mentionActive = false;
   mentionStartPos = -1;
@@ -14284,29 +14040,11 @@ function insertMention(name, uid) {
   hideMentionsPopup();
 }
 
-// Askify answer bubble chrome (header + quick actions).
-function askifyReplyHeaderHTML() {
-  return `<div class="askify-answer-head"><span class="askify-answer-av">🤖</span><span class="askify-answer-name">Askify</span><span class="askify-answer-tag">AI</span></div>`;
-}
-
-function askifyReplyActionsHTML(id) {
-  return `<div class="askify-answer-actions">
-    <button class="askify-aa-btn" onclick="copyAskifyAnswer('${id}')" title="Copy"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copy</button>
-    <button class="askify-aa-btn" onclick="insertAskifyAnswer('${id}')" title="Insert into composer"><i data-lucide="corner-down-left" style="width:12px;height:12px;"></i> Insert</button>
-    <button class="askify-aa-btn" onclick="regenerateAskify('${id}')" title="Ask again"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Redo</button>
-  </div>`;
-}
-
 // Render @mention highlights in message text
 function renderMentionText(text) {
   if (!text) return '';
-  // Askify first (so the generic rule below doesn't swallow it).
-  let out = text.replace(/@askify\b/gi, '<span class="mention-highlight askify-mention-highlight">@askify</span>');
   // Match @Name patterns and highlight them
-  return out.replace(/@(\w[\w\s]{0,30}?)(?=\s|$|[,.])/g, function (m, name) {
-    if (/^askify$/i.test(name.trim())) return m;
-    return '<span class="mention-highlight">@' + name + '</span>';
-  });
+  return text.replace(/@(\w[\w\s]{0,30}?)(?=\s|$|[,.])/g, '<span class="mention-highlight">@$1</span>');
 }
 
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; publickey-credentials-get *; publickey-credentials-create *">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src https://askifyai.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'; publickey-credentials-get *; publickey-credentials-create *">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Nexa Messenger - Premium Chat & Stories Platform with Music Integration">
   <meta name="theme-color" content="#ffffff">
@@ -130,16 +130,25 @@
   <!-- SIDEBAR (Left Column on Desktop, Tab Views Container on Mobile) -->
   <div class="sidebar" id="sidebar">
     <div class="top">
-      <div class="top-user-area">
-        <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" title="Profile picture" onclick="openProfilePic(this.src)">
-        <div class="top-info">
-          <div class="top-name" id="myName">Loading…</div>
-          <div class="top-subtext">Online</div>
+      <!-- Branded app header (replaces the old personal profile block) -->
+      <div class="nx-brand">
+        <div class="nx-brand-mark" aria-hidden="true">
+          <span class="nx-brand-ring"></span>
+          <span class="nx-brand-core">N</span>
         </div>
+        <div class="nx-brand-text">
+          <div class="nx-brand-word">Nexa<span class="nx-brand-live" title="Live"></span></div>
+          <div class="nx-brand-tag">Connect · Share · Live</div>
+        </div>
+      </div>
+      <!-- Profile hooks kept in the DOM (hidden) — many code paths read these
+           for the signed-in user's display name and avatar. -->
+      <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" alt="" style="display:none;">
+      <div class="top-info" style="display:none;">
+        <div class="top-name" id="myName">Loading…</div>
       </div>
       <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
       <div class="sidebar-tab-switcher">
-        <span class="nx-brand-mobile">Nexa<span class="nx-brand-dot"></span></span>
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
         <button class="s-tab-btn start-voice-chat-btn" title="Start a Live room" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
@@ -158,12 +167,6 @@
           <button class="start-voice-chat-btn" style="background: rgba(37, 211, 102, 0.12); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.4); font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; transition: all 0.2s ease;">
             <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start a Live room
           </button>
-        </div>
-        <div class="active-now-bar" id="activeNowBar" aria-label="Active now">
-          <div class="active-now-label">Active Now</div>
-          <div class="active-now-scroller" id="activeNowScroller">
-            <div class="active-now-empty">No friends online right now</div>
-          </div>
         </div>
         <div class="search-wrap">
           <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
@@ -745,18 +748,11 @@
           </div>
           <div class="settings-subpage-body">
             <div class="settings-group">
-              <div class="settings-note">Askify is Nexa's built-in assistant. Once it's on, tag it inside any 1:1 chat by typing <b>@askify</b> — ask it to summarise the chat, tell you what was said, draft a reply, translate, or explain anything. You can also pick a quick action from the popup that appears when you tag it.</div>
-              <div class="settings-row askify-toggle-row">
-                <span class="settings-row-main">
-                  <span class="askify-row-icon">🤖</span>
-                  <span class="settings-row-text">
-                    <span class="settings-row-title">Enable Askify AI</span>
-                    <span class="settings-row-sub" id="askifyToggleSub">Tag @askify in any 1:1 chat</span>
-                  </span>
-                </span>
-                <input type="checkbox" id="askifyEnabledToggle" onchange="setAskifyEnabled(this.checked)" style="width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary); flex-shrink: 0;">
-              </div>
-              <div class="settings-note" id="askifyStatusNote" style="margin-top: 10px;"></div>
+              <div class="settings-note">Askify AI helps you draft replies, summarise conversations and answer questions without leaving Nexa.</div>
+              <button class="settings-action-btn" onclick="openAskifyComingSoon()">
+                <span><i data-lucide="bot" style="width: 16px; height: 16px;"></i> Launch Askify AI</span>
+                <i data-lucide="chevron-right" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+              </button>
             </div>
           </div>
         </div>
@@ -957,6 +953,14 @@
       <span id="disappearingBannerText">Disappearing messages are turned on</span>
     </div>
 
+    <!-- Active Now — lives in the chat only (hidden in group/channel mode) -->
+    <div class="active-now-bar" id="activeNowBar" aria-label="Active now">
+      <div class="active-now-label">Active Now</div>
+      <div class="active-now-scroller" id="activeNowScroller">
+        <div class="active-now-empty">No friends online right now</div>
+      </div>
+    </div>
+
     <!-- Pinned Message / Announcement Banner for Groups & Channels (WhatsApp Style) -->
     <div id="commPinnedBanner" class="comm-pinned-banner" style="display: none;" onclick="jumpToPinnedMessage()">
       <div class="comm-pinned-content">
@@ -1003,29 +1007,6 @@
       <div class="mentions-popup" id="mentionsPopup" style="display: none;">
         <div class="mentions-list" id="mentionsList"></div>
       </div>
-
-      <!-- ASKIFY QUICK-ACTION POPUP — opens when you tag @askify -->
-      <div class="askify-popup" id="askifyPopup" style="display: none;">
-        <div class="askify-popup-head">
-          <span class="askify-popup-av">🤖</span>
-          <div class="askify-popup-title-wrap">
-            <div class="askify-popup-title">Askify AI</div>
-            <div class="askify-popup-sub" id="askifyPopupSub">Pick a quick action or type your question</div>
-          </div>
-          <button class="askify-popup-close" onclick="closeAskifyPopup()" title="Close" aria-label="Close"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
-        </div>
-        <div class="askify-popup-actions">
-          <button class="askify-action" onclick="askifyQuickAction('whatdid')"><span class="askify-action-ico">💬</span>What did this person say?</button>
-          <button class="askify-action" onclick="askifyQuickAction('summary')"><span class="askify-action-ico">📝</span>Summarise this chat</button>
-          <button class="askify-action" onclick="askifyQuickAction('reply')"><span class="askify-action-ico">✍️</span>Draft a reply</button>
-          <button class="askify-action" onclick="askifyQuickAction('explain')"><span class="askify-action-ico">💡</span>Explain simply</button>
-          <button class="askify-action" onclick="askifyQuickAction('translate')"><span class="askify-action-ico">🌐</span>Translate to French</button>
-        </div>
-        <div class="askify-popup-input">
-          <input type="text" id="askifyPopupInput" placeholder="Or type a question about this chat…" onkeydown="if(event.key==='Enter'){event.preventDefault();askifyQuickAction('custom');}">
-          <button class="askify-popup-go" onclick="askifyQuickAction('custom')" title="Ask" aria-label="Ask"><i data-lucide="send" style="width:15px;height:15px;"></i></button>
-        </div>
-      </div>
       <div class="attach-menu" id="attachMenu" style="display: none;" role="menu" aria-label="Attach">
         <button class="attach-menu-item" id="imgBtn" onclick="pickMedia()" role="menuitem">
           <span class="attach-menu-icon"><i data-lucide="image" style="width: 18px; height: 18px;"></i></span>
@@ -1062,6 +1043,38 @@
       <audio id="voicePreviewAudio" style="display: none;"></audio>
     </div>
 
+    <div class="ai-panel" id="aiPanel">
+      <div class="ai-header">
+        <button class="ai-back-btn" onclick="closeAI()"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+        <div class="ai-header-info">
+          <div class="ai-avatar-header">🤖<div class="ai-avatar-status"></div></div>
+          <div class="ai-title-info">
+            <div class="ai-title">Askify AI</div>
+            <div class="ai-status-online">● Online</div>
+          </div>
+        </div>
+      </div>
+      <div class="ai-content">
+        <div class="ai-loading" id="aiLoading">
+          <div class="ai-spinner"></div>
+          <div class="ai-loading-text">Initializing Askify AI…</div>
+        </div>
+        <div class="ai-iframe-container">
+          <iframe id="askifyIframe" src="https://askifyai.onrender.com/" title="Askify AI" allow="camera;microphone;clipboard-read;clipboard-write" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ASKIFY AI — COMING SOON MODAL -->
+<div class="askify-coming-overlay" id="askifyComingModal" onclick="handleAskifyComingClick(event)">
+  <div class="askify-coming-modal">
+    <button class="askify-coming-close" onclick="closeAskifyComing()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    <div class="askify-coming-icon">🚧</div>
+    <div class="askify-coming-title">Coming Soon</div>
+    <div class="askify-coming-desc">Askify AI is undergoing an update. We're working hard to bring it to you — stay tuned!</div>
+    <button class="askify-coming-btn" onclick="closeAskifyComing()">Got it</button>
   </div>
 </div>
 

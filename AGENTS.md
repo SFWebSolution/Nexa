@@ -131,11 +131,16 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Heartbeat**: 30s (was 10s) → ~3x fewer presence writes, and the presence
   listener re-fires ~3x less. `PRESENCE_TIMEOUT_MS = 90000` (was 35000) gives
   a 3x safety margin so a single missed heartbeat doesn't flicker offline.
-- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` (dashboard.html)
-  draws a horizontal row of round avatars + green dots showing ONLY
-  currently-online users (via `isUserOnline()` freshness). Hidden entirely when
-  no one is online; re-called from `renderUsers()`, `startSharedPresenceListener`,
-  and the 10s ticker. Container `#activeNowBar`; CSS `.active-now-*` in dashboard.css.
+- **"Active Now" bar** (Facebook-style): `renderActiveNowBar()` draws a
+  horizontal row of round avatars + green dots showing ONLY currently-online
+  **connections** (`isConnectedTo()` + `isUserOnline()` freshness). It now lives
+  in the **CHAT pane** (`dashboard.html`, between `#disappearingNotice` and the
+  pinned banner), NOT in the sidebar above the search box - and
+  `renderActiveNowBar()` hides it unless `currentChatMode === 'direct' &&
+  selectedUser`, so it disappears on the empty state, in groups and channels.
+  Refreshed on `selectChat`/`selectGroupChat`/`selectChannelFeed`, `renderUsers()`,
+  `startSharedPresenceListener`, and the 10s ticker. Container `#activeNowBar`;
+  CSS `.active-now-*` in dashboard.css.
 - `nexa-voice-room.js` `isUserOnline(uid)` delegates to `window.isUserOnline`
   (the shared timestamp rule); its fallbacks use the SAME freshness rule and do
   NOT trust a stale `u.online === true` user flag.
@@ -757,13 +762,47 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **`setUserLang()` re-renders** the current 1:1 list, group list and channel cache so switching language repaints immediately. Anything calling it must be prepared for `renderMessageList()` to run.
 - Verified: 40/40 Node logic tests (detection, gating, entity decoding, prefs, cache, strip decisions, escaping) + structural checks (no duplicate ids, wiring in all 3 paths, CSS classes, CRLF preserved). Note app-main.js is loaded as a CLASSIC script (`<script defer src>`), so every top-level function declaration (`translateMsg`, `selectLanguage`, `toggleAutoTranslate`, `toggleShowOriginalPref`, `updateLanguageUI`) is a real `window` global — which is what the inline `onclick` attributes in the ctx menu and the Language settings page rely on. Do NOT move the translation module inside the `(function(){...})()` IIFE (lines ~626-633) or those onclicks break.
 
-## Askify AI — in-chat `@askify` (app-main.js + server/ai-api.js + dashboard.html/css)
-- Askify is a **taggable assistant inside normal 1:1 chats**, NOT a separate panel. The old `#aiPanel` iframe and the "Coming Soon" modal were REMOVED; the CSP `frame-src` was dropped too. Do NOT re-add a floating Askify panel.
-- Flow: typing `@` in a 1:1 chat opens `#mentionsPopup` with an **Askify row** (the mention popup was group-only before — `handleMentionInput`/`showMentionsPopup` now accept `currentChatMode === 'direct'`). Picking it (`insertAskifyMention`) drops `@askify ` in the composer and opens `#askifyPopup` (quick actions: What did this person say / Summarise / Draft a reply / Explain simply / Translate to French, plus a free-text input).
-- `sendMessage()` extracts the question via `/@askify\b[\s,:-]*(.*)/i` and, after posting the question as a normal chat message, calls `handleAskifySend(question, targetUid)`. A **bare `@askify`** (empty question) does NOT trigger.
-- **The answer is written into the SAME thread** as a `chats` doc flagged `askifyReply:true` (`from` = you, `to` = the other person) so it renders for BOTH people and survives a reload — no separate collection, no firestore.rules change. `askifyReply`/`askifyQuestion`/`askifyProvider` are extra fields; the chats `create` rule only constrains `from`/`to`/`text`, and omitting `expireAt` keeps it safe. Bubble chrome: `.msg.askify-msg` + `askifyReplyHeaderHTML()` + `askifyReplyActionsHTML(id)` (Copy / Insert into composer / Redo via `copyAskifyAnswer`/`insertAskifyAnswer`/`regenerateAskify`). Both `buildMessage` (1:1) and `buildGroupMessage` render it.
-- A temporary "Askify is thinking…" bubble (`askifyThinking:true`, id `temp_askify_*`) is pushed into `_msgsA` then removed when the answer lands. `_askifyPending` guards against double-sends.
-- **Backend (`server/ai-api.js`)** exposes `POST /api/ai/ask` (body `{question, history:[{from:'me'|'them',text}]}`) and `GET /api/ai/status`. It verifies the Firebase **ID token** (`Authorization: Bearer <token>`) with the Admin SDK, rate-limits per uid (`AI_MAX_PER_HOUR`, default 30/h), and picks the provider from whichever key is set: **GEMINI_API_KEY → xAI → OpenAI → Groq**. `askProvider()` walks `models()` (Gemini tries `GEMINI_MODEL` then `gemini-3.8-flash`) and retries once on transient capacity errors (`isTransient`). The provider key NEVER reaches the browser. `app.listen` only runs when the file is `require`d directly (`require.main === module`) so it can be merged into `admin-api.js`'s service — deploy it at `BACKEND_URL` (`nexa-backend-e6pq.onrender.com`) for the live app.
-- Keys live in gitignored `server/.env` (`GEMINI_API_KEY`/`GEMINI_MODEL`, `XAI_API_KEY`/`XAI_MODEL`). Verified: Gemini answers live; xAI was valid but the team had no credits. `server/package.json` has `start:ai`.
-- Settings → AI Assistant (`openSettingsSubPage('ai')`) is now ONLY an activation toggle (`#askifyEnabledToggle` → `setAskifyEnabled`, persisted in localStorage `nexa_askify_enabled`, default ON) plus a status line (`refreshAskifyStatus` pings `/api/ai/status`). Do NOT re-add a "Launch Askify AI" button there.
-- `@askify` mentions are highlighted specially (`renderMentionText` handles them before the generic `@Name` rule, so they aren't double-wrapped) via `.mention-highlight.askify-mention-highlight`.
+## Askify AI — REVERTED to "Coming Soon" (do NOT re-add the in-chat version)
+- The in-chat `@askify` assistant was **deliberately reverted**. Askify is a
+  placeholder again: `openAI()` shows the **"Coming Soon" modal**
+  (`#askifyComingModal` -> `openAskifyComingSoon`/`closeAskifyComing`/
+  `handleAskifyComingClick`) and the `#aiPanel` iframe shell is back in
+  `dashboard.html`. The CSP `frame-src https://askifyai.onrender.com` is back too.
+- Removed for good: the `#askifyPopup` quick-action popup, the Askify row in
+  `#mentionsPopup`, `insertAskifyMention`, `askifyQuickAction`,
+  `handleAskifySend`, `buildAskifyContext`, `askifyReply*` bubble rendering,
+  the "thinking" bubble, all `.askify-*` CSS, and `server/ai-api.js`. Do NOT
+  reintroduce any of these without an explicit request.
+- Reason it was reverted: the answer was posted into the chat thread (wrong UX —
+  it should have been a small cancellable modal), and the live backend never had
+  the `/api/ai/*` routes deployed, so `@askify` silently did nothing.
+
+## Branded sidebar header + live edit/delete reflection (2026-10)
+- **The sidebar `.top` header is now a branded app header, not a personal profile
+  block.** `.nx-brand` holds the gradient **logo mark** (`.nx-brand-mark` with
+  `.nx-brand-ring` pulse + `.nx-brand-core` "N"), the wordmark `.nx-brand-word`
+  ("Nexa" + a pulsing green `.nx-brand-live` dot) and the tagline `.nx-brand-tag`
+  ("Connect · Share · Live"). The old `.top-user-area` (your avatar + name +
+  "Online") was REMOVED, and the redundant `.nx-brand-mobile` wordmark that used
+  to sit inside `.sidebar-tab-switcher` was removed too (the real header shows on
+  all widths now). CSS is appended at the end of `dashboard.css` (`.nx-brand*`,
+  `@keyframes nxBrandPulse`/`nxBrandLive`, reduced-motion + 480px guards).
+- **`#myPic` and `#myName` are KEPT in the DOM but hidden** (`style="display:none;"`)
+  inside `.top`. They are read in ~15 places (`renderSettingsProfileCard`, message
+  sender-name fallbacks, avatar sync, etc.) - never delete them, just leave them
+  hidden. Do NOT re-add a clickable avatar to the sidebar header.
+- **Edit now repaints in place.** `renderMessageList()`'s existing-bubble branch
+  used to only refresh the timestamp/ticks/reactions, so an edited message kept
+  its OLD text until the bubble was rebuilt (i.e. until you left and re-entered the
+  chat). It now also swaps `.bubble > .msg-text` when
+  `textEl.dataset.renderedText !== msg.text`; `buildMessage` stamps
+  `data-rendered-text` on the `.msg-text` div so the comparison is reliable. Use
+  the SAME `linkify(msg.text)` render path as build (do NOT add `renderMentionText`
+  here). Poll bubbles are unaffected (no direct `.msg-text` child).
+- **Delete is optimistic.** `purgeLocalMsg(id)` (app-main.js) splices the id out of
+  ALL FOUR arrays (`_msgsA`, `_msgsB`, `_olderMsgsA`, `_olderMsgsB`) and removes the
+  on-screen bubble, then `deleteMsg()` re-renders BEFORE firing the Firestore
+  delete. Previously it waited on `.delete().then(...)` and only pruned the two
+  `_olderMsgs*` arrays, so the message lingered until the chat was re-opened.
+  `deleteGroupMsg()` splices `currentGroupMessages` + re-renders optimistically the
+  same way. Do NOT revert to post-network pruning.
