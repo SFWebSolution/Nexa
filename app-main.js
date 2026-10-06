@@ -523,6 +523,7 @@ auth.onAuthStateChanged(async (user) => {
     nexaBootStep('listeners');
     loadInitialChatTimestamps();
     setupHeartbeat();
+    startDisappearSweep();
     loadUnreadCounts();
     listenIncoming();
     initPWA();
@@ -532,6 +533,7 @@ auth.onAuthStateChanged(async (user) => {
     listenMyGroups();
     listenMyChannels();
     listenDiscoverChannels();
+    maybeReopenLastChannel(); // no-op if channels haven't arrived yet — retried in listenMyChannels
     checkGroupInviteUrlParam();
     checkChannelInviteUrlParam();
     nexaBootStep('community');
@@ -1207,7 +1209,6 @@ function startUsersListener() {
 
     saveCachedUsers();
     renderUsers();
-    renderActiveNowBar();
     // The chat list is the real "ready" signal — the dashboard is only worth
     // revealing once the user list has actually arrived from Firestore.
     nexaBootStep('users');
@@ -1215,7 +1216,7 @@ function startUsersListener() {
 }
 
 // Single shared presence listener — feeds userPresenceCache for the whole app
-// (online dots, Active Now bar, chat-header last seen, voice-room invite list).
+// (online dots, chat-header last seen, voice-room invite list).
 // Do NOT re-introduce per-user presence/{uid} doc listeners OR a second
 // full-collection presence listener — each duplicates reads and races with
 // this cache.
@@ -1237,59 +1238,6 @@ function startSharedPresenceListener() {
   }, err => console.error("Shared presence listener error:", err));
 }
 
-// Facebook-style "Active Now" horizontal avatar strip. Reads from the shared
-// userPresenceCache so it stays in sync with the single presence listener.
-function renderActiveNowBar() {
-  const bar = document.getElementById("activeNowBar");
-  const scroller = document.getElementById("activeNowScroller");
-  if (!scroller) return;
-
-  // The strip lives inside the chat pane now, so it only makes sense for a
-  // real 1:1 conversation — hide it on the empty state, in groups and channels.
-  const showBar = currentChatMode === 'direct' && !!selectedUser;
-  if (bar) bar.style.display = showBar ? "" : "none";
-  if (!showBar) return;
-
-  const onlineUsers = allUsersData
-    .filter(u => !blockedUsers[u.uid] && isConnectedTo(u.uid) && isUserOnline(userPresenceCache[u.uid]))
-    .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
-
-  if (!onlineUsers.length) {
-    if (!scroller.querySelector(".active-now-empty")) {
-      scroller.innerHTML = '<div class="active-now-empty">No friends online right now</div>';
-    }
-    return;
-  }
-
-  // Avoid full re-render when the online set hasn't changed (preserves scroll).
-  const key = onlineUsers.map(u => u.uid).join(",");
-  if (scroller.dataset.key === key) return;
-  scroller.dataset.key = key;
-
-  scroller.innerHTML = onlineUsers.map(u => {
-    const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
-    const name = escapeHtml(u.displayName || "User");
-    return `
-      <button class="active-now-item" data-uid="${u.uid}" onclick="selectUserFromActiveNow('${u.uid}')" title="${name}">
-        <span class="active-now-avatar-wrap">
-          <img src="${photo}" class="active-now-avatar" loading="lazy" decoding="async" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-          <span class="active-now-dot"></span>
-        </span>
-        <span class="active-now-name">${name.split(' ')[0]}</span>
-      </button>`;
-  }).join("");
-}
-
-function selectUserFromActiveNow(uid) {
-  const u = allUsersData.find(x => x.uid === uid);
-  if (u) {
-    const el = document.querySelector(`.user-item[data-uid="${uid}"]`);
-    selectChat(u, el);
-  }
-}
-
-let lastRenderedUserOrder = "";
-
 // Render coalescer: collapses a burst of renderUsers() calls (e.g. when many
 // presence docs change at once during a heartbeat wave) into ONE render per
 // animation frame. This is the single biggest "feels instant, no jank" win —
@@ -1304,7 +1252,6 @@ function scheduleRender() {
   requestAnimationFrame(() => {
     _renderScheduled = false;
     renderUsers();
-    renderActiveNowBar();
   });
 }
 
@@ -1606,7 +1553,6 @@ function startConnectionsListener() {
       });
       saveCachedConnections();
       renderUsers();
-      renderActiveNowBar();
       renderConnectTab();
       renderStoriesBar();
       updateConnectTabDot();
@@ -3432,6 +3378,41 @@ function formatDisappearingLabel(val) {
   return 'Off';
 }
 
+// WhatsApp-style countdown: a message's timer starts when the RECIPIENT reads
+// it (readAt), and falls back to the send time (createdAt) for messages that
+// haven't been read yet. Once now passes start+limit the message is gone.
+// Without the readAt anchor the clock ran from send time, so a message could
+// expire before the recipient ever opened the chat.
+function msgDisappearAt(msg, msLimit) {
+  if (!msLimit || !msg) return 0;
+  let start = msg.readAt || msg.createdAt || 0;
+  if (start && typeof start.toMillis === 'function') start = start.toMillis();
+  return start ? start + msLimit : 0;
+}
+function isMsgExpired(msg, msLimit, now) {
+  const at = msgDisappearAt(msg, msLimit);
+  return at > 0 && now >= at;
+}
+
+// Live sweep: a message can hit its timer while the chat just sits open with
+// no new snapshot to trigger a render. This re-checks every 30s and re-renders
+// only when something actually elapsed, so the bubble vanishes on its own
+// (WhatsApp-style) instead of lingering until the next open.
+let disappearSweepInterval = null;
+function startDisappearSweep() {
+  if (disappearSweepInterval) return;
+  disappearSweepInterval = setInterval(() => {
+    try {
+      if (!selectedUser || currentChatMode !== 'direct') return;
+      const key = getChatKey(currentUser.uid, selectedUser.uid);
+      const msLimit = parseDisappearingMs(disappearingSettings[key] || 'off');
+      if (msLimit <= 0) return;
+      const now = Date.now();
+      if (allMessages.some(m => isMsgExpired(m, msLimit, now))) renderMessageList();
+    } catch (e) {}
+  }, 30000);
+}
+
 function listenDisappearingSettings() {
   if (unsubDisappearing) { unsubDisappearing(); unsubDisappearing = null; }
   if (!selectedUser || !currentUser) return;
@@ -3504,6 +3485,7 @@ function selectChat(user, el) {
   if (selectedUser && selectedUser.uid !== user.uid) saveChatMsgCache(selectedUser.uid);
   selectedUser = user;
   setLastOpenChat(user.uid);
+  nexaChannelReopenChecked = true; // opening a chat settles the auto-reopen for this session
   applyCurrentWallpaper();
   if (deletedChats[user.uid]) {
     delete deletedChats[user.uid];
@@ -3521,7 +3503,6 @@ function selectChat(user, el) {
   delete unreadMessages[user.uid];
   updateTotalUnreadBadge();
   renderUsers(); // Move selected user to the top immediately
-  renderActiveNowBar(); // Show the Active Now strip for this 1:1 chat
   loadMessages();
   updateBlockedChatBanner();
   updateInfoBlockAction();
@@ -3811,7 +3792,6 @@ function setupHeartbeat() {
     if (selectedUser) {
       updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
     }
-    renderActiveNowBar();
   }, 10000);
 
   // Backgrounding/foregrounding: do NOT write offline when hidden — the tab is
@@ -3949,14 +3929,69 @@ function clearChatMsgCache(uid) {
 function setLastOpenChat(uid) {
   try {
     if (!currentUser) return;
-    if (uid) localStorage.setItem("nexa_last_open_chat_" + currentUser.uid, uid);
-    else localStorage.removeItem("nexa_last_open_chat_" + currentUser.uid);
+    if (uid) {
+      localStorage.setItem("nexa_last_open_chat_" + currentUser.uid, uid);
+      localStorage.setItem("nexa_last_chat_ts_" + currentUser.uid, String(Date.now()));
+    } else {
+      localStorage.removeItem("nexa_last_open_chat_" + currentUser.uid);
+    }
   } catch (e) {}
 }
 function getLastOpenChat() {
   try {
     return (currentUser && localStorage.getItem("nexa_last_open_chat_" + currentUser.uid)) || null;
   } catch (e) { return null; }
+}
+function setLastOpenChannel(id) {
+  try {
+    if (!currentUser) return;
+    if (id) {
+      localStorage.setItem("nexa_last_open_channel_" + currentUser.uid, id);
+      localStorage.setItem("nexa_last_channel_ts_" + currentUser.uid, String(Date.now()));
+    } else {
+      localStorage.removeItem("nexa_last_open_channel_" + currentUser.uid);
+    }
+  } catch (e) {}
+}
+function getLastOpenChannel() {
+  try {
+    return (currentUser && localStorage.getItem("nexa_last_open_channel_" + currentUser.uid)) || null;
+  } catch (e) { return null; }
+}
+// Which did the user open more recently — a channel or a 1:1 chat? Both are
+// "reopen on app open" targets, so the newer one wins and the older is skipped.
+function lastOpenChannelIsNewer() {
+  try {
+    if (!currentUser) return false;
+    const c = Number(localStorage.getItem("nexa_last_channel_ts_" + currentUser.uid) || 0);
+    const t = Number(localStorage.getItem("nexa_last_chat_ts_" + currentUser.uid) || 0);
+    return c > 0 && c > t;
+  } catch (e) { return false; }
+}
+
+// WhatsApp-style: on app open, jump straight back into the conversation you
+// last had open — a 1:1 chat OR a channel feed. Channels only become available
+// once the channels listeners have data, so this is called again from
+// listenMyChannels()'s first snapshot (the initial boot call may find nothing
+// and simply leave the chat list showing). Runs at most once per app open, so
+// a later channels snapshot can't yank the user back into a feed they left.
+function maybeReopenLastChannel() {
+  try {
+    if (nexaChannelReopenChecked) return;
+    if (currentChatMode === 'channel' && selectedChannel) { nexaChannelReopenChecked = true; return; }
+    if (selectedUser || selectedGroup) { nexaChannelReopenChecked = true; return; }
+    const id = getLastOpenChannel();
+    if (!id) { nexaChannelReopenChecked = true; return; }
+    // Only channels the user actually follows — never resurrect an unfollowed
+    // public channel just because it shows up in Discover.
+    const chan = (myChannels || []).find(c => c.id === id);
+    if (!chan) return; // channels not loaded yet — stay unchecked so we retry
+    // Only auto-open the channel if it's at least as recent as the last chat
+    // (a newer chat already won in maybeReopenLastChat()).
+    if (!lastOpenChannelIsNewer()) { nexaChannelReopenChecked = true; return; }
+    nexaChannelReopenChecked = true;
+    selectChannelFeed(chan);
+  } catch (e) {}
 }
 
 // WhatsApp-style: on app open, jump straight back into the conversation you
@@ -3967,6 +4002,9 @@ function maybeReopenLastChat() {
   try {
     const uid = getLastOpenChat();
     if (!uid || selectedUser) return;
+    // If the user was last in a channel (newer than their last chat), that feed
+    // wins the auto-reopen — don't also open a 1:1 chat behind it.
+    if (lastOpenChannelIsNewer()) { nexaChannelReopenChecked = false; return; }
     let user = null;
     if (currentUser && uid === currentUser.uid) {
       user = getSelfContact(); // the pinned "Message yourself" contact
@@ -4557,8 +4595,11 @@ function renderMessageList() {
     const expiredDocIds = [];
 
     allMessages.forEach(msg => {
-      if (msg.createdAt && (now - msg.createdAt) > msLimit) {
-        expiredDocIds.push(msg.id);
+      if (isMsgExpired(msg, msLimit, now)) {
+        // The rules only let the SENDER delete a chat doc, so only purge our
+        // own expired messages; the peer purges theirs (their own timer, which
+        // is anchored on their read time). Each side keeps its view clean.
+        if (msg.from === currentUser.uid) expiredDocIds.push(msg.id);
       } else {
         validMsgs.push(msg);
       }
@@ -4974,7 +5015,8 @@ function buildMessage(id, msg, fromMe) {
     const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
     const rFrom = replied ? replied.from : (msg.replyToFrom || null);
     const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-    inner += `<div class="reply-quote"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
+    const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
+    inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // Forwarded label
@@ -5395,6 +5437,20 @@ async function scrollToMsg(msgId) {
     el = document.querySelector(`[data-msg-id="${msgId}"]`);
   }
   if (!el) return;
+  flashMsgEl(el);
+}
+
+// Group threads render the whole loaded history at once (no paged window), so
+// jumping to a quoted message is a straight DOM lookup + highlight.
+function scrollToGroupMsg(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  flashMsgEl(el);
+}
+
+// WhatsApp-style jump highlight: scroll the target to the middle and flash it
+// so the eye lands on the right bubble.
+function flashMsgEl(el) {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.style.outline = "2px solid var(--cyan)";
   el.style.borderRadius = "14px";
@@ -9976,7 +10032,6 @@ function restoreInstantState() {
 
     // Paint the whole thing now — no waiting for the network.
     renderUsers();
-    renderActiveNowBar();
     renderStoriesBar();
     updateTotalUnreadBadge();
     console.log("⚡ Instant state restored from cache");
@@ -10025,6 +10080,7 @@ function profilePicGoBack() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let currentChatMode = 'direct'; // 'direct' | 'group' | 'channel'
+let nexaChannelReopenChecked = false; // auto-reopen runs once per app open
 let selectedGroup = null;
 let selectedChannel = null;
 let myGroups = [];
@@ -10450,7 +10506,6 @@ function selectGroupChat(group) {
   selectedGroup = group;
   selectedUser = null;
   selectedChannel = null;
-  renderActiveNowBar(); // hide the 1:1-only Active Now strip
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -10636,7 +10691,8 @@ function buildGroupMessage(id, msg, fromMe) {
   if (msg.replyTo) {
     const rAuthor = escapeHtml(msg.replyToName || (msg.replyToFrom === currentUser.uid ? "You" : "Member"));
     const rText = linkify(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
-    inner += `<div class="reply-quote"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+    const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
+    inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToGroupMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
   }
 
   // 2b. Forwarded label
@@ -11426,6 +11482,8 @@ function listenMyChannels() {
         renderChannelsFollowing();
       }
       updateCommunityTabDot();
+      // Auto-reopen the last channel the user was in (first snapshot only).
+      maybeReopenLastChannel();
     }, err => console.error('Channels listener error:', err));
 }
 
@@ -11859,7 +11917,8 @@ function selectChannelFeed(channel) {
   selectedChannel = channel;
   selectedGroup = null;
   selectedUser = null;
-  renderActiveNowBar(); // hide the 1:1-only Active Now strip
+  // Remember this channel so it auto-reopens on the next app open.
+  setLastOpenChannel(channel.id);
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -11949,10 +12008,22 @@ function loadChannelPosts(channelId) {
   const box = document.getElementById('messages');
   if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading broadcast posts…</div>';
 
+  // A fresh open must ALWAYS full-render its first snapshot. The reactions-only
+  // fast path compares the snapshot against _nexaChannelPostsCache — if we kept
+  // the previous cache, re-opening the SAME channel produces an identical
+  // snapshot that short-circuits without rendering, leaving the "Loading
+  // broadcast posts…" placeholder stuck on screen (the "2nd open shows
+  // nothing" bug). Reset it here so prev is empty and the first paint always
+  // happens; the delta optimization still applies to later live updates.
+  window._nexaChannelPostsCache = null;
+  window._nexaChannelPostsChannelId = channelId;
+
   unsubChannelPosts = db.collection('channels').doc(channelId).collection('posts')
     .orderBy('createdAt', 'desc')
     .limit(40)
     .onSnapshot(snap => {
+      // Ignore a slow snapshot from a channel we've since navigated away from.
+      if (window._nexaChannelPostsChannelId !== channelId) return;
       const posts = [];
       snap.forEach(doc => {
         posts.push({ id: doc.id, ...doc.data() });
@@ -11963,7 +12034,7 @@ function loadChannelPosts(channelId) {
       // re-rendering the whole list (no scroll jump, and recordPostView isn't
       // re-fired for every post). Full render only when content/comments/views
       // actually change.
-      let reactionsOnly = prev.length === posts.length;
+      let reactionsOnly = posts.length > 0 && prev.length === posts.length;
       if (reactionsOnly) {
         for (let i = 0; i < posts.length; i++) {
           const a = prev.find(p => p.id === posts[i].id);

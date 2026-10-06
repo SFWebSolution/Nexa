@@ -719,101 +719,6 @@ select:focus-visible {
 
 /* ╔─ SEARCH ─╗ */
 
-/* ╔─ ACTIVE NOW BAR (Facebook-style online strip) ─╗ */
-
-.active-now-bar {
-  padding: 4px 12px 8px;
-  border-bottom: 1px solid var(--border-dk);
-  flex-shrink: 0;
-}
-
-.active-now-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  padding: 0 2px;
-}
-
-.active-now-scroller {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding: 2px 2px 4px;
-}
-
-.active-now-scroller::-webkit-scrollbar { display: none; }
-
-.active-now-empty {
-  font-size: 12px;
-  color: var(--text-3);
-  padding: 6px 2px;
-  font-style: italic;
-}
-
-.active-now-item {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 56px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font-family: inherit;
-}
-
-.active-now-avatar-wrap {
-  position: relative;
-  display: block;
-  width: 48px;
-  height: 48px;
-}
-
-.active-now-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid var(--border-md);
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.active-now-item:hover .active-now-avatar {
-  transform: scale(1.06);
-  border-color: var(--primary);
-}
-
-.active-now-dot {
-  position: absolute;
-  bottom: 1px;
-  right: 1px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #25d366;
-  border: 2px solid var(--bg-dk, #0d1117);
-  box-shadow: 0 0 0 1px rgba(37, 211, 102, 0.4);
-}
-
-.active-now-name {
-  font-size: 11px;
-  color: var(--text-2);
-  max-width: 56px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
-  font-weight: 500;
-}
-
 .search-wrap {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-dk);
@@ -1556,6 +1461,11 @@ select:focus-visible {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* Tapping the quoted preview jumps to the original message (WhatsApp-style). */
+.reply-quote-clickable { cursor: pointer; }
+.reply-quote-clickable:hover { background: rgba(0, 0, 0, 0.32); }
+.reply-quote-clickable:active { transform: scale(0.99); }
 
 /* ╔─ REACTIONS ─╗ */
 
@@ -10772,7 +10682,7 @@ input:user-valid {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* FLAGSHIP 2026 DESIGN SYSTEM & FLUID MOTION UPGRADE                         */
 /* Comprehensive visual overhaul: Glassmorphism, Asymmetric Bubbles,          */
-/* Tactile Spring Micro-Interactions, Active Now Radar, and Icon Polish       */
+/* Tactile Spring Micro-Interactions and Icon Polish                          */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── A. MODERN GLASS & ELEVATION TOKENS ── */
@@ -10981,59 +10891,10 @@ button:active,
 }
 
 .online-dot,
-.active-now-dot,
 .chat-status-dot.online {
   background: #16b364 !important;
   border-radius: 50%;
   animation: liveOnlinePulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* ── I. ACTIVE NOW HORIZONTAL SCROLLER ── */
-.active-now-bar {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-dk);
-}
-
-.active-now-scroller {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 4px 2px;
-}
-.active-now-scroller::-webkit-scrollbar {
-  display: none;
-}
-
-.active-now-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: pointer;
-  transition: transform 180ms var(--spring-tactile);
-}
-.active-now-item:hover {
-  transform: translateY(-3px) scale(1.05);
-}
-
-.active-now-avatar-wrap {
-  position: relative;
-  display: inline-block;
-}
-
-.active-now-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 2px solid var(--bg-1);
-  box-shadow: var(--shadow-soft-sm);
-  transition: border-color 180ms ease, box-shadow 180ms ease;
-  object-fit: cover;
-}
-
-.active-now-item:hover .active-now-avatar {
-  border-color: var(--primary);
-  box-shadow: 0 4px 14px var(--primary-glow);
 }
 
 /* ── J. CONVERSATION CARDS & UNREAD PILLS ── */
