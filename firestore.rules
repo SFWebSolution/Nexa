@@ -60,7 +60,11 @@ service cloud.firestore {
                 || (request.resource.data.text is string
                     && request.resource.data.text.size() <= 10000)))
       );
-      allow delete: if isSignedIn() && request.auth.uid == resource.data.from;
+      // Either party may delete a message in their own conversation. This is
+      // what makes "Clear chat" actually clear BOTH sides (like WhatsApp) and
+      // lets the disappearing-message sweep purge the peer's expired messages
+      // too — not just the sender's own.
+      allow delete: if isParty(resource.data);
     }
 
     // ── 1:1 calls ──
