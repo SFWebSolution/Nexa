@@ -1956,6 +1956,15 @@ function adminFetch(path, body) {
   });
 }
 
+function adminFetchGet(path) {
+  if (!ADMIN_SECRET) {
+    return Promise.reject(new Error("Admin secret not set — please log in again."));
+  }
+  return fetch(ADMIN_API_BASE + path, {
+    headers: { "X-Admin-Secret": ADMIN_SECRET }
+  });
+}
+
 let users = [];
 let presenceData = {};
 let activeStoriesCount = 0;
@@ -2301,8 +2310,33 @@ async function loadStoriesAnalytics() {
   }
 }
 
+// Per-user message counts CANNOT be read from the browser: the `chats` rules
+// only allow the two parties (plus the admin is an anonymous auth user), and
+// the old client-side scan was removed for cost. So the counts come from the
+// backend's Admin SDK endpoint. Stories/referrals are read locally.
+let weeklyActivityLoading = false;
+async function loadWeeklyActivity() {
+  if (weeklyActivityLoading) return;
+  weeklyActivityLoading = true;
+  try {
+    const res = await adminFetchGet("/api/admin/weekly-activity?weekStart=" + getCurrentWeekStart());
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "request failed");
+    if (data.messages) cachedMsgScores = data.messages;
+    if (data.stories) cachedStoryScores = data.stories;
+  } catch (e) {
+    // Backend unreachable / not deployed: keep whatever local story scores we
+    // have so the list still renders (ranked on stories + referrals).
+    console.warn("Weekly activity fetch failed — ranking on stories + referrals only:", e.message);
+  } finally {
+    weeklyActivityLoading = false;
+  }
+}
+
 async function reloadAnalytics() {
   await loadStoriesAnalytics();
+  await loadWeeklyActivity();
   renderChampions();
   renderAnalytics();
   renderDataHealth();
@@ -2384,13 +2418,14 @@ function reloadWeeklyStats() {
 
   log("🔄 Champions refreshed by admin", "info");
 
-  setTimeout(() => {
+  // Re-pull the backend activity counts, then render with fresh numbers.
+  reloadAnalytics().finally(() => {
     render();
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = "🔄 Refresh";
     }
-  }, 400);
+  });
 }
 
 // ⭐ Nexa Champions — the top members of the last 7 days. Ranked by real
@@ -2418,7 +2453,7 @@ function renderChampions() {
       isOnline, msgs, stories, referrals, isNew,
       activity: msgs + stories + referrals
     };
-  }).filter(u => u.activity > 0);
+  });
 
   ranked.sort((a, b) =>
     b.activity - a.activity ||
@@ -2429,7 +2464,7 @@ function renderChampions() {
   const top = ranked.slice(0, 20);
 
   if (!top.length) {
-    grid.innerHTML = '<div class="champions-empty">No activity in the last 7 days yet — champions appear here as people post and refer friends.</div>';
+    grid.innerHTML = '<div class="champions-empty">No users to rank yet.</div>';
     return;
   }
 

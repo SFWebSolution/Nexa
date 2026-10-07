@@ -3356,14 +3356,22 @@ let unsubChatPresence = null;
 let unsubTyping = null;
 let unsubDisappearing = null;
 let disappearingSettings = {};
+// getChatKey -> epoch ms when the timer was turned ON for that chat, so already-
+// sent messages don't disappear (WhatsApp only applies the timer to NEW msgs).
+let disappearingSettingsSince = {};
 
 function getChatKey(u1, u2) {
   if (!u1 || !u2) return "";
   return [u1, u2].sort().join("_");
 }
 
+// WhatsApp's disappearing-message durations (24h / 7d / 90d). Legacy values
+// ('5m', '1h', '12h' from the old "after reading" experiment) are still parsed
+// so any saved setting keeps working, but the UI only offers the WhatsApp set.
 function parseDisappearingMs(val) {
   if (val === '5m') return 5 * 60 * 1000;
+  if (val === '1h') return 60 * 60 * 1000;
+  if (val === '12h') return 12 * 60 * 60 * 1000;
   if (val === '24h') return 24 * 60 * 60 * 1000;
   if (val === '7d') return 7 * 24 * 60 * 60 * 1000;
   if (val === '90d') return 90 * 24 * 60 * 60 * 1000;
@@ -3372,26 +3380,43 @@ function parseDisappearingMs(val) {
 
 function formatDisappearingLabel(val) {
   if (val === '5m') return '5 Minutes';
+  if (val === '1h') return '1 Hour';
+  if (val === '12h') return '12 Hours';
   if (val === '24h') return '24 Hours';
   if (val === '7d') return '7 Days';
   if (val === '90d') return '90 Days';
   return 'Off';
 }
 
-// WhatsApp-style countdown: a message's timer starts when the RECIPIENT reads
-// it (readAt), and falls back to the send time (createdAt) for messages that
-// haven't been read yet. Once now passes start+limit the message is gone.
-// Without the readAt anchor the clock ran from send time, so a message could
-// expire before the recipient ever opened the chat.
+// WhatsApp starts the countdown when the message is SENT (createdAt) — NOT when
+// it is read. If the recipient is offline or never opens the chat, the message
+// still vanishes after the chosen duration. Once now passes send+limit the
+// message is gone on both devices. (Do not re-anchor this on readAt: that made
+// a message linger until the peer read it, which is not how WhatsApp works.)
 function msgDisappearAt(msg, msLimit) {
   if (!msLimit || !msg) return 0;
-  let start = msg.readAt || msg.createdAt || 0;
+  let start = msg.createdAt || 0;
   if (start && typeof start.toMillis === 'function') start = start.toMillis();
   return start ? start + msLimit : 0;
 }
 function isMsgExpired(msg, msLimit, now) {
   const at = msgDisappearAt(msg, msLimit);
   return at > 0 && now >= at;
+}
+
+// A message is subject to the timer only if it was SENT at/after the timer was
+// switched on (WhatsApp leaves existing history alone). `since` is the epoch ms
+// the setting was last changed; 0 means "unknown" and applies to every message.
+function msgSentAt(msg) {
+  let c = (msg && msg.createdAt) || 0;
+  if (c && typeof c.toMillis === 'function') c = c.toMillis();
+  return c;
+}
+function isMsgUnderTimer(msg, msLimit, since, now) {
+  if (!msLimit || !msg) return false;
+  const sentAt = msgSentAt(msg);
+  if (since && sentAt && sentAt < since) return false;
+  return isMsgExpired(msg, msLimit, now);
 }
 
 // Live sweep: a message can hit its timer while the chat just sits open with
@@ -3408,7 +3433,8 @@ function startDisappearSweep() {
       const msLimit = parseDisappearingMs(disappearingSettings[key] || 'off');
       if (msLimit <= 0) return;
       const now = Date.now();
-      if (allMessages.some(m => isMsgExpired(m, msLimit, now))) renderMessageList();
+      const since = disappearingSettingsSince[key] || 0;
+      if (allMessages.some(m => isMsgUnderTimer(m, msLimit, since, now))) renderMessageList();
     } catch (e) {}
   }, 30000);
 }
@@ -3421,6 +3447,9 @@ function listenDisappearingSettings() {
     const data = doc.data();
     const duration = data?.duration || 'off';
     disappearingSettings[key] = duration;
+    // Legacy docs predate updatedAt; treat the first sighting as "on from now"
+    // so an already-on timer never retroactively deletes existing history.
+    disappearingSettingsSince[key] = data?.updatedAt || disappearingSettingsSince[key] || Date.now();
 
     const select = document.getElementById("disappearingSelect");
     if (select) select.value = duration;
@@ -3451,9 +3480,11 @@ async function changeDisappearingSetting(value) {
   updateDisappearingBadge(value);
 
   try {
+    const now = Date.now();
+    disappearingSettingsSince[key] = now;
     await db.collection("disappearingSettings").doc(key).set({
       duration: value,
-      updatedAt: Date.now(),
+      updatedAt: now,
       updatedBy: currentUser.uid
     }, { merge: true });
 
@@ -4594,12 +4625,16 @@ function renderMessageList() {
     const validMsgs = [];
     const expiredDocIds = [];
 
+    const since = disappearingSettingsSince[key] || 0;
     allMessages.forEach(msg => {
-      if (isMsgExpired(msg, msLimit, now)) {
-        // The rules only let the SENDER delete a chat doc, so only purge our
-        // own expired messages; the peer purges theirs (their own timer, which
-        // is anchored on their read time). Each side keeps its view clean.
-        if (msg.from === currentUser.uid) expiredDocIds.push(msg.id);
+      // Only messages SENT after the timer was turned on are affected (WhatsApp
+      // leaves existing history alone). Without this, enabling a timer would
+      // nuke the whole chat at its next render.
+      if (isMsgUnderTimer(msg, msLimit, since, now)) {
+        // WhatsApp removes the message from BOTH devices once the timer (which
+        // runs from the send time) elapses. Either party may delete, so purge
+        // our and the peer's expired docs alike.
+        if (msg.id && !String(msg.id).startsWith("temp_")) expiredDocIds.push(msg.id);
       } else {
         validMsgs.push(msg);
       }
@@ -6963,12 +6998,14 @@ function favoriteChat() {
 }
 
 async function clearChat() {
-  if (!selectedUser || !await nexaConfirm("All messages in this chat will be deleted for you. This cannot be undone.", { title: "Clear all messages?", okLabel: "Clear All", danger: true })) return;
+  if (!selectedUser || !await nexaConfirm("All messages in this chat will be deleted for both of you. This cannot be undone.", { title: "Clear all messages?", okLabel: "Clear All", danger: true })) return;
   const me = currentUser.uid;
   const other = selectedUser.uid;
   try {
-    // Delete the WHOLE conversation, not just the loaded window. Rules only
-    // allow deleting your own messages, so filter to those.
+    // Delete the WHOLE conversation, not just the loaded window — BOTH sides'
+    // messages, so "Clear" clears the chat on the peer's device too (WhatsApp
+    // "Clear chat" deletes the thread for both). Rules allow either party of a
+    // conversation to delete its docs.
     const queries = [
       db.collection("chats").where("from", "==", me).where("to", "==", other).get()
     ];
@@ -6979,7 +7016,7 @@ async function clearChat() {
     const refs = [];
     const seen = new Set();
     snaps.forEach(snap => snap.forEach(d => {
-      if (!seen.has(d.id) && d.data().from === me) {
+      if (!seen.has(d.id)) {
         seen.add(d.id);
         refs.push(d.ref);
       }

@@ -225,13 +225,14 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Composite index REQUIRED**: `chats (from, to, createdAt DESC)` — defined in `firestore.indexes.json` (also covers the pre-existing `from/to + createdAt` indexes used by `loadInitialChatTimestamps`; deploying indexes DELETES any not listed). Deploy with `firebase deploy --only firestore` (rules + indexes).
 - **Sliding-window continuity:** the live window slides as new messages arrive. `retainSlidOut()` moves ejected messages into `_olderMsgsA/B` so no gap forms, and `recordSeam()` detects BULK slides (window's previous newest < new window's oldest → messages between never appeared in any snapshot) and records a seam range that gets healed lazily on scroll-up via `startAfter/endBefore` fetch. Do NOT remove either — removing them makes mid-history messages silently vanish in active chats.
 - Older pages live in `_olderMsgsA/B` (NOT `_msgsA/B`, which the live listener replaces wholesale). `renderMessageList` merges all four and DEDUPES by id (a seam-healed message can later slide back into the window).
-- Features that now must account for unloaded history: `clearChat` (deletes the WHOLE conversation via full-conversation queries, batched ≤400/batch, own messages only per rules), message search (full-history fetch cached 60s per chat + 250ms debounce), `scrollToMsg` (pages older chunks until the target renders), `saveEditMessage`/`deleteMsg` (patch older pages locally since they aren't live-listened).
+- Features that now must account for unloaded history: `clearChat` (deletes the WHOLE conversation via full-conversation queries, batched ≤400/batch — BOTH sides' messages, since the `chats` delete rule is `isParty`, so Clear is a true WhatsApp two-sided wipe — plus the local `_olderMsgsA/B`), message search (full-history fetch cached 60s per chat + 250ms debounce), `scrollToMsg` (pages older chunks until the target renders), `saveEditMessage`/`deleteMsg` (patch older pages locally since they aren't live-listened).
 - Remote deletes of messages that only live in `_olderMsgs` are NOT live-propagated (ghost until chat re-open) — accepted tradeoff to keep the listener windowed.
 - **Older-page cursor MUST be `startAfter(oldestA)`, NOT `endBefore`** (the "show older messages stopped working" bug). The page query is `orderBy("createdAt","desc").startAfter(msgPaging.oldestA).limit(25)`. Firestore cursor semantics are relative to the QUERY ordering: on a DESC query `endBefore(X)` returns docs that sort BEFORE X = **NEWER** messages, i.e. exactly the ones already in the live window — every older-page fetch got deduped to nothing, `oldestA` never advanced, and history falsely appeared exhausted. `startAfter` returns docs AFTER the cursor in DESC order = genuinely older. The seam-heal query IS correctly an ASC query (`orderBy("createdAt","asc").startAfter(range.after).endBefore(range.before)` — after=older ts, before=newer ts) — do NOT "fix" the seam query to match.
 - `autoSaveMedia` caches the parsed `nexa_autosaved_media` localStorage map in memory (`_autoSavedMediaCache`) instead of re-parsing per media message per render; the map is capped at 500 entries.
 
 ## Admin backend (`server/admin-api.js`)
 - The hardened Firestore rules forbid browser-side edit/ban/delete of OTHER users' `users` docs (update is owner-only, delete is `if false`). `admin.html` therefore routes Edit/Ban/Delete through an Express backend using the Firebase Admin SDK: `POST /api/admin/edit-user`, `/api/admin/ban-user`, `/api/admin/delete-user`.
+- **Champions/Top-20 message counts come from the backend, NOT the browser.** `admin.html` signs in ANONYMOUSLY, so the `chats` read rule (`from == auth.uid || to == auth.uid`) denies reading other people's messages — a client-side scan can never count them. The old client scan was also removed for cost. So `GET /api/admin/weekly-activity?weekStart=<ms>` (Admin SDK, X-Admin-Secret) scans `chats` + `status` and returns `{messages, stories, totals}` per uid; `loadWeeklyActivity()` (admin.html) fetches it into `cachedMsgScores`/`cachedStoryScores` before `renderChampions()`. Pure `aggregateWeeklyActivity(chatDocs, statusDocs, weekStart)` (unit-tested) does the counting; `tsMs` tolerates number/Timestamp/string `createdAt`. If the endpoint 404s (not deployed to nexa-backend), the fetch is caught and the list degrades to stories + referrals only. `renderChampions()` ranks ALL users (no `activity > 0` hard filter — that made the list look empty before) by `msgs + stories + referrals`, top 20. `reloadWeeklyStats()` awaits `reloadAnalytics()` so Refresh pulls fresh numbers. **Deploy the backend `server/admin-api.js` to nexa-backend for message counts to appear.**
 - Deploy it into the SAME backend the dashboard already uses for push notifications (`BACKEND_URL` = `https://nexa-backend-e6pq.onrender.com`, see dashboard.html). `admin.html` picks the same base via `ADMIN_API_BASE` (localhost:3000 in dev).
 - Auth is a shared secret: every request must send header `X-Admin-Secret` matching the backend's `ADMIN_SECRET` env var, else 403. `admin.html` has an `ADMIN_SECRET` const that must be set to the same value (it's visible in page source — accepted since the page is admin-email-gated, but the backend copy stays in an env var, never in the repo).
 - Backend env vars: `ADMIN_SECRET`, `ALLOWED_ORIGIN` (CORS), and either `GOOGLE_APPLICATION_CREDENTIALS` (local key file) or `FIREBASE_SERVICE_ACCOUNT` (whole JSON as env var, for Render). ban-user also disables the Firebase Auth account; delete-user removes users + presence docs and the Auth account.
@@ -270,16 +271,29 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   handled inside `scrollToMsg` (pages older chunks until it renders); groups
   render all loaded history, so `scrollToGroupMsg` is a straight lookup. Keep the
   quote clickable — do NOT revert to a plain non-interactive div.
-- **Disappearing messages are READ-anchored (WhatsApp-style), and the sender is
-  the one who purges.** `msgDisappearAt(msg, msLimit)` = `(msg.readAt ||
-  msg.createdAt) + msLimit` (Firestore `Timestamp.readAt` handled via
-  `toMillis()`); `isMsgExpired` compares against `Date.now()`. Previously the
-  clock ran from `createdAt` only, so a message could expire before the recipient
-  ever opened the chat. In `renderMessageList` the filter keeps
-  `isMsgExpired(...)`, and only pushes `msg.id` to `expiredDocIds` when
-  `msg.from === currentUser.uid` — the `chats` rules allow delete only by the
-  sender, so each side purges its OWN expired messages. Do NOT go back to
-  deleting the peer's docs (silent permission-denied, message reappears).
+- **Disappearing messages run on WhatsApp's rule: the countdown is anchored on
+  the SEND time (`createdAt`), NOT on read.** `msgDisappearAt(msg, msLimit)` =
+  `createdAt + msLimit` (Firestore `Timestamp.createdAt` handled via
+  `toMillis()`); `isMsgExpired` compares against `Date.now()`. A message the
+  recipient never opens STILL disappears after the duration — do NOT re-anchor on
+  `readAt` (that "after reading" behaviour was the old, wrong model: it let a
+  message linger until the peer opened the chat). Option set is WhatsApp's Off /
+  24h / 7d / 90d; `parseDisappearingMs` still parses legacy `5m`/`1h`/`12h` so a
+  saved setting keeps working, but the picker no longer offers them.
+- **Only NEW messages are affected — enabling a timer never nukes history.**
+  `disappearingSettingsSince[key]` (mirrored from the settings doc's `updatedAt`,
+  set to `Date.now()` on change) marks when the timer was turned on. In
+  `renderMessageList`, any message whose `createdAt` is BEFORE `since` is kept
+  unconditionally; only messages sent after are subject to `isMsgExpired`.
+  WhatsApp has the same "existing messages are unaffected" rule. A legacy
+  settings doc with no `updatedAt` is treated as "on from now" (first sighting)
+  so it can't retroactively delete everything.
+- **Both sides' expired docs are purged.** The filter pushes every expired
+  non-`temp_` id (own AND the peer's) to `expiredDocIds`, because the `chats`
+  delete rule now allows EITHER party (`isParty(resource.data)`). WhatsApp
+  removes the message from both devices; with the old sender-only rule the peer's
+  copy stayed and reappeared. Keep the `temp_` guard — an optimistic temp
+  message has no Firestore doc to delete.
 - **`startDisappearSweep()`** (30s `setInterval`, started at boot after
   `setupHeartbeat()`) re-renders only when a message in the open 1:1 chat has
   actually elapsed, so bubbles vanish while the chat sits idle instead of
