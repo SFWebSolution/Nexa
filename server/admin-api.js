@@ -41,7 +41,7 @@ app.use(express.json());
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Admin-Secret");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
@@ -135,6 +135,55 @@ app.post("/api/admin/delete-user", requireAdminSecret, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("delete-user error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── GET /api/admin/weekly-activity ──────────────────────────────────────────
+// Returns this-week activity per uid so the champions list can rank people who
+// have NOT referred anyone yet. The browser can't read other users' `chats`
+// docs (rules are auth-party-only) and the admin account itself is anonymous,
+// so this MUST come from the Admin SDK. Two aggregate-style scans, no realtime
+// listener. Query: ?weekStart=<epoch ms>
+// createdAt is normally a ms-epoch number; tolerate a Firestore Timestamp or
+// string anyway so a doc written by another path can't zero out a count.
+function tsMs(v) {
+  if (typeof v === "number") return v;
+  if (v && typeof v.toMillis === "function") return v.toMillis();
+  if (v && typeof v.toDate === "function") return v.toDate().getTime();
+  const n = new Date(v).getTime();
+  return isNaN(n) ? 0 : n;
+}
+
+// Pure aggregation over already-fetched docs — separated out so it can be
+// unit-tested without a Firestore connection.
+function aggregateWeeklyActivity(chatDocs, statusDocs, weekStart) {
+  const messages = {};
+  const stories = {};
+  (chatDocs || []).forEach(d => {
+    const ts = tsMs(d && d.createdAt);
+    if (d && d.from && ts && ts >= weekStart) messages[d.from] = (messages[d.from] || 0) + 1;
+  });
+  (statusDocs || []).forEach(d => {
+    const ts = tsMs(d && d.createdAt);
+    if (d && d.uid && ts && ts >= weekStart) stories[d.uid] = (stories[d.uid] || 0) + 1;
+  });
+  const totals = {};
+  Object.keys(messages).forEach(uid => { totals[uid] = (totals[uid] || 0) + messages[uid]; });
+  Object.keys(stories).forEach(uid => { totals[uid] = (totals[uid] || 0) + stories[uid]; });
+  return { messages, stories, totals };
+}
+
+app.get("/api/admin/weekly-activity", requireAdminSecret, async (req, res) => {
+  try {
+    const weekStart = Number(req.query.weekStart) || 0;
+    const chatsSnap = await db.collection("chats").get();
+    const statusSnap = await db.collection("status").get();
+    const chatDocs = chatsSnap.docs.map(doc => doc.data() || {});
+    const statusDocs = statusSnap.docs.map(doc => doc.data() || {});
+    res.json(Object.assign({ success: true }, aggregateWeeklyActivity(chatDocs, statusDocs, weekStart)));
+  } catch (err) {
+    console.error("weekly-activity error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
