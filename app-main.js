@@ -372,7 +372,7 @@ function loadLatestMsgState() {
 }
 
 function saveCachedUsers() {
-  if (!currentUser || !allUsersData.length) return;
+  if (!currentUser) return;
   try {
     localStorage.setItem("nexa_cached_users_" + currentUser.uid, JSON.stringify(allUsersData));
   } catch (e) {}
@@ -544,6 +544,8 @@ auth.onAuthStateChanged(async (user) => {
     // Re-engagement nudge: pops a fun welcome-back popup when the user
     // returns after being offline for ~2.5+ days (once per 30 days).
     checkReturningUserWelcome();
+    // One-time (per version) "new update available" prompt + menu dot.
+    checkAppUpdate();
   } else {
     // First-run profile setup: there's no dashboard to wait for, so reveal the
     // setup overlay at the current progress. We deliberately do NOT push the
@@ -569,10 +571,11 @@ let _nexaSplashShown = false;
 const NEXA_BOOT_STEPS = {
   auth: 15,        // Firebase session resolved
   profile: 10,     // profile doc loaded
-  users: 15,       // users list ready
+  users: 10,       // users list ready
+  connections: 10, // connections (accepted/pending) snapshot ready
   listeners: 20,   // presence + connections listeners up
   chats: 20,       // chats / unread / FCM ready
-  community: 15,   // groups + channels + stories ready
+  community: 10,   // groups + channels + stories ready
   paint: 5         // dashboard painted
 };
 let _nexaBootDone = new Set();
@@ -1268,10 +1271,14 @@ function renderUsers() {
   const q = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
   let list = allUsersData.filter(u => !blockedUsers[u.uid] && isConnectedTo(u.uid));
   if (!q) list = list.filter(u => !deletedChats[u.uid]);
-  renderUserList(list);
+  // "Still loading" (users or connections not in yet) must never read as
+  // "no connections" — otherwise a cold start flashes "No users found"
+  // before the connections snapshot lands.
+  const loading = list.length === 0 && !(allUsersData.length > 0 && _connectionsReady());
+  renderUserList(list, loading);
 }
 
-function renderUserList(list) {
+function renderUserList(list, loading) {
   const box = document.getElementById("users");
   if (!box) return;
 
@@ -1317,7 +1324,9 @@ function renderUserList(list) {
   const selfContact = (!q && currentUser) ? getSelfContact() : null;
 
   if (!list.length && !selfContact) { 
-    box.innerHTML = '<div class="no-users">👋 No users found</div>'; 
+    box.innerHTML = loading
+      ? '<div class="no-users">⏳ Loading your chats…</div>'
+      : '<div class="no-users">👋 No users found</div>'; 
     lastRenderedUserOrder = "";
     return; 
   }
@@ -1498,6 +1507,11 @@ let myConnections = {};        // otherUid -> {id, status, from, to, otherUid, c
 let connectListenerUnsub = null;
 let connectMigrationDone = false;
 let activeConnectSubTab = 'discover';
+// True once the connections snapshot has delivered at least one result. Gates
+// both the boot progress and the "No users found" empty state, so a cold start
+// shows "Loading…" (not "no users") until the real connection list arrives.
+let _connectionsLoaded = false;
+function _connectionsReady() { try { return _connectionsLoaded; } catch (e) { return false; } }
 
 function connKey(a, b) {
   return [String(a), String(b)].sort().join('_');
@@ -1544,16 +1558,25 @@ function startConnectionsListener() {
           updatedAt: d.updatedAt || d.createdAt || 0
         };
       });
+      _connectionsLoaded = true;
       saveCachedConnections();
       renderUsers();
       renderConnectTab();
       renderStoriesBar();
       updateConnectTabDot();
+      nexaBootStep('connections');
       // Already looking at the tab? Keep it marked seen so the dot doesn't
       // pop while the user is on the Connect screen.
       if (currentTab === 'connect') markConnectRequestsSeen();
       maybeMigrateExistingChats();
-    }, err => console.error('Connections listener error:', err));
+    }, err => {
+      // On a listener error, stop calling the list "loading" so the UI falls
+      // back to the cached connections instead of a permanent "Loading…".
+      console.error('Connections listener error:', err);
+      _connectionsLoaded = true;
+      renderUsers();
+      nexaBootStep('connections');
+    });
 }
 
 function getConnectionWith(uid) {
@@ -1769,7 +1792,10 @@ function renderConnectDiscover() {
   });
 
   if (!list.length) {
-    box.innerHTML = '<div class="no-users">No users found</div>';
+    // Distinguish "still loading the directory" from a genuinely empty result.
+    box.innerHTML = (allUsersData && allUsersData.length)
+      ? '<div class="no-users">No users found</div>'
+      : '<div class="no-users">⏳ Loading users…</div>';
     return;
   }
 
@@ -3061,6 +3087,73 @@ function renderStorageUsage() {
 /* ── About ────────────────────────────────────────────────────────────── */
 
 const NEXA_APP_VERSION = '1.0.0';
+
+// Bump NEXA_LATEST_APP_VERSION whenever a new APK / web release is published.
+// The client shows a ONE-TIME (per version) update prompt, and keeps a green
+// dot on the Settings menu until the user taps "Update now". The web app always
+// auto-updates on reload, but the dot/prompt still nudge users onto the newest
+// release (and onto the native APK, if they haven't installed it yet).
+const NEXA_LATEST_APP_VERSION = '1.1.0';
+
+function _verNum(v) { return String(v || '0').split('.').map(n => parseInt(n, 10) || 0); }
+function _cmpVersion(a, b) {
+  const x = _verNum(a), y = _verNum(b);
+  for (let i = 0; i < 3; i++) {
+    if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0) ? -1 : 1;
+  }
+  return 0;
+}
+function _updateUserKey(kind) { return 'nexa_' + kind + '_' + (currentUser ? currentUser.uid : 'anon'); }
+// A pending update lasts until the user taps "Update now" (which records the
+// version they actioned). Default baseline is the running build version.
+function isAppUpdatePending() {
+  try {
+    const resolved = localStorage.getItem(_updateUserKey('update_resolved')) || NEXA_APP_VERSION;
+    return _cmpVersion(resolved, NEXA_LATEST_APP_VERSION) < 0;
+  } catch (e) { return false; }
+}
+// The prompt itself is shown at most once per version (persisted the moment it
+// appears, so a reload or a "Later" never brings it back for that version).
+function hasUnseenAppUpdate() {
+  try {
+    if (!isAppUpdatePending()) return false;
+    return localStorage.getItem(_updateUserKey('update_popup')) !== NEXA_LATEST_APP_VERSION;
+  } catch (e) { return false; }
+}
+function updateAppUpdateDot() {
+  const show = isAppUpdatePending();
+  ['settingsTabDotDesktop', 'settingsTabDotMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? 'block' : 'none';
+  });
+}
+function updateAppNow() {
+  // "Update now" is the action that clears the pending state (and the dot).
+  try { localStorage.setItem(_updateUserKey('update_resolved'), NEXA_LATEST_APP_VERSION); } catch (e) {}
+  window.open(NEXA_APP_INSTALL_URL, '_blank', 'noopener');
+  dismissAppUpdate();
+}
+function dismissAppUpdate() {
+  // "Later"/close only suppresses the prompt for this version; the dot stays
+  // so the user is still reminded until they actually update.
+  try { localStorage.setItem(_updateUserKey('update_popup'), NEXA_LATEST_APP_VERSION); } catch (e) {}
+  const modal = document.getElementById('appUpdateModal');
+  if (modal) { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
+  updateAppUpdateDot();
+}
+function checkAppUpdate() {
+  updateAppUpdateDot();
+  if (!hasUnseenAppUpdate()) return;
+  try { localStorage.setItem(_updateUserKey('update_popup'), NEXA_LATEST_APP_VERSION); } catch (e) {}
+  setTimeout(() => {
+    const ver = document.getElementById('appUpdateVersion');
+    if (ver) ver.textContent = 'v' + NEXA_LATEST_APP_VERSION;
+    const modal = document.getElementById('appUpdateModal');
+    if (modal) { modal.classList.add('active'); modal.setAttribute('aria-hidden', 'false'); }
+  }, 900);
+}
+window.updateAppNow = updateAppNow;
+window.dismissAppUpdate = dismissAppUpdate;
 
 // The native Android app (APK) lives on its own install page. "Install" in
 // Settings opens THAT — it is not a browser PWA install.

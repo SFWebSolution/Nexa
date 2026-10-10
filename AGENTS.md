@@ -928,3 +928,39 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Tab switch**: `.tab-pane.active` gets a 220ms `nexaPaneIn` fade/slide (respects the global reduced-motion guard).
 - **Reduced motion**: a global `@media (prefers-reduced-motion: reduce)` now neutralises animations/transitions app-wide.
 - **Composer**: `#text { max-height: min(22vh, 140px) }` caps the auto-grow so the composer can't balloon on tiny screens.
+
+## Splash boot gating + "new update available" prompt (do NOT regress)
+- **The splash cannot reach 100% until the CONNECTIONS snapshot has landed.**
+  `NEXA_BOOT_STEPS` has a dedicated `connections: 10` milestone (users/community
+  were lowered to 10 to keep the total at 100) fired from `startConnectionsListener`'s
+  first snapshot alongside `_connectionsLoaded = true`. Without this the dashboard
+  revealed "ready" while `myConnections` was still empty, so `renderUsers()` painted
+  "No users found" until the user reopened the app — the exact cold-start bug.
+- **"Loading" must never read as "no connections".** `renderUsers()` computes
+  `loading = list.length === 0 && !(allUsersData.length > 0 && _connectionsReady())`
+  and passes it to `renderUserList(list, loading)`, which renders
+  "⏳ Loading your chats…" instead of "👋 No users found" while either the users or
+  the connections snapshot is still pending. The self-contact pins the list so the
+  empty state usually only shows during a search — that's why the gate lives there.
+- `_connectionsReady()` is a TDZ-safe wrapper around `let _connectionsLoaded`
+  (a cached `renderUsers()` can run before the listener section executes). Read the
+  flag through it, never directly.
+- `renderConnectDiscover()` likewise shows "⏳ Loading users…" until `allUsersData`
+  is populated, so the Connect tab doesn't flash "No users found" on the directory.
+- `saveCachedUsers()` no longer bails on an empty list (the guard now only checks
+  `currentUser`) so the inline instant-paint cache survives a momentary empty render.
+- **App update prompt:** `NEXA_LATEST_APP_VERSION` in `app-main.js` (next to
+  `NEXA_APP_VERSION`) is bumped on every release. The client keeps a green dot on
+  the **Settings** menu item (desktop rail `settingsTabDotDesktop` + mobile
+  `settingsTabDotMobile`, `.app-update-dot` in dashboard.css) while
+  `isAppUpdatePending()` (running build < latest AND not yet actioned), and shows
+  `#appUpdateModal` **once per version** (`hasUnseenAppUpdate()` uses a
+  `nexa_update_popup_<uid>` localStorage marker written the instant it appears).
+  **"Later"/close only suppresses the popup; the dot stays** until the user taps
+  **Update now**, which writes `nexa_update_resolved_<uid>` and clears the pending
+  state. "Update now" opens `NEXA_APP_INSTALL_URL` (the APK install page).
+  Do NOT collapse these into a single flag — a single flag clears the dot the moment
+  the popup appears, defeating the reminder.
+- Boot call site: `checkAppUpdate()` runs right after `checkReturningUserWelcome()`
+  in the ready branch of `auth.onAuthStateChanged`. The modal is `.app-update-overlay`
+  (z-index 11000, same band as the welcome modal).
