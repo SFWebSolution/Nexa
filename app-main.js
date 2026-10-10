@@ -533,7 +533,7 @@ auth.onAuthStateChanged(async (user) => {
   console.log("👤 User:", user.email);
   nexaBootStep('auth');
   listenCurrentAccountStatus(user.uid);
-  showNotifToast("Welcome to Nexa Messenger", "info");
+  showWelcomeToastAfterReveal(); // fired once the splash is gone, not over it
   // If this account was created via a referral link, greet them by their
   // inviter's username so the referral feels personal.
   db.collection("users").doc(user.uid).get().then(d => {
@@ -557,7 +557,7 @@ auth.onAuthStateChanged(async (user) => {
     startSharedPresenceListener();
     startConnectionsListener();
     nexaBootStep('listeners');
-    loadInitialChatTimestamps();
+    await loadInitialChatTimestamps();
     setupHeartbeat();
     startDisappearSweep();
     loadUnreadCounts();
@@ -576,7 +576,13 @@ auth.onAuthStateChanged(async (user) => {
     console.log("✅ App fully ready");
     // Final milestone: let the browser paint the ready dashboard behind the
     // splash, then fade it. Reaching 100% here is what actually reveals the app.
-    requestAnimationFrame(() => requestAnimationFrame(() => nexaBootStep('paint')));
+    // The 'settle' step is the LAST barrier: it lets the freshly-ordered chat
+    // list paint (and the reopened chat finish selecting) before the splash
+    // lifts, so the user never sees the list re-sort or the pane pop after the
+    // handoff — "everything perfect before the splash switches".
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => nexaBootStep('settle')));
+    }));
     // Re-engagement nudge: pops a fun welcome-back popup when the user
     // returns after being offline for ~2.5+ days (once per 30 days).
     checkReturningUserWelcome();
@@ -612,7 +618,9 @@ const NEXA_BOOT_STEPS = {
   listeners: 20,   // presence + connections listeners up
   chats: 20,       // chats / unread / FCM ready
   community: 10,   // groups + channels + stories ready
-  paint: 5         // dashboard painted
+  paint: 4,        // dashboard painted
+  settle: 1        // final barrier: 100% is reached only AFTER the
+                   // freshly-ordered chat list has painted (see below)
 };
 let _nexaBootDone = new Set();
 let _nexaBootShownPct = 0;
@@ -668,6 +676,19 @@ function nexaBootRevealIncomplete() {
   revealNexaApp();
 }
 
+// The welcome toast is deferred to here so it never paints on top of the
+// splash NOR on top of a half-settled dashboard during sign-in.
+let _welcomeToastPending = false;
+function showWelcomeToastAfterReveal() {
+  _welcomeToastPending = true;
+  if (_nexaSplashShown) flushWelcomeToast();
+}
+function flushWelcomeToast() {
+  if (!_welcomeToastPending) return;
+  _welcomeToastPending = false;
+  try { showNotifToast("Welcome to Nexa Messenger", "info"); } catch (e) {}
+}
+
 function revealNexaApp() {
   if (_nexaSplashShown) return;
   _nexaSplashShown = true;
@@ -679,6 +700,8 @@ function revealNexaApp() {
     setTimeout(() => {
       splash.style.display = 'none';
     }, 650);
+    // Reveal is committing — the dashboard is settled; show the welcome then.
+    setTimeout(flushWelcomeToast, 250);
   });
 }
 // Hard timeout: never trap the user behind the splash. It reveals at the
@@ -1443,11 +1466,16 @@ function renderUserList(list, loading) {
     noUsersEl.remove();
   }
 
-  const validUids = new Set(fullList.map(u => u.uid));
+  // Build a uid -> node map ONCE so the render below is O(n) instead of doing
+  // a querySelector() per user (the old O(n^2) which made every re-render drag
+  // once the list grew).
+  const existingNodes = new Map();
   box.querySelectorAll(".user-item").forEach(item => {
-    if (!validUids.has(item.dataset.uid)) {
-      item.remove();
-    }
+    existingNodes.set(item.dataset.uid, item);
+  });
+  const validUids = new Set(fullList.map(u => u.uid));
+  existingNodes.forEach((item, uid) => {
+    if (!validUids.has(uid)) item.remove();
   });
 
   fullList.forEach((user, idx) => {
@@ -1464,7 +1492,7 @@ function renderUserList(list, loading) {
       : (latestMsgText[user.uid] || "Tap to chat");
     const isSelected = selectedUser && selectedUser.uid === user.uid;
 
-    let el = box.querySelector(`.user-item[data-uid="${user.uid}"]`);
+    let el = existingNodes.get(user.uid);
 
     if (!el) {
       el = document.createElement("div");
@@ -1540,9 +1568,9 @@ function renderUserList(list, loading) {
         }, 500);
       }, { passive: true });
 
-      el.addEventListener("touchend", () => clearTimeout(pressTimer));
-      el.addEventListener("touchmove", () => clearTimeout(pressTimer));
-      el.addEventListener("touchcancel", () => clearTimeout(pressTimer));
+      el.addEventListener("touchend", () => clearTimeout(pressTimer), { passive: true });
+      el.addEventListener("touchmove", () => clearTimeout(pressTimer), { passive: true });
+      el.addEventListener("touchcancel", () => clearTimeout(pressTimer), { passive: true });
 
       el.addEventListener("contextmenu", (e) => {
         if (el._userData && el._userData.isSelf) return; // no actions on self-chat
@@ -3752,7 +3780,7 @@ function selectChat(user, el) {
   if (!isSelfChat()) markRead(user.uid);
   delete unreadMessages[user.uid];
   updateTotalUnreadBadge();
-  renderUsers(); // Move selected user to the top immediately
+  scheduleRender(); // Move selected user to the top on the next frame (coalesced)
   loadMessages();
   updateBlockedChatBanner();
   updateInfoBlockAction();

@@ -612,6 +612,34 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   (stable key) — see the nexa-andriod signing fix. A signature change forces one
   uninstall; the web update card carries the `.app-update-hint` note for that.
 
+## Sign-in handoff + tap snappiness (do NOT regress)
+- **`NEXA_BOOT_STEPS` totals EXACTLY 100 and `settle` (1) is the LAST/most-completing
+  step.** `paint` is 4, so the bar does NOT reach 100% at paint — only when the
+  `settle` rAF chain fires does `nexaBootPct()` hit 100 and `revealNexaApp()` run.
+  Do NOT set `settle: 0` (then paint completes 100 and the splash lifts before the
+  chat list settles) and do NOT raise any other weight, or the reveal bypasses
+  `settle` and the list re-sorts after the handoff (the "not perfect when signing
+  in" bug).
+- **`await loadInitialChatTimestamps()`** before marking `chats`/`community` done —
+  it fetches the newest messages per partner and ONLY THEN is the chat order final.
+  It used to run un-awaited, so the list re-sorted a beat AFTER the splash faded.
+- The **welcome toast is deferred** via `showWelcomeToastAfterReveal()` /
+  `flushWelcomeToast()` and fires ~250ms after `nexa-splash.nexa-done` — never on
+  top of the splash or a half-settled dashboard.
+- **Tap snappiness:** the appended dashboard.css "TAP SNAPPINESS" block overrides
+  `transition: all` on high-frequency tap surfaces (rows/buttons/nav) with
+  transform/opacity/colour only, adds `touch-action: manipulation` (kills the
+  double-tap-zoom delay) and `-webkit-tap-highlight-color: transparent`. `transition:
+  all` animates layout+paint on every tap — the main "taps feel laggy" source.
+  Keep it ADDITIVE.
+- **The mic keeps `touch-action: none`** via the `#recordBtn, .record-btn` rule at the
+  end of the same css zone (id specificity beats the broad `button` rule) — do NOT
+  drop it or the browser steals the press-and-hold.
+- `renderUsers`'s DOM diff builds a **uid→node Map once** (O(n)) instead of a
+  `querySelector` per user (O(n²)); `selectChat` uses `scheduleRender()` (coalesced)
+  instead of a synchronous `renderUsers()`. Native parity rules live in the same
+  css zone under `html.nexa-native`.
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,
