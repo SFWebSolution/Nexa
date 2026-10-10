@@ -397,6 +397,16 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 
 ## Push notifications — ONE notification per message (firebase-messaging-sw.js + dashboard.html)
+- **Do NOT add a client `sendPushNotification()` call next to any `db.collection("chats").add(...)`.**
+  The backend (`nexa-backend` `startAutoPushListener`) listens to the `chats`
+  collection and auto-pushes every new unread message — so a client call for a
+  text/media/voice/poll message, a story reply, or a story answer (all of which
+  are `chats` docs) doubles every notification. The redundant client sends were
+  removed; only **reactions** and **calls** still call the targeted
+  `/api/send-notification` endpoint because they aren't plain `chats` docs.
+  If you add a new message-creation path, let the backend listener push it — do
+  not call `sendPushNotification` for it.
+
 - **THE BACKEND MUST SEND DATA-ONLY (`nexa-backend/server.js`, `buildFCMPayload`).** A top-level `notification` (or `webpush.notification`) payload is a DISPLAY_NOTIFICATION: the FCM SDK's own `push` listener auto-calls `showNotification` **in addition to** the SW's custom push handler → **TWO notifications per message**. Emulator/sim-verified with the real `firebase-messaging-compat@10.7.1`: a notification payload = 2 `showNotification` calls, data-only = 1. Do NOT re-add `notification`/`webpush.notification` to the backend payload. It also runs on iOS (APNs `aps.alert`) and native Android — `notification` breaks the "SW owns the notification" design there too.
 - **The backend's data `tag` must stay EMPTY for messages** — only calls get the fixed `nexa-incoming-call`. A hardcoded per-message tag (e.g. `nexa-push-<Date.now()>`) defeats the SW's stable tag, so the same message delivered to several of a user's tokens stacks instead of collapsing.
 - The receiver's service worker (`firebase-messaging-sw.js`) registers ONLY the native `push` event listener and calls `showNotification` exactly once. It also early-returns on any `payload.notification` (defense-in-depth against a foreign sender). Do NOT re-add `messaging.onBackgroundMessage(...)` — it wraps the same push event and produces a 2nd notification for the same message (the "2-3 notifications per message" bug).
