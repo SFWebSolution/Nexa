@@ -509,7 +509,9 @@ auth.onAuthStateChanged(async (user) => {
   loadLatestMsgState();
   loadDeletedChats();
   loadCachedConnections();
+  notifyNativeUser(user.uid);
   await initFCM(user.uid);
+  setTimeout(maybeHandleNativeDeepLink, 1500);
 
   initPeerJS();
 
@@ -882,6 +884,46 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
 
 
 const vapidKey = "BGD7zwejdkH_EnGAfFgi872tkBWDM8-k0It7Px7QzitJ_abkqyK8d1ZEfQFslGS4TY6JXY1mylpSIH5QNDfhCRI";
+
+// ── Native APK (WebView) bridge ───────────────────────────────────────────
+// In the Android WebView shell the app is wrapped by MainActivity, which exposes
+// window.NexaAndroid. We tell it the signed-in uid so it can register the native
+// FCM token against users/{uid} (same backend /api/save-token the web uses).
+function notifyNativeUser(uid) {
+  try {
+    if (window.NexaAndroid && typeof window.NexaAndroid.setUser === 'function') {
+      window.NexaAndroid.setUser(uid, (document.getElementById('myName')?.textContent || '').trim());
+    }
+  } catch (e) {}
+}
+
+// Notification tap deep-link: the native service stores the sender uid; we hand
+// it back to the web app when its data is ready. Defined globally so the native
+// side can also call it via evaluateJavascript for an already-running app.
+window.__nexaOpenChatFromNative = function (uid) {
+  if (!uid) return;
+  const u = (typeof allUsersData !== 'undefined' ? allUsersData : []).find(x => x.uid === uid);
+  if (u) {
+    if (typeof switchTab === 'function') switchTab('chats');
+    selectChat(u, null);
+  } else if (typeof showNotifToast === 'function') {
+    showNotifToast('That chat isn’t available yet', 'info');
+  }
+};
+
+let _nativeDeepLinkTries = 0;
+function maybeHandleNativeDeepLink() {
+  try {
+    if (!window.NexaAndroid || typeof window.NexaAndroid.getPendingOpenUid !== 'function') return;
+    const uid = window.NexaAndroid.getPendingOpenUid();
+    if (uid) {
+      window.__nexaOpenChatFromNative(uid);
+      return; // consumed
+    }
+  } catch (e) {}
+  // Users may not have loaded yet — retry a few times so the tap still lands.
+  if (_nativeDeepLinkTries++ < 15) setTimeout(maybeHandleNativeDeepLink, 1000);
+}
 
 async function initFCM(uid) {
   if (!('serviceWorker' in navigator) || !('Notification' in window)) return null;
