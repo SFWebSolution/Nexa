@@ -640,6 +640,42 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   instead of a synchronous `renderUsers()`. Native parity rules live in the same
   css zone under `html.nexa-native`.
 
+## APK / Android WebView smoothness (do NOT regress)
+- **Every `backdrop-filter` is disabled under `html.nexa-native`** (a wildcard
+  `html.nexa-native *, *::before, *::after { backdrop-filter: none !important }`
+  rule appended at the end of `dashboard.css`). Android WebView's GPU compositor
+  must re-run the offscreen blur for each blurred layer every frame it animates
+  or scrolls over — modals/sheets opening (incl. the long-press block/delete
+  sheet = `.delete-chat-overlay` / `.delete-chat-modal`), the search overlay, the
+  `ctx-menu`, the per-message `.nexa-vn-player`, header buttons, story viewer.
+  On-device that reads as a SHAKE / SCATTER / broken-screen flicker that never
+  happens in desktop Chrome. The earlier native pass only dropped blur on overlay
+  BACKDROPS — never on the modal/sheet CARDS that actually animate — which is why
+  the cards still shook. Do NOT re-enable a native backdrop blur.
+- The **story-viewer background blur** (`filter: blur(20px) brightness(0.3)` on
+  `.story-viewer-bg img/video`) is a whole-screen GPU blur re-run on every story
+  transition — the "story tab shakes" report. Under native it is `filter: none`
+  + `display: none` (it is decorative only; `#storyViewerBg` keeps its own black
+  background and the real story renders in `#storyViewerContent`).
+- Native `.app` and `.story-viewer-main` are sized with `100dvh` (dvh already
+  used on `.app`) so focusing an input doesn't reflow past the visible viewport.
+- This is the **APK-only fix for "shaking / scatter / broken screen on tap"**;
+  the browser is untouched (all rules are behind `html.nexa-native`). Flips to
+  native are additive.
+- `--spring: cubic-bezier(0.34, 1.4, 0.64, 1)` (the `1.4` overshoot) is used for
+  modal/sheet entrance (modalPop/scaleIn/slideUp) and is intentional on web; it
+  is NOT the native shake (blur was). Leave it unless the bounce itself is called.
+
+## Self-chat notifications (WhatsApp-style "message yourself")
+- Self-chat **never pushes a notification**: `sendMessage()` skips the push for
+  `isSelfChat()`, and `listenIncoming()` skips messages where `from === me`
+  (marking them `delivered`). This is correct — a device cannot meaningfully push
+  to itself via a server (the FCM token belongs to the same device, so it would
+  be a no-op on the device that is already showing the message, and creating a
+  second account/token just to self-notify is unnecessary). Verify self-chat by
+  sending on one device with the app BACKGROUNDED while another device/account
+  is the sender, or just confirm the message lands.
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,

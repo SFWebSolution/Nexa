@@ -13977,3 +13977,42 @@ html.nexa-native .nav-item {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   NATIVE-ONLY: kill EVERY backdrop blur (the "shaking / scatter on tap"
+   bug). Android WebView must re-composite each backdrop-filter layer every
+   frame it animates or scrolls over — modals/sheets opening, the search
+   overlay, the long-press block/delete sheet, the story viewer, the voice-note
+   players, header buttons. On-device that reads as a shake / scatter / broken
+   -screen flicker that never happens in desktop Chrome. Disabling the blur
+   native-only lets every surface paint straight to its own layer with no
+   offscreen pass; the rgba backgrounds underneath stay, so surfaces are still
+   legible — just flat instead of frosted. This mirrors (and finishes) the
+   earlier native pass, which only dropped the blur on overlay BACKDROPS, never
+   on the modal/sheet CARDS that actually animate.
+   ══════════════════════════════════════════════════════════════════════ */
+html.nexa-native *,
+html.nexa-native *::before,
+html.nexa-native *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* The story viewer paints a full-screen blurred copy of the photo/video as its
+   backdrop. That is a whole-screen GPU blur re-run on every story transition —
+   the "story tab shakes" report. Drop it; the solid black layer beneath shows. */
+html.nexa-native .story-viewer-bg img,
+html.nexa-native .story-viewer-bg video {
+  filter: none !important;
+  display: none !important;
+}
+
+/* Size the app + story viewer to the DYNAMIC viewport so focusing an input
+   (search bar / message box) never reflows past the visible area — the other
+   half of the "everything scatters when I tap the field" report. Falls back to
+   the existing 100vh on WebViews without dvh support. */
+html.nexa-native .app,
+html.nexa-native .story-viewer-main {
+  height: 100vh;
+  height: 100dvh;
+}
