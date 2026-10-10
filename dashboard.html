@@ -52,18 +52,21 @@
       <div class="nexa-splash-tag">Messenger</div>
       <div class="nexa-splash-dots"><span></span><span></span><span></span></div>
       <!-- Real boot progress: advances as actual init milestones complete, so
-           100% genuinely means "everything is loaded". Driven by nexaBoot*()
-           in app-main.js; the dashboard is only revealed at 100%. -->
+           100% genuinely means "everything is loaded, including the user list".
+           Driven by nexaBoot*() in app-main.js; the dashboard is revealed once
+           the app is genuinely ready. The bar is NEVER pushed to 100% for an
+           app that isn't ready — if init stalls, it reveals below 100. -->
       <div class="nexa-splash-progress" id="nexaSplashProgress">
         <div class="nexa-splash-bar"><div class="nexa-splash-bar-fill" id="nexaSplashBarFill"></div></div>
         <div class="nexa-splash-pct" id="nexaSplashPct">0%</div>
+        <div class="nexa-splash-hold" id="nexaSplashHold"></div>
       </div>
     </div>
   </div>
 
 <div id="pwaInstallBanner">
-  <div class="pwa-banner-text">📲 Install Nexa Messenger for instant access</div>
-  <button class="pwa-btn" onclick="installPWA()">Install</button>
+  <div class="pwa-banner-text">📲 Get the Nexa app for instant access</div>
+  <button class="pwa-btn" onclick="installPWA()">Get app</button>
   <button class="pwa-btn" onclick="dismissPWABanner()">Not now</button>
 </div>
 
@@ -73,12 +76,12 @@
     <div class="pwa-icon-wrap">
       <img src="icon-192.png" alt="Nexa Messenger">
     </div>
-    <div class="pwa-modal-title">Install Nexa Messenger</div>
-    <div class="pwa-modal-desc">Install the app on your device for instant messaging, push notifications, and fast access directly from your home screen.</div>
+    <div class="pwa-modal-title">Get the Nexa app</div>
+    <div class="pwa-modal-desc">Download the Nexa app for Android for instant messaging, push notifications, and fast access from your home screen.</div>
     <div class="pwa-modal-actions">
       <button class="pwa-modal-btn secondary" onclick="dismissPWAPopup()">Not now</button>
       <button class="pwa-modal-btn primary" onclick="triggerPWAInstall()">
-        <i data-lucide="download" style="width: 18px; height: 18px;"></i> Install App
+        <i data-lucide="download" style="width: 18px; height: 18px;"></i> Download app
       </button>
     </div>
   </div>
@@ -398,6 +401,14 @@
                   <span class="settings-row-sub">Local data usage and cleanup</span>
                 </span>
                 <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openInstallAppPage()">
+                <span class="settings-row-icon"><i data-lucide="download" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Install Nexa app</span>
+                  <span class="settings-row-sub">Get the Android app</span>
+                </span>
+                <i data-lucide="external-link" class="settings-row-chev"></i>
               </button>
               <button class="settings-row" onclick="openSettingsSubPage('about')">
                 <span class="settings-row-icon"><i data-lucide="info" style="width: 17px; height: 17px;"></i></span>
@@ -802,13 +813,41 @@
                   <span class="settings-row-sub">Private chat, groups, channels and Live rooms</span>
                 </span>
               </div>
-              <div class="settings-row settings-row-static">
-                <span class="settings-row-icon"><i data-lucide="wifi-off" style="width: 17px; height: 17px;"></i></span>
+            </div>
+            <div class="settings-group" style="margin-top:14px;">
+              <div class="settings-group-title"><i data-lucide="smartphone" style="width: 15px; height: 15px;"></i> Get the app</div>
+              <button class="settings-action-btn" onclick="openInstallAppPage()">
+                <span><i data-lucide="download" style="width: 16px; height: 16px;"></i> Install the Nexa app</span>
+                <i data-lucide="external-link" style="width: 15px; height: 15px; flex-shrink: 0;"></i>
+              </button>
+              <div class="settings-note" style="margin-top:10px;">Download the Nexa app for Android for the best experience. You can keep using Nexa in your browser too.</div>
+            </div>
+            <div class="settings-group" style="margin-top:14px;">
+              <div class="settings-group-title"><i data-lucide="scale" style="width: 15px; height: 15px;"></i> Legal</div>
+              <button class="settings-row" onclick="openLegalPage('privacy')">
+                <span class="settings-row-icon"><i data-lucide="shield" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
-                  <span class="settings-row-title">Works as an app</span>
-                  <span class="settings-row-sub">Install Nexa from your browser menu</span>
+                  <span class="settings-row-title">Privacy Policy</span>
+                  <span class="settings-row-sub">How we handle your data</span>
                 </span>
-              </div>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openLegalPage('terms')">
+                <span class="settings-row-icon"><i data-lucide="file-text" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Terms of Service</span>
+                  <span class="settings-row-sub">The rules for using Nexa</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+              <button class="settings-row" onclick="openLegalPage('cookies')">
+                <span class="settings-row-icon"><i data-lucide="cookie" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Cookie Policy</span>
+                  <span class="settings-row-sub">Cookies and local storage</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
             </div>
           </div>
         </div>

@@ -8379,6 +8379,16 @@ a:focus-visible, [tabindex]:focus-visible {
   color: rgba(230, 235, 242, 0.62);
   font-variant-numeric: tabular-nums;
 }
+/* Honest "still working" hint: shown only while the bar is below 100%, so a
+   slow load reads as progress rather than a stuck screen. */
+.nexa-splash-hold {
+  min-height: 14px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: rgba(230, 235, 242, 0.42);
+  text-align: center;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* PREMIUM MICRO-INTERACTIONS — everything feels tactile & alive */

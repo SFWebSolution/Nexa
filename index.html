@@ -619,7 +619,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
         <div class="faq-item"><div class="faq-question"><span>How secure is my data on Nexa?</span><div class="faq-toggle">+</div></div><div class="faq-answer"><p>Very secure. Nexa is built with modern authentication, encrypted data storage, and industry-standard security practices. Your conversations and personal information are protected.</p></div></div>
         <div class="faq-item"><div class="faq-question"><span>What can I do on Nexa?</span><div class="faq-toggle">+</div></div><div class="faq-answer"><p>Everything you'd expect from a modern messenger — 1:1 chats, group chats, 24-hour disappearing stories, channels for following posts, and live voice or video rooms where you can talk with several people at once. All free.</p></div></div>
         <div class="faq-item"><div class="faq-question"><span>Which devices and platforms are supported?</span><div class="faq-toggle">+</div></div><div class="faq-answer"><p>Nexa is available on the web (all modern browsers), with native Android support and iOS coming soon. Access it from your desktop, tablet, or phone seamlessly.</p></div></div>
-        <div class="faq-item"><div class="faq-question"><span>Do you have a mobile app?</span><div class="faq-toggle">+</div></div><div class="faq-answer"><p>Nexa works as a Progressive Web App (PWA) on all devices. Install it from your browser in one tap for a native app-like experience with offline support and push notifications.</p></div></div>
+        <div class="faq-item"><div class="faq-question"><span>Do you have a mobile app?</span><div class="faq-toggle">+</div></div><div class="faq-answer"><p>Yes — download the Nexa app for Android from our <a href="https://nexa-install.onrender.com" rel="noopener" style="color:inherit;text-decoration:underline;">install page</a>. You can also use Nexa instantly in any modern browser with no install needed.</p></div></div>
       </div>
     </div>
   </section>
@@ -630,12 +630,12 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
       <div class="download-inner reveal">
         <div class="download-icon"><i data-lucide="smartphone" style="width:38px;height:38px;"></i></div>
         <h2>Install Nexa on your device</h2>
-        <p>Get the full app experience on your phone, tablet, or desktop. Install directly from your browser — no app store needed.</p>
+        <p>Download the Nexa app for Android and get the full native experience — faster, with push notifications and offline support.</p>
         <div class="download-buttons">
-          <button class="btn btn-primary btn-lg" id="installBtn" onclick="installPWA()">Install app</button>
+          <a href="https://nexa-install.onrender.com" id="installBtn" class="btn btn-primary btn-lg" rel="noopener"><i data-lucide="download" style="width:18px;height:18px;"></i> Download the app</a>
           <a href="signup.html" class="btn btn-secondary btn-lg">Use in browser</a>
         </div>
-        <p class="download-note" id="installStatus">Works on Android, iOS, Windows, Mac, and Linux. Free forever.</p>
+        <p class="download-note" id="installStatus">Android app available now. You can also use Nexa right in your browser — free forever.</p>
       </div>
     </div>
   </section>
@@ -685,18 +685,18 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
         </div>
         <div class="footer-section">
           <h4>Legal</h4>
-          <a href="#">Privacy Policy</a>
-          <a href="#">Terms of Service</a>
-          <a href="#">Cookie Policy</a>
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="cookies.html">Cookie Policy</a>
         </div>
       </div>
       <div class="footer-divider"></div>
       <div class="footer-bottom">
         <p>© 2026 <strong>Nexa Messenger</strong>. Made with ❤️ for fast, private, and effortless messaging</p>
         <div class="footer-bottom-links">
-          <a href="#">Privacy</a>
-          <a href="#">Terms</a>
-          <a href="#">Status</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="terms.html">Terms</a>
+          <a href="https://nexa-install.onrender.com" rel="noopener">Get the app</a>
         </div>
       </div>
     </div>
@@ -848,39 +848,20 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
       });
     });
 
-    // PWA INSTALL PROMPT
-    let deferredPrompt = null;
+    // ANDROID APP DOWNLOAD
+    // The install button links to the Nexa app (APK) install page at
+    // https://nexa-install.onrender.com — this is NOT a browser PWA install.
+    const NEXA_APP_INSTALL_URL = 'https://nexa-install.onrender.com';
     const installBtn = document.getElementById('installBtn');
     const installStatus = document.getElementById('installStatus');
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      if (installBtn) installBtn.style.display = 'inline-flex';
-    });
-    function installPWA() {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then(result => {
-          if (result.outcome === 'accepted') {
-            if (installStatus) { installStatus.textContent = '✨ Nexa has been installed on your device!'; installStatus.style.color = '#2ed573'; }
-            if (installBtn) { installBtn.textContent = '✅ App Installed'; installBtn.disabled = true; }
-          }
-          deferredPrompt = null;
-        }).catch(() => {
-          if (installStatus) { installStatus.textContent = '⚠️ Installation encountered an issue. Please try again.'; installStatus.style.color = '#ffa502'; }
-        });
-      } else {
-        if (installStatus) { installStatus.textContent = '⏳ App will be ready to install shortly. Refresh the page.'; installStatus.style.color = '#ffa502'; }
-        setTimeout(() => { window.location.reload(); }, 2000);
-      }
-    }
-    window.addEventListener('appinstalled', () => {
-      if (installBtn) { installBtn.textContent = '✅ App Installed'; installBtn.disabled = true; }
-      if (installStatus) { installStatus.textContent = '✨ Nexa has been installed on your device!'; installStatus.style.color = '#2ed573'; }
-    });
-    if (window.navigator.standalone === true) {
-      if (installBtn) installBtn.style.display = 'none';
-      if (installStatus) { installStatus.textContent = '✅ Running as Nexa App'; installStatus.style.color = '#2ed573'; }
+    if (installBtn) {
+      installBtn.setAttribute('href', NEXA_APP_INSTALL_URL);
+      installBtn.addEventListener('click', () => {
+        if (installStatus) {
+          installStatus.textContent = '📥 Opening the Nexa app download page…';
+          installStatus.style.color = '#2b8fff';
+        }
+      });
     }
   </script>
 </body>

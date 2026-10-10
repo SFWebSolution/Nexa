@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index, follow">
+  <title>Privacy Policy — Nexa Messenger</title>
+  <meta name="description" content="How Nexa Messenger collects, uses and protects your information.">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+    :root {
+      --bg: #090d16; --card: #0f172a; --card2: #131c31; --border: rgba(148,163,184,.14);
+      --text: #f8fafc; --text2: #94a3b8; --text3: #64748b;
+      --primary: #2b8fff; --secondary: #8b5cf6;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.7; -webkit-font-smoothing: antialiased;
+      background-image: radial-gradient(900px 500px at 15% -5%, rgba(43,143,255,.12), transparent 60%),
+                        radial-gradient(800px 500px at 100% 0%, rgba(139,92,246,.10), transparent 55%);
+      background-attachment: fixed;
+    }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 28px 20px 80px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 40px; }
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: var(--text); }
+    .brand img { width: 38px; height: 38px; border-radius: 11px; }
+    .brand span { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+    .back {
+      display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+      color: var(--text2); font-size: 14px; font-weight: 600; padding: 9px 15px;
+      border: 1px solid var(--border); border-radius: 11px; background: var(--card);
+      transition: .18s ease;
+    }
+    .back:hover { color: var(--text); border-color: rgba(148,163,184,.35); transform: translateX(-2px); }
+    h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -.03em; }
+    .lede { color: var(--text2); font-size: 16px; margin: 0 0 8px; max-width: 62ch; }
+    .updated { color: var(--text3); font-size: 13px; margin: 0 0 34px; }
+    .hero {
+      border: 1px solid var(--border); border-radius: 18px; padding: 26px 24px;
+      background: linear-gradient(150deg, var(--card), var(--card2)); margin-bottom: 30px;
+    }
+    h2 { font-size: 19px; margin: 34px 0 10px; letter-spacing: -.01em; scroll-margin-top: 20px; }
+    h2 .n { color: var(--primary); font-weight: 800; margin-right: 8px; }
+    p { color: #cbd5e1; margin: 0 0 12px; }
+    ul { color: #cbd5e1; margin: 0 0 14px; padding-left: 20px; }
+    li { margin: 5px 0; }
+    strong { color: var(--text); font-weight: 650; }
+    a.inline { color: var(--primary); text-decoration: none; }
+    a.inline:hover { text-decoration: underline; }
+    .card { border: 1px solid var(--border); background: var(--card); border-radius: 14px; padding: 16px 18px; margin: 14px 0; }
+    .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .toc a {
+      text-decoration: none; color: var(--text2); font-size: 12.5px; font-weight: 600;
+      border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; background: var(--card);
+    }
+    .toc a:hover { color: var(--text); border-color: rgba(148,163,184,.35); }
+    footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--text3); font-size: 13px; }
+    footer a { color: var(--text2); text-decoration: none; margin-right: 16px; }
+    footer a:hover { color: var(--text); }
+    @media (max-width: 560px) { .wrap { padding: 20px 15px 60px; } .hero { padding: 20px 17px; } }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="index.html"><img src="icon-192.png" alt="Nexa"><span>Nexa</span></a>
+      <a class="back" href="index.html">&#8592; Back to Nexa</a>
+    </div>
+
+    <div class="hero">
+      <h1>Privacy Policy</h1>
+      <p class="lede">This policy explains what information Nexa collects, how it is used, and the choices you have. We keep it short and in plain language.</p>
+      <p class="updated">Last updated: October 2026</p>
+      <div class="toc"><a href="#who">Who we are</a><a href="#collect">Information we collect</a><a href="#use">How we use it</a><a href="#storage">How your messages are stored</a><a href="#sharing">Sharing</a><a href="#retention">How long we keep it</a><a href="#choices">Your choices and rights</a><a href="#security">Security</a><a href="#children">Children</a><a href="#changes">Changes to this policy</a><a href="#contact">Contact us</a></div>
+    </div>
+
+<h2 id="who"><span class="n">1</span>Who we are</h2>
+<p>Nexa Messenger (<strong>&ldquo;Nexa&rdquo;</strong>, <strong>&ldquo;we&rdquo;</strong>, <strong>&ldquo;us&rdquo;</strong>) is a messaging service for private chats, group chats, channels, stories and live voice/video rooms. This policy explains what we collect, why, and the choices you have.</p>
+<h2 id="collect"><span class="n">2</span>Information we collect</h2>
+<p>We keep this deliberately small &mdash; only what the app needs to work:</p><ul><li><strong>Account details</strong> you provide: email address, display name, an optional @username and phone number, and a profile photo.</li><li><strong>Content you create</strong>: messages and their attachments (photos, videos, files, voice notes), stories, group and channel posts, reactions and replies.</li><li><strong>Activity signals</strong>: whether you are online, your &ldquo;last seen&rdquo; time, read receipts and typing indicators.</li><li><strong>Device &amp; app data</strong>: a push-notification token, your browser/platform, and the app version, used to deliver notifications and keep the app working.</li></ul><p>We do <strong>not</strong> collect your contacts list, precise location, or the contents of your device.</p>
+<h2 id="use"><span class="n">3</span>How we use it</h2>
+<ul><li>Deliver, store and sync your messages, media, stories and calls across your devices.</li><li>Show presence, read receipts and notifications.</li><li>Keep the service safe &mdash; detect abuse, spam and violations of our <a class='inline' href='terms.html'>Terms of Service</a>.</li><li>Provide support and fix problems.</li></ul>
+<h2 id="storage"><span class="n">4</span>How your messages are stored</h2>
+<div class='card'><p>Chat and account data is stored with <strong>Google Firebase</strong> (Cloud Firestore and Authentication). Photos, videos, files and voice notes are uploaded to <strong>Cloudinary</strong>, a media hosting/CDN provider, and served from there.</p><p>One-to-one and room voice/video calls use <strong>WebRTC</strong> and are peer-to-peer &mdash; we do not record your calls. Only the small connection handshake is relayed through our servers.</p></div>
+<h2 id="sharing"><span class="n">5</span>Sharing</h2>
+<p>We <strong>do not sell</strong> your personal information. We share data only with the service providers that run Nexa (Google Firebase, Cloudinary, our hosting and push providers), and only as needed to operate the service. We may also disclose information if required by law or to protect the safety and rights of our users.</p>
+<h2 id="retention"><span class="n">6</span>How long we keep it</h2>
+<ul><li><strong>Stories</strong> are deleted automatically <strong>24 hours</strong> after posting.</li><li><strong>Disappearing messages</strong> are removed after the timer you choose (24 hours, 7 days or 90 days) on both sides.</li><li><strong>Other messages</strong> stay until you clear the chat or delete them.</li><li>When you <strong>delete your account</strong>, your profile and presence data are removed.</li></ul>
+<h2 id="choices"><span class="n">7</span>Your choices and rights</h2>
+<ul><li>Clear a chat or delete individual messages at any time.</li><li>Turn on App Lock and hide notification previews.</li><li>Block users you no longer want to hear from.</li><li>Delete your account from within the app.</li></ul><p>Depending on where you live, you may also have rights to access, correct or delete your data. Contact us to make a request.</p>
+<h2 id="security"><span class="n">8</span>Security</h2>
+<p>Data is encrypted in transit (HTTPS/TLS), and access to chat documents is restricted to the people in that conversation by server-side rules. No system is perfectly secure, so please keep your account credentials safe.</p>
+<h2 id="children"><span class="n">9</span>Children</h2>
+<p>Nexa is not intended for children under 13 (or the minimum age in your country). If we learn that a child has created an account, we will remove it.</p>
+<h2 id="changes"><span class="n">10</span>Changes to this policy</h2>
+<p>We may update this policy as the app evolves. When we do, we will revise the &ldquo;last updated&rdquo; date above.</p>
+<h2 id="contact"><span class="n">11</span>Contact us</h2>
+<p>Questions about privacy? Email <a class='inline' href='mailto:neuro_stack@outlook.com'>neuro_stack@outlook.com</a>.</p>
+
+
+    <footer>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="cookies.html">Cookie Policy</a>
+      <a href="index.html">Home</a>
+      <div style="margin-top:10px;">&copy; 2026 Nexa Messenger. All rights reserved.</div>
+    </footer>
+  </div>
+</body>
+</html>
