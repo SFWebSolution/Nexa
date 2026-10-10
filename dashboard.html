@@ -39,6 +39,20 @@
   <script>if (typeof lucide === "undefined") { document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"><\/script>'); }</script>
 <link rel="stylesheet" href="dashboard.css">
 <link rel="stylesheet" href="nexa-voice-room.css">
+<script>
+  // Pre-paint theme: apply the SAVED theme before the first frame so the
+  // splash/background is already the right color. Without this, a light-theme
+  // user (the default) saw a dark first frame snap to white (the "dark
+  // something skipping" flash) — most noticeable in the APK WebView. Runs
+  // before <body>, so no flash of the wrong theme is ever painted. setTheme()
+  // later re-applies the same value.
+  (function () {
+    try {
+      var p = JSON.parse(localStorage.getItem('nexaPrefs') || '{}');
+      if (p && p.theme === 'nexa') document.documentElement.setAttribute('data-theme', 'nexa');
+    } catch (e) {}
+  })();
+</script>
 </head>
 
 <body>
@@ -573,6 +587,15 @@
             <div class="settings-subpage-title">Notifications</div>
           </div>
           <div class="settings-subpage-body">
+            <div class="settings-group">
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">All notifications</label>
+                  <div class="notif-item-desc">Master switch — turns every notification on or off</div>
+                </div>
+                <div class="notif-toggle" id="tabNotifAll" onclick="toggleNotif('all')"></div>
+              </div>
+            </div>
             <div class="settings-group">
               <div class="notif-item">
                 <div class="notif-item-info">
