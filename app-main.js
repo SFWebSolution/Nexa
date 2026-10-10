@@ -405,6 +405,23 @@ function loadLatestMsgState() {
   } catch (e) {}
 }
 
+// Single source of truth for the one-line chat-list preview. Covers text,
+// captions, every media kind, and file/document attachments — the old inline
+// ternaries dropped files entirely (blank/stale preview line) and never knew
+// about view-once media. Used by the chat list, the timestamp restore, the
+// incoming-message listener and the open-chat footer so they never disagree.
+function msgPreviewText(msg, opts) {
+  if (!msg) return "Message";
+  const o = opts || {};
+  return msg.text || msg.caption
+    || (msg.audio ? "🎤 Voice message"
+      : msg.image ? (msg.isViewOnce ? "📷 View once photo" : "📷 Photo")
+      : msg.video ? (msg.isViewOnce ? "🎥 View once video" : "🎥 Video")
+      : msg.fileUrl ? "📎 " + (msg.fileName || "Document")
+      : msg.type === "poll" ? "📊 Poll"
+      : (o.none || "Message"));
+}
+
 function saveCachedUsers() {
   if (!currentUser) return;
   try {
@@ -450,7 +467,7 @@ async function loadInitialChatTimestamps() {
       if (d.to && d.createdAt) {
         if (!latestMsgTime[d.to] || d.createdAt > latestMsgTime[d.to]) {
           latestMsgTime[d.to] = d.createdAt;
-          latestMsgText[d.to] = d.text || (d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
+          latestMsgText[d.to] = msgPreviewText(d);
         }
       }
     });
@@ -460,7 +477,7 @@ async function loadInitialChatTimestamps() {
       if (d.from && d.createdAt) {
         if (!latestMsgTime[d.from] || d.createdAt > latestMsgTime[d.from]) {
           latestMsgTime[d.from] = d.createdAt;
-          latestMsgText[d.from] = d.text || (d.image ? "📷 Photo" : d.video ? "🎥 Video" : d.audio ? "🎤 Voice" : "Message");
+          latestMsgText[d.from] = msgPreviewText(d);
         }
       }
     });
@@ -5016,7 +5033,7 @@ function renderMessageList() {
     const lastM = allMessages[allMessages.length - 1];
     if (lastM.createdAt) {
       latestMsgTime[selectedUser.uid] = lastM.createdAt;
-      latestMsgText[selectedUser.uid] = lastM.text || (lastM.image ? "📷 Photo" : lastM.video ? "🎥 Video" : lastM.audio ? "🎤 Voice" : "Message");
+      latestMsgText[selectedUser.uid] = msgPreviewText(lastM);
     }
     // Keep the instant-open cache for this chat fresh (newest windowed msgs).
     saveChatMsgCache(selectedUser.uid);
@@ -5050,7 +5067,7 @@ function renderMessageList() {
     const last = allMessages[allMessages.length - 1];
     const prevEl = document.getElementById(`prev-${selectedUser.uid}`);
     if (prevEl) {
-      const preview = last.text || (last.image ? "📷 Photo" : last.video ? "🎥 Video" : last.audio ? "🎤 Voice" : "📎 File");
+      const preview = msgPreviewText(last);
       prevEl.textContent = (last.from === currentUser.uid ? "You: " : "") + preview;
     }
   }
@@ -5559,14 +5576,43 @@ function saveEditMessage() {
   if (!editingMessageId) return;
   const newText = document.getElementById("editText").value.trim();
   if (!newText) { nexaAlert("Cannot be empty"); return; }
-  db.collection("chats").doc(editingMessageId).update({ text: newText, edited: true, editedAt: Date.now() })
-    .then(() => {
-      // The live listener covers the newest window; patch older pages locally.
-      const m = findLocalMsg(editingMessageId);
-      if (m) { m.text = newText; m.edited = true; renderMessageList(); }
-      closeEditModal();
-    })
-    .catch(e => nexaAlert("Error: " + e.message));
+  const id = editingMessageId;
+  const local = findLocalMsg(id);
+  const prevText = local ? local.text : null;
+  const prevEdited = local ? local.edited : false;
+
+  // Optimistic: patch locally and repaint IMMEDIATELY, so the bubble (and the
+  // chat-list preview) update the instant Save is tapped instead of waiting for
+  // the Firestore round-trip. Previously the repaint only ran in the write's
+  // .then(), so a slow (or already-satisfied) write made an edit look like it
+  // needed the chat re-opened before it showed.
+  if (local) {
+    local.text = newText;
+    local.edited = true;
+    renderMessageList();
+    if (selectedUser && (local.createdAt || 0) >= (latestMsgTime[selectedUser.uid] || 0)) {
+      latestMsgText[selectedUser.uid] = msgPreviewText(local);
+      saveLatestMsgState();
+      renderUsers();
+    }
+  }
+  closeEditModal();
+
+  db.collection("chats").doc(id).update({ text: newText, edited: true, editedAt: Date.now() })
+    .catch(e => {
+      // Roll the optimistic patch back so the UI matches the rejected write.
+      if (local) {
+        local.text = prevText;
+        local.edited = prevEdited;
+        renderMessageList();
+        if (selectedUser && typeof prevText === "string") {
+          latestMsgText[selectedUser.uid] = msgPreviewText(local);
+          saveLatestMsgState();
+          renderUsers();
+        }
+      }
+      nexaAlert("Error: " + e.message);
+    });
 }
 
 function showCtxMenu(e, id, msg) {
@@ -7376,7 +7422,7 @@ function listenIncoming() {
         delete deletedChats[uid];
         saveDeletedChats();
       }
-      const preview = msg.text || (msg.image ? "📷 Photo" : msg.video ? "🎥 Video" : msg.audio ? "🎤 Voice" : "New message");
+      const preview = msgPreviewText(msg, { none: "New message" });
       if (!latestMsgTime[uid] || msg.createdAt > latestMsgTime[uid]) {
         latestMsgTime[uid] = msg.createdAt;
         latestMsgText[uid] = preview;
