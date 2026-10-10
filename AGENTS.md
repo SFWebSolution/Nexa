@@ -676,6 +676,27 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   sending on one device with the app BACKGROUNDED while another device/account
   is the sender, or just confirm the message lands.
 
+## Edit message + chat-list preview (do NOT regress)
+- **`saveEditMessage()` is OPTIMISTIC.** It patches `findLocalMsg(id)` and calls
+  `renderMessageList()` (plus updates `latestMsgText` + `renderUsers()` when the
+  edited message is the conversation's latest) BEFORE the Firestore write, then
+  closes the modal immediately. Previously the repaint lived only in the write's
+  `.then()`, so a slow/rejected write made an edit look like it needed the chat
+  re-opened. The `.catch()` rolls the optimistic text/`edited` back. Keep it
+  optimistic — do NOT move the repaint back behind the `.then()`.
+- The in-place text repaint itself lives in `renderMessageList()`'s node-reuse
+  branch (`.bubble > .msg-text`, guarded by `dataset.renderedText !== msg.text`).
+  `buildMessage` stamps `.msg-text` with `data-rendered-text`, so a rebuilt
+  bubble also updates. Edit is 1:1 only (`startEdit` is gated `!isGroup`).
+- **`msgPreviewText(msg, opts)` is the SINGLE source of truth for the chat-list
+  preview line.** It covers text, caption, voice, image/video (incl. view-once),
+  FILE/document attachments (`📎 <fileName|Document>`), and polls, with
+  `opts.none` as the fallback. The old inline ternaries dropped files entirely
+  (blank/stale preview) and never knew view-once. Every preview writer now calls
+  it: `loadInitialChatTimestamps` (sent + received), `renderMessageList` (latest
+  message + the per-contact footer), and `listenIncoming`. If you add a new
+  message kind, teach it to `msgPreviewText`, not to a new ternary.
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,
