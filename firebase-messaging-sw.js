@@ -36,13 +36,19 @@ self.addEventListener("push", (event) => {
     }
   }
 
-  const notification = payload.notification || {};
-  const data = payload.data || payload.fcmOptions || {};
+  // Display-notification payloads already get rendered automatically by the
+  // Firebase Messaging SDK's own push listener (and by the page when it is
+  // visible). Rendering them here as well produced TWO notifications per
+  // message. The backend sends data-only messages, so this branch only guards
+  // against an explicit `notification` payload from any other sender.
+  if (payload.notification) return;
 
-  const title = notification.title || data.title || "Nexa Messenger";
-  const body = notification.body || data.body || "You have received a new message";
-  const icon = notification.icon || data.icon || "/icon-192.png";
-  const badge = notification.badge || data.badge || "/icon-192.png";
+  const data = payload.data || {};
+
+  const title = data.title || "Nexa Messenger";
+  const body = data.body || "You have received a new message";
+  const icon = data.icon || "/icon-192.png";
+  const badge = data.badge || "/icon-192.png";
   const isCall = title.includes("Call") || data.isCall === "true";
 
   // Stable tag per message so duplicate pushes (e.g. the same message sent to
