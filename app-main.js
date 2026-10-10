@@ -1053,12 +1053,34 @@ function isStandaloneApp() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
+// True only inside the Nexa Android shell (the APK), which tags its UA with
+// "NexaMobileNative/<version>". Desktop and mobile browsers are false.
+function isNexaNativeApp() {
+  try { return /NexaMobileNative/.test(navigator.userAgent || ''); } catch (e) { return false; }
+}
+
+// The APK and its install page are Android-only. A desktop PC must never be
+// pushed to "install the app" — the browser app IS the app there.
+function isAndroidDevice() {
+  try { return /Android/i.test(navigator.userAgent || ''); } catch (e) { return false; }
+}
+
+// Hide the Android-app install entry points on anything that is not Android
+// (i.e. desktop). "Get app" / "Install Nexa app" do not apply on PC.
+function applyPlatformVisibility() {
+  const android = isAndroidDevice();
+  ['installAppRow', 'installAppGroup'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = android ? '' : 'none';
+  });
+}
+
 function initPWA() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     window.deferredPrompt = e;
-    if (!isStandaloneApp()) {
+    if (isAndroidDevice() && !isNexaNativeApp() && !isStandaloneApp()) {
       showPWAPopup();
     }
   });
@@ -1071,10 +1093,13 @@ function initPWA() {
   });
 
   setTimeout(() => {
-    if (!isStandaloneApp() && !localStorage.getItem('pwaPopupDismissed')) {
+    if (isAndroidDevice() && !isNexaNativeApp() && !isStandaloneApp() && !localStorage.getItem('pwaPopupDismissed')) {
       showPWAPopup();
     }
   }, 2500);
+
+  // Hide the Android-app install rows on desktop (the browser app is the app).
+  applyPlatformVisibility();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/firebase-messaging-sw.js')
@@ -3230,6 +3255,9 @@ function closeAppUpdateModal() {
   if (modal) { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
 }
 function checkAppUpdate() {
+  // The update prompt is for the Android APK only. On the plain web / desktop
+  // there is nothing to install — never nudge those users.
+  if (!isNexaNativeApp()) return;
   updateAppUpdateDot();
   if (!isAppUpdatePending()) return;
   setTimeout(() => {

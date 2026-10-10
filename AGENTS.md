@@ -574,6 +574,22 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   back to synchronous.
 - Viewport meta includes `interactive-widget=resizes-content` so the keyboard
   resizes the layout instead of scrolling the whole WebView.
+## Platform gating: the APK is Android-only (do NOT regress)
+- The Android app install page (`NEXA_APP_INSTALL_URL`) and the update prompt
+  are for the **APK only**. A desktop PC must NEVER be nudged to "install the
+  app" — the browser app IS the app on PC.
+- Helpers in `app-main.js`: `isNexaNativeApp()` (UA has `NexaMobileNative`),
+  `isAndroidDevice()` (`/Android/i` on the UA), `applyPlatformVisibility()`.
+- `checkAppUpdate()` now returns immediately unless `isNexaNativeApp()`, so the
+  update popup + green dot only ever appear inside the APK.
+- `applyPlatformVisibility()` (called from `initPWA()`) hides the install rows
+  (`#installAppRow`, `#installAppGroup`) unless `isAndroidDevice()` — i.e. they
+  show on Android (browser + APK) and are hidden on desktop.
+- The PWA "Get the Nexa app" popup is Android-browser only: gated on
+  `isAndroidDevice() && !isNexaNativeApp() && !isStandaloneApp()`, so it never
+  appears on desktop and never appears inside the APK itself.
+- Do NOT let the install/update UI reappear on desktop; the user explicitly
+  wants PC to stay "as is".
 
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
