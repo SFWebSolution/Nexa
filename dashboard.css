@@ -8273,16 +8273,36 @@ a:focus-visible, [tabindex]:focus-visible {
 /* BRANDED SPLASH + APP REVEAL — premium first impression */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Theme-aware. The splash paints the SAVED theme's background, not a
+   hard-coded dark one — otherwise a light-theme user (the default) sees a
+   dark screen snap to white when the app reveals (the "dark something
+   skipping" flash). The theme is resolved by the inline pre-paint script in
+   dashboard.html before this element is ever shown. */
 .nexa-splash {
+  --sp-ink: var(--text-0);
+  --sp-mid: rgba(13, 24, 48, 0.55);
+  --sp-dim: rgba(13, 24, 48, 0.48);
+  --sp-faint: rgba(13, 24, 48, 0.42);
+  --sp-dot: rgba(13, 24, 48, 0.28);
+  --sp-track: rgba(13, 24, 48, 0.12);
   position: fixed;
   inset: 0;
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(120% 120% at 50% 35%, #0c0f16 0%, #06080d 55%, #04050a 100%);
-  color: #e6ebf2;
+  background: var(--bg-0);
+  color: var(--sp-ink);
   transition: opacity 0.55s ease, visibility 0.55s ease;
+}
+:root[data-theme="nexa"] .nexa-splash {
+  --sp-ink: #e6ebf2;
+  --sp-mid: rgba(230, 235, 242, 0.62);
+  --sp-dim: rgba(230, 235, 242, 0.55);
+  --sp-faint: rgba(230, 235, 242, 0.42);
+  --sp-dot: rgba(230, 235, 242, 0.35);
+  --sp-track: rgba(230, 235, 242, 0.14);
+  background: radial-gradient(120% 120% at 50% 35%, #0c0f16 0%, #06080d 55%, #04050a 100%);
 }
 .nexa-splash.nexa-done {
   opacity: 0;
@@ -8320,7 +8340,7 @@ a:focus-visible, [tabindex]:focus-visible {
   font-weight: 600;
   letter-spacing: 3.5px;
   text-transform: uppercase;
-  color: rgba(230, 235, 242, 0.55);
+  color: var(--sp-mid);
 }
 .nexa-splash-dots {
   display: flex;
@@ -8330,7 +8350,7 @@ a:focus-visible, [tabindex]:focus-visible {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(230, 235, 242, 0.35);
+  background: var(--sp-dot);
   animation: splashPulse 1.2s infinite;
 }
 .nexa-splash-dots span:nth-child(2) { animation-delay: 0.18s; }
@@ -8361,7 +8381,7 @@ a:focus-visible, [tabindex]:focus-visible {
   width: 100%;
   height: 4px;
   border-radius: 999px;
-  background: rgba(230, 235, 242, 0.14);
+  background: var(--sp-track);
   overflow: hidden;
 }
 .nexa-splash-bar-fill {
@@ -8376,7 +8396,7 @@ a:focus-visible, [tabindex]:focus-visible {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 1px;
-  color: rgba(230, 235, 242, 0.62);
+  color: var(--sp-mid);
   font-variant-numeric: tabular-nums;
 }
 /* Honest "still working" hint: shown only while the bar is below 100%, so a
@@ -8386,7 +8406,7 @@ a:focus-visible, [tabindex]:focus-visible {
   font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.2px;
-  color: rgba(230, 235, 242, 0.42);
+  color: var(--sp-faint);
   text-align: center;
 }
 

@@ -282,35 +282,69 @@ async function loadProfile() {
 }
 
 let notificationSettings = {
+  all: true,
   messages: true,
   stories: true,
   calls: true,
   reactions: true
 };
 
+// The individual categories the master switch drives (everything except `all`).
+const NEXA_NOTIF_TYPES = ["messages", "stories", "calls", "reactions"];
+
+// The master reads "on" only when EVERY category is on. This stays honest no
+// matter how the user got there — flipped the master, or flipped each type.
+function isNotifAllOn() {
+  return NEXA_NOTIF_TYPES.every(k => notificationSettings[k] !== false);
+}
+
+function setAllNotif(on) {
+  NEXA_NOTIF_TYPES.forEach(k => { notificationSettings[k] = on; });
+  notificationSettings.all = on;
+  persistNotificationSettings();
+}
+
+function persistNotificationSettings() {
+  notificationSettings.all = isNotifAllOn();
+  localStorage.setItem("notificationSettings", JSON.stringify(notificationSettings));
+  updateNotifUI();
+}
+
 function loadNotificationSettings() {
   try {
     const saved = localStorage.getItem("notificationSettings");
     if (saved) {
-      notificationSettings = JSON.parse(saved);
+      notificationSettings = Object.assign({}, notificationSettings, JSON.parse(saved));
     }
   } catch (e) {}
+  notificationSettings.all = isNotifAllOn();
   updateNotifUI();
 }
 
 function updateNotifUI() {
-  Object.keys(notificationSettings).forEach(key => {
-    const toggle = document.getElementById(`notif${key.charAt(0).toUpperCase() + key.slice(1)}`);
-    if (toggle) {
-      toggle.classList.toggle("active", notificationSettings[key]);
-    }
+  const apply = (id, on) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("active", on);
+  };
+  // A category can appear in TWO places (the Settings sub-page and the quick
+  // Notification Settings modal) — keep both in sync, including Reactions.
+  NEXA_NOTIF_TYPES.forEach(k => {
+    const cap = k.charAt(0).toUpperCase() + k.slice(1);
+    apply(`notif${cap}`, notificationSettings[k]);
+    apply(`tabNotif${cap}`, notificationSettings[k]);
   });
+  apply('tabNotifAll', isNotifAllOn());
 }
 
 function toggleNotif(key) {
+  if (key === 'all') {
+    const next = !isNotifAllOn();
+    setAllNotif(next);
+    showNotifToast(next ? 'All notifications on' : 'All notifications off', 'success');
+    return;
+  }
   notificationSettings[key] = !notificationSettings[key];
-  localStorage.setItem("notificationSettings", JSON.stringify(notificationSettings));
-  updateNotifUI();
+  persistNotificationSettings();
   showNotifToast(`${key} ${notificationSettings[key] ? 'enabled' : 'disabled'}`, 'success');
 }
 
@@ -2196,12 +2230,6 @@ function renderSettingsTab() {
   updateAutoSaveToggleUI();
   updateEnterToSendToggleUI();
   updateHideNotifPreviewToggleUI();
-  const msgToggle = document.getElementById("tabNotifMessages");
-  if (msgToggle) msgToggle.classList.toggle("active", notificationSettings.messages);
-  const stToggle = document.getElementById("tabNotifStories");
-  if (stToggle) stToggle.classList.toggle("active", notificationSettings.stories);
-  const clToggle = document.getElementById("tabNotifCalls");
-  if (clToggle) clToggle.classList.toggle("active", notificationSettings.calls);
 
   const grid = document.getElementById("settingsThemeGrid");
   if (!grid) return;
@@ -6611,6 +6639,14 @@ function setTheme(themeName) {
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.setAttribute('content', themeName === 'nexa' ? '#060c1e' : '#ffffff');
   savePrefs();
+  // Tell the native APK shell (if we're running inside it) so its window
+  // background / status bar match the theme — otherwise the first frame is a
+  // dark flash against the light app. No-op in a normal browser.
+  try {
+    if (window.NexaAndroid && typeof window.NexaAndroid.setTheme === 'function') {
+      window.NexaAndroid.setTheme(themeName);
+    }
+  } catch (e) {}
 }
 
 function renderThemeGrid() {
