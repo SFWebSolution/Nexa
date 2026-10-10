@@ -13901,3 +13901,79 @@ html.nexa-native .btn-send,
 html.nexa-native .bottom-nav .nav-item {
   transition: transform 0.08s ease-out, background 0.15s ease-out;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   TAP SNAPPINESS — instant, jank-free press feedback (every platform)
+   `transition: all` animates EVERY property (layout + paint) on every tap,
+   which is the main "taps feel laggy" source once the list grows. These
+   overrides pin high-frequency tap surfaces to transform/opacity/colour only.
+   `touch-action: manipulation` removes the browser's double-tap-zoom wait so
+   a tap registers immediately. Keep ADDITIVE — do not restyle the whole file.
+   ══════════════════════════════════════════════════════════════════════ */
+.user-item,
+.hdr-btn,
+.iact-btn,
+.s-tab-btn,
+.bottom-nav .nav-item,
+.settings-row,
+.connect-subtab,
+.welcome-back-btn,
+.btn-send {
+  transition: transform 0.09s ease-out, background-color 0.14s ease-out,
+              border-color 0.14s ease-out, color 0.14s ease-out,
+              opacity 0.14s ease-out;
+}
+/* Kill the ~300ms double-tap-zoom delay on everything the user taps. */
+button,
+a,
+[onclick],
+[role="button"],
+.user-item,
+.nav-item,
+.hdr-btn,
+.iact-btn,
+.s-tab-btn,
+.settings-row,
+.connect-subtab,
+.story-ring {
+  touch-action: manipulation;
+}
+
+/* No grey/blue flash on tap — the :active style is the feedback (all platforms). */
+button,
+a,
+[onclick],
+[role="button"],
+.user-item,
+.nav-item,
+.hdr-btn,
+.iact-btn,
+.s-tab-btn,
+.settings-row,
+.connect-subtab,
+.story-ring {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Native shell parity: extend the snappy transition set to every high-frequency
+   tap surface (the earlier native block only listed five), so the APK matches
+   the browser's press feel exactly. */
+html.nexa-native .s-tab-btn,
+html.nexa-native .settings-row,
+html.nexa-native .connect-subtab,
+html.nexa-native .welcome-back-btn,
+html.nexa-native .story-ring,
+html.nexa-native .nav-item {
+  transition: transform 0.08s ease-out, background-color 0.15s ease-out,
+              color 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+/* Preserve press-and-hold on the mic: keep it scroll-free even though the
+   broad `button` rule above sets touch-action: manipulation. The id selector
+   wins on specificity. Do NOT let the browser steal the long press. */
+#recordBtn,
+.record-btn {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
