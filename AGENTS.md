@@ -591,6 +591,27 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Do NOT let the install/update UI reappear on desktop; the user explicitly
   wants PC to stay "as is".
 
+## Native Android push (FCM) — status + pitfalls (do NOT regress)
+- The native FCM path is **fully in `nexa-andriod` `main`** (landed via PR #3):
+  `NexaMessagingService` (`MESSAGING_EVENT`), manifest permissions incl.
+  `POST_NOTIFICATIONS`, `MainActivity` token registration → backend
+  `/api/save-token`, and the web bridge `NexaAndroid.setUser(uid, name)` +
+  `getPendingOpenUid()` → `window.__nexaOpenChatFromNative(uid)`. PR #2 was a
+  stale stacked duplicate and is **closed**; do not re-open/re-land it.
+- **Messages must stay DATA-ONLY**: the backend sends no top-level `notification`
+  key, so every message reaches `NexaMessagingService` (or the web SW) regardless of
+  state. The native service renders ONLY when `!MainActivity.isForeground`; in the
+  foreground the web `messaging.onMessage` handles it — this split is what prevents
+  double notifications. Don't add a `notification` block to the payload.
+- **Same Firebase project is required end-to-end.** The CI injects
+  `google-services.json` from the `GOOGLE_SERVICES_JSON_B64` repo secret; the
+  published APK must contain `project_id=mel-odix` and `messagingSenderId=217595352090`
+  (the web's values) or the backend (same project) cannot deliver to native tokens.
+  If native push silently dies, first re-check those two strings inside the APK.
+- **Signing:** CI uses `assembleRelease` signed by the committed `debug.keystore`
+  (stable key) — see the nexa-andriod signing fix. A signature change forces one
+  uninstall; the web update card carries the `.app-update-hint` note for that.
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,
