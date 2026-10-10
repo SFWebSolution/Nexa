@@ -171,7 +171,7 @@
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabConnect" onclick="switchTab('connect')" title="Connect"><i data-lucide="user-plus"></i><span class="connect-tab-dot" id="connectTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
-        <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i></button>
+        <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i><span class="app-update-dot" id="settingsTabDotDesktop" style="display:none;"></span></button>
       </div>
     </div>
 
@@ -1167,6 +1167,7 @@
   <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
     <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Settings</span>
+    <span class="app-update-dot" id="settingsTabDotMobile" style="display:none;"></span>
   </button>
 </div>
 
@@ -1898,6 +1899,24 @@
       <button class="welcome-back-btn primary" onclick="returningWelcomeInvite()"><i data-lucide="share-2" style="width: 15px; height: 15px;"></i> Invite friends</button>
     </div>
     <div class="welcome-back-foot">Help us grow Nexa by bringing your people along ❤️<br>We dey wait for you o! 😂⚔️</div>
+  </div>
+</div>
+
+<!-- APP UPDATE AVAILABLE (shown once per app version) -->
+<div class="app-update-overlay" id="appUpdateModal" aria-hidden="true">
+  <div class="app-update-card" role="dialog" aria-modal="true" aria-labelledby="appUpdateTitle">
+    <button class="app-update-close" onclick="dismissAppUpdate()" title="Close" aria-label="Close"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+    <div class="app-update-badge"><i data-lucide="sparkles" style="width:26px;height:26px;"></i></div>
+    <div class="app-update-title" id="appUpdateTitle">New update available</div>
+    <div class="app-update-msg">
+      A newer version of Nexa is ready with fresh fixes and improvements.<br>
+      Update now to get the latest experience.
+    </div>
+    <div class="app-update-cta">
+      <button class="app-update-btn secondary" onclick="dismissAppUpdate()">Later</button>
+      <button class="app-update-btn primary" onclick="updateAppNow()"><i data-lucide="download" style="width:15px;height:15px;"></i> Update now</button>
+    </div>
+    <div class="app-update-foot">Latest version <span id="appUpdateVersion">—</span></div>
   </div>
 </div>
 <!-- ============================================================ -->

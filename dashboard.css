@@ -13706,3 +13706,145 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
     scroll-behavior: auto !important;
   }
 }
+
+/* ── APP UPDATE — green menu dot + one-time prompt ────────────────────── */
+.s-tab-btn .app-update-dot,
+.nav-item .app-update-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #25d366;
+  border: 2px solid var(--bg-1, #0b141a);
+  box-shadow: 0 0 8px rgba(37,211,102,0.55);
+  animation: commTabPulse 1.6s ease-in-out infinite;
+  z-index: 5;
+  pointer-events: none;
+}
+.s-tab-btn .app-update-dot { top: 2px; right: 2px; }
+.nav-item .app-update-dot { top: 4px; right: 26%; width: 10px; height: 10px; }
+
+.app-update-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.app-update-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.app-update-card {
+  position: relative;
+  background: radial-gradient(120% 160% at 50% 0%, rgba(37, 211, 102, 0.14) 0%, rgba(18, 24, 34, 0.98) 55%);
+  border: 1px solid var(--border-lt);
+  box-shadow: var(--shadow-lg);
+  border-radius: 28px;
+  padding: 32px 26px 24px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  transform: scale(0.9) translateY(24px);
+  transition: transform 0.35s var(--spring);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.app-update-overlay.active .app-update-card {
+  transform: scale(1) translateY(0);
+}
+.app-update-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.app-update-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text-0);
+}
+.app-update-badge {
+  width: 62px;
+  height: 62px;
+  margin: 4px auto 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #080c14;
+  background: linear-gradient(135deg, #25d366, #2b8fff);
+  box-shadow: 0 10px 26px rgba(37, 211, 102, 0.35);
+  animation: welcomeBackBounce 1.6s ease-in-out infinite;
+}
+.app-update-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-0);
+  margin-bottom: 10px;
+  letter-spacing: -0.5px;
+}
+.app-update-msg {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+.app-update-cta {
+  display: flex;
+  gap: 12px;
+}
+.app-update-btn {
+  flex: 1;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.app-update-btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  border: 1px solid var(--border-md);
+}
+.app-update-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-0);
+}
+.app-update-btn.primary {
+  background: var(--primary);
+  color: #080c14;
+  box-shadow: var(--shadow-sm);
+  font-weight: 800;
+}
+.app-update-btn.primary:hover {
+  transform: translateY(-2px);
+}
+.app-update-foot {
+  margin-top: 18px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
