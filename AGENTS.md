@@ -949,18 +949,19 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   is populated, so the Connect tab doesn't flash "No users found" on the directory.
 - `saveCachedUsers()` no longer bails on an empty list (the guard now only checks
   `currentUser`) so the inline instant-paint cache survives a momentary empty render.
-- **App update prompt:** `NEXA_LATEST_APP_VERSION` in `app-main.js` (next to
-  `NEXA_APP_VERSION`) is bumped on every release. The client keeps a green dot on
-  the **Settings** menu item (desktop rail `settingsTabDotDesktop` + mobile
-  `settingsTabDotMobile`, `.app-update-dot` in dashboard.css) while
-  `isAppUpdatePending()` (running build < latest AND not yet actioned), and shows
-  `#appUpdateModal` **once per version** (`hasUnseenAppUpdate()` uses a
-  `nexa_update_popup_<uid>` localStorage marker written the instant it appears).
-  **"Later"/close only suppresses the popup; the dot stays** until the user taps
-  **Update now**, which writes `nexa_update_resolved_<uid>` and clears the pending
-  state. "Update now" opens `NEXA_APP_INSTALL_URL` (the APK install page).
-  Do NOT collapse these into a single flag — a single flag clears the dot the moment
-  the popup appears, defeating the reminder.
+- **App update prompt (persists until the user CLICKS Update now):**
+  `NEXA_LATEST_APP_VERSION` in `app-main.js` (next to `NEXA_APP_VERSION`) is bumped
+  on every release. While `isAppUpdatePending()` is true (running build < latest AND
+  the user hasn't actioned it) the client keeps a green dot on the **Settings** menu
+  item (desktop rail `settingsTabDotDesktop` + mobile `settingsTabDotMobile`,
+  `.app-update-dot` in dashboard.css) AND re-shows `#appUpdateModal` on **every app
+  open**. The reminder is cleared ONLY by `updateAppNow()` ("Update now"), which
+  writes `nexa_update_resolved_<uid>` and opens `NEXA_APP_INSTALL_URL` (the APK
+  install page). `dismissAppUpdate()` ("Later"/close) merely hides the modal for the
+  current session — it does NOT record anything, so the prompt returns next open.
+  There is deliberately **one** persisted key (`nexa_update_resolved_<uid>`); do NOT
+  add a "seen/popup" key that hides the prompt indefinitely — the user wants the
+  popup to stay until they actually tap Update now.
 - Boot call site: `checkAppUpdate()` runs right after `checkReturningUserWelcome()`
   in the ready branch of `auth.onAuthStateChanged`. The modal is `.app-update-overlay`
   (z-index 11000, same band as the welcome modal).

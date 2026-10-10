@@ -3089,10 +3089,10 @@ function renderStorageUsage() {
 const NEXA_APP_VERSION = '1.0.0';
 
 // Bump NEXA_LATEST_APP_VERSION whenever a new APK / web release is published.
-// The client shows a ONE-TIME (per version) update prompt, and keeps a green
-// dot on the Settings menu until the user taps "Update now". The web app always
-// auto-updates on reload, but the dot/prompt still nudge users onto the newest
-// release (and onto the native APK, if they haven't installed it yet).
+// While an update is pending the app keeps a green dot on the Settings menu and
+// shows the update prompt on every app open. The reminder ONLY disappears once
+// the user taps "Update now" (recorded in localStorage); tapping "Later" just
+// closes it for that session and it comes back next time.
 const NEXA_LATEST_APP_VERSION = '1.1.0';
 
 function _verNum(v) { return String(v || '0').split('.').map(n => parseInt(n, 10) || 0); }
@@ -3104,20 +3104,13 @@ function _cmpVersion(a, b) {
   return 0;
 }
 function _updateUserKey(kind) { return 'nexa_' + kind + '_' + (currentUser ? currentUser.uid : 'anon'); }
-// A pending update lasts until the user taps "Update now" (which records the
-// version they actioned). Default baseline is the running build version.
+// Pending until the user taps "Update now" for the latest version. Default
+// baseline is the running build version, so an older client always reads as
+// pending on first sight.
 function isAppUpdatePending() {
   try {
     const resolved = localStorage.getItem(_updateUserKey('update_resolved')) || NEXA_APP_VERSION;
     return _cmpVersion(resolved, NEXA_LATEST_APP_VERSION) < 0;
-  } catch (e) { return false; }
-}
-// The prompt itself is shown at most once per version (persisted the moment it
-// appears, so a reload or a "Later" never brings it back for that version).
-function hasUnseenAppUpdate() {
-  try {
-    if (!isAppUpdatePending()) return false;
-    return localStorage.getItem(_updateUserKey('update_popup')) !== NEXA_LATEST_APP_VERSION;
   } catch (e) { return false; }
 }
 function updateAppUpdateDot() {
@@ -3128,23 +3121,24 @@ function updateAppUpdateDot() {
   });
 }
 function updateAppNow() {
-  // "Update now" is the action that clears the pending state (and the dot).
+  // The ONLY action that clears the reminder — records the version as actioned.
   try { localStorage.setItem(_updateUserKey('update_resolved'), NEXA_LATEST_APP_VERSION); } catch (e) {}
   window.open(NEXA_APP_INSTALL_URL, '_blank', 'noopener');
-  dismissAppUpdate();
+  closeAppUpdateModal();
+  updateAppUpdateDot();
 }
 function dismissAppUpdate() {
-  // "Later"/close only suppresses the prompt for this version; the dot stays
-  // so the user is still reminded until they actually update.
-  try { localStorage.setItem(_updateUserKey('update_popup'), NEXA_LATEST_APP_VERSION); } catch (e) {}
+  // "Later"/close only hides it now; the reminder returns on the next open
+  // until the user actually updates.
+  closeAppUpdateModal();
+}
+function closeAppUpdateModal() {
   const modal = document.getElementById('appUpdateModal');
   if (modal) { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
-  updateAppUpdateDot();
 }
 function checkAppUpdate() {
   updateAppUpdateDot();
-  if (!hasUnseenAppUpdate()) return;
-  try { localStorage.setItem(_updateUserKey('update_popup'), NEXA_LATEST_APP_VERSION); } catch (e) {}
+  if (!isAppUpdatePending()) return;
   setTimeout(() => {
     const ver = document.getElementById('appUpdateVersion');
     if (ver) ver.textContent = 'v' + NEXA_LATEST_APP_VERSION;
