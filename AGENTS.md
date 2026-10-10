@@ -998,6 +998,18 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   There is deliberately **one** persisted key (`nexa_update_resolved_<uid>`); do NOT
   add a "seen/popup" key that hides the prompt indefinitely — the user wants the
   popup to stay until they actually tap Update now.
+- **The prompt is gated on the DEVICE's installed version, not a hardcoded build.**
+  `getDeviceAppVersion()` asks the native shell (`window.NexaAndroid.getAppVersion()`,
+  backed by `BuildConfig.VERSION_NAME`) and falls back to the `NexaMobileNative/<v>`
+  User-Agent marker. On the APK, `isAppUpdatePending()` is
+  `deviceVersion < NEXA_LATEST_APP_VERSION`, so a device that already installed the
+  latest APK is NEVER prompted again (no repeated popup). On the plain web (no
+  installed-app version) it falls back to `nexa_update_resolved_<uid>` vs the running
+  build. `NEXA_APP_VERSION` is only the web fallback baseline now — keep it in sync
+  with the APK `versionName`. When you bump `NEXA_LATEST_APP_VERSION`, also bump the
+  APK `versionName`+`versionCode` so the two axes agree. The Android side must keep
+  exposing `getAppVersion()` and the dynamic UA — without them the web reverts to
+  prompting every device forever.
 - Boot call site: `checkAppUpdate()` runs right after `checkReturningUserWelcome()`
   in the ready branch of `auth.onAuthStateChanged`. The modal is `.app-update-overlay`
   (z-index 11000, same band as the welcome modal).

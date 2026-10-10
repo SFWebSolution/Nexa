@@ -3174,11 +3174,34 @@ function _cmpVersion(a, b) {
   return 0;
 }
 function _updateUserKey(kind) { return 'nexa_' + kind + '_' + (currentUser ? currentUser.uid : 'anon'); }
-// Pending until the user taps "Update now" for the latest version. Default
-// baseline is the running build version, so an older client always reads as
-// pending on first sight.
+
+// The version of the ACTUALLY INSTALLED native app, or null on the plain web.
+// On the APK the shell answers via window.NexaAndroid.getAppVersion(); we also
+// fall back to the "NexaMobileNative/<version>" User-Agent marker the shell
+// sets. This is what lets us prompt only devices that are genuinely behind —
+// a device already on the latest build must NOT be prompted again.
+function getDeviceAppVersion() {
+  try {
+    if (window.NexaAndroid && typeof window.NexaAndroid.getAppVersion === 'function') {
+      const v = window.NexaAndroid.getAppVersion();
+      if (v && typeof v === 'string' && /^\d+(?:\.\d+)*$/.test(v.trim())) return v.trim();
+    }
+  } catch (e) {}
+  try {
+    const m = /NexaMobileNative\/(\d+(?:\.\d+)*)/.exec(navigator.userAgent || '');
+    if (m) return m[1];
+  } catch (e) {}
+  return null;
+}
+
+// Pending until the user's DEVICE is on the latest version. On the native app the
+// installed version is authoritative: if it already runs >= the latest build
+// there is nothing to prompt for, regardless of any localStorage marker. On the
+// web (no installed app version) we fall back to the marker vs the running build.
 function isAppUpdatePending() {
   try {
+    const device = getDeviceAppVersion();
+    if (device) return _cmpVersion(device, NEXA_LATEST_APP_VERSION) < 0;
     const resolved = localStorage.getItem(_updateUserKey('update_resolved')) || NEXA_APP_VERSION;
     return _cmpVersion(resolved, NEXA_LATEST_APP_VERSION) < 0;
   } catch (e) { return false; }
@@ -3239,7 +3262,7 @@ function openLegalPage(which) {
 
 function renderAboutInfo() {
   const el = document.getElementById('aboutVersion');
-  if (el) el.textContent = 'Version ' + NEXA_APP_VERSION;
+  if (el) el.textContent = 'Version ' + (getDeviceAppVersion() || NEXA_APP_VERSION);
 }
 
 function renderProfileTab() {
