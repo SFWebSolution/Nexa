@@ -5839,13 +5839,7 @@ async function sendMediaComposer() {
         await db.collection("chats").add(baseMsg(extras));
         clearReply();
         showNotifToast("✓ Sent!", "success");
-        sendPushNotification(
-          document.getElementById('myName').textContent || 'Nexa User',
-          mcPendingType === "image" ? "You have received a new message (📷 Photo)"
-          : mcPendingType === "video" ? "You have received a new message (🎥 Video)"
-          : `You have received a new message (📎 ${mcPendingFile.name})`,
-          selectedUser.uid
-        );
+        // Push handled by the backend chats listener (no client duplicate).
       }
     }
     closeMediaComposer();
@@ -6000,15 +5994,10 @@ async function sendMessage() {
     const idx = _msgsA.findIndex(m => m.id === tempMsgObj.id);
     if (idx > -1) _msgsA.splice(idx, 1);
 
-    // Don't push-notify yourself in the self-chat.
-    if (!isSelfChat()) {
-      const senderName = document.getElementById('myName').textContent || 'Nexa User';
-      sendPushNotification(
-        senderName,
-        `You have received a new message: ${text.substring(0, 80)}`,
-        selectedUser.uid
-      );
-    } else {
+    // NOTE: the push for a 1:1 text message is sent by the backend's inline
+    // `chats` listener (see nexa-backend `startAutoPushListener`). Sending one
+    // here too would duplicate every message (2 notifications), so we don't.
+    if (isSelfChat()) {
       // Self-chat: mark our own message read immediately (single ticks → double).
       try {
         const lastDoc = await db.collection("chats")
@@ -6362,8 +6351,7 @@ async function sendVoice() {
           const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
           if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
         }
-        const senderName = document.getElementById('myName').textContent || 'Nexa User';
-        sendPushNotification(senderName, 'You have received a new message (\uD83C\uDFA4 Voice note)', selectedUser.uid);
+        // Push handled by the backend chats listener (no client duplicate).
       }
     }
   } catch (e) {
@@ -8878,11 +8866,10 @@ async function answerStoryQuestion(story) {
       status: "sent"
     });
     showNotifToast("✓ Answer sent", "success");
-    const owner = (typeof allUsersData !== "undefined" ? allUsersData.find(u => u.uid === story.uid) : null);
-    const myName = (document.getElementById("myName")?.textContent) || "Nexa User";
-    if (typeof sendPushNotification === "function") {
-      sendPushNotification("Answer from " + myName, "❓ " + question + " → " + reply, owner ? owner.oneSignalPlayerId : null);
-    }
+    // The answer is a chats doc; the backend chats listener pushes it. The old
+    // client call targeted a legacy oneSignalPlayerId (usually null) and would
+    // double-send if it ever populated, so it was removed.
+
   } catch (err) {
     showNotifToast("Failed to send answer: " + err.message, "error");
   }
@@ -9084,12 +9071,7 @@ async function sendStoryReply() {
     });
 
     showNotifToast("✓ Reply sent", "success");
-    const storyOwner = allUsersData.find(u => u.uid === viewingStoryUid);
-    sendPushNotification(
-      `Story reply from ${document.getElementById('myName').textContent || 'Nexa User'}`,
-      text,
-      storyOwner ? storyOwner.oneSignalPlayerId : null
-    );
+    // Push handled by the backend chats listener (no client duplicate).
     document.getElementById("storyReplyInput").value = "";
   } catch (err) {
     showNotifToast("Failed to send reply", "error");
@@ -13788,7 +13770,7 @@ async function submitPoll() {
   } else if (selectedUser) {
     await db.collection("chats").add(baseMsg(pollPayload));
     showNotifToast('✓ Poll sent!', 'success');
-    sendPushNotification(document.getElementById('myName').textContent || 'Nexa User', `📊 Poll: ${question}`, selectedUser.uid);
+    // Push handled by the backend chats listener (no client duplicate).
   }
 }
 
