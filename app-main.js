@@ -545,9 +545,10 @@ auth.onAuthStateChanged(async (user) => {
     // returns after being offline for ~2.5+ days (once per 30 days).
     checkReturningUserWelcome();
   } else {
-    // First-run profile setup: there's no dashboard to wait for, so finish the
-    // bar immediately and reveal the setup overlay.
-    nexaBootFinish();
+    // First-run profile setup: there's no dashboard to wait for, so reveal the
+    // setup overlay at the current progress. We deliberately do NOT push the
+    // bar to 100% — 100% is reserved for a fully loaded dashboard.
+    nexaBootRevealIncomplete();
   }
 });
 
@@ -588,6 +589,8 @@ function nexaBootPaint(pct) {
   const label = document.getElementById('nexaSplashPct');
   if (fill) fill.style.width = pct + '%';
   if (label) label.textContent = pct + '%';
+  const hold = document.getElementById('nexaSplashHold');
+  if (hold && pct < 100) hold.textContent = 'Loading your chats and contacts…';
 }
 
 // Mark a milestone complete. Idempotent, and paints a smooth intermediate
@@ -600,14 +603,29 @@ function nexaBootStep(name) {
     _nexaBootShownPct = pct;
     nexaBootPaint(pct);
   }
-  if (pct >= 100) revealNexaApp();
+  if (pct >= 100) nexaBootFinish();
 }
 
-// Force the bar to 100% (used by the safety timeout so a hung upstream call
-// can never trap the user behind the splash).
+// Genuine completion: every milestone is done, so 100% really does mean
+// "the dashboard is fully loaded and the user list is showing".
 function nexaBootFinish() {
   _nexaBootShownPct = 100;
+  const hold = document.getElementById('nexaSplashHold');
+  if (hold) hold.textContent = '';
   nexaBootPaint(100);
+  revealNexaApp();
+}
+
+// Safety net: if something upstream hangs, we still can't trap the user behind
+// the splash — BUT we must never claim 100% for an app that isn't ready (100%
+// is the promise that everything, including the user list, is loaded). So we
+// reveal at the current, held progress and leave the bar short of 100.
+function nexaBootRevealIncomplete() {
+  if (_nexaBootShownPct < 100) {
+    const held = Math.min(99, Math.max(_nexaBootShownPct, 5));
+    _nexaBootShownPct = held;
+    nexaBootPaint(held);
+  }
   revealNexaApp();
 }
 
@@ -624,14 +642,16 @@ function revealNexaApp() {
     }, 650);
   });
 }
-// Hard timeout: never trap the user behind the splash (10s, well past init).
+// Hard timeout: never trap the user behind the splash. It reveals at the
+// current progress (capped below 100) so the bar stays honest — reaching 100%
+// is reserved for a genuinely loaded dashboard.
 (function () {
   setTimeout(() => {
     try {
       const splash = document.getElementById('nexaSplash');
-      if (splash && !_nexaSplashShown) nexaBootFinish();
+      if (splash && !_nexaSplashShown) nexaBootRevealIncomplete();
     } catch (e) {}
-  }, 10000);
+  }, 12000);
 })();
 
 /* Play the send button's "sent" pulse once — a tiny tactile confirmation
@@ -1013,36 +1033,9 @@ function dismissPWAPopup() {
 }
 
 async function triggerPWAInstall() {
-  let promptEvent = deferredPrompt || window.deferredPrompt;
-  
-  if (!promptEvent) {
-    // Wait briefly in case event was just dispatched
-    await new Promise(r => setTimeout(r, 300));
-    promptEvent = deferredPrompt || window.deferredPrompt;
-  }
-
-  if (promptEvent) {
-    try {
-      promptEvent.prompt();
-      const choice = await promptEvent.userChoice;
-      if (choice && choice.outcome === 'accepted') {
-        showNotifToast('✅ Installing Nexa Messenger...', 'success');
-      }
-    } catch (err) {
-      console.warn("PWA prompt error:", err);
-    }
-    deferredPrompt = null;
-    window.deferredPrompt = null;
-    dismissPWAPopup();
-    return;
-  }
-
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  if (isIOS) {
-    showNotifToast("📱 To install on iOS Safari: Tap Share button and select 'Add to Home Screen'", "info");
-  } else {
-    showNotifToast("📱 Tap Install or look for the Install icon in your browser address bar", "info");
-  }
+  // The in-app install entry point opens the Android app download page
+  // (nexa-install.onrender.com) — NOT a browser PWA install prompt.
+  openInstallAppPage();
   dismissPWAPopup();
 }
 
@@ -3068,6 +3061,24 @@ function renderStorageUsage() {
 /* ── About ────────────────────────────────────────────────────────────── */
 
 const NEXA_APP_VERSION = '1.0.0';
+
+// The native Android app (APK) lives on its own install page. "Install" in
+// Settings opens THAT — it is not a browser PWA install.
+const NEXA_APP_INSTALL_URL = 'https://nexa-install.onrender.com';
+const NEXA_LEGAL_PAGES = {
+  privacy: 'privacy.html',
+  terms: 'terms.html',
+  cookies: 'cookies.html'
+};
+
+function openInstallAppPage() {
+  window.open(NEXA_APP_INSTALL_URL, '_blank', 'noopener');
+}
+
+function openLegalPage(which) {
+  const path = NEXA_LEGAL_PAGES[which];
+  if (path) window.open(path, '_blank', 'noopener');
+}
 
 function renderAboutInfo() {
   const el = document.getElementById('aboutVersion');

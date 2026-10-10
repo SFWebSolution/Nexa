@@ -8379,6 +8379,16 @@ a:focus-visible, [tabindex]:focus-visible {
   color: rgba(230, 235, 242, 0.62);
   font-variant-numeric: tabular-nums;
 }
+/* Honest "still working" hint: shown only while the bar is below 100%, so a
+   slow load reads as progress rather than a stuck screen. */
+.nexa-splash-hold {
+  min-height: 14px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: rgba(230, 235, 242, 0.42);
+  text-align: center;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* PREMIUM MICRO-INTERACTIONS — everything feels tactile & alive */
@@ -13468,4 +13478,211 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   .nx-brand-mark { width: 34px; height: 34px; }
   .nx-brand-word { font-size: 15px; }
   .nx-brand-tag { font-size: 10px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 0. LAYOUT: kill the phantom 56px bottom gap ───────────────────────────── */
+/* .app carried a blanket padding-bottom: 56px for a legacy bottom nav. The real
+   mobile nav is `.mobile-bottom-nav` (62px) and sits INSIDE the 768px media
+   query, so on desktop the padding just pushed the composer ~56px off the
+   bottom of the viewport for no reason. Reset it here; the mobile media query
+   already reserves space via the sidebar's own padding. */
+.app {
+  padding-bottom: 0;
+}
+
+/* SMOOTH & EASY 2026 — PERFORMANCE + POLISH PASS                            */
+/*                                                                           */
+/*   The app accumulated a lot of frosted glass (backdrop-filter) on the      */
+/*   surfaces that are on screen and scrolling the WHOLE time — the sidebar,  */
+/*   chat header, composer, the bottom nav, and every single message bubble   */
+/*   and contact row. Each blur forces the compositor to re-sample and blur   */
+/*   the page behind that element on every scroll frame. On mid-range phones  */
+/*   that is the single biggest cause of heavy, janky scrolling.              */
+/*                                                                           */
+/*   This pass:                                                              */
+/*     1. Drops the blur from PERSISTENT surfaces (the frost was barely        */
+/*        visible on them anyway) and swaps in a clean solid surface + soft    */
+/*        elevation, so scrolling stays on the compositor thread.             */
+/*     2. Keeps the real frosted glass ONLY on transient overlays (modals,     */
+/*        sheets, toasts, the bottom nav) where it actually reads as glass.    */
+/*     3. Drops will-change / full-property transitions on the hot paths.      */
+/*     4. Calms hover motion, unifies easing and honours reduced-motion.       */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. HOT SURFACES: no blur, solid surface + soft elevation ─────────────── */
+.sidebar,
+.chat-header,
+.input-area,
+.input-wrap,
+.stories-bar,
+.search-wrap input,
+.bottom-nav,
+.mobile-bottom-nav {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* The mobile nav is persistent on phones too — solid surface instead of a
+   20px blur that re-samples the page on every scroll frame. */
+.mobile-bottom-nav {
+  background: var(--bg-1);
+  box-shadow: 0 -1px 0 var(--border-dk), 0 -6px 20px rgba(13, 24, 48, 0.05);
+}
+
+.sidebar {
+  background: var(--bg-1);
+  box-shadow: inset -1px 0 0 var(--border-dk), 1px 0 28px rgba(13, 24, 48, 0.05);
+}
+
+.chat-header {
+  background: var(--bg-1);
+  box-shadow: 0 1px 0 var(--border-dk), 0 6px 20px rgba(13, 24, 48, 0.05);
+}
+
+.input-area {
+  background: var(--bg-1);
+  box-shadow: 0 -1px 0 var(--border-dk);
+}
+
+.input-wrap {
+  background: var(--bg-2);
+}
+
+.search-wrap input {
+  background: var(--bg-2);
+}
+
+.stories-bar {
+  background: var(--bg-2);
+}
+
+/* Received bubbles and reply quotes were blurred individually — a long chat
+   paid the blur cost dozens of times while scrolling. They are opaque
+   already, so the blur bought nothing. */
+.msg.them .bubble,
+.reply-quote {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Light-theme counterparts (the light theme re-skinned these with gradients). */
+:root[data-theme="light"] .sidebar,
+:root:not([data-theme]) .sidebar {
+  background: linear-gradient(180deg, #ffffff, #f6f9fd);
+}
+:root[data-theme="light"] .chat-header,
+:root:not([data-theme]) .chat-header {
+  background: #ffffff;
+}
+:root[data-theme="light"] .input-area,
+:root:not([data-theme]) .input-area {
+  background: #ffffff;
+}
+:root[data-theme="light"] .input-wrap,
+:root:not([data-theme]) .input-wrap {
+  background: #f3f6fb;
+}
+:root[data-theme="light"] .input-wrap:focus-within,
+:root:not([data-theme]) .input-wrap:focus-within {
+  background: #ffffff;
+}
+:root[data-theme="light"] .search-wrap input,
+:root:not([data-theme]) .search-wrap input {
+  background: #f3f6fb;
+}
+:root[data-theme="light"] .stories-bar,
+:root:not([data-theme]) .stories-bar {
+  background: #f3f6fb;
+}
+
+/* ── 2. SCROLL HOT PATHS: promote once, drop the permanent will-change ────── */
+/* will-change: scroll-position on a persistent scroller is a no-op that can
+   pin a large layer for the whole session; translateZ(0) is enough. */
+.users,
+.messages,
+.user-item,
+.msg {
+  will-change: auto;
+}
+.users,
+.messages,
+.settings-scroll-area,
+.connect-view {
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+#text { max-height: min(22vh, 140px); }
+
+/* Sidebar tab panes scroll too — keep their overscroll from chaining to the
+   page, and give the incoming pane a soft fade so switching tabs feels fluid
+   instead of popping. */
+.tab-pane {
+  overscroll-behavior: contain;
+}
+.tab-pane.active {
+  animation: nexaPaneIn 220ms var(--ease-smooth, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+@keyframes nexaPaneIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 3. LIGHTER HOVER/PRESS: no full-property transitions on hot paths ────── */
+.user-item,
+.s-tab-btn,
+.hdr-btn,
+.iact-btn,
+.search-wrap input,
+.sidebar,
+.chat-header,
+.input-wrap {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+}
+
+/* Row hover is now a calm tint only — no horizontal nudge, so rows never
+   shift or repaint their avatar on pointer move. */
+.user-item:hover {
+  transform: none;
+}
+.user-item .user-avatar {
+  transition: none;
+}
+
+/* ── 4. FOCUS RINGS: consistent, and only for keyboard users ──────────────── */
+:where(button, a, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+:where(button, a, input, textarea):focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── 5. MOTION POLISH: one shared curve, calmer timings ───────────────────── */
+:root {
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sidebar,
+.chat-header,
+.input-area,
+.input-wrap,
+.user-item,
+.hdr-btn,
+.iact-btn,
+.btn-send,
+.s-tab-btn {
+  transition-timing-function: var(--ease-smooth);
+}
+
+/* ── 6. REDUCED MOTION: honour the OS setting app-wide ────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

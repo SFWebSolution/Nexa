@@ -526,6 +526,24 @@
       transform: scaleX(1);
     }
 
+    .auth-legal {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      font-size: 12px;
+      color: var(--nx-text-3, #64748b);
+    }
+    .auth-legal a {
+      color: var(--nx-text-2, #94a3b8);
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.2s ease;
+    }
+    .auth-legal a:hover { color: var(--nx-primary, #2b8fff); }
+    .auth-legal span { opacity: 0.5; }
+
     .msg.error,
     .msg.success {
       animation: pillPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -605,6 +623,10 @@
 
   <div class="auth-footer">
     Don't have an account? <a href="signup.html">Sign Up</a>
+  </div>
+
+  <div class="auth-legal">
+    <a href="privacy.html">Privacy</a><span>&middot;</span><a href="terms.html">Terms</a><span>&middot;</span><a href="cookies.html">Cookies</a>
   </div>
 
   <div id="msg" class="msg"></div>
