@@ -722,6 +722,42 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   the view stranded above the latest message.
 
 
+## Notifications master toggle (do NOT regress)
+- Settings → Notifications has a master **All notifications** switch (`#tabNotifAll`,
+  `toggleNotif('all')`) that flips EVERY category at once. The master ON means
+  `NEXA_NOTIF_TYPES = ["messages","stories","calls","reactions"]` are all enabled;
+  turning ANY one off drops the master to off (so it's a true reflection, not a
+  separate flag). `setAllNotif(on)` / `isNotifAllOn()` own this.
+- Settings UI has TWO id sets for the same toggles: the Settings **subpage**
+  (`tabNotifMessages`/`tabNotifStories`/`tabNotifCalls`/`tabNotifReactions`) and the
+  quick **modal** (`notifMessages`/`notifStories`/`notifCalls`/`notifReactions`).
+  `updateNotifUI()` MUST sync BOTH sets (and the Reactions toggle — that was the
+  unsynced one). Do NOT reintroduce a manual partial sync block; `loadNotificationSettings()`
+  calls `updateNotifUI()` which is the single source of UI truth.
+- `persistNotificationSettings()` writes `notificationSettings.all` alongside the
+  per-type flags to localStorage (`notificationSettings`).
+
+## APK / WebView theme flash (do NOT regress)
+- The web app **defaults to a LIGHT theme** (`#EDF1F7` page background). The native
+  APK (`SFWebSolution/nexa-andriod`, `MainActivity.java` + `res/values/{colors,themes}.xml`)
+  used to hard-code a DARK window/WebView background (`#0B0F19`) → the first frame
+  flashed dark then snapped to light (the "dark something skipping" bug). The native
+  `window_background` is now the light default and `windowLightStatusBar`/
+  `windowLightNavigationBar` are set; the WebView gets `forceDarkAllowed=false` and
+  `FORCE_DARK_OFF` so Chromium never auto-darkens the light page.
+- `dashboard.html` has a **pre-paint inline script** (right after the stylesheets,
+  before `<body>`) that reads the saved theme from `localStorage.nexaPrefs` and sets
+  `data-theme="nexa"` on `<html>` before the first frame — so a dark-theme user never
+  flashes light either. `setTheme()` later re-applies the same value.
+- `.nexa-splash` is **theme-aware** (uses `var(--bg-0)` + `--sp-*` tokens) with a
+  dark override under `:root[data-theme="nexa"]`. Do NOT put a hard-coded dark
+  gradient back on the base `.nexa-splash` — that reintroduces the light-user flash.
+- `setTheme()` notifies the native shell via `window.NexaAndroid.setTheme(themeName)`
+  (JS bridge `addJavascriptInterface(..., "NexaAndroid")`); MainActivity repaints
+  window/status/nav bars live and persists the choice to SharedPreferences, re-applied
+  in `onCreate` before the page loads (no flash on cold start for either theme).
+  No-op in a normal browser.
+
 ## Recent modernization (2026-09)
 - **Modern CSS layer (dashboard.css, dashboard.html, app-main.js, styles.css):** ADDITIVE "FLUID & MODERN 2026 POLISH" block appended to dashboard.css + a matching "MODERN POLISH — AUTH PAGES" block appended to styles.css (login/signup only; index/admin use their own styling). Dashboard polish uses @starting-style, clamp(), color-mix(), light-dark(), prefers-reduced-motion guard, ::selection, text-wrap: balance/pretty. Keep it additive — do NOT restyle the whole file.
 - **Welcome popup (task 1):** Non-blocking re-engagement nudge. presence/{uid} lastSeen absence > RETURN_WELCOME_MIN_GAP_MS (2–3d) pops #welcomeBackModal (1200ms after load, once per RETURN_WELCOME_COOLDOWN_MS = 30d, mirrored in localStorage key nexa_return_welcome_seen storing epoch ms, no server writes))). "Invite friends" (returningWelcomeInvite) → getMyUsername() then copyReferralLink(. Markup at dashboard.html (~line 1084), JS at app-main.js (checkReturningUserWelcome, showReturningWelcome, dismissReturningWelcome), CSS in dashboard.css (welcome zone between "RETURNING-USER WELCOME" and "FLUID & MODERN"")). Do NOT delete interstitial </p> </div> closure lines in that zone — they're syntactic glue.
