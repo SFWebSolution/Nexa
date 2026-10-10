@@ -5455,9 +5455,18 @@ function startEdit(msgId) {
   const msg = allMessages.find(m => m.id === msgId);
   if (!msg || !msg.text) { nexaAlert("Cannot edit this message"); return; }
   editingMessageId = msgId;
-  document.getElementById("editText").value = msg.text;
+  const ta = document.getElementById("editText");
+  ta.value = msg.text;
   document.getElementById("editModal").classList.add("active");
-  document.getElementById("editText").focus();
+  // Focus AFTER the open animation settles. Focusing while the modal is still
+  // animating makes Android pop the keyboard mid-transition, which fights the
+  // layout and reads as a jolt/shake; on a cold WebView the field could also
+  // end up visually empty until the next repaint. Defer, then select so the
+  // existing text is immediately visible and editable.
+  setTimeout(() => {
+    try { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    catch (e) { try { ta.focus(); } catch (e2) {} }
+  }, 320);
   closeCtxMenu();
 }
 
