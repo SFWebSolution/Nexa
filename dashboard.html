@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src https://askifyai.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'; publickey-credentials-get *; publickey-credentials-create *">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <meta name="description" content="Nexa Messenger - Premium Chat & Stories Platform with Music Integration">
   <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -50,6 +50,14 @@
     try {
       var p = JSON.parse(localStorage.getItem('nexaPrefs') || '{}');
       if (p && p.theme === 'nexa') document.documentElement.setAttribute('data-theme', 'nexa');
+    } catch (e) {}
+    // APK detection: the Android shell sets a "NexaMobileNative/<version>" UA
+    // token in MainActivity. Marking <html> lets dashboard.css apply the
+    // native-only smoothness tweaks (no overscroll, no per-modal backdrop blur).
+    try {
+      if (/NexaMobileNative/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('nexa-native');
+      }
     } catch (e) {}
   })();
 </script>

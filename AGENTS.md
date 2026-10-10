@@ -540,6 +540,31 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   revert to a bare `ta.style.height = "auto"` reset - that leaves the composer
   stuck at whatever height the inline style last had.
 
+## APK (WebView) parity + smoothness (do NOT regress)
+- **`html.nexa-native`** is added early in `dashboard.html`'s inline pre-paint
+  script when the UA contains `NexaMobileNative` (set by the Android shell).
+  `dashboard.css` has an ADDITIVE native-only block keyed on it: global
+  `overscroll-behavior:none` (kills the WebView rubber-band "shake" on taps near
+  edges), `backdrop-filter:none` on the modal overlays (per-surface blur is the
+  biggest Android scroll/tap jank source), and snappier tap transitions. Keep it
+  additive and native-only so the browser app is untouched. The APK must keep
+  emitting the `NexaMobileNative/<version>` UA token or the class never applies.
+- **`color-scheme` matters on Android.** `:root` (light) sets
+  `color-scheme: light` and `:root[data-theme="nexa"]` sets `dark`. Without it the
+  WebView renders native form-control text/caret dark even when our own color is
+  light — that is why the Edit textarea looked black with invisible typed text.
+- **Edit modal surface is tokenized** (`--bg-1` / `--bg-2` / `--text-0` /
+  `caret-color: var(--primary)`), NOT the old hardcoded dark glass
+  (`rgba(18,24,32,.97)`), so it is readable in both themes. Be wary of other
+  hardcoded dark-modal surfaces when the user reports "black box" inputs.
+- **`startEdit()` defers `focus()` ~320ms** (until the open animation settles)
+  and then selects the end. Focusing mid-animation makes Android pop the keyboard
+  during the transition, which fights the layout and reads as a jolt; it could
+  also leave the field looking empty until the next repaint. Do NOT move focus
+  back to synchronous.
+- Viewport meta includes `interactive-widget=resizes-content` so the keyboard
+  resizes the layout instead of scrolling the whole WebView.
+
 ## Recent UX fixes (do NOT regress)
 - **Channel voice notes use the modern voice-note player.** `renderChannelPostsList`
   (app-main.js) renders `post.audio` through `renderVoiceNotePlayer(post.id, post.audio,

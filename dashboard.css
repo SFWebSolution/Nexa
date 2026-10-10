@@ -3,6 +3,12 @@
 /* ║    Crafted for real-time messaging with sophisticated interactions       ║ */
 /* ╚══════════════════════════════════════════════════════════════════════════╝ */
 
+html, body {
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  height: 100%;
+}
+
 *, *::before, *::after {
   margin: 0;
   padding: 0;
@@ -17,6 +23,10 @@
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  /* Native form controls (textarea/input caret, scrollbars, autofill) follow
+     this. Without it Android renders the control text/caret dark even when our
+     own text color is light, which made the Edit box look black. */
+  color-scheme: light;
   /* ╔─ PRIMARY PALETTE ─╗
      One unified Nexa brand blue (#166fe5) — the same accent used on the
      landing page and auth screens, so the whole product feels cohesive. */
@@ -103,6 +113,7 @@
    vivid electric-blue accent. Surfaces sit in rich blue-navy tones (never
    gray slate) and text is kept bright for maximum legibility. */
 :root[data-theme="nexa"] {
+  color-scheme: dark;
   --primary: #2b8fff; --primary-dk: #1a6fe0; --primary-lt: #5aa6f5;
   --bg-0: #060c1e; --bg-1: #0a1732; --bg-2: #0f2040; --bg-3: #162a52; --bg-4: #1e3566; --bg-5: #294379;
   --text-0: #ffffff; --text-1: #eef4ff; --text-2: #aebfe0; --text-3: #7c8db5;
@@ -3376,8 +3387,7 @@ input[type="range"] {
 }
 
 .edit-modal {
-  background: rgba(18, 24, 32, 0.97);
-  backdrop-filter: blur(24px);
+  background: var(--bg-1);
   border: 1px solid var(--border-md);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
@@ -3403,8 +3413,9 @@ input[type="range"] {
   outline: none;
   padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(22, 32, 46, 0.6);
-  color: var(--text-1);
+  background: var(--bg-2);
+  color: var(--text-0);
+  caret-color: var(--primary);
   font-size: 13.5px;
   font-family: inherit;
   font-weight: 500;
@@ -13847,4 +13858,35 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   margin-top: 18px;
   font-size: 12.5px;
   color: var(--text-3);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   NATIVE APK (WebView) SMOOTHNESS
+   `html.nexa-native` is set by an inline script in dashboard.html when the page
+   runs inside the Nexa Android shell. Keep this block ADDITIVE and native-only
+   so the browser app is untouched.
+   ══════════════════════════════════════════════════════════════════════ */
+html.nexa-native, html.nexa-native body {
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  overflow: hidden;
+}
+/* The WebView already clips; an extra backdrop blur per surface is the main
+   scroll/tap jank source on Android, so drop the blur but keep the translucency. */
+html.nexa-native .edit-modal-overlay,
+html.nexa-native .notif-settings-overlay,
+html.nexa-native .status-modal-overlay,
+html.nexa-native .story-viewer-overlay,
+html.nexa-native .search-overlay,
+html.nexa-native .wallpaper-modal-overlay {
+  backdrop-filter: none;
+}
+/* Snappier tap feedback so the :active scale reads as a press, not a wobble. */
+html.nexa-native .user-item,
+html.nexa-native .iact-btn,
+html.nexa-native .hdr-btn,
+html.nexa-native .btn-send,
+html.nexa-native .bottom-nav .nav-item {
+  transition: transform 0.08s ease-out, background 0.15s ease-out;
 }
