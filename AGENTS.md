@@ -1257,3 +1257,49 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Boot call site: `checkAppUpdate()` runs right after `checkReturningUserWelcome()`
   in the ready branch of `auth.onAuthStateChanged`. The modal is `.app-update-overlay`
   (z-index 11000, same band as the welcome modal).
+
+## Sign-in first-load, notification history, calls, in-app update (2026-10)
+- **First load after sign-in must NOT block on FCM.** `auth.onAuthStateChanged`
+  previously did `await initFCM(user.uid)` BEFORE `startUsersListener()`. On a
+  brand-new sign-in `initFCM` raises the OS notification-permission prompt, so
+  the await never resolved until the user answered — the users/connections
+  listeners never started and the app showed an empty list ("doesn't load
+  perfectly until you close and reopen"). `initFCM` is now fire-and-forget
+  (`.catch(...)`), so listeners start immediately. Do NOT re-add the `await`.
+- **`startUsersListener()` self-heals.** It has an error handler that falls back
+  to the cache and retries up to 3 times (1.5s/3s/4.5s), and resets its retry
+  counter on every successful snapshot. A first-load hiccup no longer leaves the
+  list stuck on "Loading users…". Do NOT remove the retry.
+- **Splash safety net is 8s** (was 12s) — long enough for a slow cold start,
+  short enough that a stuck init can't hide the UI.
+- **Notification history is LOCAL, not Firestore.** `recordNotificationHistory`
+  / `openNotificationHistory` / `clearNotificationHistory` /
+  `updateNotificationHistoryBadge` all read/write `localStorage` key
+  `nexa_notif_history_<uid>` (`{items:[], lastViewedAt, updatedAt}`). The old
+  `notifHistory/{uid}` doc cost ONE READ + ONE WRITE per notification — do NOT
+  move it back to Firestore. History is therefore per-device.
+- **Calls do NOT send a push notification** (product decision). `sendPushNotification`
+  returns early when `isCall`; the call-initiation push was removed; the Calls
+  toggle was removed from both notification settings surfaces; and `calls` is no
+  longer in `NEXA_NOTIF_TYPES`. Incoming calls still ring in-app via the Firestore
+  `calls` listener. Do NOT re-add the call push or the Calls toggle.
+- **In-app update (no uninstall/reinstall).** `NexaAndroid.installUpdate()` (MainActivity)
+  downloads `LATEST_APK_URL` (the `latest` release asset) to cache and hands it to
+  the system installer via a FileProvider. Requires `REQUEST_INSTALL_PACKAGES`
+  in the manifest + `@xml/file_paths` + the `${applicationId}.fileprovider`
+  provider (already added). On Android 8+ if the user hasn't granted "install
+  unknown apps", the app opens the per-app setting and asks them to tap Update
+  again. Web `updateAppNow()` and `openInstallAppPage()` call the bridge when
+  inside the APK with a pending update; otherwise they open the download page.
+- **Settings install entry highlights.** `updateAppUpdateDot()` toggles
+  `.settings-row-highlight` on `#installAppRow`, `.settings-action-btn-highlight`
+  on `#installAppBtn`, the inline dots `#installAppDot`/`#installAppBtnDot`, and
+  swaps `#installAppSub` text to "Update available — tap to update" when
+  `isAppUpdatePending()`; on Android web it also lights up once
+  `beforeinstallprompt` has fired (`_pwaInstallAvailable()`).
+- **Release version bump checklist:** publishing an update means bumping BOTH
+  `NEXA_LATEST_APP_VERSION` in `app-main.js` AND the native `versionName`/
+  `versionCode` in `nexa-andriod/app/build.gradle`. If they don't match, the
+  native app either never sees the update or prompts forever. The APK workflow
+  (`.github/workflows/build-apk.yml`) republishes the `latest` release tag on
+  every push to `main`; the app downloads from that tag.
