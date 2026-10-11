@@ -428,8 +428,9 @@
                 <span class="settings-row-icon"><i data-lucide="download" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
                   <span class="settings-row-title">Install Nexa app</span>
-                  <span class="settings-row-sub">Get the Android app</span>
+                  <span class="settings-row-sub" id="installAppSub">Get the Android app</span>
                 </span>
+                <span class="app-update-dot" id="installAppDot" style="display:none;"></span>
                 <i data-lucide="external-link" class="settings-row-chev"></i>
               </button>
               <button class="settings-row" onclick="openSettingsSubPage('about')">
@@ -625,13 +626,6 @@
                   <div class="notif-item-desc">Notifications when contacts post stories</div>
                 </div>
                 <div class="notif-toggle" id="tabNotifStories" onclick="toggleNotif('stories')"></div>
-              </div>
-              <div class="notif-item">
-                <div class="notif-item-info">
-                  <label class="notif-item-label">Calls</label>
-                  <div class="notif-item-desc">Incoming call notifications</div>
-                </div>
-                <div class="notif-toggle" id="tabNotifCalls" onclick="toggleNotif('calls')"></div>
               </div>
               <div class="notif-item notif-item-btn" onclick="openNotificationHistory()">
                 <div class="notif-item-info">
@@ -861,8 +855,9 @@
             </div>
             <div class="settings-group" id="installAppGroup" style="margin-top:14px;">
               <div class="settings-group-title"><i data-lucide="smartphone" style="width: 15px; height: 15px;"></i> Get the app</div>
-              <button class="settings-action-btn" onclick="openInstallAppPage()">
+              <button class="settings-action-btn" id="installAppBtn" onclick="openInstallAppPage()">
                 <span><i data-lucide="download" style="width: 16px; height: 16px;"></i> Install the Nexa app</span>
+                <span class="app-update-dot" id="installAppBtnDot" style="display:none;"></span>
                 <i data-lucide="external-link" style="width: 15px; height: 15px; flex-shrink: 0;"></i>
               </button>
               <div class="settings-note" style="margin-top:10px;">Download the Nexa app for Android for the best experience. You can keep using Nexa in your browser too.</div>
@@ -1564,14 +1559,6 @@
         <div class="notif-item-desc">Get notified when friends share stories</div>
       </div>
       <div class="notif-toggle" id="notifStories" onclick="toggleNotif('stories')"></div>
-    </div>
-
-    <div class="notif-item">
-      <div class="notif-item-info">
-        <label class="notif-item-label">Calls</label>
-        <div class="notif-item-desc">Get notified when someone calls</div>
-      </div>
-      <div class="notif-toggle" id="notifCalls" onclick="toggleNotif('calls')"></div>
     </div>
 
     <div class="notif-item">

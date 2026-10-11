@@ -291,7 +291,7 @@ let notificationSettings = {
 };
 
 // The individual categories the master switch drives (everything except `all`).
-const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "calls", "reactions"];
+const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "reactions"];
 
 // The master reads "on" only when EVERY category is on. This stays honest no
 // matter how the user got there — flipped the master, or flipped each type.
@@ -562,7 +562,12 @@ auth.onAuthStateChanged(async (user) => {
   loadDeletedChats();
   loadCachedConnections();
   notifyNativeUser(user.uid);
-  await initFCM(user.uid);
+  // FCM init must NOT block the dashboard. On the very first sign-in the OS
+  // notification-permission prompt is raised from inside initFCM and the user
+  // can leave it open for a long time. Because this used to be awaited,
+  // startUsersListener() below never ran until that prompt was answered — the
+  // app sat on an empty chat list until the user closed and reopened it.
+  initFCM(user.uid).catch(e => console.warn('FCM init failed (non-fatal):', e));
   setTimeout(maybeHandleNativeDeepLink, 1500);
 
   initPeerJS();
@@ -731,7 +736,7 @@ function revealNexaApp() {
       const splash = document.getElementById('nexaSplash');
       if (splash && !_nexaSplashShown) nexaBootRevealIncomplete();
     } catch (e) {}
-  }, 12000);
+  }, 8000);
 })();
 
 /* Play the send button's "sent" pulse once — a tiny tactile confirmation
@@ -755,10 +760,25 @@ window.showNotifToast = function(message, type = 'info') {
 };
 
 // ── Notification history (in-app) ──────────────────────────────────────────
-// Each user's own notifHistory/{uid} doc keeps the last N notifications that
-// ARRIVED to THIS device/app so they can browse them later (WhatsApp/Telegram
-// style). Only self-writes are allowed by the rules.
+// Notification history lives in localStorage (per uid), NOT Firestore. It is a
+// per-device log, so keeping it local removes a write AND a read from every
+// single notification — the old notifHistory/{uid} doc cost one read + one
+// write per push, which is exactly the kind of Firestore traffic we are
+// removing. Nothing here talks to Firestore.
 const NEXA_NOTIF_HISTORY_MAX = 50;
+
+function _nhKey() { return 'nexa_notif_history_' + (currentUser ? currentUser.uid : 'anon'); }
+function _nhLoad() {
+  try {
+    const raw = localStorage.getItem(_nhKey());
+    const obj = raw ? JSON.parse(raw) : null;
+    if (obj && Array.isArray(obj.items)) return obj;
+  } catch (e) {}
+  return { items: [], lastViewedAt: 0 };
+}
+function _nhSave(obj) {
+  try { localStorage.setItem(_nhKey(), JSON.stringify(obj)); } catch (e) {}
+}
 
 function notifHistoryIconFor(title) {
   const t = String(title || '').toLowerCase();
@@ -773,36 +793,25 @@ function notifHistoryIconFor(title) {
   return '💬';
 }
 
-async function recordNotificationHistory({ icon, title, body, at }) {
+function recordNotificationHistory({ icon, title, body, at }) {
   try {
     if (!currentUser) return;
-    const ref = db.collection('notifHistory').doc(currentUser.uid);
+    const store = _nhLoad();
     const entry = {
       icon: icon || notifHistoryIconFor(title),
       title: String(title || 'Notification').slice(0, 120),
       body: String(body || '').slice(0, 240),
       at: at || Date.now()
     };
-    // Read-modify-write own doc, capped to NEXA_NOTIF_HISTORY_MAX items
-    // (newest first). Missed concurrent writes are fine — history is a cache.
-    try {
-      const cur = await ref.get();
-      let items = (cur.exists && Array.isArray(cur.data().items)) ? cur.data().items.slice() : [];
-      // Dedupe consecutive identical entries (FCM + chat-listener may both
-      // report the same message).
-      const last = items[0];
-      if (last && last.title === entry.title && last.body === entry.body) {
-        last.at = entry.at;
-        await ref.set({ items, updatedAt: Date.now() }, { merge: true });
-        return;
-      }
-      items.unshift(entry);
-      items = items.slice(0, NEXA_NOTIF_HISTORY_MAX);
-      await ref.set({ items, updatedAt: Date.now() }, { merge: true });
-    } catch (e) {
-      // First write (doc may not exist yet).
-      await ref.set({ items: [entry], updatedAt: Date.now() }, { merge: true });
+    const last = store.items[0];
+    if (last && last.title === entry.title && last.body === entry.body) {
+      last.at = entry.at;
+    } else {
+      store.items.unshift(entry);
+      store.items = store.items.slice(0, NEXA_NOTIF_HISTORY_MAX);
     }
+    store.updatedAt = Date.now();
+    _nhSave(store);
   } catch (e) {
     console.warn('recordNotificationHistory error:', e);
   }
@@ -817,7 +826,7 @@ function nhEmptyStateHtml() {
     </div>`;
 }
 
-window.openNotificationHistory = async function () {
+window.openNotificationHistory = function () {
   const modal = document.getElementById('notifHistoryModal');
   if (!modal) return;
   modal.classList.add('active');
@@ -825,37 +834,32 @@ window.openNotificationHistory = async function () {
 
   const list = document.getElementById('notifHistoryList');
   if (!list) return;
-  list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Loading notifications…</div>';
-
   if (!currentUser) return;
-  try {
-    const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
-    const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
-    if (!items.length) {
-      list.innerHTML = nhEmptyStateHtml();
-    } else {
-      list.innerHTML = items.map(it => `
-        <div class="nh-item">
-          <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
-          <div class="nh-item-main">
-            <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
-            ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
-          </div>
-          <div class="nh-item-time">${relTime(it.at)}</div>
-        </div>`).join('');
-    }
-    // Viewer has seen everything up to now — clear the unread badge.
-    await db.collection('notifHistory').doc(currentUser.uid)
-      .set({ lastViewedAt: Date.now(), updatedAt: Date.now() }, { merge: true });
-    updateNotificationHistoryBadge();
-  } catch (e) {
-    list.innerHTML = '<div style="text-align:center; padding:40px 0; color:var(--text-3); font-size:13px;">Could not load history.</div>';
+
+  const store = _nhLoad();
+  const items = store.items || [];
+  if (!items.length) {
+    list.innerHTML = nhEmptyStateHtml();
+  } else {
+    list.innerHTML = items.map(it => `
+      <div class="nh-item">
+        <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
+        <div class="nh-item-main">
+          <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
+          ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
+        </div>
+        <div class="nh-item-time">${relTime(it.at)}</div>
+      </div>`).join('');
   }
+  // Viewer has seen everything up to now — clear the unread badge.
+  store.lastViewedAt = Date.now();
+  _nhSave(store);
+  updateNotificationHistoryBadge();
 };
 
 // Clear the whole history (empty-state + the settings badge both reset).
 // Two-step confirm on the button so a stray tap can't wipe history.
-window.clearNotificationHistory = async function (btn) {
+window.clearNotificationHistory = function (btn) {
   if (!currentUser) return;
   if (!btn || btn.dataset.arming !== '1') {
     if (btn) {
@@ -872,15 +876,10 @@ window.clearNotificationHistory = async function (btn) {
   btn.dataset.done = '1';
   btn.textContent = 'Cleared';
   setTimeout(() => { if (btn) btn.textContent = 'Clear'; }, 2000);
-  try {
-    await db.collection('notifHistory').doc(currentUser.uid)
-      .set({ items: [], updatedAt: Date.now(), lastViewedAt: Date.now() }, { merge: true });
-    const list = document.getElementById('notifHistoryList');
-    if (list) list.innerHTML = nhEmptyStateHtml();
-    updateNotificationHistoryBadge();
-  } catch (e) {
-    console.warn('clearNotificationHistory error:', e);
-  }
+  _nhSave({ items: [], updatedAt: Date.now(), lastViewedAt: Date.now() });
+  const list = document.getElementById('notifHistoryList');
+  if (list) list.innerHTML = nhEmptyStateHtml();
+  updateNotificationHistoryBadge();
 };
 
 window.closeNotificationHistory = function () {
@@ -904,19 +903,15 @@ function relTime(ts) {
 // Fill the small "N" count pill next to "Notification History" in the SETTINGS
 // tab. Shows the number of notifications that arrived since lastViewedAt, i.e.
 // the UNREAD count — opening the history (which stamps lastViewedAt) clears it.
-window.updateNotificationHistoryBadge = async function () {
+window.updateNotificationHistoryBadge = function () {
   const el = document.getElementById('notifHistoryCount');
   if (!el || !currentUser) return;
-  try {
-    const doc = await db.collection('notifHistory').doc(currentUser.uid).get();
-    const items = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
-    const lastViewed = doc.exists ? (Number(doc.data().lastViewedAt) || 0) : 0;
-    const unread = items.filter(it => Number(it.at || 0) > lastViewed).length;
-    el.textContent = unread ? String(unread) : '';
-    el.style.display = unread ? '' : 'none';
-  } catch (e) {
-    el.style.display = 'none';
-  }
+  const store = _nhLoad();
+  const items = store.items || [];
+  const lastViewed = Number(store.lastViewedAt) || 0;
+  const unread = items.filter(it => Number(it.at || 0) > lastViewed).length;
+  el.textContent = unread ? String(unread) : '';
+  el.style.display = unread ? '' : 'none';
 };
 
 function sendPushNotification(title, body, targetUidOverride = null, extraData = {}) {
@@ -925,18 +920,20 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   if (!recipientUids && !targetUid) return;
 
   const isCall = title.includes("Call") || extraData.isCall === "true";
+  // Calls deliberately do NOT push a notification (product decision): the
+  // in-app ringing screen + the Firestore `calls` listener handle them.
+  if (isCall) return;
   const isReaction = title.toLowerCase().includes("react");
   const isGroup = extraData.isGroup === true;
   const isStory = extraData.isStory === true;
 
-  if (isCall && !notificationSettings.calls) return;
   if (isReaction && !notificationSettings.reactions) return;
   if (isGroup && !notificationSettings.groups) return;
   if (isStory && !notificationSettings.stories) return;
-  if (!isCall && !isReaction && !isGroup && !isStory && !notificationSettings.messages) return;
+  if (!isReaction && !isGroup && !isStory && !notificationSettings.messages) return;
 
   // Lock-screen privacy: strip the message text from the push body.
-  if (!isCall && hideNotifPreviewOn()) body = 'New message';
+  if (hideNotifPreviewOn()) body = 'New message';
 
   // A single stable id for THIS notification. The receiver's service worker
   // uses it as the notification tag so that if the backend delivers the same
@@ -1186,12 +1183,14 @@ function initPWA() {
     if (isAndroidDevice() && !isNexaNativeApp() && !isStandaloneApp()) {
       showPWAPopup();
     }
+    try { updateAppUpdateDot(); } catch (e) {}
   });
 
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
     window.deferredPrompt = null;
     dismissPWAPopup();
+    try { updateAppUpdateDot(); } catch (e) {}
     showNotifToast('🎉 Nexa Messenger was successfully installed!', 'success');
   });
 
@@ -1412,8 +1411,22 @@ function startUsersListener() {
     // The chat list is the real "ready" signal — the dashboard is only worth
     // revealing once the user list has actually arrived from Firestore.
     nexaBootStep('users');
+  }, err => {
+    console.error('Users listener error:', err);
+    // Never leave the list stuck on "Loading users…". Fall back to the cache
+    // and retry the listener (a first-load hiccup then self-heals instead of
+    // requiring the user to close and reopen the app).
+    _usersListenerRetry += 1;
+    if (_usersListenerRetry <= 3) {
+      if (usersListenerUnsub) { try { usersListenerUnsub(); } catch (e) {} usersListenerUnsub = null; }
+      setTimeout(() => { if (!usersListenerUnsub) startUsersListener(); }, 1500 * _usersListenerRetry);
+    } else {
+      renderUsers();
+    }
   });
 }
+let usersListenerUnsub = null;
+let _usersListenerRetry = 0;
 
 // Single shared presence listener — feeds userPresenceCache for the whole app
 // (online dots, chat-header last seen, voice-room invite list).
@@ -3296,7 +3309,7 @@ const NEXA_APP_VERSION = '1.0.0';
 // shows the update prompt on every app open. The reminder ONLY disappears once
 // the user taps "Update now" (recorded in localStorage); tapping "Later" just
 // closes it for that session and it comes back next time.
-const NEXA_LATEST_APP_VERSION = '1.1.0';
+const NEXA_LATEST_APP_VERSION = '1.2.0';
 
 function _verNum(v) { return String(v || '0').split('.').map(n => parseInt(n, 10) || 0); }
 function _cmpVersion(a, b) {
@@ -3339,17 +3352,41 @@ function isAppUpdatePending() {
     return _cmpVersion(resolved, NEXA_LATEST_APP_VERSION) < 0;
   } catch (e) { return false; }
 }
+function _pwaInstallAvailable() {
+  return isAndroidDevice() && !isNexaNativeApp() && !isStandaloneApp() && !!window.deferredPrompt;
+}
 function updateAppUpdateDot() {
   const show = isAppUpdatePending();
   ['settingsTabDotDesktop', 'settingsTabDotMobile'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = show ? 'block' : 'none';
   });
+  // Make the Settings install/update entry points impossible to miss whenever
+  // there is something to do: a newer APK (native) or an installable app (web).
+  const highlight = show || _pwaInstallAvailable();
+  ['installAppDot', 'installAppBtnDot'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = highlight ? 'block' : 'none';
+  });
+  const row = document.getElementById('installAppRow');
+  if (row) row.classList.toggle('settings-row-highlight', highlight);
+  const sub = document.getElementById('installAppSub');
+  if (sub) sub.textContent = show ? 'Update available — tap to update' : 'Get the Android app';
+  const btn = document.getElementById('installAppBtn');
+  if (btn) btn.classList.toggle('settings-action-btn-highlight', highlight);
 }
 function updateAppNow() {
   // The ONLY action that clears the reminder — records the version as actioned.
   try { localStorage.setItem(_updateUserKey('update_resolved'), NEXA_LATEST_APP_VERSION); } catch (e) {}
-  window.open(NEXA_APP_INSTALL_URL, '_blank', 'noopener');
+  // Inside the APK, update IN PLACE: the native shell downloads the new build
+  // and hands it to the system installer, so it installs straight over the old
+  // one. No uninstall, no "app not installed" dance. On the web we can only
+  // send the user to the download page.
+  if (isNexaNativeApp() && window.NexaAndroid && typeof window.NexaAndroid.installUpdate === 'function') {
+    try { window.NexaAndroid.installUpdate(); } catch (e) {}
+  } else {
+    window.open(NEXA_APP_INSTALL_URL, '_blank', 'noopener');
+  }
   closeAppUpdateModal();
   updateAppUpdateDot();
 }
@@ -3363,10 +3400,11 @@ function closeAppUpdateModal() {
   if (modal) { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
 }
 function checkAppUpdate() {
-  // The update prompt is for the Android APK only. On the plain web / desktop
-  // there is nothing to install — never nudge those users.
-  if (!isNexaNativeApp()) return;
+  // Keep the Settings install/update highlight in sync everywhere.
   updateAppUpdateDot();
+  // The update PROMPT is for the Android APK only. On the plain web / desktop
+  // there is nothing to install — never nudge those users with a modal.
+  if (!isNexaNativeApp()) return;
   if (!isAppUpdatePending()) return;
   setTimeout(() => {
     const ver = document.getElementById('appUpdateVersion');
@@ -3388,6 +3426,12 @@ const NEXA_LEGAL_PAGES = {
 };
 
 function openInstallAppPage() {
+  // On the native app with a pending update, update IN PLACE (download + system
+  // installer) instead of sending the user to the download page — no uninstall.
+  if (isNexaNativeApp() && isAppUpdatePending() &&
+      window.NexaAndroid && typeof window.NexaAndroid.installUpdate === 'function') {
+    try { window.NexaAndroid.installUpdate(); return; } catch (e) {}
+  }
   window.open(NEXA_APP_INSTALL_URL, '_blank', 'noopener');
 }
 
@@ -7780,14 +7824,6 @@ async function startCall(type) {
     });
 
     incomingCallData = { id: callDocId };
-
-    // Send FCM push for incoming call
-    sendPushNotification(
-      `📞 Incoming ${type === 'video' ? 'Video' : 'Voice'} Call`,
-      `${document.getElementById("myName")?.textContent || "Someone"} is calling you`,
-      selectedUser.uid,
-      { isCall: "true", callType: type }
-    );
 
     // Listen for call status changes (answer / decline)
     listenCallStatus(callDocId);
