@@ -992,6 +992,35 @@ function notifyNativeUser(uid) {
   } catch (e) {}
 }
 
+// Fire a test push to THIS account's registered devices. Lets the user verify
+// delivery on one device, and tells us whether the account even has a token
+// registered (the usual root cause of "no notifications").
+async function sendTestPush() {
+  if (!currentUser) return;
+  const row = document.getElementById('testPushRow');
+  try {
+    if (row) row.style.opacity = '0.5';
+    const res = await fetch(`${BACKEND_URL}/api/test-push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: currentUser.uid })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.success) {
+      showNotifToast(data.message || 'No registered devices for this account — reopen the app and allow notifications.', 'error');
+    } else if (data.successCount > 0) {
+      showNotifToast(`\u2705 Test sent to ${data.successCount} device(s). Background or close the app to see it.`, 'success');
+    } else {
+      showNotifToast('Test push reached 0 devices. Reinstall the app and allow notifications.', 'error');
+    }
+  } catch (e) {
+    showNotifToast('Test push error: ' + e.message, 'error');
+  } finally {
+    if (row) row.style.opacity = '';
+  }
+}
+window.sendTestPush = sendTestPush;
+
 // Notification tap deep-link: the native service stores the sender uid; we hand
 // it back to the web app when its data is ready. Defined globally so the native
 // side can also call it via evaluateJavascript for an already-running app.
@@ -1041,7 +1070,11 @@ async function initFCM(uid) {
         await fetch(`${BACKEND_URL}/api/save-token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uid, token })
+          body: JSON.stringify({
+            uid, token,
+            platform: isNexaNativeApp() ? 'android-apk' : 'web',
+            ua: navigator.userAgent
+          })
         }).catch(e => console.warn('Failed to save FCM token via backend:', e));
         console.log('🔔 FCM token saved:', token);
       }
