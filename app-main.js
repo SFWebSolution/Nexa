@@ -12897,14 +12897,6 @@ async function sendChannelPostWithExtras(extras) {
     await db.collection('channels').doc(selectedChannel.id).update({
       lastPostTime: Date.now()
     });
-    // Notify subscribers (one bulk call).
-    const channelRecipients = (selectedChannel.subscriberUids || []).filter(u => u && u !== currentUser.uid);
-    if (channelRecipients.length) {
-      const postSnippet = extras.text || (extras.image ? '📷 Photo' : extras.video ? '🎥 Video' : extras.audio ? '🎤 Voice note' : 'New post');
-      sendPushNotification(`${authorName} · ${selectedChannel.name || 'Channel'}`, postSnippet, null, {
-        isGroup: true, recipientUids: channelRecipients, chatUid: selectedChannel.id
-      });
-    }
   } catch (err) {
     showNotifToast('Failed to broadcast: ' + err.message, 'error');
   }
@@ -13170,11 +13162,12 @@ function closeChannelComments() {
   if (drawer) drawer.classList.remove('open');
 }
 
-function prepareChannelCommentReply(commentId, authorName, commentText) {
+function prepareChannelCommentReply(commentId, authorName, commentText, authorUid) {
   pendingChannelCommentReply = {
     commentId,
     authorName,
     commentText,
+    authorUid,
     postId: activeCommentPostId
   };
   const bar = document.getElementById('channelCommentReplyBar');
@@ -13246,7 +13239,7 @@ function renderChannelComments(comments) {
       const safeAuthor = (c.authorName || 'User').replace(/'/g, "\\'");
       const rawText = (c.text || '').replace(/\r?\n/g, ' ').replace(/'/g, "\\'").replace(/"/g, '&quot;');
       replyBtn = `
-        <button class="comm-icon-btn-xs" style="color: var(--primary);" onclick="prepareChannelCommentReply('${c.id}', '${safeAuthor}', '${rawText}')" title="Reply to Channel (WhatsApp style)">
+        <button class="comm-icon-btn-xs" style="color: var(--primary);" onclick="prepareChannelCommentReply('${c.id}', '${safeAuthor}', '${rawText}', '${c.authorUid}')" title="Reply to Channel (WhatsApp style)">
           <i data-lucide="corner-up-left" style="width: 13px; height: 13px;"></i>
           <span style="font-size: 11px; margin-left: 3px; font-weight: 600;">Reply to Channel</span>
         </button>
@@ -13334,6 +13327,16 @@ async function submitChannelComment() {
 
     // If admin replied to a follower's comment, broadcast to the main channel feed (WhatsApp style)
     if (replyContext && isAdmin) {
+      // Channel posts do NOT notify subscribers; only the person being replied
+      // to is told (that is the one channel notification we send).
+      if (replyContext.authorUid && replyContext.authorUid !== currentUser.uid) {
+        sendPushNotification(
+          `${selectedChannel.name || 'Channel'} · Reply`,
+          text,
+          replyContext.authorUid,
+          { chatUid: selectedChannel.id }
+        );
+      }
       await sendChannelPostWithExtras({
         text,
         postReplyToComment: {
