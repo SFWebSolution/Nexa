@@ -1270,6 +1270,17 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   to the cache and retries up to 3 times (1.5s/3s/4.5s), and resets its retry
   counter on every successful snapshot. A first-load hiccup no longer leaves the
   list stuck on "Loading users…". Do NOT remove the retry.
+- **`loadProfile()` retries until the user doc converges (partial-doc race).**
+  On a fresh sign-in `initFCM()`'s merge-write of `{fcmToken, fcmTokens}` races
+  `loadProfile()`'s read, and Firestore's LOCAL view can transiently resolve to
+  just the written keys — even for an explicit `{source:'server'}` get — then
+  converge a moment later. `loadProfile()` then saw no `displayName` and wrongly
+  pushed an existing user through the "profile setup" gate. It now retries a
+  server-source read up to 6× (250ms apart) until the doc has a `displayName`
+  before deciding setup is required. The server doc is never actually partial
+  (REST poller confirmed 16/16 fields throughout) — this is purely a client
+  local-view race, so a single forced read is NOT enough. Do NOT revert to one
+  get().
 - **Splash safety net is 8s** (was 12s) — long enough for a slow cold start,
   short enough that a stuck init can't hide the UI.
 - **Notification history is LOCAL, not Firestore.** `recordNotificationHistory`
