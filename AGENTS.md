@@ -415,19 +415,30 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - `sendPushNotification(title, body, target, extraData)` generates `notifId` and sends it as `data.messageId` to the backend; pass `extraData.messageId` to reuse an existing id. Calls use the fixed tag `nexa-incoming-call`.
 - Foreground handler (`messaging.onMessage` in `initFCM`) shows an in-app toast always, but shows a SYSTEM notification only when the relevant chat is NOT already open & focused (`sameChatOpen` guard on `selectedUser.uid` + `visibilityState` + `document.hasFocus()`), avoiding toast+system duplicates while reading. It reuses the same stable `tag` as the SW.
 
-## Push architecture (web + APK) — do NOT re-add a client-side send
-- **Message pushes are SERVER-SIDE.** The web app does NOT call
-  `sendPushNotification` for a normal 1:1 message (see `sendMessage()`'s note).
-  The push is sent by the backend (`SFWebSolution/nexa-backend`, `server.js`,
-  deployed on Render at `https://nexa-backend-e6pq.onrender.com`), which runs
+## Push architecture (web + APK) — CLIENT-TRIGGERED, listener as fallback
+- **Every 1:1 send pushes from the SENDER.** `notifyPeerOfMessage(msg)`
+  (`app-main.js`, right after `sendPushNotification`) POSTs the notification to
+  the backend for text, media, voice note and poll sends. This is deliberate:
+  it works even when the backend's Firestore listener is asleep (the HTTP call
+  also WAKES a slept Render instance) and it costs **zero Firestore writes**, so
+  notifications survive hitting the free-tier write limit. Do NOT remove these
+  calls or you re-break push whenever the listener is down.
+- **`baseMsg()` stamps a stable `messageId`** (`"m_"+Date.now()+"_"+random`) on
+  every 1:1 message. It is what lets the two paths coexist without duplicates.
+- **The backend listener is a FALLBACK.** `SFWebSolution/nexa-backend`
+  (`server.js`, Render `https://nexa-backend-e6pq.onrender.com`) runs
   `startAutoPushListener()` — a Firestore `chats.where("read","==",false)`
-  listener that, on each newly-added unread doc, reads the recipient's
-  `users/{uid}.fcmTokens` and sends a data-only FCM multicast
-  (`sendEachForMulticast`), then writes `_pushed:true` on the doc.
-  `sendPushNotification()` in `app-main.js` is therefore only used for CALLS.
-  Re-adding a client-side message push = every message notified twice.
-- **`_pushed` is the backend's own flag.** Never write it from the web client;
-  the listener skips docs that already have it.
+  listener that pushes any newly-added unread doc. It now **skips docs that
+  carry a `messageId`** (the sender already pushed those), so the listener only
+  covers legacy/other writers; that skip also saves the `_pushed` write. The
+  listener writes `_pushed:true` on docs IT sends — never write `_pushed`
+  from the web client.
+- **Keep-alive:** `server.js` self-pings `/api/health` every 10 min via
+  `RENDER_EXTERNAL_URL`/`SELF_URL` so a free Render instance doesn't spin down
+  and kill the listener.
+- **`sendPushNotification()` is also used for reactions and calls** (unchanged).
+  It honours `notificationSettings` and strips the body when
+  `hideNotifPreviewOn()`.
 - **Native APK (`SFWebSolution/nexa-andriod`) token registration:** the WebView
   shell exposes `window.NexaAndroid.setUser(uid,name)`; the web calls
   `notifyNativeUser(uid)` on sign-in, which makes `MainActivity.registerFcmToken()`
@@ -445,10 +456,11 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   web deploy alone does not change the APK.
 - **Debugging "push not working":** `GET /api/health` → `{"firebase":true}`
   confirms Admin SDK; `POST /api/send-notification {targetUid,title,body}`
-  returns `successCount/failureCount`. `failureCount:1` with a dummy token is
-  expected. Then check `users/{uid}.fcmTokens` — if empty, the device never
+  returns `successCount/failureCount` (`failureCount:1` with a dummy token is
+  expected). Then check `users/{uid}.fcmTokens` — if empty, the device never
   registered (the bug above); if present, check the notification permission
-  (`POST_NOTIFICATIONS`) and the native channel.
+  (`POST_NOTIFICATIONS`) and the native channel. For the APK, `adb logcat -s
+  NexaFCM` shows `save-token HTTP 200` when registration lands.
 
 ## Notification History (app-main.js + dashboard.html/dashboard.css)
 - Stored per-user in Firestore `notifHistory/{uid}` as `{items:[], updatedAt, lastViewedAt}` (`recordNotificationHistory`, capped at `NEXA_NOTIF_HISTORY_MAX`=50 items).
