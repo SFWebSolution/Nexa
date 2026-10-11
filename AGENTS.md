@@ -419,10 +419,16 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Group message** — `sendGroupMessageWithExtras` pushes to the other
   `selectedGroup.memberUids` via **`POST /api/send-notification-bulk`**
   (`{targetUids:[...]}`), category `groups`.
-- **Channel post** — `sendChannelPostWithExtras` pushes to
-  `selectedChannel.subscriberUids` (bulk), category `groups`.
+- **Channel admin reply** — the ONLY channel notification. When an admin
+  replies to a comment, the comment's author is notified directly
+  (`prepareChannelCommentReply` carries `authorUid`). A normal channel post
+  notifies NOBODY — do not re-add a subscriber fan-out to
+  `sendChannelPostWithExtras`.
 - **Story post** — `shareStatus` pushes to accepted connections only (only they
   can see stories), taken from `myConnections` — bulk, category `stories`.
+- **Story reply / question answer, group invite, channel invite, forward to a
+  1:1 contact** — all `chats` docs; each stamps a `messageId` and pushes from
+  the sender, same as a normal message.
 - **Not notified:** nothing else. There is no push for profile changes, etc.
 - `sendPushNotification(title, body, targetUid, extraData)` takes EITHER a
   single `targetUid` OR `extraData.recipientUids` (bulk). Category gates:
@@ -432,7 +438,14 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `save-token`) so a fan-out is not one Firestore read per recipient; it caps at
   500 uids. Recipients always exclude the sender.
 
-## Push architecture (web + APK) — CLIENT-TRIGGERED, listener as fallback
+## Push architecture (web + APK) — CLIENT-TRIGGERED (listener OFF by default)
+- **The backend's global `chats` auto-push listener is DISABLED by default**
+  (`nexa-backend` `server.js`; re-enable with `ENABLE_CHATS_PUSH_LISTENER=true`).
+  Every 1:1 path pushes from the sender, so it is redundant — and it was the
+  single biggest Firestore READ source (an unbounded `chats.where(read==false)`
+  live query re-evaluated on every message change). Do not turn it back on
+  without a reason; it re-introduces both the duplicate-notification risk and
+  the read load.
 - **Every 1:1 send pushes from the SENDER.** `notifyPeerOfMessage(msg)`
   (`app-main.js`, right after `sendPushNotification`) POSTs the notification to
   the backend for text, media, voice note and poll sends. This is deliberate:
