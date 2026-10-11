@@ -6252,9 +6252,9 @@ async function sendMessage() {
     const idx = _msgsA.findIndex(m => m.id === tempMsgObj.id);
     if (idx > -1) _msgsA.splice(idx, 1);
 
-    // NOTE: the push for a 1:1 text message is sent by the backend's inline
-    // `chats` listener (nexa-backend `startAutoPushListener`). Sending one here
-    // too would duplicate every message (2 notifications), so we don't.
+    // The push for this message was sent above by notifyPeerOfMessage(). The
+    // backend's `chats` listener SKIPS docs that carry a messageId, so it will
+    // not send a second one.
     if (isSelfChat()) {
       // Self-chat: mark our own message read immediately (single ticks → double).
       try {
