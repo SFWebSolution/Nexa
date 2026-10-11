@@ -1819,7 +1819,7 @@ tbody tr .actions { cursor: default; }
       <div>
         <div class="section-title">👤 Users</div>
         <div class="section-subtitle" id="userCount">0 users total</div>
-        <div class="data-note"><span class="dot">●</span> Totals update live; message &amp; story counts recompute every 60s.</div>
+        <div class="data-note"><span class="dot">●</span> Totals update live; message &amp; story counts recompute every 60s. <span id="backendStatus"></span></div>
       </div>
     </div>
 
@@ -1978,16 +1978,29 @@ let currentUser = null;
 let currentFilter = "all";
 let isDashboardInitialized = false;
 let userListenerUnsubscribe = null;
+let adminManualLogin = false; // true while handleLogin() is signing in
 
 // AUTO-LOGIN LISTENER FOR ADMIN
+// Firebase auth (LOCAL persistence) outlives the tab, but the admin secret
+// lives in sessionStorage, which the browser clears when the tab closes. So a
+// restored session can arrive with NO secret — reveal the dashboard only when
+// the secret is actually present, otherwise sign out and fall back to the login
+// form (which asks for it). Without this the dashboard opens and every action
+// fails with "Admin secret not set".
 auth.onAuthStateChanged(user => {
-  if (user && !isDashboardInitialized) {
-    currentUser = user;
-    document.getElementById("loginContainer").classList.add("hidden");
-    document.getElementById("dashboard").classList.remove("hidden");
-    initDashboard();
-    log("Admin session restored via auto-login", "success");
+  // handleLogin() runs its own sign-in flow; don't double-init or mislabel it.
+  if (adminManualLogin) return;
+  if (!user || isDashboardInitialized) return;
+  if (!ADMIN_SECRET) {
+    auth.signOut();
+    log("Admin session restored but the secret expired — please log in again.", "warning");
+    return;
   }
+  currentUser = user;
+  document.getElementById("loginContainer").classList.add("hidden");
+  document.getElementById("dashboard").classList.remove("hidden");
+  initDashboard();
+  log("Admin session restored via auto-login", "success");
 });
 
 /* =====================================================
@@ -2012,6 +2025,7 @@ function handleLogin(e) {
   // when the tab closes). It is never written to the repo or page source.
   ADMIN_SECRET = secret;
   sessionStorage.setItem("nexa_admin_secret", secret);
+  adminManualLogin = true;
 
   btn.disabled = true;
   btn.textContent = "Signing in...";
@@ -2025,6 +2039,10 @@ function handleLogin(e) {
   }).catch(err => {
     console.error(err);
     alert("❌ Authentication Error: " + err.message);
+    // Don't keep a secret from a failed sign-in around.
+    adminManualLogin = false;
+    ADMIN_SECRET = "";
+    sessionStorage.removeItem("nexa_admin_secret");
     btn.disabled = false;
     btn.textContent = "Login";
   });
@@ -2295,14 +2313,14 @@ async function loadStoriesAnalytics() {
     if (el) el.textContent = activeStoriesCount;
     cachedStoryScores = storyScores;
     weeklyStoriesCount = weeklyStoryCount;
-    // Referrals received this week (from users.createdAt + referralCount data
-    // we already have in memory — no extra reads).
-    let refWeek = 0;
-    users.forEach(u => {
-      const rc = u.referralCount || 0;
-      if (rc > 0 && u.createdAt && u.createdAt >= weekStart) refWeek += rc;
-    });
-    weeklyReferralsCount = refWeek;
+    // Users invited this week = sign-ups in the last 7 days that carry a
+    // `referredBy` (the invite link was used). Counting each inviter's
+    // referralCount instead would credit their LIFETIME referrals to this week
+    // whenever the inviter themselves joined recently, and would miss
+    // referrals earned this week by inviters who joined long ago.
+    weeklyReferralsCount = users.filter(u =>
+      u.createdAt && u.createdAt >= weekStart && u.referredBy
+    ).length;
   } catch (e) {
     console.error("Stories analytics error:", e);
   } finally {
@@ -2325,10 +2343,15 @@ async function loadWeeklyActivity() {
     if (!data.success) throw new Error(data.error || "request failed");
     if (data.messages) cachedMsgScores = data.messages;
     if (data.stories) cachedStoryScores = data.stories;
+    const el = document.getElementById("backendStatus");
+    if (el) el.textContent = "";
   } catch (e) {
     // Backend unreachable / not deployed: keep whatever local story scores we
-    // have so the list still renders (ranked on stories + referrals).
+    // have so the list still renders (ranked on stories + referrals), but make
+    // the gap visible instead of silently showing an inaccurate ranking.
     console.warn("Weekly activity fetch failed — ranking on stories + referrals only:", e.message);
+    const el = document.getElementById("backendStatus");
+    if (el) el.innerHTML = '&nbsp;⚠️ <strong>Message counts unavailable</strong> — backend not reachable (' + escapeHtml(e.message) + '). Champions are ranked on stories &amp; referrals only.';
   } finally {
     weeklyActivityLoading = false;
   }
@@ -2486,7 +2509,7 @@ function renderChampions() {
           <div class="champ-stats">
             <span title="Messages sent this week">💬 ${u.msgs}</span>
             <span title="Stories posted this week">⭕ ${u.stories}</span>
-            <span title="People referred this week">🔗 ${u.referrals}</span>
+            <span title="People referred (all time)">🔗 ${u.referrals}</span>
           </div>
           <div class="champ-bar"><div class="champ-bar-fill" style="width:${pct}%"></div></div>
         </div>
@@ -2616,8 +2639,7 @@ function renderAnalytics() {
   let weeklyActive = 0;
   let onlineNow = 0;
   users.forEach(u => {
-    const p = presenceData[u.uid] || {};
-    const lastSeen = p.lastSeen || p.last_seen || u.lastSeen || u.last_seen || 0;
+    const lastSeen = userLastSeen(u);
     const isActive = lastSeen >= weekStart || u.createdAt >= weekStart
       || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
     if (isActive && !u.banned) weeklyActive++;
