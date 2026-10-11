@@ -415,6 +415,41 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - `sendPushNotification(title, body, target, extraData)` generates `notifId` and sends it as `data.messageId` to the backend; pass `extraData.messageId` to reuse an existing id. Calls use the fixed tag `nexa-incoming-call`.
 - Foreground handler (`messaging.onMessage` in `initFCM`) shows an in-app toast always, but shows a SYSTEM notification only when the relevant chat is NOT already open & focused (`sameChatOpen` guard on `selectedUser.uid` + `visibilityState` + `document.hasFocus()`), avoiding toast+system duplicates while reading. It reuses the same stable `tag` as the SW.
 
+## Push architecture (web + APK) — do NOT re-add a client-side send
+- **Message pushes are SERVER-SIDE.** The web app does NOT call
+  `sendPushNotification` for a normal 1:1 message (see `sendMessage()`'s note).
+  The push is sent by the backend (`SFWebSolution/nexa-backend`, `server.js`,
+  deployed on Render at `https://nexa-backend-e6pq.onrender.com`), which runs
+  `startAutoPushListener()` — a Firestore `chats.where("read","==",false)`
+  listener that, on each newly-added unread doc, reads the recipient's
+  `users/{uid}.fcmTokens` and sends a data-only FCM multicast
+  (`sendEachForMulticast`), then writes `_pushed:true` on the doc.
+  `sendPushNotification()` in `app-main.js` is therefore only used for CALLS.
+  Re-adding a client-side message push = every message notified twice.
+- **`_pushed` is the backend's own flag.** Never write it from the web client;
+  the listener skips docs that already have it.
+- **Native APK (`SFWebSolution/nexa-andriod`) token registration:** the WebView
+  shell exposes `window.NexaAndroid.setUser(uid,name)`; the web calls
+  `notifyNativeUser(uid)` on sign-in, which makes `MainActivity.registerFcmToken()`
+  POST `{uid,token}` to `/api/save-token`. `registerFcmToken()` MUST always POST
+  — do NOT re-add a `token.equals(saved) return` guard. A token can be
+  rotated/invalidated server-side (the backend prunes
+  `registration-token-not-registered` tokens on every send) or the user doc can
+  be replaced while the device keeps the SAME token value; the guard then skipped
+  the POST forever and the device silently stopped receiving pushes.
+  `/api/save-token` is idempotent (`fcmTokens` uses `arrayUnion`), so re-posting
+  on every launch is safe. `google-services.json` is a CI secret
+  (`GOOGLE_SERVICES_JSON_B64`); the build applies the Google Services plugin only
+  when that file exists. Pushing to `main` triggers `build-apk.yml` → a fresh
+  `latest` release APK. **Native push fixes require a rebuild + reinstall** — a
+  web deploy alone does not change the APK.
+- **Debugging "push not working":** `GET /api/health` → `{"firebase":true}`
+  confirms Admin SDK; `POST /api/send-notification {targetUid,title,body}`
+  returns `successCount/failureCount`. `failureCount:1` with a dummy token is
+  expected. Then check `users/{uid}.fcmTokens` — if empty, the device never
+  registered (the bug above); if present, check the notification permission
+  (`POST_NOTIFICATIONS`) and the native channel.
+
 ## Notification History (app-main.js + dashboard.html/dashboard.css)
 - Stored per-user in Firestore `notifHistory/{uid}` as `{items:[], updatedAt, lastViewedAt}` (`recordNotificationHistory`, capped at `NEXA_NOTIF_HISTORY_MAX`=50 items).
 - Entry lives ONLY in **Settings** (row uses `.notif-item-count` badge `#notifHistoryCount` + `openNotificationHistory()`), NOT in Profile — do NOT re-add a Profile button.
