@@ -234,11 +234,24 @@ async function loadProfile() {
   if (!currentUser) return;
 
   try {
-    const doc = await db.collection("users").doc(currentUser.uid).get();
-    const data = doc.data();
+    let doc = await db.collection("users").doc(currentUser.uid).get();
+    let data = doc.data();
+
+    // On a fresh sign-in the FCM-token merge write races this read: Firestore's
+    // local view can resolve to just the written keys ({fcmToken,fcmTokens}),
+    // even for a server-source get, then converges a moment later. Without this
+    // retry an existing user is wrongly pushed through the "profile setup" gate.
+    const named = (d) => !!(d && d.displayName && d.displayName.trim() && d.displayName !== "User");
+    for (let i = 0; i < 6 && !named(data); i++) {
+      await new Promise(r => setTimeout(r, 250));
+      try {
+        const sdoc = await db.collection("users").doc(currentUser.uid).get({ source: "server" });
+        if (named(sdoc.data())) { doc = sdoc; data = sdoc.data(); }
+      } catch (e) {}
+    }
 
     let displayName = null;
-    if (data?.displayName && data.displayName.trim() && data.displayName !== "User") {
+    if (named(data)) {
       displayName = data.displayName;
     } else if (currentUser.displayName && currentUser.displayName.trim()) {
       displayName = currentUser.displayName;
@@ -1495,6 +1508,10 @@ function renderUsers() {
   const loading = list.length === 0 && !(allUsersData.length > 0 && _connectionsReady());
   renderUserList(list, loading);
 }
+
+// Tracks the uid order of the last painted user list so a re-render can tell
+// whether the visible order actually changed (currently informational only).
+let lastRenderedUserOrder = "";
 
 function renderUserList(list, loading) {
   const box = document.getElementById("users");
