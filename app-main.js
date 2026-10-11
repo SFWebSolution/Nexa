@@ -284,13 +284,14 @@ async function loadProfile() {
 let notificationSettings = {
   all: true,
   messages: true,
+  groups: true,
   stories: true,
   calls: true,
   reactions: true
 };
 
 // The individual categories the master switch drives (everything except `all`).
-const NEXA_NOTIF_TYPES = ["messages", "stories", "calls", "reactions"];
+const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "calls", "reactions"];
 
 // The master reads "on" only when EVERY category is on. This stays honest no
 // matter how the user got there — flipped the master, or flipped each type.
@@ -919,15 +920,20 @@ window.updateNotificationHistoryBadge = async function () {
 };
 
 function sendPushNotification(title, body, targetUidOverride = null, extraData = {}) {
+  const recipientUids = Array.isArray(extraData.recipientUids) ? extraData.recipientUids : null;
   const targetUid = targetUidOverride || (selectedUser ? selectedUser.uid : null);
-  if (!targetUid) return;
+  if (!recipientUids && !targetUid) return;
 
   const isCall = title.includes("Call") || extraData.isCall === "true";
   const isReaction = title.toLowerCase().includes("react");
+  const isGroup = extraData.isGroup === true;
+  const isStory = extraData.isStory === true;
 
   if (isCall && !notificationSettings.calls) return;
   if (isReaction && !notificationSettings.reactions) return;
-  if (!isCall && !isReaction && !notificationSettings.messages) return;
+  if (isGroup && !notificationSettings.groups) return;
+  if (isStory && !notificationSettings.stories) return;
+  if (!isCall && !isReaction && !isGroup && !isStory && !notificationSettings.messages) return;
 
   // Lock-screen privacy: strip the message text from the push body.
   if (!isCall && hideNotifPreviewOn()) body = 'New message';
@@ -938,22 +944,28 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   // COLLAPSE into one instead of stacking (2-3 per message).
   const notifId = extraData.messageId || extraData.msgId || ('n_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
 
-  fetch(`${BACKEND_URL}/api/send-notification`, {
+  const data = {
+    senderUid: currentUser ? currentUser.uid : null,
+    timestamp: String(Date.now()),
+    isCall: isCall ? "true" : "false",
+    messageId: notifId,
+    ...extraData
+  };
+  // The fan-out list is routing info, not notification data.
+  delete data.recipientUids;
+
+  const payload = { title, body, icon: '/icon-192.png', data };
+  // Group / channel / story fan out to many recipients in ONE request.
+  const url = recipientUids
+    ? `${BACKEND_URL}/api/send-notification-bulk`
+    : `${BACKEND_URL}/api/send-notification`;
+  if (recipientUids) payload.targetUids = recipientUids;
+  else payload.targetUid = targetUid;
+
+  fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      targetUid: targetUid,
-      title: title,
-      body: body,
-      icon: '/icon-192.png',
-      data: {
-        senderUid: currentUser ? currentUser.uid : null,
-        timestamp: String(Date.now()),
-        isCall: isCall ? "true" : "false",
-        messageId: notifId,
-        ...extraData
-      }
-    })
+    body: JSON.stringify(payload)
   }).then(res => {
     if (res.ok) console.log('✅ Instant push notification dispatched');
   }).catch(err => console.warn('Push notification error:', err.message));
@@ -10354,6 +10366,16 @@ async function shareStatus() {
 
     setStoryUploadUI(true, 96, "Posting…");
     await db.collection("status").add(statusData);
+    // Only accepted connections can see stories, so notify exactly those.
+    const storyViewers = Object.values(myConnections || {})
+      .filter(c => c && c.status === 'accepted' && c.otherUid)
+      .map(c => c.otherUid);
+    if (storyViewers.length) {
+      const storyAuthor = (document.getElementById('myName')?.textContent || currentUser.displayName || 'Someone').trim();
+      sendPushNotification(storyAuthor, 'posted a new story', null, {
+        isStory: true, recipientUids: storyViewers, chatUid: currentUser.uid
+      });
+    }
     setStoryUploadUI(true, 100, "Posted!");
     // Let the ring visibly land on 100% before the composer closes.
     await new Promise(r => setTimeout(r, 350));
@@ -11407,6 +11429,13 @@ async function sendGroupMessageWithExtras(extras) {
       lastSenderName: senderName,
       updatedAt: Date.now()
     });
+    // Notify the other members (one bulk call, quota-free like 1:1 pushes).
+    const groupRecipients = (selectedGroup.memberUids || []).filter(u => u && u !== currentUser.uid);
+    if (groupRecipients.length) {
+      sendPushNotification(`${senderName} · ${selectedGroup.name || 'Group'}`, snippet, null, {
+        isGroup: true, recipientUids: groupRecipients, chatUid: selectedGroup.id
+      });
+    }
   } catch (err) {
     showNotifToast('Failed to send: ' + err.message, 'error');
     console.error(err);
@@ -12868,6 +12897,14 @@ async function sendChannelPostWithExtras(extras) {
     await db.collection('channels').doc(selectedChannel.id).update({
       lastPostTime: Date.now()
     });
+    // Notify subscribers (one bulk call).
+    const channelRecipients = (selectedChannel.subscriberUids || []).filter(u => u && u !== currentUser.uid);
+    if (channelRecipients.length) {
+      const postSnippet = extras.text || (extras.image ? '📷 Photo' : extras.video ? '🎥 Video' : extras.audio ? '🎤 Voice note' : 'New post');
+      sendPushNotification(`${authorName} · ${selectedChannel.name || 'Channel'}`, postSnippet, null, {
+        isGroup: true, recipientUids: channelRecipients, chatUid: selectedChannel.id
+      });
+    }
   } catch (err) {
     showNotifToast('Failed to broadcast: ' + err.message, 'error');
   }
