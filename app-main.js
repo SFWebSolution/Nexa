@@ -6628,7 +6628,7 @@ async function sendVoice() {
           const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
           if (idx > -1) { _msgsA.splice(idx, 1); renderMessageList(); }
         }
-        // Push handled by the backend chats listener (no client duplicate).
+        // Pushed above by notifyPeerOfMessage (sender-side).
       }
     }
   } catch (e) {
@@ -9134,10 +9134,11 @@ async function answerStoryQuestion(story) {
   if (answer === null || !answer.trim()) return;
   const reply = answer.trim();
   try {
-    await db.collection("chats").add({
+    const storyAnswerMsg = {
       from: currentUser.uid,
       to: story.uid,
       text: "❓ " + question + "\n💬 " + reply,
+      messageId: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       storyReplyId: story.id || null,
       storyReplyUid: story.uid,
       storyQuestionId: qId,
@@ -9149,10 +9150,11 @@ async function answerStoryQuestion(story) {
       createdAt: Date.now(),
       read: false,
       status: "sent"
-    });
+    };
+    await db.collection("chats").add(storyAnswerMsg);
+    notifyPeerOfMessage(storyAnswerMsg);
     showNotifToast("✓ Answer sent", "success");
-    // The answer is a chats doc; the backend chats listener pushes it. The old
-    // client call targeted a legacy oneSignalPlayerId (usually null).
+    // Pushed above by notifyPeerOfMessage (sender-side; no backend listener).
 
   } catch (err) {
     showNotifToast("Failed to send answer: " + err.message, "error");
@@ -9339,10 +9341,11 @@ async function sendStoryReply() {
   const currentStory = storyViewerData[storyViewerIndex] || {};
 
   try {
-    await db.collection("chats").add({
+    const storyReplyMsg = {
       from: currentUser.uid,
       to: viewingStoryUid,
       text: text,
+      messageId: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       storyReplyId: currentStory.id || null,
       storyReplyUid: viewingStoryUid,
       storyUrl: currentStory.url || null,
@@ -9352,10 +9355,12 @@ async function sendStoryReply() {
       createdAt: Date.now(),
       read: false,
       status: "sent"
-    });
+    };
+    await db.collection("chats").add(storyReplyMsg);
+    notifyPeerOfMessage(storyReplyMsg);
 
     showNotifToast("✓ Reply sent", "success");
-    // Push handled by the backend chats listener (no client duplicate).
+    // Pushed above by notifyPeerOfMessage (sender-side).
     document.getElementById("storyReplyInput").value = "";
   } catch (err) {
     showNotifToast("Failed to send reply", "error");
@@ -12343,14 +12348,17 @@ async function sendGroupInviteToChat(contactUid) {
     description: selectedGroup.description || `Join "${selectedGroup.name}" on Nexa`
   };
   try {
-    await db.collection('chats').add({
+    const groupInviteMsg = {
       from: currentUser.uid,
       to: contactUid,
       text: `🔗 ${me} invited you to join the group "${inv.name}"`,
+      messageId: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       invite: inv,
       createdAt: Date.now(),
       read: false
-    });
+    };
+    await db.collection('chats').add(groupInviteMsg);
+    notifyPeerOfMessage(groupInviteMsg);
     showNotifToast(`✓ Group invite sent`, 'success');
   } catch (err) {
     showNotifToast('Invite failed: ' + err.message, 'error');
@@ -12369,14 +12377,17 @@ async function sendChannelInviteToChat(contactUid) {
     description: selectedChannel.description || `Follow "${selectedChannel.name}" on Nexa`
   };
   try {
-    await db.collection('chats').add({
+    const channelInviteMsg = {
       from: currentUser.uid,
       to: contactUid,
       text: `📢 ${me} invited you to follow the channel "${inv.name}"`,
+      messageId: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       invite: inv,
       createdAt: Date.now(),
       read: false
-    });
+    };
+    await db.collection('chats').add(channelInviteMsg);
+    notifyPeerOfMessage(channelInviteMsg);
     showNotifToast(`✓ Channel invite sent`, 'success');
   } catch (err) {
     showNotifToast('Invite failed: ' + err.message, 'error');
@@ -14438,6 +14449,7 @@ async function executeForward() {
         const payload = {
           from: currentUser.uid,
           to: targetId,
+          messageId: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
           createdAt: Date.now(),
           read: false,
           forwarded: true,
@@ -14451,6 +14463,7 @@ async function executeForward() {
         if (msg.caption) payload.caption = msg.caption;
 
         await db.collection('chats').add(cleanPayload(payload));
+        notifyPeerOfMessage(payload);
       }
       successCount++;
     } catch (err) {
