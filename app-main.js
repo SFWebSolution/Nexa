@@ -960,6 +960,24 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
 }
 
 
+// Sender-side push for a 1:1 message. Sending it here (an HTTP call to the
+// backend) instead of relying ONLY on the backend's Firestore listener means a
+// notification still goes out when that listener is asleep (Render free tier
+// idles) and does not itself consume Firestore writes. The listener skips docs
+// that carry a messageId, so the two paths can never double-notify.
+function notifyPeerOfMessage(msg) {
+  if (!msg || !currentUser || !msg.to || msg.to === currentUser.uid) return;
+  const name = (document.getElementById('myName')?.textContent
+    || currentUser.displayName
+    || (currentUser.email ? currentUser.email.split('@')[0] : 'Someone')).trim();
+  // chatUid = the SENDER's uid so the recipient's native notification deep-links
+  // straight into this conversation on tap.
+  sendPushNotification(name, msgPreviewText(msg), msg.to, {
+    messageId: msg.messageId,
+    chatUid: currentUser.uid
+  });
+}
+
 const vapidKey = "BGD7zwejdkH_EnGAfFgi872tkBWDM8-k0It7Px7QzitJ_abkqyK8d1ZEfQFslGS4TY6JXY1mylpSIH5QNDfhCRI";
 
 // ── Native APK (WebView) bridge ───────────────────────────────────────────
@@ -6040,10 +6058,11 @@ async function sendMediaComposer() {
         await sendChannelPostWithExtras(extras);
         showNotifToast("✓ Broadcasted!", "success");
       } else {
-        await db.collection("chats").add(baseMsg(extras));
+        const outMsg = baseMsg(extras);
+        await db.collection("chats").add(outMsg);
+        notifyPeerOfMessage(outMsg);
         clearReply();
         showNotifToast("✓ Sent!", "success");
-        // Push handled by the backend chats listener (no client duplicate).
       }
     }
     closeMediaComposer();
@@ -6194,7 +6213,9 @@ async function sendMessage() {
   scrollMessagesToBottom();
 
   try {
-    await db.collection("chats").add(baseMsg(extras));
+    const outMsg = baseMsg(extras);
+    await db.collection("chats").add(outMsg);
+    notifyPeerOfMessage(outMsg);
     const idx = _msgsA.findIndex(m => m.id === tempMsgObj.id);
     if (idx > -1) _msgsA.splice(idx, 1);
 
@@ -6232,6 +6253,11 @@ function baseMsg(extras = {}) {
     edited: false,
     read: false,
     createdAt: Date.now(),
+    // Stable per-message id. The recipient's push is sent directly by the
+    // sender (see notifyPeerOfMessage) so notifications no longer depend on the
+    // backend's Firestore listener staying awake; this id lets that listener
+    // SKIP messages the sender already pushed, so we never double-notify.
+    messageId: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
     isViewOnce: (hasMedia && isViewOnceActive) ? true : false,
     viewOnceOpened: false,
     ...extras
@@ -6549,7 +6575,9 @@ async function sendVoice() {
         await sendChannelPostWithExtras({ audio: url, duration: dur, text: '\uD83C\uDFA4 Voice Broadcast' });
         showNotifToast("\u2713 Voice broadcast posted!", "success");
       } else if (selectedUser) {
-        await db.collection("chats").add(baseMsg({ audio: url, duration: dur }));
+        const outMsg = baseMsg({ audio: url, duration: dur });
+        await db.collection("chats").add(outMsg);
+        notifyPeerOfMessage(outMsg);
         // Replace the optimistic local-blob bubble with the stored one.
         if (tempMsg) {
           const idx = _msgsA.findIndex(m => m.id === tempMsg.id);
@@ -13979,9 +14007,10 @@ async function submitPoll() {
     await sendGroupMessageWithExtras(pollPayload);
     showNotifToast('✓ Poll created in group!', 'success');
   } else if (selectedUser) {
-    await db.collection("chats").add(baseMsg(pollPayload));
+    const outMsg = baseMsg(pollPayload);
+    await db.collection("chats").add(outMsg);
+    notifyPeerOfMessage(outMsg);
     showNotifToast('✓ Poll sent!', 'success');
-    // Push handled by the backend chats listener (no client duplicate).
   }
 }
 
