@@ -1408,6 +1408,7 @@ function startUsersListener() {
 
     saveCachedUsers();
     renderUsers();
+    _usersListenerRetry = 0;
     // The chat list is the real "ready" signal — the dashboard is only worth
     // revealing once the user list has actually arrived from Firestore.
     nexaBootStep('users');
