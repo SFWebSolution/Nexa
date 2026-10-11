@@ -454,6 +454,16 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   when that file exists. Pushing to `main` triggers `build-apk.yml` → a fresh
   `latest` release APK. **Native push fixes require a rebuild + reinstall** — a
   web deploy alone does not change the APK.
+- **Diagnostics (added because "no notifications" needed to be observable):**
+  `save-token` also accepts `platform`/`ua` and the backend records them per
+  token in `users/{uid}.fcmTokenInfo`. `GET /api/push-diagnostics?uid=<uid>`
+  returns sanitized token previews + when/where each registered (never full
+  tokens). `POST /api/test-push {uid}` pushes to a uid's own devices — backs the
+  **Settings → Notifications → "Send a test notification"** row. Use them to tell
+  "this device never registered" apart from "registered but not delivering";
+  a uid with several tokens is normal (one per browser profile / install).
+  The backend prunes `messaging/third-party-auth-error` tokens too (an invalid
+  or rotated web-push VAPID key makes that token permanently undeliverable).
 - **Debugging "push not working":** `GET /api/health` → `{"firebase":true}`
   confirms Admin SDK; `POST /api/send-notification {targetUid,title,body}`
   returns `successCount/failureCount` (`failureCount:1` with a dummy token is
