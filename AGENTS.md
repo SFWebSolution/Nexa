@@ -397,15 +397,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 
 ## Push notifications — ONE notification per message (firebase-messaging-sw.js + dashboard.html)
-- **Do NOT add a client `sendPushNotification()` call next to any `db.collection("chats").add(...)`.**
-  The backend (`nexa-backend` `startAutoPushListener`) listens to the `chats`
-  collection and auto-pushes every new unread message — so a client call for a
-  text/media/voice/poll message, a story reply, or a story answer (all of which
-  are `chats` docs) doubles every notification. The redundant client sends were
-  removed; only **reactions** and **calls** still call the targeted
-  `/api/send-notification` endpoint because they aren't plain `chats` docs.
-  If you add a new message-creation path, let the backend listener push it — do
-  not call `sendPushNotification` for it.
+- **Every `chats` message is pushed by the SENDER** via `notifyPeerOfMessage(msg)`
+  (see "Push architecture" below). The backend listener still exists as a
+  fallback but SKIPS any doc carrying `messageId`, so there is no duplicate.
+  Reactions and calls call `/api/send-notification` directly (they are not
+  `chats` docs). **Group messages, channel posts and stories push via the bulk
+  endpoint** — see the next bullet.
 
 - **THE BACKEND MUST SEND DATA-ONLY (`nexa-backend/server.js`, `buildFCMPayload`).** A top-level `notification` (or `webpush.notification`) payload is a DISPLAY_NOTIFICATION: the FCM SDK's own `push` listener auto-calls `showNotification` **in addition to** the SW's custom push handler → **TWO notifications per message**. Emulator/sim-verified with the real `firebase-messaging-compat@10.7.1`: a notification payload = 2 `showNotification` calls, data-only = 1. Do NOT re-add `notification`/`webpush.notification` to the backend payload. It also runs on iOS (APNs `aps.alert`) and native Android — `notification` breaks the "SW owns the notification" design there too.
 - **The backend's data `tag` must stay EMPTY for messages** — only calls get the fixed `nexa-incoming-call`. A hardcoded per-message tag (e.g. `nexa-push-<Date.now()>`) defeats the SW's stable tag, so the same message delivered to several of a user's tokens stacks instead of collapsing.
@@ -414,6 +411,26 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Android APK caveat:** the APK (`SFWebSolution/nexa-andriod`) is a native WebView shell with NO Firebase/FCM code. Android WebView does not support the Web Push/Push API at all, so **web push cannot work in the APK** (closed, background, or even open) — it only works in the browser/PWA. Fixing it requires native `firebase-messaging` + a `FirebaseMessagingService` + `google-services.json` in that repo, not a web change.
 - `sendPushNotification(title, body, target, extraData)` generates `notifId` and sends it as `data.messageId` to the backend; pass `extraData.messageId` to reuse an existing id. Calls use the fixed tag `nexa-incoming-call`.
 - Foreground handler (`messaging.onMessage` in `initFCM`) shows an in-app toast always, but shows a SYSTEM notification only when the relevant chat is NOT already open & focused (`sameChatOpen` guard on `selectedUser.uid` + `visibilityState` + `document.hasFocus()`), avoiding toast+system duplicates while reading. It reuses the same stable `tag` as the SW.
+
+## Push coverage (what actually notifies)
+- **1:1 message** (text / photo / video / voice note / poll) — sender pushes.
+- **Reaction** on your message — `/api/send-notification` (`reactions` category).
+- **Incoming voice / video call** — `/api/send-notification` (`calls` category).
+- **Group message** — `sendGroupMessageWithExtras` pushes to the other
+  `selectedGroup.memberUids` via **`POST /api/send-notification-bulk`**
+  (`{targetUids:[...]}`), category `groups`.
+- **Channel post** — `sendChannelPostWithExtras` pushes to
+  `selectedChannel.subscriberUids` (bulk), category `groups`.
+- **Story post** — `shareStatus` pushes to accepted connections only (only they
+  can see stories), taken from `myConnections` — bulk, category `stories`.
+- **Not notified:** nothing else. There is no push for profile changes, etc.
+- `sendPushNotification(title, body, targetUid, extraData)` takes EITHER a
+  single `targetUid` OR `extraData.recipientUids` (bulk). Category gates:
+  `messages` (default), `groups`, `stories`, `calls`, `reactions`. The
+  `recipientUids` key is stripped from the FCM `data` before sending.
+- The bulk endpoint keeps a **5-minute per-uid token cache** (invalidated on
+  `save-token`) so a fan-out is not one Firestore read per recipient; it caps at
+  500 uids. Recipients always exclude the sender.
 
 ## Push architecture (web + APK) — CLIENT-TRIGGERED, listener as fallback
 - **Every 1:1 send pushes from the SENDER.** `notifyPeerOfMessage(msg)`
