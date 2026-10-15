@@ -10837,6 +10837,34 @@ input:user-valid {
   font-weight: 600;
   cursor: pointer;
 }
+/* "You were mentioned" — amber pill, readable on light and dark bubbles. */
+.mention-highlight-me {
+  color: #3b2400;
+  background: #fcd34d;
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 700;
+}
+/* Whole-bubble accent when the message tags me. */
+.msg.msg-mentioned-me .bubble {
+  box-shadow: inset 3px 0 0 0 #f59e0b;
+}
+/* Group-list "@" badge shown until the tagged group is opened. */
+.comm-mention-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-right: 5px;
+  border-radius: 8px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  vertical-align: -2px;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    MUTE BADGE
