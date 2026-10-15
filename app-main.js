@@ -3886,6 +3886,7 @@ async function changeDisappearingSetting(value) {
 
 function selectChat(user, el) {
   closeAttachMenu();
+  pendingMentionUids = new Set();
   if (currentChatMode !== 'direct') resetCommunityChatMode();
   currentChatMode = 'direct';
   selectedGroup = null;
@@ -5673,7 +5674,9 @@ function clearReply() {
 }
 
 function startEdit(msgId) {
-  const msg = allMessages.find(m => m.id === msgId);
+  const msg = (currentChatMode === 'group')
+    ? currentGroupMessages.find(m => m.id === msgId)
+    : allMessages.find(m => m.id === msgId);
   if (!msg || !msg.text) { nexaAlert("Cannot edit this message"); return; }
   editingMessageId = msgId;
   const ta = document.getElementById("editText");
@@ -5702,7 +5705,10 @@ function saveEditMessage() {
   const newText = document.getElementById("editText").value.trim();
   if (!newText) { nexaAlert("Cannot be empty"); return; }
   const id = editingMessageId;
-  const local = findLocalMsg(id);
+  const isGroup = currentChatMode === 'group' && selectedGroup;
+  const local = isGroup
+    ? (currentGroupMessages || []).find(m => m.id === id)
+    : findLocalMsg(id);
   const prevText = local ? local.text : null;
   const prevEdited = local ? local.edited : false;
 
@@ -5714,26 +5720,37 @@ function saveEditMessage() {
   if (local) {
     local.text = newText;
     local.edited = true;
-    renderMessageList();
-    if (selectedUser && (local.createdAt || 0) >= (latestMsgTime[selectedUser.uid] || 0)) {
-      latestMsgText[selectedUser.uid] = msgPreviewText(local);
-      saveLatestMsgState();
-      renderUsers();
+    if (isGroup) {
+      renderGroupMessageList(currentGroupMessages);
+    } else {
+      renderMessageList();
+      if (selectedUser && (local.createdAt || 0) >= (latestMsgTime[selectedUser.uid] || 0)) {
+        latestMsgText[selectedUser.uid] = msgPreviewText(local);
+        saveLatestMsgState();
+        renderUsers();
+      }
     }
   }
   closeEditModal();
 
-  db.collection("chats").doc(id).update({ text: newText, edited: true, editedAt: Date.now() })
+  const ref = isGroup
+    ? db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id)
+    : db.collection("chats").doc(id);
+  ref.update({ text: newText, edited: true, editedAt: Date.now() })
     .catch(e => {
       // Roll the optimistic patch back so the UI matches the rejected write.
       if (local) {
         local.text = prevText;
         local.edited = prevEdited;
-        renderMessageList();
-        if (selectedUser && typeof prevText === "string") {
-          latestMsgText[selectedUser.uid] = msgPreviewText(local);
-          saveLatestMsgState();
-          renderUsers();
+        if (isGroup) {
+          renderGroupMessageList(currentGroupMessages);
+        } else {
+          renderMessageList();
+          if (selectedUser && typeof prevText === "string") {
+            latestMsgText[selectedUser.uid] = msgPreviewText(local);
+            saveLatestMsgState();
+            renderUsers();
+          }
         }
       }
       nexaAlert("Error: " + e.message);
@@ -5758,7 +5775,7 @@ function showCtxMenu(e, id, msg) {
     <div class="ctx-item" onclick="replyMsg('${id}')"><i data-lucide="corner-up-left" style="width: 15px; height: 15px;"></i> Reply</div>
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy" style="width: 15px; height: 15px;"></i> Copy</div>` : ''}
     ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin" style="width: 15px; height: 15px;"></i> Pin</div>` : ''}
-    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
+    ${fromMe && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
     ${fromMe ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Delete</div>` : ''}
   `;
   menu.classList.add("active");
@@ -11082,6 +11099,9 @@ function renderMyGroups() {
     const timeStr = g.lastMessageTime ? new Date(g.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const sender = g.lastSenderName ? `${escapeHtml(g.lastSenderName)}: ` : '';
     const preview = escapeHtml(g.lastMessage || 'No messages yet');
+    const mentionBadge = isMentionedInGroup(g.id)
+      ? `<span class="comm-mention-badge" title="You were mentioned">@</span>`
+      : '';
 
     return `
       <div class="comm-group-item${activeClass}" onclick="handleSelectGroupItem('${g.id}')">
@@ -11092,7 +11112,7 @@ function renderMyGroups() {
             <div class="comm-group-time">${timeStr}</div>
           </div>
           <div class="comm-group-preview-row">
-            <div class="comm-group-preview">${sender}${preview}</div>
+            <div class="comm-group-preview">${mentionBadge}${sender}${preview}</div>
             <div class="comm-group-members-badge">${g.membersCount || 1} members</div>
           </div>
         </div>
@@ -11127,6 +11147,7 @@ function selectGroupChat(group) {
   selectedGroup = group;
   selectedUser = null;
   selectedChannel = null;
+  pendingMentionUids = new Set();
 
   // Header configuration: strictly hide call buttons
   const voiceBtn = document.getElementById('headerVoiceCallBtn');
@@ -11207,8 +11228,50 @@ function selectGroupChat(group) {
   // right after opening a group showed an empty mention list).
   loadGroupMembersForMentions(group.id);
 
-  loadGroupMessages(group.id);
+  // Resolve when THIS user joined before opening the message listener, so a
+  // member added later never sees history that predates them (WhatsApp
+  // behaviour). The creator / original members joined at (or before) group
+  // creation and keep seeing everything. One cheap doc read, then subscribe.
+  resolveGroupJoinedAt(group.id).then(joinedAt => {
+    if (selectedGroup && selectedGroup.id === group.id) loadGroupMessages(group.id, joinedAt);
+  });
+  // Opening the group marks it seen, which clears its mention badge.
+  renderMyGroups();
   if (window.lucide) lucide.createIcons();
+}
+
+// Returns the ms timestamp from which this user may see group history:
+//   - null  -> show everything (creator, original member, or unknown/legacy)
+//   - number-> only show messages with createdAt >= that timestamp
+// A member counts as "original" when their join time is at or before the
+// group's createdAt (they were in the founding batch); everyone added later
+// gets a cutoff. Legacy member docs without joinedAt fall back to "show all"
+// so we never hide history on missing data.
+async function resolveGroupJoinedAt(groupId) {
+  try {
+    const snap = await db.collection('groups').doc(groupId).collection('members').doc(currentUser.uid).get();
+    if (!snap.exists) return null;
+    const joinedAt = snap.data().joinedAt;
+    if (!joinedAt) return null;
+    const createdAt = groupCreatedAtMs(selectedGroup && selectedGroup.id === groupId ? selectedGroup.createdAt : 0);
+    // Only hide when we can PROVE this member was added after the group
+    // existed. If createdAt is unknown we show everything — never hide history
+    // on data we can't read (legacy docs may store a Timestamp, not a number).
+    if (!createdAt || joinedAt <= createdAt + 5000) return null;
+    return joinedAt;
+  } catch (err) {
+    console.warn('Could not resolve group join time (showing all history):', err);
+    return null;
+  }
+}
+
+// Normalise a group createdAt (number | Firestore Timestamp | {seconds}) to ms.
+function groupCreatedAtMs(v) {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
+  return 0;
 }
 
 async function loadGroupMembersForMentions(groupId) {
@@ -11224,12 +11287,18 @@ async function loadGroupMembersForMentions(groupId) {
   }
 }
 
-function loadGroupMessages(groupId) {
+function loadGroupMessages(groupId, joinedAt) {
   if (unsubGroupMessages) unsubGroupMessages();
   const box = document.getElementById('messages');
   if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading group messages…</div>';
 
-  unsubGroupMessages = db.collection('groups').doc(groupId).collection('messages')
+  // joinedAt (ms) hides history that predates this member; null/undefined
+  // shows everything. Single-field range on the same field as the orderBy,
+  // so Firestore needs no composite index.
+  let q = db.collection('groups').doc(groupId).collection('messages');
+  if (joinedAt) q = q.where('createdAt', '>=', joinedAt);
+
+  unsubGroupMessages = q
     .orderBy('createdAt', 'desc')
     .limit(60)
     .onSnapshot(snap => {
@@ -11238,6 +11307,7 @@ function loadGroupMessages(groupId) {
         msgs.push({ id: doc.id, ...doc.data() });
       });
       msgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      recordGroupMention(groupId, msgs);
       renderGroupMessageList(msgs);
     }, err => {
       console.error('Group messages error:', err);
@@ -11254,7 +11324,7 @@ function renderGroupMessageList(messages) {
       <div class="empty-chat">
         <div class="empty-chat-icon">👥</div>
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">${escapeHtml(selectedGroup?.name || 'Group')}</div>
-        <div style="font-size: 13px; color: var(--text-3);">This is the start of your group. Send a message to say hello!</div>
+        <div style="font-size: 13px; color: var(--text-3);">No messages yet. Send a message to say hello!</div>
       </div>
     `;
     return;
@@ -11294,6 +11364,12 @@ function buildGroupMessage(id, msg, fromMe) {
   el.className = `msg ${fromMe ? "me" : "them"}`;
   el.dataset.msgId = id;
 
+  // If this message tags me, flag the whole bubble so the "you were mentioned"
+  // accent (border) shows in addition to the amber @name highlight.
+  const mentionedMe = !fromMe && Array.isArray(msg.mentions)
+    && msg.mentions.some(m => m && m.uid === currentUser.uid);
+  if (mentionedMe) el.classList.add("msg-mentioned-me");
+
   const row = document.createElement("div");
   row.className = "msg-row";
 
@@ -11311,7 +11387,8 @@ function buildGroupMessage(id, msg, fromMe) {
   // 2. Reply Quote Card
   if (msg.replyTo) {
     const rAuthor = escapeHtml(msg.replyToName || (msg.replyToFrom === currentUser.uid ? "You" : "Member"));
-    const rText = linkify(typeof msg.replyToText === "string" ? msg.replyToText : "(message)");
+    const rTextRaw = typeof msg.replyToText === "string" ? msg.replyToText : "(message)";
+    const rText = typeof renderMentionText === 'function' ? renderMentionText(linkify(rTextRaw), msg.replyToMentions) : linkify(rTextRaw);
     const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
     inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToGroupMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
   }
@@ -11335,7 +11412,7 @@ function buildGroupMessage(id, msg, fromMe) {
 
   // 3. Text (skip raw text for polls since poll card shows the question)
   if (msg.text && msg.type !== 'poll') {
-    const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text)) : linkify(msg.text);
+    const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text), msg.mentions) : linkify(msg.text);
     inner += `<div class="msg-text">${textHtml}</div>`;
     inner += maybeTranslationStrip(id, msg.text, fromMe);
   }
@@ -11383,7 +11460,8 @@ function buildGroupMessage(id, msg, fromMe) {
 
   // 8. Timestamp & Sent Tick
   const tick = fromMe ? "✓" : "";
-  inner += `<div class="msg-meta"><span>${formatTime(msg.createdAt)}</span>${tick ? `<span>${tick}</span>` : ""}</div>`;
+  const editLabel = msg.edited ? ' <span style="font-size: 9.5px; opacity: 0.55; font-style: italic;">(edited)</span>' : '';
+  inner += `<div class="msg-meta"><span>${formatTime(msg.createdAt)}${editLabel}</span>${tick ? `<span>${tick}</span>` : ""}</div>`;
 
   bubble.innerHTML = inner;
 
@@ -11455,15 +11533,38 @@ async function sendGroupMessage() {
   toggleActionButtons();
 
   const extras = { text };
+  // Attach who was tagged via the @-popup (uid + the name as typed) so the
+  // recipient side can highlight "you" and send a targeted notification.
+  const mentions = resolveMentionedMembers(text);
+  if (mentions.length) extras.mentions = mentions;
   if (messageRepliedTo) {
     extras.replyTo = messageRepliedTo.id;
     extras.replyToText = messageRepliedTo.text || (messageRepliedTo.image ? "(Photo)" : messageRepliedTo.video ? "(Video)" : messageRepliedTo.audio ? "(Voice note)" : "(message)");
     extras.replyToFrom = messageRepliedTo.from || messageRepliedTo.senderUid || null;
     extras.replyToName = messageRepliedTo.senderName || (extras.replyToFrom === currentUser.uid ? 'You' : 'Member');
+    if (Array.isArray(messageRepliedTo.mentions) && messageRepliedTo.mentions.length) {
+      extras.replyToMentions = messageRepliedTo.mentions;
+    }
     clearReply();
   }
+  pendingMentionUids = new Set();
 
   await sendGroupMessageWithExtras(extras);
+}
+
+// Turn the uids picked from the @-popup into [{uid,name}] for the message,
+// dropping anyone whose @Name no longer appears in the final text (they may
+// have been deleted before sending).
+function resolveMentionedMembers(text) {
+  if (!text || !pendingMentionUids || !pendingMentionUids.size) return [];
+  const out = [];
+  pendingMentionUids.forEach(uid => {
+    if (!uid || uid === currentUser.uid) return;
+    const u = (allUsersData || []).find(x => x.uid === uid) || {};
+    const name = u.displayName || u.name || '';
+    if (name && text.includes('@' + name)) out.push({ uid, name });
+  });
+  return out;
 }
 
 async function sendGroupMessageWithExtras(extras) {
@@ -11495,6 +11596,17 @@ async function sendGroupMessageWithExtras(extras) {
         isGroup: true, recipientUids: groupRecipients, chatUid: selectedGroup.id
       });
     }
+    // A targeted "you were mentioned" push to the tagged members, in addition
+    // to the group notification. Recipients who were tagged get both, which is
+    // intentional — WhatsApp surfaces mentions distinctly.
+    const mentionedUids = Array.isArray(extras.mentions)
+      ? extras.mentions.map(m => m && m.uid).filter(u => u && u !== currentUser.uid)
+      : [];
+    if (mentionedUids.length) {
+      sendPushNotification(`🔔 ${senderName} mentioned you`, `In ${selectedGroup.name || 'Group'}: ${snippet}`, null, {
+        isGroup: true, isMention: true, recipientUids: mentionedUids, chatUid: selectedGroup.id
+      });
+    }
   } catch (err) {
     showNotifToast('Failed to send: ' + err.message, 'error');
     console.error(err);
@@ -11502,6 +11614,33 @@ async function sendGroupMessageWithExtras(extras) {
 }
 
 let currentGroupMembersList = [];
+
+// Groups where a recent message tags ME and I haven't opened the group since.
+// Populated from the message listener, consumed by renderMyGroups() for the
+// "you were mentioned" badge, cleared when the group is opened. Declared with
+// `var` + guarded reads so an early render before this line can't TDZ-throw.
+var groupMentionAlerts = {};
+
+function isMentionedInGroup(groupId) {
+  const lastSeen = getCommunitySeen()['g_' + groupId] || 0;
+  return ((groupMentionAlerts || {})[groupId] || 0) > lastSeen;
+}
+
+function recordGroupMention(groupId, msgs) {
+  if (!currentUser) return;
+  let newest = 0;
+  (msgs || []).forEach(m => {
+    if (m && m.senderUid !== currentUser.uid && Array.isArray(m.mentions)
+        && m.mentions.some(x => x && x.uid === currentUser.uid)) {
+      newest = Math.max(newest, m.createdAt || 0);
+    }
+  });
+  if (newest) {
+    groupMentionAlerts = groupMentionAlerts || {};
+    groupMentionAlerts[groupId] = Math.max(groupMentionAlerts[groupId] || 0, newest);
+    renderMyGroups();
+  }
+}
 
 // ── Group Info Modal & Member Management ───────────────────────────────────
 async function openGroupInfo() {
@@ -14666,6 +14805,10 @@ function jumpToStarredMsg(msgId, chatMode, groupId, targetUid) {
 
 let mentionActive = false;
 let mentionStartPos = -1;
+// uids the user explicitly picked from the @-popup for the message being
+// composed. Cleared after send / on chat switch. Drives the "you were
+// mentioned" highlight + notification on the recipient side.
+let pendingMentionUids = new Set();
 
 function handleMentionInput(e) {
   if (currentChatMode !== 'group' || !selectedGroup) {
@@ -14750,14 +14893,26 @@ function insertMention(name, uid) {
   ta.setSelectionRange(newPos, newPos);
   ta.focus();
 
+  // Remember WHO was tagged (the popup already resolves the uid) so the
+  // outgoing message can carry it for highlight + notification.
+  if (uid) pendingMentionUids.add(uid);
+
   hideMentionsPopup();
 }
 
-// Render @mention highlights in message text
-function renderMentionText(text) {
+// Render @mention highlights in message text. When `mentions` (the array of
+// {uid,name} the sender picked) contains me, my @name is wrapped in a stronger
+// "you were mentioned" highlight instead of the plain blue one.
+function renderMentionText(text, mentions) {
   if (!text) return '';
-  // Match @Name patterns and highlight them
-  return text.replace(/@(\w[\w\s]{0,30}?)(?=\s|$|[,.])/g, '<span class="mention-highlight">@$1</span>');
+  const myUid = currentUser ? currentUser.uid : null;
+  const mentionedMe = !!(mentions && myUid && mentions.some(m => m && m.uid === myUid));
+  return text.replace(/@(\w[\w\s]{0,30}?)(?=\s|$|[,.])/g, (full, captured) => {
+    const name = captured.trim();
+    const isMe = mentionedMe && name && myUid && (mentions || []).some(m => m && m.uid === myUid && m.name === name);
+    const cls = isMe ? 'mention-highlight mention-highlight-me' : 'mention-highlight';
+    return `<span class="${cls}">@${captured}</span>`;
+  });
 }
 
 
@@ -14901,7 +15056,7 @@ showCtxMenu = function(e, id, msg) {
     ${msg.text ? `<div class="ctx-item" onclick="copyMsg('${id}')"><i data-lucide="copy" style="width: 15px; height: 15px;"></i> Copy</div>` : ''}
     ${msg.text && !fromMe ? `<div class="ctx-item" onclick="translateMsg('${id}')"><i data-lucide="languages" style="width: 15px; height: 15px;"></i> Translate</div>` : ''}
     ${isGroup ? `<div class="ctx-item" onclick="pinGroupMsg('${id}')"><i data-lucide="pin" style="width: 15px; height: 15px;"></i> Pin</div>` : ''}
-    ${fromMe && !isGroup && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
+    ${fromMe && msg.text ? `<div class="ctx-item" onclick="startEdit('${id}')"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i> Edit</div>` : ''}
     ${canDeleteGroupMsg ? `<div class="ctx-item danger" onclick="${isGroup ? `deleteGroupMsg('${id}')` : `deleteMsg('${id}')`}"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Delete</div>` : ''}
   `;
   menu.classList.add("active");

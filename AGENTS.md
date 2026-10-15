@@ -1317,3 +1317,47 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   native app either never sees the update or prompts forever. The APK workflow
   (`.github/workflows/build-apk.yml`) republishes the `latest` release tag on
   every push to `main`; the app downloads from that tag.
+
+## Group features (2026-10): join cutoff, mentions, edit
+- **New members see an EMPTY group until new messages arrive (no back-history).**
+  `selectGroupChat()` calls `resolveGroupJoinedAt(groupId)` before subscribing;
+  it reads THIS user's own `groups/{id}/members/{uid}` doc (1 cheap read) and
+  returns a ms cutoff ONLY when the member provably joined after the group
+  existed (`joinedAt > group.createdAt + 5000`). `loadGroupMessages(groupId,
+  joinedAt)` then adds `.where('createdAt','>=',joinedAt)` to the existing
+  `.orderBy('createdAt','desc').limit(60)` — single-field range on the same
+  field as the orderBy, so NO composite index. The creator / original members
+  (and legacy member docs with no `joinedAt`, or an unreadable `createdAt`)
+  get `null` → see everything. NEVER hide history when `createdAt` can't be
+  read: `groupCreatedAtMs()` normalizes number | Timestamp | `{seconds}` and
+  an unknown value returns 0 → show-all. The empty state reads "No messages
+  yet. Send a message to say hello!" (deliberately no "history hidden" notice).
+- **@mentions carry the tagged uids + notify.** The @-popup already resolves
+  each person's uid; `insertMention(name, uid)` now records it in the module
+  `pendingMentionUids` Set. On send, `resolveMentionedMembers(text)` turns the
+  Set into `mentions: [{uid,name}]` (dropping anyone whose `@Name` was deleted
+  before sending, and never self-mentioning) and `sendGroupMessageWithExtras`
+  writes it on the message. `renderMentionText(text, mentions)` renders the
+  normal blue `.mention-highlight`, but when `mentions` contains MY uid my
+  `@name` gets `.mention-highlight-me` (amber pill) AND `buildGroupMessage`
+  adds `.msg-mentioned-me` to the bubble (inset amber left border). A separate
+  targeted push (`🔔 {sender} mentioned you`, `isMention:true`) goes to the
+  tagged members in addition to the normal group push. `pendingMentionUids` is
+  reset on send and on every chat/group switch.
+- **Group-list "@" mention badge.** `recordGroupMention()` (called from the
+  group messages listener) tracks the newest message that tags me per group in
+  `groupMentionAlerts`; `isMentionedInGroup()` compares it against
+  `getCommunitySeen()['g_'+id]` (set by `markCommunitySeen` on open). The badge
+  (`.comm-mention-badge`) shows in `renderMyGroups()` until the group is opened.
+  `groupMentionAlerts` is declared with `var` + guarded reads so an early
+  render can't TDZ-throw.
+- **Group message EDIT.** The ctx menu Edit item is no longer `!isGroup`-gated;
+  `startEdit()` looks the message up in `currentGroupMessages` when in a group,
+  and `saveEditMessage()` writes
+  `groups/{id}/messages/{msgId}` (optimistic local repaint via
+  `renderGroupMessageList` + rollback on failure) instead of `chats/{id}`.
+  Group bubbles show the `(edited)` label. Channels still have NO edit (by
+  design — "groups alone").
+- Firestore rules needed no change: group messages are already readable by
+  signed-in users and the edit is owner-only (client only offers Edit for
+  `fromMe`). The messages `where` is a single-field range → no index deploy.
