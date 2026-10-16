@@ -287,6 +287,7 @@ async function loadProfile() {
     console.log("✓ Profile loaded:", displayName);
   } catch (err) {
     console.error("Error loading profile:", err);
+    nexaNoteQuotaError(err);
     showNotifToast("Error loading profile", "error");
   }
 
@@ -528,7 +529,7 @@ function listenCurrentAccountStatus(uid) {
       });
       return;
     }
-  });
+  }, err => { console.warn("Account status listener error:", err); nexaNoteQuotaError(err); });
 }
 
 
@@ -1384,6 +1385,12 @@ function updateUserOnlineDot(uid, pdata) {
   if (dot) dot.classList.toggle("online", online);
 }
 
+// Surface a Firestore quota/limit error as the friendly maintenance screen
+// (see maintenance.js). No-op when that module isn't loaded.
+function nexaNoteQuotaError(err) {
+  try { if (window.NexaMaintenance) window.NexaMaintenance.check(err); } catch (e) {}
+}
+
 function startUsersListener() {
   loadCachedUsers();
 
@@ -1427,6 +1434,7 @@ function startUsersListener() {
     nexaBootStep('users');
   }, err => {
     console.error('Users listener error:', err);
+    nexaNoteQuotaError(err);
     // Never leave the list stuck on "Loading users…". Fall back to the cache
     // and retry the listener (a first-load hiccup then self-heals instead of
     // requiring the user to close and reopen the app).
@@ -1462,7 +1470,7 @@ function startSharedPresenceListener() {
     // once per change. The chat-header update is cheap and immediate.
     if (selectedUser) updateChatHeaderPresence(userPresenceCache[selectedUser.uid]);
     scheduleRender();
-  }, err => console.error("Shared presence listener error:", err));
+  }, err => { console.error("Shared presence listener error:", err); nexaNoteQuotaError(err); });
 }
 
 // Render coalescer: collapses a burst of renderUsers() calls (e.g. when many
@@ -1813,6 +1821,7 @@ function startConnectionsListener() {
       // On a listener error, stop calling the list "loading" so the UI falls
       // back to the cached connections instead of a permanent "Loading…".
       console.error('Connections listener error:', err);
+      nexaNoteQuotaError(err);
       _connectionsLoaded = true;
       renderUsers();
       nexaBootStep('connections');
@@ -4101,7 +4110,7 @@ function loadUnreadCounts() {
       try { localStorage.setItem("nexa_unread_" + currentUser.uid, JSON.stringify(counts)); } catch (e) {}
       scheduleRender();
       updateTotalUnreadBadge();
-    }, err => console.error("loadUnreadCounts listener error:", err));
+    }, err => { console.error("loadUnreadCounts listener error:", err); nexaNoteQuotaError(err); });
 }
 
 // WhatsApp-style total unread badge on the Chats nav button (mobile bottom nav
@@ -4550,7 +4559,7 @@ function loadMessages() {
         _msgsB = [];
         trackWindow("A", snap.docs);
         scheduleMessageRender();
-      }, err => console.error("messages(self) listener error:", err));
+      }, err => { console.error("messages(self) listener error:", err); nexaNoteQuotaError(err); });
     return;
   }
 
@@ -4566,7 +4575,7 @@ function loadMessages() {
       _msgsA = newMsgs;
       trackWindow("A", snap.docs);
       scheduleMessageRender();
-    }, err => console.error("messages(A) listener error:", err));
+    }, err => { console.error("messages(A) listener error:", err); nexaNoteQuotaError(err); });
 
   unsubMessagesB = db.collection("chats")
     .where("from", "==", otherUid)
@@ -4592,7 +4601,7 @@ function loadMessages() {
       }
 
       scheduleMessageRender();
-    }, err => console.error("messages(B) listener error:", err));
+    }, err => { console.error("messages(B) listener error:", err); nexaNoteQuotaError(err); });
 }
 
 // Fires on every messages-area scroll; kicks off an older-page fetch when the
@@ -8602,7 +8611,7 @@ function startStatusListener() {
       renderStoriesBar();
       renderUsers();
       saveCachedStories();
-    }, err => console.error("Status listener error:", err));
+    }, err => { console.error("Status listener error:", err); nexaNoteQuotaError(err); });
   // One-time garbage collection of stories older than 24h. The scoped listener
   // never returns them, so they'd otherwise linger in storage forever. We read
   // ONLY the expired slice (createdAt < cutoff), bounded, and batch-delete —
@@ -11068,6 +11077,7 @@ function listenMyGroups() {
       updateCommunityTabDot();
     }, err => {
       console.error('Groups listener error:', err);
+      nexaNoteQuotaError(err);
     });
 }
 
@@ -11311,6 +11321,7 @@ function loadGroupMessages(groupId, joinedAt) {
       renderGroupMessageList(msgs);
     }, err => {
       console.error('Group messages error:', err);
+      nexaNoteQuotaError(err);
     });
 }
 
@@ -12243,7 +12254,7 @@ function listenMyChannels() {
       updateCommunityTabDot();
       // Auto-reopen the last channel the user was in (first snapshot only).
       maybeReopenLastChannel();
-    }, err => console.error('Channels listener error:', err));
+    }, err => { console.error('Channels listener error:', err); nexaNoteQuotaError(err); });
 }
 
 function renderChannelsFollowing() {
@@ -12301,6 +12312,7 @@ function listenDiscoverChannels() {
       }
     }, err => {
       console.warn('Discover channels listener error:', err);
+      nexaNoteQuotaError(err);
     });
 }
 
@@ -12828,6 +12840,7 @@ function loadChannelPosts(channelId) {
       renderChannelPostsList(posts);
     }, err => {
       console.error('Channel posts error:', err);
+      nexaNoteQuotaError(err);
     });
 }
 

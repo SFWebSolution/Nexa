@@ -1361,3 +1361,38 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Firestore rules needed no change: group messages are already readable by
   signed-in users and the edit is owner-only (client only offers Edit for
   `fromMe`). The messages `where` is a single-field range → no index deploy.
+
+## Firestore plan-limit "taking a short breather" screen (maintenance.js + maintenance.css)
+- **The problem it fixes:** when the Spark daily read/write quota is exhausted
+  Firestore throws `firestore/resource-exhausted` (often alongside
+  `unavailable`). Previously the app just hung — login bounced to a dashboard
+  that couldn't load, and the dashboard sat on "Loading users…" forever with no
+  explanation.
+- **Two shared, dependency-free files** loaded by BOTH the auth pages
+  (`login.html`, `index.html`) and `dashboard.html`:
+  - `maintenance.js` exposes `window.NexaMaintenance` with
+    `isQuotaError(err)`, `check(err)`, `guard(promise)`, `show()`, `hide()`,
+    and an overridable `signOut()`. `isQuotaError` matches the CANONICAL
+    `resource-exhausted` code AND message text (`resource_exhausted`,
+    `quota`, `exceeded`) AND `unavailable`, handling Error objects, nested
+    `{error:{code|message}}`, and plain strings. `show()` is idempotent and
+    builds a full-screen branded overlay (`.nexa-maint`, z-index 2147483000 —
+    above every modal/splash) with "Try again now", an auto-retry countdown
+    (`RELOAD_SECONDS` = 60 → `location.reload()`), the truncated uid, and a
+    Sign-out link. `unhandledrejection` + `error` listeners are a global net.
+  - `maintenance.css` is self-contained (own variables + font stack) so it
+    renders identically on auth pages and the dashboard.
+- **Wiring:** `app-main.js` has one helper `nexaNoteQuotaError(err)` (no-op if
+  the module isn't loaded). It's called from every major listener error
+  callback — users, shared presence, account status, connections,
+  loadUnreadCounts, messages A/B/self, status, groups, group messages,
+  channels, discover-channels, channel posts — plus the `loadProfile` catch.
+  `login.html` checks it in the auto-login `getDoc` catch and the `login()`
+  catch; `index.html` in its auto-login fetch catch. Each page overrides
+  `Sign out` to also drop the Firebase session.
+- **Do NOT** add a separate maintenance screen per page, and do NOT gate
+  `show()` behind a flag that a later `check()` can't raise — the whole point
+  is that a dozen listeners failing at once produce ONE screen, not many.
+- Verify with `node /tmp`-style headless tests (DOM stub): detection across
+  codes/messages/nested/string/null, idempotent show, hide, and guard
+  pass-through/rethrow — 19/19 in the authored suite.

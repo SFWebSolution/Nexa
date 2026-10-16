@@ -558,6 +558,8 @@
       .btn-submit::after { display: none; }
     }
   </style>
+  <link rel="stylesheet" href="maintenance.css">
+  <script src="maintenance.js"></script>
 </head>
 
 <body>
@@ -710,6 +712,7 @@ onAuthStateChanged(auth, async (user) => {
       window.location.replace("dashboard.html");
     } catch (e) {
       console.warn("Auto-login check issue:", e);
+      if (window.NexaMaintenance && window.NexaMaintenance.check(e)) { isAutoLoggingIn = false; return; }
       window.location.replace("dashboard.html");
     }
   }
@@ -793,6 +796,7 @@ async function login(){
 
   } catch (error) {
     console.error("Login error:", error);
+    if (window.NexaMaintenance) window.NexaMaintenance.check(error);
     let errMsg = error.message;
     if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
       errMsg = "Invalid email or password. Please check your credentials.";

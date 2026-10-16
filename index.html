@@ -391,6 +391,14 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
     .feature-card:hover { transform: none; }
   }
   </style>
+  <link rel="stylesheet" href="maintenance.css">
+  <script src="maintenance.js"></script>
+  <script>
+    window.NexaMaintenance && (window.NexaMaintenance.signOut = function () {
+      try { firebase.auth().signOut(); } catch (e) {}
+      window.location.href = "login.html";
+    });
+  </script>
 </head>
 <body>
 
@@ -748,6 +756,7 @@ footer{border-top:1px solid var(--line);background:var(--bg-soft);padding:56px 0
                 }
               } catch (error) {
                 console.error("Error fetching user document:", error);
+                if (window.NexaMaintenance) window.NexaMaintenance.check(error);
                 hideLoadingScreen();
               }
             } else {
