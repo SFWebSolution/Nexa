@@ -37,6 +37,16 @@
   <script>if (typeof Peer === 'undefined') { document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>'); }</script>
   <script src="https://unpkg.com/lucide@0.469.0"></script>
   <script>if (typeof lucide === "undefined") { document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"><\/script>'); }</script>
+<link rel="stylesheet" href="maintenance.css">
+<script src="maintenance.js"></script>
+<script>
+  // Dashboard sign-out for the maintenance screen: drop the Firebase
+  // session, then return to login.
+  window.NexaMaintenance && (window.NexaMaintenance.signOut = function () {
+    try { firebase.auth().signOut(); } catch (e) {}
+    window.location.href = "login.html";
+  });
+</script>
 <link rel="stylesheet" href="dashboard.css">
 <link rel="stylesheet" href="nexa-voice-room.css">
 <script>
