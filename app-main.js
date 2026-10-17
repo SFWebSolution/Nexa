@@ -5746,6 +5746,14 @@ function saveEditMessage() {
     ? db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id)
     : db.collection("chats").doc(id);
   ref.update({ text: newText, edited: true, editedAt: Date.now() })
+    .then(() => {
+      // If the edited message is the newest, the group preview must reflect
+      // the new text too (it was showing the old text).
+      if (isGroup && selectedGroup && local
+          && (local.createdAt || 0) >= (selectedGroup.lastMessageTime || 0)) {
+        updateGroupPreview(selectedGroup.id, groupMsgSnippet(local), local.senderName || '');
+      }
+    })
     .catch(e => {
       // Roll the optimistic patch back so the UI matches the rejected write.
       if (local) {
@@ -5819,7 +5827,9 @@ async function deleteGroupMsg(id) {
       currentGroupMessages.splice(i, 1);
       renderGroupMessageList(currentGroupMessages);
     }
-    db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id).delete()
+    const _gid = selectedGroup.id;
+    db.collection("groups").doc(_gid).collection("messages").doc(id).delete()
+      .then(() => refreshGroupPreviewAfterDelete(_gid))
       .catch(e => console.error("deleteGroupMsg error:", e));
   }
   closeCtxMenu();
@@ -11578,6 +11588,61 @@ function resolveMentionedMembers(text) {
   return out;
 }
 
+// Human-readable one-line preview for a group message (text / media / poll).
+// Kept in one place so the list preview and the group doc can never drift.
+function groupMsgSnippet(msg) {
+  if (!msg) return '';
+  if (msg.type === 'poll') return '📊 ' + (msg.pollQuestion || 'Poll');
+  if (msg.text) return String(msg.text);
+  if (msg.image) return '📷 Photo';
+  if (msg.video) return '🎥 Video';
+  if (msg.audio) return '🎤 Voice note';
+  if (msg.fileUrl) return '📎 ' + (msg.fileName || 'File');
+  return 'Attachment';
+}
+
+// Single writer for a group's last-message preview. Every send/edit/delete/
+// forward path calls this so the list preview stays accurate before the chat
+// is opened (the old code only updated it on send).
+async function updateGroupPreview(groupId, snippet, senderName, prefix) {
+  if (!groupId) return;
+  const patch = {
+    lastMessage: (prefix || '') + (snippet || 'No messages yet'),
+    lastMessageTime: Date.now(),
+    lastSenderName: senderName || '',
+    updatedAt: Date.now()
+  };
+  try {
+    await db.collection('groups').doc(groupId).update(patch);
+  } catch (e) {}
+  // Mirror locally so the list repaints instantly without waiting for the
+  // groups snapshot to round-trip.
+  const g = (myGroups || []).find(x => x.id === groupId);
+  if (g) {
+    g.lastMessage = patch.lastMessage;
+    g.lastMessageTime = patch.lastMessageTime;
+    g.lastSenderName = patch.lastSenderName;
+    if (typeof renderMyGroups === 'function') renderMyGroups();
+  }
+}
+
+// After a message is deleted, recompute the preview from whatever the newest
+// remaining message is (a deleted newest message must not linger as the
+// preview). Paging is by createdAt desc, so the first doc is the newest.
+async function refreshGroupPreviewAfterDelete(groupId) {
+  if (!groupId) return;
+  try {
+    const snap = await db.collection('groups').doc(groupId).collection('messages')
+      .orderBy('createdAt', 'desc').limit(1).get();
+    if (snap.empty) {
+      await updateGroupPreview(groupId, 'No messages yet', '');
+      return;
+    }
+    const m = snap.docs[0].data() || {};
+    await updateGroupPreview(groupId, groupMsgSnippet(m), m.senderName || '');
+  } catch (e) {}
+}
+
 async function sendGroupMessageWithExtras(extras) {
   if (!selectedGroup) return;
   try {
@@ -11592,14 +11657,9 @@ async function sendGroupMessageWithExtras(extras) {
 
     await db.collection('groups').doc(selectedGroup.id).collection('messages').add(payload);
 
-    // Update group recency snippet
-    const snippet = extras.text || (extras.image ? '📷 Photo' : extras.video ? '🎥 Video' : extras.audio ? '🎤 Voice note' : 'Attachment');
-    await db.collection('groups').doc(selectedGroup.id).update({
-      lastMessage: snippet,
-      lastMessageTime: Date.now(),
-      lastSenderName: senderName,
-      updatedAt: Date.now()
-    });
+    // Update group recency snippet (shared writer).
+    const snippet = groupMsgSnippet(payload);
+    await updateGroupPreview(selectedGroup.id, snippet, senderName);
     // Notify the other members (one bulk call, quota-free like 1:1 pushes).
     const groupRecipients = (selectedGroup.memberUids || []).filter(u => u && u !== currentUser.uid);
     if (groupRecipients.length) {
@@ -11848,28 +11908,41 @@ async function editGroupDesc() {
 
 async function shareGroupInviteLink() {
   if (!selectedGroup) return;
-  const inviteText = `Join my Nexa group "${selectedGroup.name}":`;
-  const shareData = {
-    title: selectedGroup.name,
-    text: inviteText,
-    url: window.location.href.split('#')[0]
-  };
+  let url = '';
+  try { url = await getOrCreateGroupInviteLink(); } catch (e) {}
+  if (!url) url = nexaJoinUrl('joinGroup', selectedGroup.id);
+  await nexaShareInvite(`Join my Nexa group "${selectedGroup.name}":`, selectedGroup.name, url, 'group');
+}
+
+async function shareChannelInviteLink() {
+  if (!selectedChannel) return;
+  let url = '';
+  try { url = await getOrCreateChannelInviteLink(); } catch (e) {}
+  if (!url) url = nexaJoinUrl('joinChannel', selectedChannel.id);
+  await nexaShareInvite(`Follow my Nexa channel "${selectedChannel.name}":`, selectedChannel.name, url, 'channel');
+}
+
+// Shared share/copy flow for group + channel invite links.
+async function nexaShareInvite(text, title, url, kind) {
+  const label = kind === 'channel' ? 'channel' : 'group';
   if (navigator.share) {
     try {
-      await navigator.share(shareData);
-      showNotifToast('✓ Shared group invite', 'success');
+      await navigator.share({ title, text, url });
+      showNotifToast(`✓ Shared ${label} invite`, 'success');
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
     }
   }
-  const copyStr = `${shareData.text}\n${shareData.url}`;
-  if (navigator.clipboard) {
-    await navigator.clipboard.writeText(copyStr);
-    showNotifToast('✓ Group invite link copied to clipboard!', 'success');
-  } else {
-    showNotifToast('Link: ' + copyStr, 'info');
-  }
+  const copyStr = `${text}\n${url}`;
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(copyStr);
+      showNotifToast(`✓ ${label === 'channel' ? 'Channel' : 'Group'} invite link copied to clipboard!`, 'success');
+      return;
+    }
+  } catch (e) {}
+  showNotifToast('Link: ' + copyStr, 'info');
 }
 
 function closeGroupInfo() {
@@ -12429,9 +12502,12 @@ async function resolveGroupForInvite(groupId, groupName) {
   } catch (e) {} }
   if (!group && groupName) group = { id: groupId, name: groupName };
   if (!group) { showNotifToast('Group not found', 'error'); return; }
-  const isMember = (group.memberUids || []).includes(_joinerUid) || (group.createdBy === _joinerUid);
-// Already a member? Jump straight in
+  const isMember = (group.memberUids || []).includes(_joinerUid)
+    || group.ownerUid === _joinerUid
+    || (group.createdBy === _joinerUid);
+  // Already a member? Jump straight in (and never bump membersCount).
   if (isMember) {
+    showNotifToast(`✓ You're already in "${group.name}" — opening…`, 'info');
     switchTab('community');
     switchCommunitySubTab('groups');
     selectGroupChat(group);
@@ -13867,29 +13943,10 @@ async function toggleChannelSubscriptionFromInfo() {
 
 async function shareCurrentChannel() {
   if (!selectedChannel) return;
-  const shareData = {
-    title: `Follow ${selectedChannel.name} on Nexa`,
-    text: `Check out ${selectedChannel.name} (${selectedChannel.handle || ''}) on Nexa Messenger: ${selectedChannel.description || ''}`,
-    url: window.location.href
-  };
-
-  if (navigator.share) {
-    try {
-      await navigator.share(shareData);
-      showNotifToast('✓ Shared channel invite', 'success');
-      return;
-    } catch (e) {
-      if (e.name === 'AbortError') return;
-    }
-  }
-
-  const copyStr = `${shareData.text}\n${shareData.url}`;
-  if (navigator.clipboard) {
-    await navigator.clipboard.writeText(copyStr);
-    showNotifToast('✓ Channel link copied to clipboard!', 'success');
-  } else {
-    showNotifToast('Sharing not supported on this browser', 'info');
-  }
+  let url = '';
+  try { url = await getOrCreateChannelInviteLink(); } catch (e) {}
+  if (!url) url = nexaJoinUrl('joinChannel', selectedChannel.id);
+  await nexaShareInvite(`Follow ${selectedChannel.name} on Nexa:`, selectedChannel.name, url, 'channel');
 }
 
 // ── Universal Community Info Router ────────────────────────────────────────
@@ -14640,13 +14697,7 @@ async function executeForward() {
         }
 
         await db.collection('groups').doc(targetId).collection('messages').add(cleanPayload(payload));
-        const snippet = payload.text || (payload.image ? '📷 Photo' : payload.video ? '🎥 Video' : 'Attachment');
-        await db.collection('groups').doc(targetId).update({
-          lastMessage: '⤳ ' + snippet,
-          lastMessageTime: Date.now(),
-          lastSenderName: senderName,
-          updatedAt: Date.now()
-        });
+        await updateGroupPreview(targetId, groupMsgSnippet(payload), senderName, '⤳ ');
       } else if (targetType === 'channel') {
         // Channels are not valid forward targets (broadcast feed, admins only).
         continue;
@@ -15007,20 +15058,38 @@ function generateInviteCode() {
   return code;
 }
 
+// Invite links land on join.html — a small landing page that previews the
+// group/channel and offers "Open in app" (Android) before continuing into
+// the app. Keeping the code in the URL lets the app resume the join.
+function nexaJoinUrl(param, code) {
+  return `${window.location.origin}/join.html?${param}=${encodeURIComponent(code)}`;
+}
+
 async function getOrCreateGroupInviteLink() {
   if (!selectedGroup) return '';
   const groupRef = db.collection('groups').doc(selectedGroup.id);
   const doc = await groupRef.get();
-  const data = doc.data();
+  const data = doc.data() || {};
 
-  if (data.inviteCode) {
-    return `${window.location.origin}${window.location.pathname}?joinGroup=${data.inviteCode}`;
-  }
+  if (data.inviteCode) return nexaJoinUrl('joinGroup', data.inviteCode);
 
   // Generate and save
   const code = generateInviteCode();
   await groupRef.update({ inviteCode: code });
-  return `${window.location.origin}${window.location.pathname}?joinGroup=${code}`;
+  return nexaJoinUrl('joinGroup', code);
+}
+
+async function getOrCreateChannelInviteLink() {
+  if (!selectedChannel) return '';
+  const chanRef = db.collection('channels').doc(selectedChannel.id);
+  const doc = await chanRef.get();
+  const data = doc.data() || {};
+
+  if (data.inviteCode) return nexaJoinUrl('joinChannel', data.inviteCode);
+
+  const code = generateInviteCode();
+  await chanRef.update({ inviteCode: code });
+  return nexaJoinUrl('joinChannel', code);
 }
 
 async function resetGroupInviteLink() {
@@ -15032,6 +15101,18 @@ async function resetGroupInviteLink() {
 
   const code = generateInviteCode();
   await db.collection('groups').doc(selectedGroup.id).update({ inviteCode: code });
+  showNotifToast('✓ Invite link reset', 'success');
+}
+
+async function resetChannelInviteLink() {
+  if (!selectedChannel) return;
+  const isAdmin = selectedChannel.ownerUid === currentUser.uid || (selectedChannel.admins || []).includes(currentUser.uid);
+  if (!isAdmin) { showNotifToast('Only admins can reset the invite link', 'error'); return; }
+
+  if (!await nexaConfirm('The current link will stop working immediately and a new one will be generated.', { title: 'Reset invite link?', okLabel: 'Reset', danger: true })) return;
+
+  const code = generateInviteCode();
+  await db.collection('channels').doc(selectedChannel.id).update({ inviteCode: code });
   showNotifToast('✓ Invite link reset', 'success');
 }
 
@@ -15106,25 +15187,39 @@ openChannelInfo = function() {
 };
 
 // --- Check and handle group invite URL param (?joinGroup=CODE) ---
+// Resolve a channel from an invite token that may be either its doc id or its
+// inviteCode (share links use the code; legacy in-chat cards use the id).
+async function _resolveChannelByInviteToken(token) {
+  if (!token) return null;
+  const byId = await _resolveChannelData(token);
+  if (byId) return byId;
+  try {
+    const snap = await db.collection('channels').where('inviteCode', '==', token).limit(1).get();
+    if (!snap.empty) { const d = snap.docs[0]; return { id: d.id, ...d.data() }; }
+  } catch (e) {}
+  return null;
+}
+
 async function checkChannelInviteUrlParam() {
   if (!currentUser) return;
   const params = new URLSearchParams(window.location.search);
-  const channelId = params.get('joinChannel');
-  if (!channelId) return;
+  const token = params.get('joinChannel');
+  if (!token) return;
 
   try {
     window.history.replaceState({}, document.title, window.location.pathname);
   } catch (e) {}
 
-  const chan = await _resolveChannelData(channelId);
+  const chan = await _resolveChannelByInviteToken(token);
   if (!chan) {
     showNotifToast('Invalid or expired channel invite link', 'error');
     return;
   }
 
-  const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid);
+  const isSubscribed = (chan.subscriberUids || []).includes(currentUser.uid)
+    || chan.ownerUid === currentUser.uid;
   if (isSubscribed) {
-    showNotifToast(`Opening "${chan.name}"…`, 'info');
+    showNotifToast(`✓ You're already following "${chan.name}" — opening…`, 'info');
     selectChannelFeed(chan);
     switchTab('community');
     switchCommunitySubTab('channels');
@@ -15134,14 +15229,19 @@ async function checkChannelInviteUrlParam() {
   const confirmFollow = await nexaConfirm(`You've been invited to follow the channel "${chan.name}".`, { title: 'Follow channel?', okLabel: 'Follow' });
   if (!confirmFollow) return;
 
-  await db.collection('channels').doc(channelId).collection('subscribers').doc(currentUser.uid).set({
-    uid: currentUser.uid,
-    joinedAt: Date.now()
-  });
-  await db.collection('channels').doc(channelId).update({
-    subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
-    subscribersCount: firebase.firestore.FieldValue.increment(1)
-  });
+  try {
+    await db.collection('channels').doc(chan.id).collection('subscribers').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      joinedAt: Date.now()
+    });
+    await db.collection('channels').doc(chan.id).update({
+      subscriberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+      subscribersCount: firebase.firestore.FieldValue.increment(1)
+    });
+  } catch (err) {
+    showNotifToast('Failed to follow: ' + err.message, 'error');
+    return;
+  }
 
   showNotifToast(`✓ Following "${chan.name}"!`, 'success');
   selectChannelFeed({ ...chan, subscriberUids: [...(chan.subscriberUids || []), currentUser.uid] });
@@ -15149,11 +15249,26 @@ async function checkChannelInviteUrlParam() {
   switchCommunitySubTab('channels');
 }
 
+// Resolve a group from an invite token that may be its inviteCode (share
+// links) or its doc id (legacy in-chat cards / direct links).
+async function _resolveGroupByInviteToken(token) {
+  if (!token) return null;
+  try {
+    const snap = await db.collection('groups').where('inviteCode', '==', token).limit(1).get();
+    if (!snap.empty) { const d = snap.docs[0]; return { id: d.id, ...d.data() }; }
+  } catch (e) {}
+  try {
+    const doc = await db.collection('groups').doc(token).get();
+    if (doc.exists) return { id: doc.id, ...doc.data() };
+  } catch (e) {}
+  return null;
+}
+
 async function checkGroupInviteUrlParam() {
   if (!currentUser) return;
   const params = new URLSearchParams(window.location.search);
-  const inviteCode = params.get('joinGroup');
-  if (!inviteCode) return;
+  const token = params.get('joinGroup');
+  if (!token) return;
 
   // Clean URL parameter without page reload
   try {
@@ -15161,19 +15276,21 @@ async function checkGroupInviteUrlParam() {
   } catch (e) {}
 
   try {
-    const snap = await db.collection('groups').where('inviteCode', '==', inviteCode).limit(1).get();
-    if (snap.empty) {
+    const group = await _resolveGroupByInviteToken(token);
+    if (!group) {
       showNotifToast('Invalid or expired group invite link', 'error');
       return;
     }
 
-    const doc = snap.docs[0];
-    const group = { id: doc.id, ...doc.data() };
-    
-    // Check if user is already a member
+    // Already a member? Say so instead of silently re-joining (which would
+    // also inflate membersCount).
     const memSnap = await db.collection('groups').doc(group.id).collection('members').doc(currentUser.uid).get();
-    if (memSnap.exists) {
-      showNotifToast(`Opening "${group.name}"…`, 'info');
+    const isMember = memSnap.exists
+      || (group.memberUids || []).includes(currentUser.uid)
+      || group.ownerUid === currentUser.uid
+      || group.createdBy === currentUser.uid;
+    if (isMember) {
+      showNotifToast(`✓ You're already in "${group.name}" — opening…`, 'info');
       switchTab('community');
       switchCommunitySubTab('groups');
       selectGroupChat(group);
@@ -15193,6 +15310,7 @@ async function checkGroupInviteUrlParam() {
     });
 
     await db.collection('groups').doc(group.id).update({
+      memberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
       membersCount: firebase.firestore.FieldValue.increment(1)
     });
 

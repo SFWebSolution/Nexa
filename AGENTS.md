@@ -1396,3 +1396,88 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Verify with `node /tmp`-style headless tests (DOM stub): detection across
   codes/messages/nested/string/null, idempotent show, hide, and guard
   pass-through/rethrow — 19/19 in the authored suite.
+
+
+## Group & Channel invite links + join.html landing (do NOT regress)
+- **Share links point at `join.html`, not the dashboard.** `nexaJoinUrl(param, code)`
+  (app-main.js) builds `${origin}/join.html?joinGroup=<code>` or `?joinChannel=<code>`.
+  `getOrCreateGroupInviteLink()` / `getOrCreateChannelInviteLink()` create a code on
+  the group/channel doc (`inviteCode`) and return that URL; `resetGroupInviteLink()` /
+  `resetChannelInviteLink()` regenerate it (admin-only). Buttons: "Invite via Link" +
+  "Reset Invite Link" in Group Info; "Share Channel" (now an invite link) + "Reset Link"
+  in Channel Info. `shareGroupInviteLink` / `shareChannelInviteLink` / `shareCurrentChannel`
+  all share the real code via the shared `nexaShareInvite()` helper. Before this,
+  `shareGroupInviteLink()` shared `window.location.href` with NO code and nothing called
+  `getOrCreateGroupInviteLink()` — the link joined nothing.
+- **`join.html` is a self-contained landing page** (its own Firebase config, module
+  script, and CSS — it does NOT load app-main.js). It previews the group/channel
+  (name, icon, member/subscriber count), and:
+  - **Android** shows an "Open in app" button that navigates to an
+    `intent://<host><path>#Intent;scheme=https;package=com.nexa.messenger;S.browser_fallback_url=<this page>;end`
+    URL. With the app installed Android opens it; without, `browser_fallback_url`
+    keeps the user on this page. (A plain custom scheme can't carry the code, so the
+    intent reuses the https URL and the app must declare an App Link to receive it.)
+  - **Desktop / no app** just shows "Open Nexa" / sign-in buttons.
+  - **Signed out** → routes to `/login.html?next=<this invite url>` (or `/signup.html`).
+  - **Signed in** → routes to `/dashboard.html?joinGroup|joinChannel=<token>`.
+- **`?next=` is honoured by login.html AND signup.html** (`nexaNextTarget()` /
+  `nexaSignupNextTarget()`) so an invite survives authentication. It is same-origin
+  ONLY: absolute (`https://…`), protocol-relative (`//…`) and non-`.html` values fall
+  back to `dashboard.html`. Do NOT loosen this — it would be an open redirect.
+- **Invite tokens are resolved by BOTH `inviteCode` and doc id.** `checkGroupInviteUrlParam()`
+  uses `_resolveGroupByInviteToken()` and `checkChannelInviteUrlParam()` uses
+  `_resolveChannelByInviteToken()`: each tries the `inviteCode` query first, then a
+  direct doc-id get. That keeps new share links (code) and legacy in-chat cards
+  (doc id) both working.
+- **Already-joined is reported, not re-joined.** Both param handlers and the in-chat
+  `resolveGroupForInvite()` check membership (memberUids / members doc / ownerUid /
+  createdBy) and show "✓ You're already in …/following …" instead of silently adding
+  again — which also stops `membersCount`/`subscribersCount` inflation. The group
+  join writes `memberUids: arrayUnion(...)` alongside the increment (the old param
+  handler only incremented the count and never added the uid, so `memberUids` drifted).
+- **APK side (NOT in this repo):** `SFWebSolution/nexa-andriod` (package
+  `com.nexa.messenger`) currently has NO deep-link intent filter. For "open in app"
+  to actually land in the app it needs an App Link intent-filter for the web host
+  (autoVerify) + a hosted `/.well-known/assetlinks.json` with the signing SHA-256,
+  or a custom scheme. The web half works and degrades gracefully without it.
+
+## Group list preview accuracy (do NOT regress)
+- `groupMsgSnippet(msg)` (app-main.js) is the single preview-string helper (text /
+  📷 Photo / 🎥 Video / 🎤 Voice note / 📎 File / 📊 Poll).
+- `updateGroupPreview(groupId, snippet, senderName, prefix)` is the single WRITER of
+  a group's `lastMessage` / `lastMessageTime` / `lastSenderName`; it also mirrors the
+  change into `myGroups` and re-renders so the list repaints instantly.
+- It is called from EVERY path: send (`sendGroupMessageWithExtras`), forward
+  (`⤳` prefix), edit (`saveEditMessage`, only when the edited msg is the newest), and
+  delete (`refreshGroupPreviewAfterDelete()` re-reads the newest remaining message).
+  Previously ONLY send updated the preview, so deleting/editing/forwarding left a
+  stale or wrong preview in the chat list.
+
+## Admin: Top 20 removed, Communities added
+- The **"⭐ Nexa Champions" Top-20** section is GONE from admin.html (UI, CSS,
+  `renderChampions`, `reloadWeeklyStats`, `backfillReferrals`, `cachedMsgScores`,
+  `cachedStoryScores`, `loadWeeklyActivity`, `weeklyActivityLoading`, and the
+  `champ-*` CSS). The **`GET /api/admin/weekly-activity`** endpoint was removed from
+  `server/admin-api.js` (Champions was its only consumer). The "Weekly Active" /
+  "Stories this week" / "Referrals this week" stat cards are KEPT — weekly-active is
+  now purely `lastSeen >= weekStart || createdAt >= weekStart` (no message/story
+  score inputs). Do NOT re-add a leaderboard or the weekly-activity scan.
+- **Communities (Groups & Channels)** section in admin.html (`#communitiesList`,
+  `loadCommunities()`, `renderCommunities()`, `deleteCommunity()`) lists every group
+  and channel with kind badge, icon, member/subscriber count, owner and created date,
+  plus a name/owner search and Delete (typed confirm). It is backed by two new
+  Admin-SDK endpoints in `server/admin-api.js`:
+  - `GET /api/admin/list-communities` → `{communities:[{id,kind,name,handle,avatarUrl,ownerUid,count,createdAt,…}]}`
+  - `POST /api/admin/delete-community` `{id, kind:"group"|"channel"}` → recursively
+    batch-deletes the subcollections (`members`/`messages` or
+    `subscribers`/`posts`/`messages`) then the doc, so nothing is orphaned.
+  Both require `X-Admin-Secret`. Deploy them into the same backend as the other admin
+  routes (`nexa-backend-e6pq.onrender.com`) for the section to work.
+
+## Invite/preview regression suite
+- `node tests/invite-links.test.js` — 54 headless checks. It extracts the REAL
+  functions from app-main.js/login.html/signup.html via brace matching and evaluates
+  them in a `vm` context (invite URL builder, snippet helper, `?next=` open-redirect
+  guard), and asserts the structural invariants (resolvers, already-joined messages,
+  every preview path, admin removal, backend endpoints, join.html bits). No Firebase
+  needed.

@@ -648,14 +648,14 @@ td {
   color: var(--text-3);
 }
 
-/* ⭐ Nexa Champions */
-.champions-list {
+/* 👥 Communities */
+.champ-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-bottom: 8px;
 }
-.champions-empty {
+.champ-empty {
   background: rgba(21,27,39,0.5);
   border: 1px solid var(--border-md);
   border-radius: 14px;
@@ -664,7 +664,7 @@ td {
   font-size: 13px;
   text-align: center;
 }
-.champ-row {
+.comm-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -672,26 +672,8 @@ td {
   border: 1px solid var(--border-md);
   border-radius: 14px;
   padding: 10px 14px;
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-.champ-row:hover {
-  transform: translateX(3px);
-  border-color: rgba(79,143,255,0.45);
-  background: rgba(79,143,255,0.08);
-}
-.champ-row.rank-1 { border-color: rgba(255,199,64,0.5); background: rgba(255,199,64,0.06); }
-.champ-row.rank-2 { border-color: rgba(196,204,216,0.4); }
-.champ-row.rank-3 { border-color: rgba(205,127,50,0.45); }
-.champ-rank {
-  width: 34px;
-  text-align: center;
-  font-weight: 800;
-  font-size: 15px;
-  color: var(--text-3);
-  flex-shrink: 0;
-}
-.champ-av {
+.comm-av {
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -699,47 +681,25 @@ td {
   flex-shrink: 0;
   background: #1b2230;
 }
-.champ-meta { flex: 1; min-width: 0; }
-.champ-name {
+.comm-meta { flex: 1; min-width: 0; }
+.comm-name { font-weight: 700; font-size: 14px; color: var(--text-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comm-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comm-badge { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-right: 6px; }
+.comm-badge.group { background: rgba(79,143,255,0.16); color: #7fb0ff; }
+.comm-badge.channel { background: rgba(56,211,159,0.16); color: #56e0b3; }
+.comm-del-btn {
+  background: rgba(255,69,58,0.14);
+  color: #ff6b60;
+  border: 1px solid rgba(255,69,58,0.35);
+  border-radius: 10px;
+  padding: 8px 13px;
+  font-size: 12.5px;
   font-weight: 700;
-  font-size: 14px;
-  color: var(--text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
+  flex-shrink: 0;
 }
-.champ-online { color: var(--online); margin-left: 6px; font-size: 11px; }
-.champ-new {
-  margin-left: 8px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  background: rgba(56,211,159,0.16);
-  color: #38d39f;
-  border: 1px solid rgba(56,211,159,0.4);
-  border-radius: 5px;
-  padding: 1px 5px;
-  vertical-align: middle;
-}
-.champ-stats {
-  display: flex;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text-3);
-  margin: 3px 0 5px;
-}
-.champ-bar {
-  height: 5px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.07);
-  overflow: hidden;
-}
-.champ-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #4f8fff, #38d39f);
-  transition: width 0.4s ease;
-}
+.comm-del-btn:hover { background: rgba(255,69,58,0.24); }
+.comm-del-btn[disabled] { opacity: .5; cursor: default; }
 
 /* 🩺 Data Health */
 .health-grid {
@@ -1852,26 +1812,6 @@ tbody tr .actions { cursor: default; }
       </div>
     </div>
 
-    <!-- Nexa Champions -->
-    <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-      <div>
-        <div class="section-title">⭐ Nexa Champions</div>
-        <div class="section-subtitle" id="championsSubtitle">Top 20 most active members of the last 7 days — by messages, stories &amp; referrals</div>
-      </div>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button class="action-btn warning" id="reloadWeeklyBtn" onclick="reloadWeeklyStats()" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
-          🔄 Refresh
-        </button>
-        <button class="action-btn" id="backfillReferralsBtn" onclick="backfillReferrals()" title="Recompute referral counts from referredBy fields" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
-          🔗 Backfill Referrals
-        </button>
-      </div>
-    </div>
-
-    <div class="champions-list" id="championsGrid">
-      <div class="champions-empty">Analyzing this week's activity…</div>
-    </div>
-
     <!-- Data Health -->
     <div class="section-header" style="margin-top: 36px;">
       <div>
@@ -1880,6 +1820,24 @@ tbody tr .actions { cursor: default; }
       </div>
     </div>
     <div class="health-grid" id="healthGrid"></div>
+
+    <!-- Communities (Groups & Channels) -->
+    <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <div class="section-title">👥 Groups &amp; Channels</div>
+        <div class="section-subtitle">Every community on Nexa — inspect or delete</div>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <input id="commSearchInput" type="text" placeholder="Search name or owner…" oninput="renderCommunities()" style="padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border-md); background: rgba(21,27,39,0.5); color: var(--text-0); font-size: 13px; min-width: 200px;">
+        <button class="action-btn warning" onclick="loadCommunities(true)" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
+          🔄 Reload
+        </button>
+      </div>
+    </div>
+
+    <div class="champ-list" id="communitiesList">
+      <div class="champ-empty">Loading communities…</div>
+    </div>
 
     <!-- Chart -->
     <div class="section-header" style="margin-top: 40px;">
@@ -1966,12 +1924,13 @@ function adminFetchGet(path) {
 }
 
 let users = [];
+let communities = [];
+let communitiesLoaded = false;
+let communitiesLoading = false;
 let presenceData = {};
 let activeStoriesCount = 0;
 let weeklyStoriesCount = 0;
 let weeklyReferralsCount = 0;
-let cachedMsgScores = {};
-let cachedStoryScores = {};
 let currentWeekStart = null;
 let chart = null;
 let currentUser = null;
@@ -2065,8 +2024,9 @@ function handleLogout() {
     document.getElementById("secretInput").value = "";
     users = [];
     presenceData = {};
-    cachedMsgScores = {};
-    cachedStoryScores = {};
+    communities = [];
+    communitiesLoaded = false;
+    communitiesLoading = false;
     log("Admin logged out", "warning");
   }).catch(err => console.error(err));
 }
@@ -2141,6 +2101,7 @@ function initDashboard() {
   isDashboardInitialized = true;
 
   initWeeklyAutoRefresh();
+  loadCommunities();
   listenUsers();
   listenPresence();
   // Message/story analytics are computed on demand (60s) instead of streaming
@@ -2298,20 +2259,15 @@ async function loadStoriesAnalytics() {
     const weekStart = getCurrentWeekStart();
     let activeCount = 0;
     let weeklyStoryCount = 0;
-    const storyScores = {};
     snap.docs.forEach(d => {
       const data = d.data();
       const ts = tsMs(data.createdAt);
       if (ts && (now - ts < 86400000)) activeCount++;
-      if (data.uid && ts && ts >= weekStart) {
-        storyScores[data.uid] = (storyScores[data.uid] || 0) + 1;
-        weeklyStoryCount++;
-      }
+      if (data.uid && ts && ts >= weekStart) weeklyStoryCount++;
     });
     activeStoriesCount = activeCount;
     const el = document.getElementById("activeStories");
     if (el) el.textContent = activeStoriesCount;
-    cachedStoryScores = storyScores;
     weeklyStoriesCount = weeklyStoryCount;
     // Users invited this week = sign-ups in the last 7 days that carry a
     // `referredBy` (the invite link was used). Counting each inviter's
@@ -2332,35 +2288,8 @@ async function loadStoriesAnalytics() {
 // only allow the two parties (plus the admin is an anonymous auth user), and
 // the old client-side scan was removed for cost. So the counts come from the
 // backend's Admin SDK endpoint. Stories/referrals are read locally.
-let weeklyActivityLoading = false;
-async function loadWeeklyActivity() {
-  if (weeklyActivityLoading) return;
-  weeklyActivityLoading = true;
-  try {
-    const res = await adminFetchGet("/api/admin/weekly-activity?weekStart=" + getCurrentWeekStart());
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || "request failed");
-    if (data.messages) cachedMsgScores = data.messages;
-    if (data.stories) cachedStoryScores = data.stories;
-    const el = document.getElementById("backendStatus");
-    if (el) el.textContent = "";
-  } catch (e) {
-    // Backend unreachable / not deployed: keep whatever local story scores we
-    // have so the list still renders (ranked on stories + referrals), but make
-    // the gap visible instead of silently showing an inaccurate ranking.
-    console.warn("Weekly activity fetch failed — ranking on stories + referrals only:", e.message);
-    const el = document.getElementById("backendStatus");
-    if (el) el.innerHTML = '&nbsp;⚠️ <strong>Message counts unavailable</strong> — backend not reachable (' + escapeHtml(e.message) + '). Champions are ranked on stories &amp; referrals only.';
-  } finally {
-    weeklyActivityLoading = false;
-  }
-}
-
 async function reloadAnalytics() {
   await loadStoriesAnalytics();
-  await loadWeeklyActivity();
-  renderChampions();
   renderAnalytics();
   renderDataHealth();
 }
@@ -2382,140 +2311,86 @@ function updateSyncIndicator(isSyncing) {
 /* =====================================================
    WEEKLY LEADERBOARD RENDERER & RELOAD
    ===================================================== */
-// One-time referral backfill: scan every user for a `referredBy` field, group
-// by the inviter's username, and rewrite each inviter's referralCount +
-// referrals list so past referrals (recorded before counting worked) show up.
-async function backfillReferrals() {
-  const btn = document.getElementById("backfillReferralsBtn");
-  if (!confirm("Recompute all referral counts from each user's referredBy field? This rewrites referralCount + referrals on inviter accounts.")) return;
-  if (btn) { btn.disabled = true; btn.textContent = "⏳ Backfilling..."; }
-  log("🔗 Starting referral backfill...", "info");
+// 👥 Communities — groups + channels, loaded once from the backend
+// (Admin SDK) and refreshed on demand. Deletion is destructive and wipes
+// the subcollections too, so it always goes through a typed confirmation.
+async function loadCommunities(force) {
+  if (communitiesLoaded && !force) return;
+  if (communitiesLoading) return;
+  communitiesLoading = true;
+  const list = document.getElementById("communitiesList");
+  if (list && !communities.length) list.innerHTML = '<div class="champ-empty">Loading communities…</div>';
   try {
-    const snap = await db.collection("users").get();
-    const byReferrer = {}; // username -> [{uid, username, displayName, at}]
-    const usernames = {};  // lowercase username -> user doc id
-    snap.forEach(d => {
-      const data = d.data();
-      if (data.username) usernames[data.username.toLowerCase()] = d.id;
-    });
-    snap.forEach(d => {
-      const data = d.data();
-      const rb = (data.referredBy || "").toLowerCase();
-      if (!rb) return;
-      if (!byReferrer[rb]) byReferrer[rb] = [];
-      byReferrer[rb].push({
-        uid: d.id,
-        username: data.username || "",
-        displayName: data.displayName || data.name || "",
-        at: data.createdAt || Date.now()
-      });
-    });
-    let updated = 0;
-    for (const refName of Object.keys(byReferrer)) {
-      const inviterId = usernames[refName];
-      if (!inviterId) continue;
-      const refs = byReferrer[refName];
-      await db.collection("users").doc(inviterId).update({
-        referralCount: refs.length,
-        referrals: refs
-      });
-      updated++;
-      log(`  ✅ @${refName}: ${refs.length} referral(s)`, "success");
-    }
-    log(`🔗 Backfill complete — updated ${updated} inviter account(s).`, "success");
-    alert(`✅ Referral backfill complete! Updated ${updated} inviter account(s).`);
+    const res = await adminFetchGet("/api/admin/list-communities");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "request failed");
+    communities = data.communities || [];
+    communitiesLoaded = true;
   } catch (e) {
-    console.error(e);
-    log("❌ Backfill failed: " + e.message, "error");
-    alert("❌ Backfill failed: " + e.message);
-  }
-  if (btn) { btn.disabled = false; btn.textContent = "🔗 Backfill Referrals"; }
-}
-
-function reloadWeeklyStats() {
-  const btn = document.getElementById("reloadWeeklyBtn");
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = "⏳ Reloading...";
-  }
-
-  log("🔄 Champions refreshed by admin", "info");
-
-  // Re-pull the backend activity counts, then render with fresh numbers.
-  reloadAnalytics().finally(() => {
-    render();
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = "🔄 Refresh";
-    }
-  });
-}
-
-// ⭐ Nexa Champions — the top members of the last 7 days. Ranked by real
-// activity (messages sent + stories posted + people they referred), shown as
-// plain counts. There are deliberately NO points and no all-time inflation.
-function renderChampions() {
-  const grid = document.getElementById("championsGrid");
-  if (!grid) return;
-
-  if (!users.length) {
-    grid.innerHTML = '<div class="champions-empty">No users yet.</div>';
+    console.warn("Communities load failed:", e.message);
+    communitiesLoading = false;
+    if (list) list.innerHTML = '<div class="champ-empty">⚠️ Could not load communities — ' + escapeHtml(e.message) + ' (is the admin backend deployed with ADMIN_SECRET set?)</div>';
     return;
   }
+  communitiesLoading = false;
+  renderCommunities();
+}
 
-  const ranked = users.filter(u => !u.banned).map(u => {
-    const msgs = cachedMsgScores[u.uid] || 0;
-    const stories = cachedStoryScores[u.uid] || 0;
-    const referrals = u.referralCount || 0;
-    const isOnline = checkUserOnline(u);
-    const isNew = !!u.createdAt && (Date.now() - u.createdAt) < 7 * 86400000;
-    return {
-      uid: u.uid,
-      displayName: u.displayName || u.name || "Nexa User",
-      photo: safePhoto(u.photo || u.photoUrl),
-      isOnline, msgs, stories, referrals, isNew,
-      activity: msgs + stories + referrals
-    };
-  });
-
-  ranked.sort((a, b) =>
-    b.activity - a.activity ||
-    b.referrals - a.referrals ||
-    b.msgs - a.msgs
-  );
-
-  const top = ranked.slice(0, 20);
-
-  if (!top.length) {
-    grid.innerHTML = '<div class="champions-empty">No users to rank yet.</div>';
+function renderCommunities() {
+  const list = document.getElementById("communitiesList");
+  if (!list) return;
+  if (!communitiesLoaded) { loadCommunities(); return; }
+  if (!communities.length) {
+    list.innerHTML = '<div class="champ-empty">No groups or channels yet.</div>';
     return;
   }
-
-  const max = top[0].activity || 1;
-  grid.innerHTML = top.map((u, i) => {
-    const rank = i + 1;
-    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-    const pct = Math.max(6, Math.round((u.activity / max) * 100));
-    const dot = u.isOnline
-      ? '<span class="champ-online" title="Online now">●</span>'
-      : '';
-    const newTag = u.isNew ? '<span class="champ-new">NEW</span>' : '';
-    return `
-      <div class="champ-row rank-${rank <= 3 ? rank : 'x'}" onclick="openUserDrawer('${u.uid}')">
-        <div class="champ-rank">${medal}</div>
-        <img class="champ-av" src="${u.photo}" alt="" loading="lazy" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
-        <div class="champ-meta">
-          <div class="champ-name">${escapeHtml(u.displayName)}${dot}${newTag}</div>
-          <div class="champ-stats">
-            <span title="Messages sent this week">💬 ${u.msgs}</span>
-            <span title="Stories posted this week">⭕ ${u.stories}</span>
-            <span title="People referred (all time)">🔗 ${u.referrals}</span>
-          </div>
-          <div class="champ-bar"><div class="champ-bar-fill" style="width:${pct}%"></div></div>
-        </div>
+  const q = (document.getElementById("commSearchInput")?.value || "").trim().toLowerCase();
+  const filtered = communities.filter(c => {
+    if (!q) return true;
+    return (c.name || "").toLowerCase().includes(q)
+      || (c.handle || "").toLowerCase().includes(q)
+      || (c.ownerUid || "").toLowerCase().includes(q);
+  });
+  if (!filtered.length) {
+    list.innerHTML = '<div class="champ-empty">No communities match “' + escapeHtml(q) + '”.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(c => {
+    const isChannel = c.kind === "channel";
+    const av = c.avatarUrl ? escapeHtml(c.avatarUrl) : "icon-192.png";
+    const kindLabel = isChannel ? "Channel" : "Group";
+    const unit = isChannel ? "subscribers" : "members";
+    const owner = c.ownerName ? escapeHtml(c.ownerName) : escapeHtml((c.ownerUid || "unknown").slice(0, 10));
+    const when = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "";
+    return `<div class="comm-row">
+      <img class="comm-av" src="${av}" alt="" onerror="this.src='icon-192.png'">
+      <div class="comm-meta">
+        <div class="comm-name"><span class="comm-badge ${isChannel ? 'channel' : 'group'}">${kindLabel}</span>${escapeHtml(c.name)}</div>
+        <div class="comm-sub">${escapeHtml(String(c.count))} ${unit} · owner ${owner}${when ? ' · ' + when : ''}</div>
       </div>
-    `;
+      <button class="comm-del-btn" onclick="deleteCommunity('${escapeHtml(c.id)}', '${c.kind}', this)">🗑 Delete</button>
+    </div>`;
   }).join("");
+}
+
+async function deleteCommunity(id, kind, btn) {
+  const c = communities.find(x => x.id === id && x.kind === kind);
+  const label = c ? `"${c.name}"` : "this community";
+  if (!confirm(`❌ Permanently DELETE ${label}?\n\nThis removes it for everyone and cannot be undone.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Deleting…"; }
+  try {
+    const res = await adminFetch("/api/admin/delete-community", { id, kind });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "Failed");
+    communities = communities.filter(x => !(x.id === id && x.kind === kind));
+    log(`Deleted ${kind} ${label} (${id})`, "error");
+    renderCommunities();
+  } catch (e) {
+    alert("❌ Delete failed: " + e.message + " (is the admin backend deployed with ADMIN_SECRET set?)");
+    log(`Failed to delete ${kind} ${id}: ${e.message}`, "error");
+    if (btn) { btn.disabled = false; btn.textContent = "🗑 Delete"; }
+  }
 }
 
 // 🩺 Data Health — surface the gaps that make the numbers above untrustworthy.
@@ -2598,8 +2473,7 @@ function render() {
     const lastSeen = userLastSeen(u);
     const isOnline = checkUserOnline(u);
     const isActive = lastSeen >= (now - day);
-    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart
-      || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
+    const isWeeklyActive = lastSeen >= weekStart || u.createdAt >= weekStart;
 
     if (isOnline) onlineCount++;
     if (isActive) activeTodayCount++;
@@ -2617,9 +2491,9 @@ function render() {
 
   applyFiltersAndRender();
   renderChart();
-  renderChampions();
   renderAnalytics();
   renderDataHealth();
+  renderCommunities();
 }
 
 /* =====================================================
@@ -2640,8 +2514,7 @@ function renderAnalytics() {
   let onlineNow = 0;
   users.forEach(u => {
     const lastSeen = userLastSeen(u);
-    const isActive = lastSeen >= weekStart || u.createdAt >= weekStart
-      || (cachedMsgScores[u.uid] || 0) > 0 || (cachedStoryScores[u.uid] || 0) > 0;
+    const isActive = lastSeen >= weekStart || u.createdAt >= weekStart;
     if (isActive && !u.banned) weeklyActive++;
     if (checkUserOnline(u)) onlineNow++;
   });
