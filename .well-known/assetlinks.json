@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nexa.messenger",
+      "sha256_cert_fingerprints": [
+        "64:45:F8:E6:B1:7C:2B:F7:7D:CE:D4:E7:E6:DB:06:92:47:08:52:95:EE:74:D3:A2:92:C9:CF:9B:27:C9:14:EB"
+      ]
+    }
+  }
+]

@@ -704,6 +704,19 @@ const firebaseConfig = {
 
 // INIT
 const app = initializeApp(firebaseConfig);
+
+// Post-signup destination from ?next= (invite links route through here).
+// Same-origin .html paths only — never an open redirect.
+function nexaSignupNextTarget(fallback) {
+  try {
+    const n = new URLSearchParams(window.location.search).get('next');
+    if (!n) return fallback;
+    const decoded = decodeURIComponent(n);
+    if (decoded.startsWith('/') && !decoded.startsWith('//') && /\.html($|[?#])/.test(decoded)) return decoded;
+    if (/^[a-z0-9_.-]+\.html($|[?#])/i.test(decoded)) return decoded;
+  } catch (e) {}
+  return fallback;
+}
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -734,7 +747,7 @@ try {
 // AUTO-LOGIN CHECK: If already logged in, redirect to dashboard
 onAuthStateChanged(auth, (user) => {
   if (user && !isCreatingAccount) {
-    window.location.replace("dashboard.html");
+    window.location.replace(nexaSignupNextTarget("dashboard.html"));
   }
 });
 
@@ -882,7 +895,7 @@ async function signup() {
     showMsg("Account created! Redirecting...", "success");
 
     setTimeout(() => {
-      window.location.href = "dashboard.html";
+      window.location.href = nexaSignupNextTarget("dashboard.html");
     }, 400);
 
   } catch (error) {

@@ -139,51 +139,83 @@ app.post("/api/admin/delete-user", requireAdminSecret, async (req, res) => {
   }
 });
 
-// ── GET /api/admin/weekly-activity ──────────────────────────────────────────
-// Returns this-week activity per uid so the champions list can rank people who
-// have NOT referred anyone yet. The browser can't read other users' `chats`
-// docs (rules are auth-party-only) and the admin account itself is anonymous,
-// so this MUST come from the Admin SDK. Two aggregate-style scans, no realtime
-// listener. Query: ?weekStart=<epoch ms>
-// createdAt is normally a ms-epoch number; tolerate a Firestore Timestamp or
-// string anyway so a doc written by another path can't zero out a count.
-function tsMs(v) {
-  if (typeof v === "number") return v;
-  if (v && typeof v.toMillis === "function") return v.toMillis();
-  if (v && typeof v.toDate === "function") return v.toDate().getTime();
-  const n = new Date(v).getTime();
-  return isNaN(n) ? 0 : n;
-}
-
-// Pure aggregation over already-fetched docs — separated out so it can be
-// unit-tested without a Firestore connection.
-function aggregateWeeklyActivity(chatDocs, statusDocs, weekStart) {
-  const messages = {};
-  const stories = {};
-  (chatDocs || []).forEach(d => {
-    const ts = tsMs(d && d.createdAt);
-    if (d && d.from && ts && ts >= weekStart) messages[d.from] = (messages[d.from] || 0) + 1;
-  });
-  (statusDocs || []).forEach(d => {
-    const ts = tsMs(d && d.createdAt);
-    if (d && d.uid && ts && ts >= weekStart) stories[d.uid] = (stories[d.uid] || 0) + 1;
-  });
-  const totals = {};
-  Object.keys(messages).forEach(uid => { totals[uid] = (totals[uid] || 0) + messages[uid]; });
-  Object.keys(stories).forEach(uid => { totals[uid] = (totals[uid] || 0) + stories[uid]; });
-  return { messages, stories, totals };
-}
-
-app.get("/api/admin/weekly-activity", requireAdminSecret, async (req, res) => {
+// ── GET /api/admin/list-communities ───────────────────────────
+// Lists every group and channel for the admin Communities section. Uses the
+// Admin SDK because the hardened rules only let an OWNER delete a community
+// (an admin is not the owner), and because counts live in subcollections the
+// browser can't aggregate cheaply.
+app.get("/api/admin/list-communities", requireAdminSecret, async (req, res) => {
   try {
-    const weekStart = Number(req.query.weekStart) || 0;
-    const chatsSnap = await db.collection("chats").get();
-    const statusSnap = await db.collection("status").get();
-    const chatDocs = chatsSnap.docs.map(doc => doc.data() || {});
-    const statusDocs = statusSnap.docs.map(doc => doc.data() || {});
-    res.json(Object.assign({ success: true }, aggregateWeeklyActivity(chatDocs, statusDocs, weekStart)));
+    const [groupsSnap, channelsSnap] = await Promise.all([
+      db.collection("groups").get(),
+      db.collection("channels").get(),
+    ]);
+    const shape = (snap, kind) => snap.docs.map(doc => {
+      const d = doc.data() || {};
+      const uidList = kind === "channel" ? d.subscriberUids : d.memberUids;
+      const declared = kind === "channel" ? d.subscribersCount : d.membersCount;
+      const count = Array.isArray(uidList) ? uidList.length : (Number(declared) || 0);
+      return {
+        id: doc.id,
+        kind,
+        name: d.name || (kind === "channel" ? "Untitled channel" : "Untitled group"),
+        handle: d.handle || "",
+        avatarUrl: d.avatarUrl || "",
+        ownerUid: d.ownerUid || d.createdBy || "",
+        ownerName: d.ownerName || "",
+        count,
+        description: d.description || "",
+        isPublic: d.isPublic !== false,
+        createdAt: d.createdAt || 0,
+      };
+    });
+    const communities = shape(groupsSnap, "group").concat(shape(channelsSnap, "channel"));
+    communities.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    res.json({ success: true, communities });
   } catch (err) {
-    console.error("weekly-activity error:", err);
+    console.error("list-communities error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /api/admin/delete-community ──────────────────────────
+// Body: { id, kind: "group" | "channel" }
+// Recursively deletes the community and ALL of its subcollections. A plain
+// doc delete would orphan members/messages/posts (they'd still be billed and
+// still readable), so we walk the subcollections first.
+async function deleteCollection(ref, batchSize) {
+  const size = batchSize || 300;
+  while (true) {
+    const snap = await ref.limit(size).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    if (snap.size < size) break;
+  }
+}
+
+app.post("/api/admin/delete-community", requireAdminSecret, async (req, res) => {
+  try {
+    const { id, kind } = req.body || {};
+    if (!id || typeof id !== "string") {
+      return res.status(400).json({ success: false, error: "id required" });
+    }
+    const isChannel = kind === "channel";
+    const coll = isChannel ? "channels" : "groups";
+    const subcolls = isChannel ? ["subscribers", "posts", "messages"] : ["members", "messages"];
+
+    for (const sub of subcolls) {
+      try {
+        await deleteCollection(db.collection(coll).doc(id).collection(sub));
+      } catch (e) {
+        console.warn(`subcollection ${sub} cleanup failed for ${coll}/${id}:`, e.message);
+      }
+    }
+    await db.collection(coll).doc(id).delete();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("delete-community error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

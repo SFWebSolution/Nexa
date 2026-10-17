@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join on Nexa — Nexa Messenger</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --nx-primary: #0b57d0;
+      --nx-primary-lt: #1d6bf3;
+      --nx-bg: #f4f6fa;
+      --nx-surface: #ffffff;
+      --nx-border: #e2e8f0;
+      --nx-text-0: #081226;
+      --nx-text-dim: #5c6c84;
+      --nx-text-muted: #8a99ad;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-display: 'Sora', 'Plus Jakarta Sans', sans-serif;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-body);
+      background: radial-gradient(1200px 600px at 50% -10%, #e8effb 0%, var(--nx-bg) 55%, #eef2f8 100%);
+      color: var(--nx-text-0);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 18px; min-height: 100vh; min-height: 100dvh;
+    }
+    .jcard {
+      width: 100%; max-width: 420px; background: var(--nx-surface);
+      border: 1px solid var(--nx-border); border-radius: 24px;
+      box-shadow: 0 24px 60px -20px rgba(8, 18, 38, .28), 0 2px 8px rgba(8, 18, 38, .05);
+      padding: 30px 26px 26px; text-align: center;
+      animation: jrise .5s cubic-bezier(.22,1,.36,1) both;
+    }
+    @keyframes jrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .jbrand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 20px; }
+    .jbrand img { width: 30px; height: 30px; border-radius: 9px; }
+    .jbrand span { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -.2px; }
+    .javatar {
+      width: 92px; height: 92px; border-radius: 26px; object-fit: cover;
+      margin: 0 auto 16px; display: block; background: #eef2f8;
+      border: 1px solid var(--nx-border); box-shadow: 0 10px 26px -12px rgba(8,18,38,.35);
+    }
+    .jkind {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+      color: var(--nx-primary); background: rgba(11,87,208,.09);
+      padding: 5px 11px; border-radius: 999px; margin-bottom: 12px;
+    }
+    .jname { font-family: var(--font-display); font-size: 23px; font-weight: 700; line-height: 1.25; letter-spacing: -.4px; margin-bottom: 7px; }
+    .jsub { font-size: 14px; color: var(--nx-text-dim); line-height: 1.5; margin-bottom: 22px; }
+    .jstatus {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      font-size: 13.5px; font-weight: 600; padding: 11px 14px; border-radius: 13px;
+      margin-bottom: 18px; line-height: 1.4;
+    }
+    .jstatus.ok { background: #e8f6ec; color: #10693a; }
+    .jstatus.warn { background: #fdf3e3; color: #8a5a10; }
+    .jstatus.err { background: #fdeaea; color: #a12626; }
+    .jbtn {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      width: 100%; border: none; cursor: pointer; font-family: inherit;
+      font-size: 15.5px; font-weight: 700; padding: 15px 18px; border-radius: 14px;
+      transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+    }
+    .jbtn:active { transform: scale(.98); }
+    .jbtn-primary { background: linear-gradient(135deg, var(--nx-primary-lt), var(--nx-primary)); color: #fff; box-shadow: 0 12px 26px -12px rgba(11,87,208,.75); margin-bottom: 11px; }
+    .jbtn-secondary { background: #eef2f8; color: var(--nx-text-0); margin-bottom: 11px; }
+    .jbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: 13.5px; padding: 11px; }
+    .jbtn[disabled] { opacity: .55; cursor: default; }
+    .jspinner {
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 3.5px solid #dfe6f0; border-top-color: var(--nx-primary);
+      margin: 14px auto 18px; animation: jspin .8s linear infinite;
+    }
+    @keyframes jspin { to { transform: rotate(360deg); } }
+    .jloading { font-size: 14px; color: var(--nx-text-dim); }
+    .jhint { font-size: 12px; color: var(--nx-text-muted); margin-top: 6px; line-height: 1.5; }
+    .jfoot { font-size: 11.5px; color: var(--nx-text-muted); margin-top: 20px; line-height: 1.5; }
+    .jfoot a { color: var(--nx-text-dim); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="jcard" id="jcard">
+    <div class="jbrand"><img src="icon-192.png" alt=""><span>Nexa Messenger</span></div>
+    <div id="jbody">
+      <div class="jspinner"></div>
+      <div class="jloading" id="jloading">Checking your invite…</div>
+    </div>
+    <div class="jfoot">Nexa Messenger · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></div>
+  </main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, getDocs, query, where, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+  storageBucket: "mel-odix.firebasestorage.app",
+  messagingSenderId: "217595352090",
+  appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// The APK's applicationId. Used to build an Android intent:// URL so an
+// installed Nexa app opens directly from the link; without the app the intent
+// falls back to this page (browser_fallback_url).
+const NEXA_ANDROID_PACKAGE = "com.nexa.messenger";
+
+const params = new URLSearchParams(window.location.search);
+const groupToken = params.get("joinGroup");
+const channelToken = params.get("joinChannel");
+const body = document.getElementById("jbody");
+
+function isAndroid() { try { return /Android/i.test(navigator.userAgent || ""); } catch (e) { return false; } }
+// True when this page is running INSIDE the native Nexa app's WebView. The
+// APK appends "NexaMobileNative/<version>" to its user agent (see
+// MainActivity.java). Inside the app there is nothing to "open" and no need
+// for the app-store/auth CTAs — the app already owns the session.
+function isNativeApp() { try { return /NexaMobileNative/i.test(navigator.userAgent || ""); } catch (e) { return false; } }
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function safeUrl(u) {
+  const v = String(u || "").trim().replace(/["'\\]/g, "");
+  return /^(https?:|data:image\/)/i.test(v) ? v : "icon-192.png";
+}
+
+// Where to send a signed-in user so the dashboard performs the actual join.
+function continueUrl() {
+  const p = groupToken ? "joinGroup=" + encodeURIComponent(groupToken)
+                       : "joinChannel=" + encodeURIComponent(channelToken);
+  return "/dashboard.html?" + p;
+}
+// Where to send a signed-OUT user, preserving the invite for after sign-in.
+function loginUrl() {
+  const back = window.location.pathname + window.location.search;
+  return "/login.html?next=" + encodeURIComponent(back);
+}
+function signupUrl() {
+  const back = window.location.pathname + window.location.search;
+  return "/signup.html?next=" + encodeURIComponent(back);
+}
+
+// Android intent:// that opens the installed app; browser_fallback_url is this
+// same page so a device WITHOUT the app simply stays here.
+function androidIntentUrl() {
+  const host = window.location.host;
+  const path = window.location.pathname + window.location.search;
+  const fb = encodeURIComponent(window.location.href);
+  return "intent://" + host + path + "#Intent;scheme=https;package=" + NEXA_ANDROID_PACKAGE +
+         ";S.browser_fallback_url=" + fb + ";end";
+}
+
+function renderError(message) {
+  body.innerHTML =
+    '<div class="jstatus err">⚠️ ' + esc(message) + '</div>' +
+    '<button class="jbtn jbtn-primary" onclick="location.href=\'/dashboard.html\'">Open Nexa</button>' +
+    '<button class="jbtn jbtn-ghost" onclick="location.href=\'/\'">Go to homepage</button>';
+}
+
+function renderCard(entity, kind, isMember, signedIn) {
+  const label = kind === "channel" ? "Channel" : "Group";
+  const icon = kind === "channel" ? "📢" : "👥";
+  const avatar = safeUrl(entity.avatarUrl);
+  const name = entity.name || (label + " Invite");
+  const count = kind === "channel"
+    ? (entity.subscribersCount || 0) + " subscribers"
+    : (entity.membersCount || 0) + " members";
+  const desc = entity.description || (kind === "channel" ? "Follow this channel for updates" : "Join this group conversation");
+
+  let statusHtml = "";
+  if (signedIn && isMember) {
+    statusHtml = '<div class="jstatus ok">✓ ' +
+      (kind === "channel" ? "You're already following this channel" : "You're already in this group") + '</div>';
+  }
+
+  const primaryLabel = !signedIn
+    ? (kind === "channel" ? "Sign in to follow" : "Sign in to join")
+    : (isMember ? "Open " + (kind === "channel" ? "channel" : "group") : (kind === "channel" ? "Follow channel" : "Join group"));
+
+  const primaryHref = signedIn ? continueUrl() : loginUrl();
+
+  // Inside the native app there is no "Open in app" (we're already in it) and
+  // no sign-in detour (the WebView carries the app session) — just continue.
+  const inApp = isNativeApp();
+  const androidBtn = (isAndroid() && !inApp)
+    ? '<button class="jbtn jbtn-secondary" id="openAppBtn">📱 Open in app</button>' +
+      '<div class="jhint" id="openAppHint"></div>'
+    : '';
+
+  const signupBtn = (!signedIn && !inApp)
+    ? '<button class="jbtn jbtn-ghost" onclick="location.href=\'' + signupUrl() + '\'">New to Nexa? Create an account</button>'
+    : '';
+
+  body.innerHTML =
+    '<img class="javatar" src="' + esc(avatar) + '" alt="" onerror="this.src=\'icon-192.png\'">' +
+    '<div class="jkind">' + icon + " " + esc(label) + ' invite</div>' +
+    '<div class="jname">' + esc(name) + '</div>' +
+    '<div class="jsub">' + esc(desc) + '<br><span style="color:var(--nx-text-muted);font-size:12.5px;">' + esc(count) + '</span></div>' +
+    statusHtml +
+    '<button class="jbtn jbtn-primary" id="primaryBtn">' + esc(primaryLabel) + '</button>' +
+    androidBtn +
+    signupBtn;
+
+  document.getElementById("primaryBtn").addEventListener("click", () => { window.location.href = primaryHref; });
+
+  const openAppBtn = document.getElementById("openAppBtn");
+  if (openAppBtn) {
+    openAppBtn.addEventListener("click", () => {
+      const hint = document.getElementById("openAppHint");
+      if (hint) hint.textContent = "Opening the Nexa app… if nothing happens, use the button above.";
+      window.location.href = androidIntentUrl();
+    });
+  }
+}
+
+async function resolveGroup(token) {
+  try {
+    const q = query(collection(db, "groups"), where("inviteCode", "==", token), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) { const d = snap.docs[0]; return { id: d.id, ...d.data() }; }
+  } catch (e) {}
+  try {
+    const d = await getDoc(doc(db, "groups", token));
+    if (d.exists()) return { id: d.id, ...d.data() };
+  } catch (e) {}
+  return null;
+}
+
+async function resolveChannel(token) {
+  try {
+    const q = query(collection(db, "channels"), where("inviteCode", "==", token), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) { const d = snap.docs[0]; return { id: d.id, ...d.data() }; }
+  } catch (e) {}
+  try {
+    const d = await getDoc(doc(db, "channels", token));
+    if (d.exists()) return { id: d.id, ...d.data() };
+  } catch (e) {}
+  return null;
+}
+
+// Inside the native app, bounce straight to the dashboard so it performs the
+// join — the WebView already has the session, so no sign-in card is needed.
+// A short delay lets the user register what happened (and avoids a jarring
+// flash) before we hand off.
+function autoContinue(user) {
+  try {
+    if (!user) return; // app not signed in yet; fall back to the normal card
+    const dest = continueUrl();
+    setTimeout(() => { window.location.replace(dest); }, 900);
+  } catch (e) {}
+}
+
+async function start(user) {
+  if (!groupToken && !channelToken) { renderError("This invite link is incomplete."); return; }
+  const kind = channelToken ? "channel" : "group";
+  const entity = kind === "channel" ? await resolveChannel(channelToken) : await resolveGroup(groupToken);
+  if (!entity) { renderError("This invite is invalid or has expired."); return; }
+  const isMember = kind === "channel"
+    ? (entity.subscriberUids || []).includes(user && user.uid) || entity.ownerUid === (user && user.uid)
+    : (entity.memberUids || []).includes(user && user.uid) || entity.ownerUid === (user && user.uid) || entity.createdBy === (user && user.uid);
+  renderCard(entity, kind, isMember, !!user);
+  if (isNativeApp()) autoContinue(user);
+}
+
+onAuthStateChanged(auth, (user) => { start(user); });
+</script>
+</body>
+</html>

@@ -681,6 +681,19 @@ function showMsg(text, type) {
   msg.className = `msg ${type}`;
 }
 
+// Post-login destination from ?next= (invite links route through here).
+// Only same-origin .html paths are honoured — never an external URL.
+function nexaNextTarget(fallback) {
+  try {
+    const n = urlParams.get('next');
+    if (!n) return fallback;
+    const decoded = decodeURIComponent(n);
+    if (decoded.startsWith('/') && !decoded.startsWith('//') && /\.html($|[?#])/.test(decoded)) return decoded;
+    if (/^[a-z0-9_.-]+\.html($|[?#])/i.test(decoded)) return decoded;
+  } catch (e) {}
+  return fallback;
+}
+
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get("banned") === "1") {
   showMsg("🚫 Your account has been banned by an administrator.", "error");
@@ -709,11 +722,11 @@ onAuthStateChanged(auth, async (user) => {
         return;
       }
       showMsg("✨ Auto-logging in...", "success");
-      window.location.replace("dashboard.html");
+      window.location.replace(nexaNextTarget("dashboard.html"));
     } catch (e) {
       console.warn("Auto-login check issue:", e);
       if (window.NexaMaintenance && window.NexaMaintenance.check(e)) { isAutoLoggingIn = false; return; }
-      window.location.replace("dashboard.html");
+      window.location.replace(nexaNextTarget("dashboard.html"));
     }
   }
 });
@@ -791,7 +804,7 @@ async function login(){
     showMsg("Login successful! Redirecting...", "success");
 
     setTimeout(()=>{
-      window.location.href = "dashboard.html";
+      window.location.href = nexaNextTarget("dashboard.html");
     }, 400);
 
   } catch (error) {

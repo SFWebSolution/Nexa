@@ -1396,3 +1396,122 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Verify with `node /tmp`-style headless tests (DOM stub): detection across
   codes/messages/nested/string/null, idempotent show, hide, and guard
   pass-through/rethrow — 19/19 in the authored suite.
+
+
+## Group & Channel invite links + join.html landing (do NOT regress)
+- **Share links point at `join.html`, not the dashboard.** `nexaJoinUrl(param, code)`
+  (app-main.js) builds `${origin}/join.html?joinGroup=<code>` or `?joinChannel=<code>`.
+  `getOrCreateGroupInviteLink()` / `getOrCreateChannelInviteLink()` create a code on
+  the group/channel doc (`inviteCode`) and return that URL; `resetGroupInviteLink()` /
+  `resetChannelInviteLink()` regenerate it (admin-only). Buttons: "Invite via Link" +
+  "Reset Invite Link" in Group Info; "Share Channel" (now an invite link) + "Reset Link"
+  in Channel Info. `shareGroupInviteLink` / `shareChannelInviteLink` / `shareCurrentChannel`
+  all share the real code via the shared `nexaShareInvite()` helper. Before this,
+  `shareGroupInviteLink()` shared `window.location.href` with NO code and nothing called
+  `getOrCreateGroupInviteLink()` — the link joined nothing.
+- **`join.html` is a self-contained landing page** (its own Firebase config, module
+  script, and CSS — it does NOT load app-main.js). It previews the group/channel
+  (name, icon, member/subscriber count), and:
+  - **Android** shows an "Open in app" button that navigates to an
+    `intent://<host><path>#Intent;scheme=https;package=com.nexa.messenger;S.browser_fallback_url=<this page>;end`
+    URL. With the app installed Android opens it; without, `browser_fallback_url`
+    keeps the user on this page. (A plain custom scheme can't carry the code, so the
+    intent reuses the https URL and the app must declare an App Link to receive it.)
+  - **Desktop / no app** just shows "Open Nexa" / sign-in buttons.
+  - **Signed out** → routes to `/login.html?next=<this invite url>` (or `/signup.html`).
+  - **Signed in** → routes to `/dashboard.html?joinGroup|joinChannel=<token>`.
+- **`?next=` is honoured by login.html AND signup.html** (`nexaNextTarget()` /
+  `nexaSignupNextTarget()`) so an invite survives authentication. It is same-origin
+  ONLY: absolute (`https://…`), protocol-relative (`//…`) and non-`.html` values fall
+  back to `dashboard.html`. Do NOT loosen this — it would be an open redirect.
+- **Invite tokens are resolved by BOTH `inviteCode` and doc id.** `checkGroupInviteUrlParam()`
+  uses `_resolveGroupByInviteToken()` and `checkChannelInviteUrlParam()` uses
+  `_resolveChannelByInviteToken()`: each tries the `inviteCode` query first, then a
+  direct doc-id get. That keeps new share links (code) and legacy in-chat cards
+  (doc id) both working.
+- **Already-joined is reported, not re-joined.** Both param handlers and the in-chat
+  `resolveGroupForInvite()` check membership (memberUids / members doc / ownerUid /
+  createdBy) and show "✓ You're already in …/following …" instead of silently adding
+  again — which also stops `membersCount`/`subscribersCount` inflation. The group
+  join writes `memberUids: arrayUnion(...)` alongside the increment (the old param
+  handler only incremented the count and never added the uid, so `memberUids` drifted).
+- **APK side (NOT in this repo):** `SFWebSolution/nexa-andriod` (package
+  `com.nexa.messenger`) currently has NO deep-link intent filter. For "open in app"
+  to actually land in the app it needs an App Link intent-filter for the web host
+  (autoVerify) + a hosted `/.well-known/assetlinks.json` with the signing SHA-256,
+  or a custom scheme. The web half works and degrades gracefully without it.
+
+## Group list preview accuracy (do NOT regress)
+- `groupMsgSnippet(msg)` (app-main.js) is the single preview-string helper (text /
+  📷 Photo / 🎥 Video / 🎤 Voice note / 📎 File / 📊 Poll).
+- `updateGroupPreview(groupId, snippet, senderName, prefix)` is the single WRITER of
+  a group's `lastMessage` / `lastMessageTime` / `lastSenderName`; it also mirrors the
+  change into `myGroups` and re-renders so the list repaints instantly.
+- It is called from EVERY path: send (`sendGroupMessageWithExtras`), forward
+  (`⤳` prefix), edit (`saveEditMessage`, only when the edited msg is the newest), and
+  delete (`refreshGroupPreviewAfterDelete()` re-reads the newest remaining message).
+  Previously ONLY send updated the preview, so deleting/editing/forwarding left a
+  stale or wrong preview in the chat list.
+
+## Admin: Top 20 removed, Communities added
+- The **"⭐ Nexa Champions" Top-20** section is GONE from admin.html (UI, CSS,
+  `renderChampions`, `reloadWeeklyStats`, `backfillReferrals`, `cachedMsgScores`,
+  `cachedStoryScores`, `loadWeeklyActivity`, `weeklyActivityLoading`, and the
+  `champ-*` CSS). The **`GET /api/admin/weekly-activity`** endpoint was removed from
+  `server/admin-api.js` (Champions was its only consumer). The "Weekly Active" /
+  "Stories this week" / "Referrals this week" stat cards are KEPT — weekly-active is
+  now purely `lastSeen >= weekStart || createdAt >= weekStart` (no message/story
+  score inputs). Do NOT re-add a leaderboard or the weekly-activity scan.
+- **Communities (Groups & Channels)** section in admin.html (`#communitiesList`,
+  `loadCommunities()`, `renderCommunities()`, `deleteCommunity()`) lists every group
+  and channel with kind badge, icon, member/subscriber count, owner and created date,
+  plus a name/owner search and Delete (typed confirm). It is backed by two new
+  Admin-SDK endpoints in `server/admin-api.js`:
+  - `GET /api/admin/list-communities` → `{communities:[{id,kind,name,handle,avatarUrl,ownerUid,count,createdAt,…}]}`
+  - `POST /api/admin/delete-community` `{id, kind:"group"|"channel"}` → recursively
+    batch-deletes the subcollections (`members`/`messages` or
+    `subscribers`/`posts`/`messages`) then the doc, so nothing is orphaned.
+  Both require `X-Admin-Secret`. Deploy them into the same backend as the other admin
+  routes (`nexa-backend-e6pq.onrender.com`) for the section to work.
+
+## Invite/preview regression suite
+- `node tests/invite-links.test.js` — 54 headless checks. It extracts the REAL
+  functions from app-main.js/login.html/signup.html via brace matching and evaluates
+  them in a `vm` context (invite URL builder, snippet helper, `?next=` open-redirect
+  guard), and asserts the structural invariants (resolvers, already-joined messages,
+  every preview path, admin removal, backend endpoints, join.html bits). No Firebase
+  needed.
+
+
+## Android App Links / "Open in app" deep link (join.html + APK)
+- The invite landing page (`join.html`) shows **"Open in app"** on Android by
+  navigating to an `intent://<host><path>#Intent;scheme=https;package=com.nexa.messenger;S.browser_fallback_url=<this page>;end`
+  URL. With the APK installed Android hands the https URL to the app; without it,
+  `browser_fallback_url` keeps the user on the page. Desktop never shows the button.
+- **Inside the native WebView there is no "Open in app" and no sign-in detour.**
+  `isNativeApp()` detects the APK's UA suffix `NexaMobileNative/<version>`
+  (appended in MainActivity.setupWebView). In that case the card hides the
+  Android button + "create account" CTA and `autoContinue()` bounces to the
+  dashboard after ~0.9s so the app performs the join with its own session.
+- **`/.well-known/assetlinks.json` is the App Link verification file.** It must
+  list package `com.nexa.messenger` + the signing SHA-256
+  (`64:45:F8:E6:B1:7C:2B:F7:7D:CE:D4:E7:E6:DB:06:92:47:08:52:95:EE:74:D3:A2:92:C9:CF:9B:27:C9:14:EB`,
+  from the committed `debug.keystore`). Firebase Hosting IGNORES dotfiles by
+  default, so `firebase.json` hosting `ignore` has `!.well-known/**` — keep it or
+  the file 404s and Android refuses to auto-verify the link. After deploying,
+  verify with Google's Statement List Tester.
+- **Canonical web host is `https://nexa-qydr.onrender.com`** (also `APP_URL` in
+  the APK). The manifest intent-filter + `APP_HOST` in MainActivity must match it.
+- **APK changes live in `android-deeplink.patch`** (repo root) because the
+  Android source is a separate repo (`SFWebSolution/nexa-andriod`, package
+  `com.nexa.messenger`). Apply with `git apply android-deeplink.patch` from the
+  android repo root. It adds: `android:launchMode="singleTask"`, an
+  `autoVerify` App Link intent-filter (`https`, host `nexa-qydr.onrender.com`,
+  `pathPrefix="/join.html"`), a `nexa://` custom-scheme fallback, and
+  `deepLinkTarget()`/`handleDeepLink()` in MainActivity (called from
+  `onCreate` — the initial load prefers the invite URL over `APP_URL` — and
+  `onNewIntent`). Custom-scheme URLs put the file name in the authority, so
+  `deepLinkTarget()` normalises `nexa://join.html?x` → `https://<host>/join.html?x`.
+- Rebuild/release the APK for the app to receive App Links. Until then the web
+  half still works: Android shows the intent, and without a matching app it
+  falls back to the page (where the user signs in / joins in the browser).
