@@ -128,6 +128,11 @@ const channelToken = params.get("joinChannel");
 const body = document.getElementById("jbody");
 
 function isAndroid() { try { return /Android/i.test(navigator.userAgent || ""); } catch (e) { return false; } }
+// True when this page is running INSIDE the native Nexa app's WebView. The
+// APK appends "NexaMobileNative/<version>" to its user agent (see
+// MainActivity.java). Inside the app there is nothing to "open" and no need
+// for the app-store/auth CTAs — the app already owns the session.
+function isNativeApp() { try { return /NexaMobileNative/i.test(navigator.userAgent || ""); } catch (e) { return false; } }
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -191,12 +196,15 @@ function renderCard(entity, kind, isMember, signedIn) {
 
   const primaryHref = signedIn ? continueUrl() : loginUrl();
 
-  const androidBtn = isAndroid()
+  // Inside the native app there is no "Open in app" (we're already in it) and
+  // no sign-in detour (the WebView carries the app session) — just continue.
+  const inApp = isNativeApp();
+  const androidBtn = (isAndroid() && !inApp)
     ? '<button class="jbtn jbtn-secondary" id="openAppBtn">📱 Open in app</button>' +
       '<div class="jhint" id="openAppHint"></div>'
     : '';
 
-  const signupBtn = !signedIn
+  const signupBtn = (!signedIn && !inApp)
     ? '<button class="jbtn jbtn-ghost" onclick="location.href=\'' + signupUrl() + '\'">New to Nexa? Create an account</button>'
     : '';
 
@@ -248,6 +256,18 @@ async function resolveChannel(token) {
   return null;
 }
 
+// Inside the native app, bounce straight to the dashboard so it performs the
+// join — the WebView already has the session, so no sign-in card is needed.
+// A short delay lets the user register what happened (and avoids a jarring
+// flash) before we hand off.
+function autoContinue(user) {
+  try {
+    if (!user) return; // app not signed in yet; fall back to the normal card
+    const dest = continueUrl();
+    setTimeout(() => { window.location.replace(dest); }, 900);
+  } catch (e) {}
+}
+
 async function start(user) {
   if (!groupToken && !channelToken) { renderError("This invite link is incomplete."); return; }
   const kind = channelToken ? "channel" : "group";
@@ -257,6 +277,7 @@ async function start(user) {
     ? (entity.subscriberUids || []).includes(user && user.uid) || entity.ownerUid === (user && user.uid)
     : (entity.memberUids || []).includes(user && user.uid) || entity.ownerUid === (user && user.uid) || entity.createdBy === (user && user.uid);
   renderCard(entity, kind, isMember, !!user);
+  if (isNativeApp()) autoContinue(user);
 }
 
 onAuthStateChanged(auth, (user) => { start(user); });

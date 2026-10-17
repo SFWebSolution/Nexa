@@ -142,6 +142,40 @@ console.log("\n7) join.html landing page");
   ok("uses the real package id", /com\.nexa\.messenger/.test(j));
   ok("routes signed-out users to login with next=", /login\.html\?next=/.test(j));
   ok("routes signed-in users to dashboard with the invite", /dashboard\.html\?" \+ p/.test(j));
+  ok("detects the native WebView via its user agent", /function isNativeApp\(\)[\s\S]{0,160}?NexaMobileNative/.test(j));
+  ok("hides Open-in-app inside the native app", /isAndroid\(\) && !inApp/.test(j));
+  ok("auto-continues to the dashboard inside the app", /function autoContinue\(user\)[\s\S]{0,220}?window\.location\.replace\(dest\)/.test(j));
+  ok("start() triggers autoContinue for the native app", /if \(isNativeApp\(\)\) autoContinue\(user\)/.test(j));
+
+  // Evaluate the real UA predicates.
+  const uaFn = extractFn(j, "isNativeApp");
+  const isNative = run(uaFn + "\n;isNativeApp;", {
+    navigator: { userAgent: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36 NexaMobileNative/1.2.0" },
+  });
+  eq("native UA detected", isNative(), true);
+  const notNative = run(uaFn + "\n;isNativeApp;", {
+    navigator: { userAgent: "Mozilla/5.0 (Linux; Android 14) Chrome/120 Mobile Safari/537.36" },
+  });
+  eq("plain Android browser not native", notNative(), false);
+}
+
+console.log("\n8) App Links / assetlinks wiring");
+{
+  const al = JSON.parse(read(".well-known/assetlinks.json"));
+  eq("assetlinks has one target", al.length, 1);
+  eq("assetlinks package", al[0].target.package_name, "com.nexa.messenger");
+  ok("assetlinks relation is handle_all_urls", al[0].relation.includes("delegate_permission/common.handle_all_urls"));
+  ok("assetlinks fingerprint present", /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(al[0].target.sha256_cert_fingerprints[0]));
+
+  const fb = JSON.parse(read("firebase.json"));
+  ok("hosting deploys .well-known", fb.hosting[0].ignore.includes("!.well-known/**"));
+
+  const patch = read("android-deeplink.patch");
+  ok("android patch: autoVerify app link", /android:autoVerify="true"/.test(patch));
+  ok("android patch: host + pathPrefix", /android:host="nexa-qydr\.onrender\.com"[\s\S]{0,80}?pathPrefix="\/join\.html"/.test(patch));
+  ok("android patch: custom scheme", /android:scheme="nexa"/.test(patch));
+  ok("android patch: singleTask launch mode", /android:launchMode="singleTask"/.test(patch));
+  ok("android patch: deep-link handler", /private String deepLinkTarget\(Intent intent\)/.test(patch));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");

@@ -1481,3 +1481,37 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   guard), and asserts the structural invariants (resolvers, already-joined messages,
   every preview path, admin removal, backend endpoints, join.html bits). No Firebase
   needed.
+
+
+## Android App Links / "Open in app" deep link (join.html + APK)
+- The invite landing page (`join.html`) shows **"Open in app"** on Android by
+  navigating to an `intent://<host><path>#Intent;scheme=https;package=com.nexa.messenger;S.browser_fallback_url=<this page>;end`
+  URL. With the APK installed Android hands the https URL to the app; without it,
+  `browser_fallback_url` keeps the user on the page. Desktop never shows the button.
+- **Inside the native WebView there is no "Open in app" and no sign-in detour.**
+  `isNativeApp()` detects the APK's UA suffix `NexaMobileNative/<version>`
+  (appended in MainActivity.setupWebView). In that case the card hides the
+  Android button + "create account" CTA and `autoContinue()` bounces to the
+  dashboard after ~0.9s so the app performs the join with its own session.
+- **`/.well-known/assetlinks.json` is the App Link verification file.** It must
+  list package `com.nexa.messenger` + the signing SHA-256
+  (`64:45:F8:E6:B1:7C:2B:F7:7D:CE:D4:E7:E6:DB:06:92:47:08:52:95:EE:74:D3:A2:92:C9:CF:9B:27:C9:14:EB`,
+  from the committed `debug.keystore`). Firebase Hosting IGNORES dotfiles by
+  default, so `firebase.json` hosting `ignore` has `!.well-known/**` — keep it or
+  the file 404s and Android refuses to auto-verify the link. After deploying,
+  verify with Google's Statement List Tester.
+- **Canonical web host is `https://nexa-qydr.onrender.com`** (also `APP_URL` in
+  the APK). The manifest intent-filter + `APP_HOST` in MainActivity must match it.
+- **APK changes live in `android-deeplink.patch`** (repo root) because the
+  Android source is a separate repo (`SFWebSolution/nexa-andriod`, package
+  `com.nexa.messenger`). Apply with `git apply android-deeplink.patch` from the
+  android repo root. It adds: `android:launchMode="singleTask"`, an
+  `autoVerify` App Link intent-filter (`https`, host `nexa-qydr.onrender.com`,
+  `pathPrefix="/join.html"`), a `nexa://` custom-scheme fallback, and
+  `deepLinkTarget()`/`handleDeepLink()` in MainActivity (called from
+  `onCreate` — the initial load prefers the invite URL over `APP_URL` — and
+  `onNewIntent`). Custom-scheme URLs put the file name in the authority, so
+  `deepLinkTarget()` normalises `nexa://join.html?x` → `https://<host>/join.html?x`.
+- Rebuild/release the APK for the app to receive App Links. Until then the web
+  half still works: Android shows the intent, and without a matching app it
+  falls back to the page (where the user signs in / joins in the browser).

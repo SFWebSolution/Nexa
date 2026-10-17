@@ -18,20 +18,21 @@
     }
   ],
   "hosting": [
-  {
-    "target": "nexa",
-    "public": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  }
-]
+    {
+      "target": "nexa",
+      "public": ".",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "!.well-known/**",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
 }

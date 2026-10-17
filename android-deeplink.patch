@@ -1,0 +1,134 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index c341ddd..5cb8f94 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -36,6 +36,7 @@
+         <activity
+             android:name=".MainActivity"
+             android:exported="true"
++            android:launchMode="singleTask"
+             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+             android:windowSoftInputMode="adjustResize"
+             android:theme="@style/Theme.NexaMessenger.NoActionBar">
+@@ -43,6 +44,30 @@
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
++
++            <!-- App Link: lets an invite link (join.html) open directly in the
++                 app. autoVerify makes Android check
++                 https://nexa-qydr.onrender.com/.well-known/assetlinks.json;
++                 when it matches, the OS opens the app with no chooser dialog.
++                 The pathPrefix keeps this scoped to invite links only. -->
++            <intent-filter android:autoVerify="true">
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.BROWSABLE" />
++                <data android:scheme="https"
++                      android:host="nexa-qydr.onrender.com"
++                      android:pathPrefix="/join.html" />
++            </intent-filter>
++
++            <!-- Custom scheme fallback (nexa://join.html?...). Used if App
++                 Links are not verified on the device (e.g. the site is served
++                 from a different domain). -->
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.BROWSABLE" />
++                <data android:scheme="nexa" />
++            </intent-filter>
+         </activity>
+ 
+         <!-- Native FCM receiver. Handles messages when the app is backgrounded or
+diff --git a/app/src/main/java/com/nexa/messenger/MainActivity.java b/app/src/main/java/com/nexa/messenger/MainActivity.java
+index dc57c6f..d8dcf38 100644
+--- a/app/src/main/java/com/nexa/messenger/MainActivity.java
++++ b/app/src/main/java/com/nexa/messenger/MainActivity.java
+@@ -61,6 +61,8 @@ import java.util.List;
+ public class MainActivity extends AppCompatActivity {
+ 
+     public static final String APP_URL = "https://nexa-qydr.onrender.com";
++    /** Host that verified App Links (see AndroidManifest + assetlinks.json). */
++    public static final String APP_HOST = "nexa-qydr.onrender.com";
+     /** True while this activity is visible; the FCM service reads it to avoid double-displaying. */
+     public static boolean isForeground = false;
+     private static final String BACKEND_URL = "https://nexa-backend-e6pq.onrender.com";
+@@ -91,6 +93,10 @@ public class MainActivity extends AppCompatActivity {
+ 
+         initViews();
+         handleNotificationIntent(getIntent());
++        // Remember any invite link that launched us so the initial load goes
++        // straight to it instead of the plain app URL (setupWebView() runs
++        // after this and would otherwise win).
++        String deepLinkUrl = deepLinkTarget(getIntent());
+         // Paint the window background in the LAST-KNOWN theme before the page
+         // loads, so a returning dark-theme user sees no light flash (and light
+         // stays light). Overridden by setTheme once the page has loaded.
+@@ -100,11 +106,11 @@ public class MainActivity extends AppCompatActivity {
+         checkAndRequestAppPermissions();
+         initFirebase();
+ 
+-        // Load the Nexa Messenger App
++        // Load the Nexa Messenger App (or the invite link that launched us).
+         if (savedInstanceState != null) {
+             webView.restoreState(savedInstanceState);
+         } else {
+-            webView.loadUrl(APP_URL);
++            webView.loadUrl(deepLinkUrl != null ? deepLinkUrl : APP_URL);
+         }
+     }
+ 
+@@ -579,6 +585,44 @@ public class MainActivity extends AppCompatActivity {
+         return uid;
+     }
+ 
++    /**
++     * Resolves a Nexa deep-link intent to an https URL the WebView can load,
++     * or null when the intent is not one. Accepts the verified App Link
++     * (https://<APP_HOST>/join.html?...) and the nexa:// custom scheme
++     * (nexa://join.html?...) — both become https://<APP_HOST>/join.html?...
++     */
++    private String deepLinkTarget(Intent intent) {
++        if (intent == null || intent.getData() == null) return null;
++        Uri data = intent.getData();
++        String scheme = data.getScheme();
++        String host = data.getHost();
++        boolean isAppLink = "https".equalsIgnoreCase(scheme) && APP_HOST.equalsIgnoreCase(host);
++        boolean isCustomScheme = "nexa".equalsIgnoreCase(scheme);
++        if (!isAppLink && !isCustomScheme) return null;
++
++        // For nexa://join.html?x the file name lands in the authority, not the
++        // path (getPath() is ""), so normalise both shapes to "/join.html".
++        String path;
++        String authority = data.getAuthority();
++        String rawPath = data.getPath();
++        if (isCustomScheme && authority != null && !authority.isEmpty()
++                && (rawPath == null || rawPath.isEmpty())) {
++            path = "/" + authority;
++        } else {
++            path = (rawPath == null || rawPath.isEmpty()) ? "/join.html" : rawPath;
++        }
++        String query = data.getQuery() == null ? "" : "?" + data.getQuery();
++        return "https://" + APP_HOST + path + query;
++    }
++
++    /** Loads a deep-link URL into the (already created) WebView. */
++    private boolean handleDeepLink(Intent intent) {
++        String target = deepLinkTarget(intent);
++        if (target == null) return false;
++        if (webView != null) webView.loadUrl(target);
++        return true;
++    }
++
+     private void handleNotificationIntent(Intent intent) {
+         if (intent == null) return;
+         String chatUid = intent.getStringExtra("chatUid");
+@@ -593,6 +637,7 @@ public class MainActivity extends AppCompatActivity {
+         setIntent(intent);
+         // Bring the pending chat into the already-running web app.
+         handleNotificationIntent(intent);
++        if (handleDeepLink(intent)) return;
+         try {
+             String uid = consumePendingOpenUid();
+             if (uid != null) {
