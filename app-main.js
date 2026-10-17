@@ -3336,7 +3336,15 @@ const NEXA_APP_VERSION = '1.0.0';
 // shows the update prompt on every app open. The reminder ONLY disappears once
 // the user taps "Update now" (recorded in localStorage); tapping "Later" just
 // closes it for that session and it comes back next time.
-const NEXA_LATEST_APP_VERSION = '1.2.0';
+// INVARIANT: this MUST equal the versionName of the APK published at
+// releases/download/latest/Nexa-Messenger.apk. The in-app updater ignores the
+// localStorage marker for native devices, so a device whose installed version is
+// BEHIND this value is re-prompted every open. Bump this in the SAME release that
+// publishes the new APK — the download URL is a fixed "latest" tag, so raising
+// this before the new build is uploaded would prompt forever without ever
+// clearing. (1.3.0 = the join.html App Link / deep-link build, published
+// 2026-10-17.)
+const NEXA_LATEST_APP_VERSION = '1.3.0';
 
 function _verNum(v) { return String(v || '0').split('.').map(n => parseInt(n, 10) || 0); }
 function _cmpVersion(a, b) {

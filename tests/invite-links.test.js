@@ -38,7 +38,7 @@ function extractFn(src, name) {
 
 function run(code, sandbox) {
   return vm.runInNewContext(code, Object.assign({
-    console, URLSearchParams, decodeURIComponent, encodeURIComponent, Math, Date, JSON,
+    console, URLSearchParams, decodeURIComponent, encodeURIComponent, Math, Date, JSON, URL,
   }, sandbox));
 }
 
@@ -108,30 +108,30 @@ for (const file of ["login.html", "signup.html"]) {
   eq(file + ": no next -> fallback", f5("dashboard.html"), "dashboard.html");
 }
 
-console.log("\n5) admin: Top-20 gone, communities section present");
+console.log("\n5) admin: Top-20 gone, communities section removed");
 {
   const admin = read("admin.html");
   ok("no champions UI", !/Nexa Champions/.test(admin));
   ok("no renderChampions", !/renderChampions/.test(admin));
   ok("no cachedMsgScores", !/cachedMsgScores/.test(admin));
   ok("no weekly-activity call", !/weekly-activity/.test(admin));
-  ok("communities list container", /id="communitiesList"/.test(admin));
-  ok("communities loader", /async function loadCommunities\(/.test(admin));
-  ok("communities renderer", /function renderCommunities\(/.test(admin));
-  ok("communities delete", /async function deleteCommunity\(/.test(admin));
+  ok("no communities list container", !/id="communitiesList"/.test(admin));
+  ok("no communities loader", !/loadCommunities/.test(admin));
+  ok("no communities renderer", !/renderCommunities/.test(admin));
+  ok("no communities delete", !/deleteCommunity/.test(admin));
   ok("stories-this-week card kept", /id="storiesThisWeek"/.test(admin));
   ok("referrals card kept", /id="totalReferrals"/.test(admin));
 }
 
-console.log("\n6) backend: weekly-activity removed, community endpoints added");
+console.log("\n6) backend: weekly-activity + community endpoints removed");
 {
   const api = read("server/admin-api.js");
   ok("weekly-activity route removed", !/\/api\/admin\/weekly-activity/.test(api));
   ok("aggregateWeeklyActivity removed", !/aggregateWeeklyActivity/.test(api));
-  ok("list-communities route", /app\.get\("\/api\/admin\/list-communities", requireAdminSecret/.test(api));
-  ok("delete-community route", /app\.post\("\/api\/admin\/delete-community", requireAdminSecret/.test(api));
-  ok("delete-community cleans subcollections", /subscribers[\s\S]{0,80}posts[\s\S]{0,80}messages/.test(api));
-  ok("list-communities is auth-guarded", /list-communities", requireAdminSecret/.test(api));
+  ok("list-communities route removed", !/app\.get\("\/api\/admin\/list-communities"/.test(api));
+  ok("delete-community route removed", !/app\.post\("\/api\/admin\/delete-community"/.test(api));
+  ok("deleteCollection helper removed", !/function deleteCollection/.test(api));
+  ok("admin routes still auth-guarded", /requireAdminSecret/.test(api));
 }
 
 console.log("\n7) join.html landing page");
@@ -143,7 +143,11 @@ console.log("\n7) join.html landing page");
   ok("routes signed-out users to login with next=", /login\.html\?next=/.test(j));
   ok("routes signed-in users to dashboard with the invite", /dashboard\.html\?" \+ p/.test(j));
   ok("detects the native WebView via its user agent", /function isNativeApp\(\)[\s\S]{0,160}?NexaMobileNative/.test(j));
-  ok("hides Open-in-app inside the native app", /isAndroid\(\) && !inApp/.test(j));
+  ok("has a nexa:// custom-scheme URL", /function nexaSchemeUrl\(\)[\s\S]{0,120}?nexa:\/\//.test(j));
+  ok("primary button tries the app then falls back", /openAppOrFallback\(primaryHref\)/.test(j));
+  ok("falls back to the in-browser action", /function openAppOrFallback\(fallback\)/.test(j));
+  ok("uses visibilitychange to confirm hand-off", /document\.addEventListener\("visibilitychange", onHide\)/.test(j));
+  ok("no leftover 'Open in app' secondary button", !/id="openAppBtn"/.test(j));
   ok("auto-continues to the dashboard inside the app", /function autoContinue\(user\)[\s\S]{0,220}?window\.location\.replace\(dest\)/.test(j));
   ok("start() triggers autoContinue for the native app", /if \(isNativeApp\(\)\) autoContinue\(user\)/.test(j));
 
@@ -157,6 +161,25 @@ console.log("\n7) join.html landing page");
     navigator: { userAgent: "Mozilla/5.0 (Linux; Android 14) Chrome/120 Mobile Safari/537.36" },
   });
   eq("plain Android browser not native", notNative(), false);
+
+  // Evaluate the real URL builders.
+  const sandbox = {
+    NEXA_ANDROID_PACKAGE: "com.nexa.messenger",
+    window: {
+      location: {
+        host: "nexa-qydr.onrender.com",
+        pathname: "/join.html",
+        search: "?joinGroup=ABC123",
+        href: "https://nexa-qydr.onrender.com/join.html?joinGroup=ABC123",
+      },
+    },
+  };
+  const urlFns = extractFn(j, "invitePath") + "\n" + extractFn(j, "absoluteUrl") + "\n" + extractFn(j, "androidIntentUrl") + "\n" + extractFn(j, "nexaSchemeUrl") + "\n;[androidIntentUrl('/login.html?next=%2Fjoin.html'), nexaSchemeUrl()];";
+  const built = run(urlFns, sandbox);
+  ok("intent URL targets the package", /package=com\.nexa\.messenger/.test(built[0]));
+  ok("intent URL carries the invite path", /intent:\/\/nexa-qydr\.onrender\.com\/join\.html\?joinGroup=ABC123/.test(built[0]));
+  ok("intent fallback is the in-browser destination", /browser_fallback_url=https%3A%2F%2Fnexa-qydr\.onrender\.com%2Flogin\.html/.test(built[0]));
+  eq("scheme URL shape", built[1], "nexa://nexa-qydr.onrender.com/join.html?joinGroup=ABC123");
 }
 
 console.log("\n8) App Links / assetlinks wiring");
@@ -176,6 +199,46 @@ console.log("\n8) App Links / assetlinks wiring");
   ok("android patch: custom scheme", /android:scheme="nexa"/.test(patch));
   ok("android patch: singleTask launch mode", /android:launchMode="singleTask"/.test(patch));
   ok("android patch: deep-link handler", /private String deepLinkTarget\(Intent intent\)/.test(patch));
+  ok("android patch: keeps nexa:// in the app", /url\.startsWith\("nexa:\/\/"\)/.test(patch));
+  ok("android patch: swallows intent:// inside the app", /url\.startsWith\("intent:\/\/"\)/.test(patch));
+  ok("android patch: version bumped to 1.3.0", /versionName "1\.3\.0"/.test(patch));
+}
+
+console.log("\n9) in-app update gate");
+{
+  const src = read("app-main.js");
+  const latestM = /const NEXA_LATEST_APP_VERSION = '([\d.]+)'/.exec(src);
+  ok("NEXA_LATEST_APP_VERSION declared", !!latestM);
+  const latest = latestM ? latestM[1] : "0.0.0";
+
+  // `android-deeplink.patch` is the recipe for the currently-published APK, so
+  // its target ("+") versionName must equal the web constant. If a future patch
+  // bumps the APK version, publish the build first and raise the constant in the
+  // same commit — otherwise this fails.
+  const patch = read("android-deeplink.patch");
+  const removedVer = /^-\s*versionName "([\d.]+)"/m.exec(patch);
+  const addedVer = /^\+\s*versionName "([\d.]+)"/m.exec(patch);
+  eq("patch bumps the version", (removedVer && removedVer[1]) + "->" + (addedVer && addedVer[1]), "1.2.0->1.3.0");
+  eq("NEXA_LATEST_APP_VERSION == published APK version", latest, addedVer && addedVer[1]);
+
+  const cmp = extractFn(src, "_cmpVersion") + "\n" + extractFn(src, "_verNum") + "\n_cmpVersion;";
+  const f = run(cmp, {});
+  eq("equal versions compare 0", f(latest, latest), 0);
+  ok("older device is behind latest", f("1.2.0", latest) < 0 || latest === "1.2.0");
+
+  const pending = extractFn(src, "isAppUpdatePending");
+  ok("gate consults the device version", /getDeviceAppVersion\(\)/.test(pending));
+  ok("gate compares device against latest", /_cmpVersion\(device, NEXA_LATEST_APP_VERSION\) < 0/.test(pending));
+
+  const dot = extractFn(src, "updateAppUpdateDot");
+  ok("dot highlights install row", /installAppRow/.test(dot) && /settings-row-highlight/.test(dot));
+  ok("dot labels the update", /Update available/.test(dot));
+  ok("tab dots are toggled", /settingsTabDotDesktop/.test(dot) && /settingsTabDotMobile/.test(dot));
+
+  const modal = read("dashboard.html");
+  ok("update modal exists", /id="appUpdateModal"/.test(modal));
+  ok("update-now button wired", /onclick="updateAppNow\(\)"/.test(modal));
+  ok("native in-place update bridge used", /NexaAndroid\.installUpdate/.test(src));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");

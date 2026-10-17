@@ -140,85 +140,11 @@ app.post("/api/admin/delete-user", requireAdminSecret, async (req, res) => {
 });
 
 // ── GET /api/admin/list-communities ───────────────────────────
-// Lists every group and channel for the admin Communities section. Uses the
-// Admin SDK because the hardened rules only let an OWNER delete a community
-// (an admin is not the owner), and because counts live in subcollections the
-// browser can't aggregate cheaply.
-app.get("/api/admin/list-communities", requireAdminSecret, async (req, res) => {
-  try {
-    const [groupsSnap, channelsSnap] = await Promise.all([
-      db.collection("groups").get(),
-      db.collection("channels").get(),
-    ]);
-    const shape = (snap, kind) => snap.docs.map(doc => {
-      const d = doc.data() || {};
-      const uidList = kind === "channel" ? d.subscriberUids : d.memberUids;
-      const declared = kind === "channel" ? d.subscribersCount : d.membersCount;
-      const count = Array.isArray(uidList) ? uidList.length : (Number(declared) || 0);
-      return {
-        id: doc.id,
-        kind,
-        name: d.name || (kind === "channel" ? "Untitled channel" : "Untitled group"),
-        handle: d.handle || "",
-        avatarUrl: d.avatarUrl || "",
-        ownerUid: d.ownerUid || d.createdBy || "",
-        ownerName: d.ownerName || "",
-        count,
-        description: d.description || "",
-        isPublic: d.isPublic !== false,
-        createdAt: d.createdAt || 0,
-      };
-    });
-    const communities = shape(groupsSnap, "group").concat(shape(channelsSnap, "channel"));
-    communities.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    res.json({ success: true, communities });
-  } catch (err) {
-    console.error("list-communities error:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── POST /api/admin/delete-community ──────────────────────────
-// Body: { id, kind: "group" | "channel" }
-// Recursively deletes the community and ALL of its subcollections. A plain
-// doc delete would orphan members/messages/posts (they'd still be billed and
-// still readable), so we walk the subcollections first.
-async function deleteCollection(ref, batchSize) {
-  const size = batchSize || 300;
-  while (true) {
-    const snap = await ref.limit(size).get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
-    if (snap.size < size) break;
-  }
-}
-
-app.post("/api/admin/delete-community", requireAdminSecret, async (req, res) => {
-  try {
-    const { id, kind } = req.body || {};
-    if (!id || typeof id !== "string") {
-      return res.status(400).json({ success: false, error: "id required" });
-    }
-    const isChannel = kind === "channel";
-    const coll = isChannel ? "channels" : "groups";
-    const subcolls = isChannel ? ["subscribers", "posts", "messages"] : ["members", "messages"];
-
-    for (const sub of subcolls) {
-      try {
-        await deleteCollection(db.collection(coll).doc(id).collection(sub));
-      } catch (e) {
-        console.warn(`subcollection ${sub} cleanup failed for ${coll}/${id}:`, e.message);
-      }
-    }
-    await db.collection(coll).doc(id).delete();
-    res.json({ success: true });
-  } catch (err) {
-    console.error("delete-community error:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+// REMOVED: the admin "Groups & Channels" section was taken out of admin.html,
+// so these two endpoints (list-communities / delete-community) are gone too.
+// They used the Admin SDK because the hardened rules only let an OWNER delete
+// a community (an admin is not the owner). Re-add both the section and these
+// endpoints together if that capability is wanted again.
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Nexa admin API listening on :${PORT}`));

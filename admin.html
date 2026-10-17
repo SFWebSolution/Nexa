@@ -648,58 +648,6 @@ td {
   color: var(--text-3);
 }
 
-/* 👥 Communities */
-.champ-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.champ-empty {
-  background: rgba(21,27,39,0.5);
-  border: 1px solid var(--border-md);
-  border-radius: 14px;
-  padding: 22px;
-  color: var(--text-3);
-  font-size: 13px;
-  text-align: center;
-}
-.comm-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(21,27,39,0.5);
-  border: 1px solid var(--border-md);
-  border-radius: 14px;
-  padding: 10px 14px;
-}
-.comm-av {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: #1b2230;
-}
-.comm-meta { flex: 1; min-width: 0; }
-.comm-name { font-weight: 700; font-size: 14px; color: var(--text-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.comm-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.comm-badge { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-right: 6px; }
-.comm-badge.group { background: rgba(79,143,255,0.16); color: #7fb0ff; }
-.comm-badge.channel { background: rgba(56,211,159,0.16); color: #56e0b3; }
-.comm-del-btn {
-  background: rgba(255,69,58,0.14);
-  color: #ff6b60;
-  border: 1px solid rgba(255,69,58,0.35);
-  border-radius: 10px;
-  padding: 8px 13px;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.comm-del-btn:hover { background: rgba(255,69,58,0.24); }
-.comm-del-btn[disabled] { opacity: .5; cursor: default; }
 
 /* 🩺 Data Health */
 .health-grid {
@@ -1821,24 +1769,6 @@ tbody tr .actions { cursor: default; }
     </div>
     <div class="health-grid" id="healthGrid"></div>
 
-    <!-- Communities (Groups & Channels) -->
-    <div class="section-header" style="margin-top: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-      <div>
-        <div class="section-title">👥 Groups &amp; Channels</div>
-        <div class="section-subtitle">Every community on Nexa — inspect or delete</div>
-      </div>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-        <input id="commSearchInput" type="text" placeholder="Search name or owner…" oninput="renderCommunities()" style="padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border-md); background: rgba(21,27,39,0.5); color: var(--text-0); font-size: 13px; min-width: 200px;">
-        <button class="action-btn warning" onclick="loadCommunities(true)" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; border-radius: 10px;">
-          🔄 Reload
-        </button>
-      </div>
-    </div>
-
-    <div class="champ-list" id="communitiesList">
-      <div class="champ-empty">Loading communities…</div>
-    </div>
-
     <!-- Chart -->
     <div class="section-header" style="margin-top: 40px;">
       <div>
@@ -1924,9 +1854,6 @@ function adminFetchGet(path) {
 }
 
 let users = [];
-let communities = [];
-let communitiesLoaded = false;
-let communitiesLoading = false;
 let presenceData = {};
 let activeStoriesCount = 0;
 let weeklyStoriesCount = 0;
@@ -2024,9 +1951,6 @@ function handleLogout() {
     document.getElementById("secretInput").value = "";
     users = [];
     presenceData = {};
-    communities = [];
-    communitiesLoaded = false;
-    communitiesLoading = false;
     log("Admin logged out", "warning");
   }).catch(err => console.error(err));
 }
@@ -2101,7 +2025,6 @@ function initDashboard() {
   isDashboardInitialized = true;
 
   initWeeklyAutoRefresh();
-  loadCommunities();
   listenUsers();
   listenPresence();
   // Message/story analytics are computed on demand (60s) instead of streaming
@@ -2311,88 +2234,6 @@ function updateSyncIndicator(isSyncing) {
 /* =====================================================
    WEEKLY LEADERBOARD RENDERER & RELOAD
    ===================================================== */
-// 👥 Communities — groups + channels, loaded once from the backend
-// (Admin SDK) and refreshed on demand. Deletion is destructive and wipes
-// the subcollections too, so it always goes through a typed confirmation.
-async function loadCommunities(force) {
-  if (communitiesLoaded && !force) return;
-  if (communitiesLoading) return;
-  communitiesLoading = true;
-  const list = document.getElementById("communitiesList");
-  if (list && !communities.length) list.innerHTML = '<div class="champ-empty">Loading communities…</div>';
-  try {
-    const res = await adminFetchGet("/api/admin/list-communities");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || "request failed");
-    communities = data.communities || [];
-    communitiesLoaded = true;
-  } catch (e) {
-    console.warn("Communities load failed:", e.message);
-    communitiesLoading = false;
-    if (list) list.innerHTML = '<div class="champ-empty">⚠️ Could not load communities — ' + escapeHtml(e.message) + ' (is the admin backend deployed with ADMIN_SECRET set?)</div>';
-    return;
-  }
-  communitiesLoading = false;
-  renderCommunities();
-}
-
-function renderCommunities() {
-  const list = document.getElementById("communitiesList");
-  if (!list) return;
-  if (!communitiesLoaded) { loadCommunities(); return; }
-  if (!communities.length) {
-    list.innerHTML = '<div class="champ-empty">No groups or channels yet.</div>';
-    return;
-  }
-  const q = (document.getElementById("commSearchInput")?.value || "").trim().toLowerCase();
-  const filtered = communities.filter(c => {
-    if (!q) return true;
-    return (c.name || "").toLowerCase().includes(q)
-      || (c.handle || "").toLowerCase().includes(q)
-      || (c.ownerUid || "").toLowerCase().includes(q);
-  });
-  if (!filtered.length) {
-    list.innerHTML = '<div class="champ-empty">No communities match “' + escapeHtml(q) + '”.</div>';
-    return;
-  }
-  list.innerHTML = filtered.map(c => {
-    const isChannel = c.kind === "channel";
-    const av = c.avatarUrl ? escapeHtml(c.avatarUrl) : "icon-192.png";
-    const kindLabel = isChannel ? "Channel" : "Group";
-    const unit = isChannel ? "subscribers" : "members";
-    const owner = c.ownerName ? escapeHtml(c.ownerName) : escapeHtml((c.ownerUid || "unknown").slice(0, 10));
-    const when = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "";
-    return `<div class="comm-row">
-      <img class="comm-av" src="${av}" alt="" onerror="this.src='icon-192.png'">
-      <div class="comm-meta">
-        <div class="comm-name"><span class="comm-badge ${isChannel ? 'channel' : 'group'}">${kindLabel}</span>${escapeHtml(c.name)}</div>
-        <div class="comm-sub">${escapeHtml(String(c.count))} ${unit} · owner ${owner}${when ? ' · ' + when : ''}</div>
-      </div>
-      <button class="comm-del-btn" onclick="deleteCommunity('${escapeHtml(c.id)}', '${c.kind}', this)">🗑 Delete</button>
-    </div>`;
-  }).join("");
-}
-
-async function deleteCommunity(id, kind, btn) {
-  const c = communities.find(x => x.id === id && x.kind === kind);
-  const label = c ? `"${c.name}"` : "this community";
-  if (!confirm(`❌ Permanently DELETE ${label}?\n\nThis removes it for everyone and cannot be undone.`)) return;
-  if (btn) { btn.disabled = true; btn.textContent = "⏳ Deleting…"; }
-  try {
-    const res = await adminFetch("/api/admin/delete-community", { id, kind });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || "Failed");
-    communities = communities.filter(x => !(x.id === id && x.kind === kind));
-    log(`Deleted ${kind} ${label} (${id})`, "error");
-    renderCommunities();
-  } catch (e) {
-    alert("❌ Delete failed: " + e.message + " (is the admin backend deployed with ADMIN_SECRET set?)");
-    log(`Failed to delete ${kind} ${id}: ${e.message}`, "error");
-    if (btn) { btn.disabled = false; btn.textContent = "🗑 Delete"; }
-  }
-}
-
 // 🩺 Data Health — surface the gaps that make the numbers above untrustworthy.
 function renderDataHealth() {
   const grid = document.getElementById("healthGrid");
@@ -2493,7 +2334,6 @@ function render() {
   renderChart();
   renderAnalytics();
   renderDataHealth();
-  renderCommunities();
 }
 
 /* =====================================================
