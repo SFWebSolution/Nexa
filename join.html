@@ -157,14 +157,66 @@ function signupUrl() {
   return "/signup.html?next=" + encodeURIComponent(back);
 }
 
-// Android intent:// that opens the installed app; browser_fallback_url is this
-// same page so a device WITHOUT the app simply stays here.
-function androidIntentUrl() {
+// The invite path+query, preserved across every hand-off attempt so the app
+// resumes the exact same join.
+function invitePath() { return window.location.pathname + window.location.search; }
+
+function absoluteUrl(href) {
+  try { return new URL(href, window.location.href).href; } catch (e) { return window.location.href; }
+}
+
+// Android intent:// — hands the invite URL to the installed package. When the
+// app is NOT installed Android follows browser_fallback_url, which is the
+// normal in-browser destination (sign in / join), so the browser takes over
+// immediately instead of leaving the user stuck.
+function androidIntentUrl(fallbackHref) {
   const host = window.location.host;
-  const path = window.location.pathname + window.location.search;
-  const fb = encodeURIComponent(window.location.href);
-  return "intent://" + host + path + "#Intent;scheme=https;package=" + NEXA_ANDROID_PACKAGE +
+  const fb = encodeURIComponent(absoluteUrl(fallbackHref));
+  return "intent://" + host + invitePath() + "#Intent;scheme=https;package=" + NEXA_ANDROID_PACKAGE +
          ";S.browser_fallback_url=" + fb + ";end";
+}
+
+// Custom-scheme URL the INSTALLED PWA (and the APK's scheme filter) can claim:
+// nexa://join.html?joinGroup=CODE
+function nexaSchemeUrl() {
+  return "nexa://" + window.location.host + invitePath();
+}
+
+// Fires the URL without letting the browser block it, then watches for the
+// tab being hidden (which is what happens when another app takes over). If we
+// are still visible after `delay`, the app clearly did not open, so onDone()
+// runs the fallback. We do NOT use a timeout to *detect* success — a frozen
+// background timer can fire while the app is foregrounded and steal the user
+// back; visibilitychange is the reliable signal.
+let _handoffBusy = false;
+function tryOpenApp(target, onDone, delay) {
+  if (_handoffBusy) return;
+  _handoffBusy = true;
+  let done = false;
+  const finish = () => { if (done) return; done = true; cleanup(); if (onDone) onDone(); };
+  const onHide = () => { if (document.visibilityState === "hidden") finish(); };
+  const cleanup = () => {
+    _handoffBusy = false;
+    document.removeEventListener("visibilitychange", onHide);
+    clearTimeout(timer);
+  };
+  document.addEventListener("visibilitychange", onHide);
+  const timer = setTimeout(finish, delay || 1400);
+  try { window.location.href = target; } catch (e) { finish(); }
+}
+
+// One tap that opens the app when it is installed — native APK first (intent),
+// then the installed PWA (custom scheme). Falls through to the page's normal
+// action (sign in / join in the browser) when neither exists.
+function openAppOrFallback(fallback) {
+  const abs = absoluteUrl(fallback);
+  if (isAndroid()) {
+    tryOpenApp(androidIntentUrl(abs), () => {
+      tryOpenApp(nexaSchemeUrl(), () => { window.location.href = abs; }, 900);
+    }, 1400);
+  } else {
+    tryOpenApp(nexaSchemeUrl(), () => { window.location.href = abs; }, 900);
+  }
 }
 
 function renderError(message) {
@@ -190,19 +242,15 @@ function renderCard(entity, kind, isMember, signedIn) {
       (kind === "channel" ? "You're already following this channel" : "You're already in this group") + '</div>';
   }
 
-  const primaryLabel = !signedIn
-    ? (kind === "channel" ? "Sign in to follow" : "Sign in to join")
-    : (isMember ? "Open " + (kind === "channel" ? "channel" : "group") : (kind === "channel" ? "Follow channel" : "Join group"));
+  const primaryLabel = isMember
+    ? ("Open " + (kind === "channel" ? "channel" : "group"))
+    : (kind === "channel" ? "Follow channel" : "Join group");
 
   const primaryHref = signedIn ? continueUrl() : loginUrl();
 
-  // Inside the native app there is no "Open in app" (we're already in it) and
-  // no sign-in detour (the WebView carries the app session) — just continue.
+  // Inside the native app there is no hand-off (we're already in it) and no
+  // sign-in detour (the WebView carries the app session) — just continue.
   const inApp = isNativeApp();
-  const androidBtn = (isAndroid() && !inApp)
-    ? '<button class="jbtn jbtn-secondary" id="openAppBtn">📱 Open in app</button>' +
-      '<div class="jhint" id="openAppHint"></div>'
-    : '';
 
   const signupBtn = (!signedIn && !inApp)
     ? '<button class="jbtn jbtn-ghost" onclick="location.href=\'' + signupUrl() + '\'">New to Nexa? Create an account</button>'
@@ -215,19 +263,14 @@ function renderCard(entity, kind, isMember, signedIn) {
     '<div class="jsub">' + esc(desc) + '<br><span style="color:var(--nx-text-muted);font-size:12.5px;">' + esc(count) + '</span></div>' +
     statusHtml +
     '<button class="jbtn jbtn-primary" id="primaryBtn">' + esc(primaryLabel) + '</button>' +
-    androidBtn +
+    (inApp ? '' : '<div class="jhint">Opens the Nexa app if you have it — otherwise continues in your browser.</div>') +
     signupBtn;
 
-  document.getElementById("primaryBtn").addEventListener("click", () => { window.location.href = primaryHref; });
-
-  const openAppBtn = document.getElementById("openAppBtn");
-  if (openAppBtn) {
-    openAppBtn.addEventListener("click", () => {
-      const hint = document.getElementById("openAppHint");
-      if (hint) hint.textContent = "Opening the Nexa app… if nothing happens, use the button above.";
-      window.location.href = androidIntentUrl();
-    });
-  }
+  // ONE tap: try the installed app (native APK, then installed PWA); if
+  // neither takes over, fall back to the normal in-browser action.
+  document.getElementById("primaryBtn").addEventListener("click", () => {
+    openAppOrFallback(primaryHref);
+  });
 }
 
 async function resolveGroup(token) {

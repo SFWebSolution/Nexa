@@ -1,5 +1,20 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index b5b8d8f..8864750 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -18,8 +18,8 @@ android {
+         applicationId "com.nexa.messenger"
+         minSdk 23
+         targetSdk 34
+-        versionCode 3
+-        versionName "1.2.0"
++        versionCode 4
++        versionName "1.3.0"
+     }
+ 
+     // A FIXED signing key committed to the repo. CI builds otherwise use a
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
-index c341ddd..5cb8f94 100644
+index c341ddd..b8b4f4d 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
 @@ -36,6 +36,7 @@
@@ -10,13 +25,13 @@ index c341ddd..5cb8f94 100644
              android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
              android:windowSoftInputMode="adjustResize"
              android:theme="@style/Theme.NexaMessenger.NoActionBar">
-@@ -43,6 +44,30 @@
+@@ -43,6 +44,29 @@
                  <action android:name="android.intent.action.MAIN" />
                  <category android:name="android.intent.category.LAUNCHER" />
              </intent-filter>
 +
-+            <!-- App Link: lets an invite link (join.html) open directly in the
-+                 app. autoVerify makes Android check
++            <!-- App Link: an invite link (join.html) opens straight in the app.
++                 autoVerify makes Android check
 +                 https://nexa-qydr.onrender.com/.well-known/assetlinks.json;
 +                 when it matches, the OS opens the app with no chooser dialog.
 +                 The pathPrefix keeps this scoped to invite links only. -->
@@ -29,9 +44,8 @@ index c341ddd..5cb8f94 100644
 +                      android:pathPrefix="/join.html" />
 +            </intent-filter>
 +
-+            <!-- Custom scheme fallback (nexa://join.html?...). Used if App
-+                 Links are not verified on the device (e.g. the site is served
-+                 from a different domain). -->
++            <!-- Custom scheme fallback (nexa://join.html?...). Used when the
++                 site is served from a domain other than the one above. -->
 +            <intent-filter>
 +                <action android:name="android.intent.action.VIEW" />
 +                <category android:name="android.intent.category.DEFAULT" />
@@ -42,14 +56,14 @@ index c341ddd..5cb8f94 100644
  
          <!-- Native FCM receiver. Handles messages when the app is backgrounded or
 diff --git a/app/src/main/java/com/nexa/messenger/MainActivity.java b/app/src/main/java/com/nexa/messenger/MainActivity.java
-index dc57c6f..d8dcf38 100644
+index dc57c6f..4eb7419 100644
 --- a/app/src/main/java/com/nexa/messenger/MainActivity.java
 +++ b/app/src/main/java/com/nexa/messenger/MainActivity.java
 @@ -61,6 +61,8 @@ import java.util.List;
  public class MainActivity extends AppCompatActivity {
  
      public static final String APP_URL = "https://nexa-qydr.onrender.com";
-+    /** Host that verified App Links (see AndroidManifest + assetlinks.json). */
++    /** Host whose App Links are verified (see AndroidManifest + assetlinks.json). */
 +    public static final String APP_HOST = "nexa-qydr.onrender.com";
      /** True while this activity is visible; the FCM service reads it to avoid double-displaying. */
      public static boolean isForeground = false;
@@ -79,15 +93,34 @@ index dc57c6f..d8dcf38 100644
          }
      }
  
-@@ -579,6 +585,44 @@ public class MainActivity extends AppCompatActivity {
+@@ -352,6 +358,19 @@ public class MainActivity extends AppCompatActivity {
+         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+             String url = request.getUrl().toString();
+             
++            // A nexa:// URL fired from inside the page (invite hand-off) means
++            // "go to this Nexa page" — load the https form in place instead of
++            // bouncing out to the system chooser.
++            if (url.startsWith("nexa://")) {
++                webView.loadUrl(url.replaceFirst("^nexa://", "https://"));
++                return true;
++            }
++
++            // intent:// only exists to launch this app; we're already here.
++            if (url.startsWith("intent://")) {
++                return true;
++            }
++
+             // Keep app within Nexa domain
+             if (url.startsWith(APP_URL) || url.contains("onrender.com")) {
+                 return false;
+@@ -579,6 +598,42 @@ public class MainActivity extends AppCompatActivity {
          return uid;
      }
  
 +    /**
 +     * Resolves a Nexa deep-link intent to an https URL the WebView can load,
 +     * or null when the intent is not one. Accepts the verified App Link
-+     * (https://<APP_HOST>/join.html?...) and the nexa:// custom scheme
-+     * (nexa://join.html?...) — both become https://<APP_HOST>/join.html?...
++     * (https://<APP_HOST>/join.html?...) and the nexa:// custom scheme.
 +     */
 +    private String deepLinkTarget(Intent intent) {
 +        if (intent == null || intent.getData() == null) return null;
@@ -98,8 +131,7 @@ index dc57c6f..d8dcf38 100644
 +        boolean isCustomScheme = "nexa".equalsIgnoreCase(scheme);
 +        if (!isAppLink && !isCustomScheme) return null;
 +
-+        // For nexa://join.html?x the file name lands in the authority, not the
-+        // path (getPath() is ""), so normalise both shapes to "/join.html".
++        // nexa://join.html?x puts the file name in the authority, not the path.
 +        String path;
 +        String authority = data.getAuthority();
 +        String rawPath = data.getPath();
@@ -124,7 +156,7 @@ index dc57c6f..d8dcf38 100644
      private void handleNotificationIntent(Intent intent) {
          if (intent == null) return;
          String chatUid = intent.getStringExtra("chatUid");
-@@ -593,6 +637,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -593,6 +648,7 @@ public class MainActivity extends AppCompatActivity {
          setIntent(intent);
          // Bring the pending chat into the already-running web app.
          handleNotificationIntent(intent);

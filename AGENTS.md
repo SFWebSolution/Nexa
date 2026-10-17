@@ -1260,6 +1260,18 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Boot call site: `checkAppUpdate()` runs right after `checkReturningUserWelcome()`
   in the ready branch of `auth.onAuthStateChanged`. The modal is `.app-update-overlay`
   (z-index 11000, same band as the welcome modal).
+- **Publish order matters (the "dot never shows" trap).** The download URL is a
+  fixed release tag (`releases/download/latest/Nexa-Messenger.apk`), so the
+  published APK's `versionName` and `NEXA_LATEST_APP_VERSION` must move together,
+  and the APK must be uploaded BEFORE the web constant is raised. If the constant
+  is above what `latest` serves, every native device is permanently "behind" and
+  the prompt never clears after updating. If it is below, the dot/modal never fire.
+  `tests/invite-links.test.js` section 9 asserts the two stay equal. Current
+  published APK is **1.2.0**; the 1.3.0 build (App Link / deep-link) is in
+  `android-deeplink.patch` and is NOT published yet, so `NEXA_LATEST_APP_VERSION`
+  is still `1.2.0`. Raise it to 1.3.0 in the SAME commit that publishes the 1.3.0
+  APK (push `android-deeplink.patch` to `SFWebSolution/nexa-andriod` main — the
+  `Build Android APK` workflow rebuilds and re-uploads `latest` automatically).
 
 ## Sign-in first-load, notification history, calls, in-app update (2026-10)
 - **First load after sign-in must NOT block on FCM.** `auth.onAuthStateChanged`
@@ -1453,7 +1465,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   Previously ONLY send updated the preview, so deleting/editing/forwarding left a
   stale or wrong preview in the chat list.
 
-## Admin: Top 20 removed, Communities added
+## Admin: Top 20 removed, Communities added then REMOVED
 - The **"⭐ Nexa Champions" Top-20** section is GONE from admin.html (UI, CSS,
   `renderChampions`, `reloadWeeklyStats`, `backfillReferrals`, `cachedMsgScores`,
   `cachedStoryScores`, `loadWeeklyActivity`, `weeklyActivityLoading`, and the
@@ -1462,36 +1474,47 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   "Stories this week" / "Referrals this week" stat cards are KEPT — weekly-active is
   now purely `lastSeen >= weekStart || createdAt >= weekStart` (no message/story
   score inputs). Do NOT re-add a leaderboard or the weekly-activity scan.
-- **Communities (Groups & Channels)** section in admin.html (`#communitiesList`,
-  `loadCommunities()`, `renderCommunities()`, `deleteCommunity()`) lists every group
-  and channel with kind badge, icon, member/subscriber count, owner and created date,
-  plus a name/owner search and Delete (typed confirm). It is backed by two new
-  Admin-SDK endpoints in `server/admin-api.js`:
-  - `GET /api/admin/list-communities` → `{communities:[{id,kind,name,handle,avatarUrl,ownerUid,count,createdAt,…}]}`
-  - `POST /api/admin/delete-community` `{id, kind:"group"|"channel"}` → recursively
-    batch-deletes the subcollections (`members`/`messages` or
-    `subscribers`/`posts`/`messages`) then the doc, so nothing is orphaned.
-  Both require `X-Admin-Secret`. Deploy them into the same backend as the other admin
-  routes (`nexa-backend-e6pq.onrender.com`) for the section to work.
+- **The "👥 Groups & Channels" (Communities) admin section was ADDED and then
+  REMOVED again at the owner's request.** admin.html no longer has
+  `#communitiesList` / `loadCommunities` / `renderCommunities` / `deleteCommunity`
+  (nor the `.comm-*` / `.champ-*` CSS), and `server/admin-api.js` no longer has
+  `GET /api/admin/list-communities` or `POST /api/admin/delete-community` (nor the
+  `deleteCollection` helper). Do NOT re-add them unless the owner asks. They used
+  the Admin SDK because the hardened rules only let an OWNER delete a community
+  (an admin is not the owner) — re-add the UI and both endpoints together if that
+  capability is ever wanted back.
 
 ## Invite/preview regression suite
-- `node tests/invite-links.test.js` — 54 headless checks. It extracts the REAL
-  functions from app-main.js/login.html/signup.html via brace matching and evaluates
-  them in a `vm` context (invite URL builder, snippet helper, `?next=` open-redirect
-  guard), and asserts the structural invariants (resolvers, already-joined messages,
-  every preview path, admin removal, backend endpoints, join.html bits). No Firebase
-  needed.
+- `node tests/invite-links.test.js` — headless checks (81 at last count). It extracts
+  the REAL functions from app-main.js/login.html/signup.html/join.html via brace
+  matching and evaluates them in a `vm` context (invite URL builder, snippet helper,
+  `?next=` open-redirect guard, the join.html intent://+nexa:// URL builders and the
+  `isNativeApp` UA predicate), and asserts the structural invariants (resolvers,
+  already-joined messages, every preview path, admin removal, backend endpoints,
+  join.html/deep-link bits). No Firebase needed.
 
 
 ## Android App Links / "Open in app" deep link (join.html + APK)
-- The invite landing page (`join.html`) shows **"Open in app"** on Android by
-  navigating to an `intent://<host><path>#Intent;scheme=https;package=com.nexa.messenger;S.browser_fallback_url=<this page>;end`
-  URL. With the APK installed Android hands the https URL to the app; without it,
-  `browser_fallback_url` keeps the user on the page. Desktop never shows the button.
-- **Inside the native WebView there is no "Open in app" and no sign-in detour.**
+- **One tap on the invite card's primary button opens the app if it exists, else
+  the browser.** `openAppOrFallback(fallback)` (join.html) does the whole dance:
+  on Android it fires the `intent://…package=com.nexa.messenger…` URL, then
+  (if nothing took over) the `nexa://` custom scheme, then navigates to
+  `fallback` (the real in-browser destination — `login.html?next=…` when signed
+  out, `dashboard.html?joinGroup=…` when signed in). On desktop it only tries
+  the `nexa://` scheme, then falls back. There is NO separate "Open in app"
+  secondary button any more — do not re-add one.
+- **Success is detected by `visibilitychange`, not a timer.** `tryOpenApp()`
+  fires the URL and, if the page is still visible after ~1.4s, treats it as
+  "app not installed" and runs the fallback. The timeout only ever *runs the
+  fallback* — it never pulls the user back — because a frozen background timer
+  can fire while the app is foregrounded.
+- **`browser_fallback_url` is the in-browser destination**, not `join.html`.
+  That way an Android device without the app (or without verified App Links)
+  goes straight to sign-in/join instead of being dumped back on the card.
+- **Inside the native WebView there is no hand-off and no sign-in detour.**
   `isNativeApp()` detects the APK's UA suffix `NexaMobileNative/<version>`
   (appended in MainActivity.setupWebView). In that case the card hides the
-  Android button + "create account" CTA and `autoContinue()` bounces to the
+  hand-off hint + "create account" CTA and `autoContinue()` bounces to the
   dashboard after ~0.9s so the app performs the join with its own session.
 - **`/.well-known/assetlinks.json` is the App Link verification file.** It must
   list package `com.nexa.messenger` + the signing SHA-256
@@ -1507,11 +1530,18 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `com.nexa.messenger`). Apply with `git apply android-deeplink.patch` from the
   android repo root. It adds: `android:launchMode="singleTask"`, an
   `autoVerify` App Link intent-filter (`https`, host `nexa-qydr.onrender.com`,
-  `pathPrefix="/join.html"`), a `nexa://` custom-scheme fallback, and
+  `pathPrefix="/join.html"`), a `nexa://` custom-scheme intent-filter, and
   `deepLinkTarget()`/`handleDeepLink()` in MainActivity (called from
   `onCreate` — the initial load prefers the invite URL over `APP_URL` — and
   `onNewIntent`). Custom-scheme URLs put the file name in the authority, so
   `deepLinkTarget()` normalises `nexa://join.html?x` → `https://<host>/join.html?x`.
-- Rebuild/release the APK for the app to receive App Links. Until then the web
-  half still works: Android shows the intent, and without a matching app it
-  falls back to the page (where the user signs in / joins in the browser).
+  `shouldOverrideUrlLoading` also keeps `nexa://` inside the app (rewritten to
+  its https form) and swallows `intent://` (which only exists to launch us).
+  Version is bumped to 1.3.0 (code 4) so the rebuild is a distinct update.
+- **Rebuild/release the APK** for the app to receive App Links. Until then the
+  web half still works: Android shows the intent and, without a matching app,
+  falls back to the in-browser destination.
+- **The installed PWA cannot be woken by a link** — the WebAPK/Chrome do not
+  honour custom schemes from a page's top-level navigation. So "open the app"
+  really means the native APK; the `nexa://` step is best-effort and the browser
+  fallback is the guaranteed path.
