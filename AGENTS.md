@@ -1448,23 +1448,63 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   again — which also stops `membersCount`/`subscribersCount` inflation. The group
   join writes `memberUids: arrayUnion(...)` alongside the increment (the old param
   handler only incremented the count and never added the uid, so `memberUids` drifted).
-- **APK side (NOT in this repo):** `SFWebSolution/nexa-andriod` (package
-  `com.nexa.messenger`) currently has NO deep-link intent filter. For "open in app"
-  to actually land in the app it needs an App Link intent-filter for the web host
-  (autoVerify) + a hosted `/.well-known/assetlinks.json` with the signing SHA-256,
-  or a custom scheme. The web half works and degrades gracefully without it.
+- **APK side:** `SFWebSolution/nexa-andriod` (package `com.nexa.messenger`) now
+  ships the deep-link intent filters — see the "Android App Links / Open in app
+  deep link" section below. Without them (or on an APK older than 1.3.0) the web
+  half degrades gracefully.
+- **An invite link from a device on an OLD app version (≤1.2.0) still works.**
+  join.html offers no hand-off to a package that can't receive one: the
+  `intent://…;package=com.nexa.messenger;S.browser_fallback_url=…` fires, Android
+  finds no matching filter and follows `browser_fallback_url`, so the user lands on
+  `/login.html?next=<invite>` (or `/dashboard.html?joinGroup=…`) in the browser and
+  joins there. The `nexa://` scheme leg also no-ops on an old build (nothing
+  claims it). They just don't get the "opens straight into the app" shortcut, and
+  the in-app update gate prompts them to update (the dot/modal from
+  `NEXA_LATEST_APP_VERSION`). Note the fixed `releases/download/latest/...` URL means
+  a device must update to the CURRENT latest before the prompt clears — see the
+  version-invariant note in the update-gate section.
+- **Browser vs in-app WebView:** `login.html` (and `signup.html`) redirect a
+  `?next=` `/join.html?…` target to `/dashboard.html?joinGroup=…` via
+  `nexaDashNext()`. That is harmless in a browser, but inside the 1.3.0 APK it would
+  put `joinGroup` on `dashboard.html`, which does NOT run the join handler — the
+  join only works when it reaches `join.html`. So join.html avoids sending an
+  unauthenticated native user to login; it renders the card and relies on
+  `autoContinue()` once the WebView's session restores. Don't "simplify" join.html's
+  signed-out native path to a login redirect without adding dashboard-side handling.
 
 ## Group list preview accuracy (do NOT regress)
 - `groupMsgSnippet(msg)` (app-main.js) is the single preview-string helper (text /
   📷 Photo / 🎥 Video / 🎤 Voice note / 📎 File / 📊 Poll).
-- `updateGroupPreview(groupId, snippet, senderName, prefix)` is the single WRITER of
-  a group's `lastMessage` / `lastMessageTime` / `lastSenderName`; it also mirrors the
-  change into `myGroups` and re-renders so the list repaints instantly.
+- `updateGroupPreview(groupId, snippet, senderName, prefix, mentionUids, at)` is the
+  single WRITER of a group's `lastMessage` / `lastMessageTime` / `lastSenderName` /
+  `lastMentionUids`; it also mirrors the change into `myGroups` and re-renders so the
+  list repaints instantly. `at` is the preview TIMESTAMP — pass the surviving newest
+  message's `createdAt` on delete/edit so the row keeps its real time instead of
+  jumping to "now" (which also mis-sorted the list).
 - It is called from EVERY path: send (`sendGroupMessageWithExtras`), forward
   (`⤳` prefix), edit (`saveEditMessage`, only when the edited msg is the newest), and
   delete (`refreshGroupPreviewAfterDelete()` re-reads the newest remaining message).
   Previously ONLY send updated the preview, so deleting/editing/forwarding left a
   stale or wrong preview in the chat list.
+- **Tag-then-delete must not leave an "@".** The chat-list "@" badge is derived
+  ENTIRELY from the group doc's denormalized `lastMentionUids` + `lastMessageTime`
+  (vs the per-group `getCommunitySeen()` stamp) — there is NO client-side
+  mention-alert accumulator any more. The old `groupMentionAlerts` +
+  `recordGroupMention` kept the MAX mention timestamp forever and only wrote
+  `if (newest)`, so deleting the tagging message (or editing the `@name` out) left
+  the badge stuck until the group was reopened. Now `updateGroupPreview` writes
+  `lastMentionUids` from `mentionUidsOf(msg)` on send/forward/edit and from the
+  re-read newest message on delete, so the badge disappears the instant nothing
+  tagging you remains. `renderMyGroups()` shows a solid amber `@`
+  (`.comm-mention-badge-me`) only when the newest message tags ME and is UNSEEN; a
+  quieter outline `@` when it tags someone else. `renderGroupMessageList()` calls
+  `renderMyGroups()` so an open chat keeps the sidebar badge in step.
+- **Editing recomputes mentions from the new text.** `saveEditMessage` seeds
+  `pendingMentionUids` from the message's existing `mentions`, runs
+  `resolveMentionedMembers(newText)` (keeps only uids whose `@name` still appears),
+  and writes `mentions` on the message — so backspacing the `@name` out drops both
+  the recipient's highlight and the badge. Don't revert to editing `text` only.
+- Group avatars in the list go through `safeMediaUrl()` (was raw interpolation).
 
 ## Admin: Top 20 removed, Communities added then REMOVED
 - The **"⭐ Nexa Champions" Top-20** section is GONE from admin.html (UI, CSS,

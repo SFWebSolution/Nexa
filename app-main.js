@@ -5728,6 +5728,20 @@ function saveEditMessage() {
     : findLocalMsg(id);
   const prevText = local ? local.text : null;
   const prevEdited = local ? local.edited : false;
+  const prevMentions = local && Array.isArray(local.mentions) ? local.mentions : null;
+
+  // Recompute mentions from the edited text BEFORE the optimistic repaint:
+  // backspacing the @name out must drop it from the group's denormalized
+  // mention set, otherwise the chat-list "@" badge (and the recipient's mention
+  // highlight) lingers for a tag that no longer exists. Seed the uid set from
+  // the message's current mentions so an untouched @name is preserved
+  // (resolveMentionedMembers only keeps uids whose @name still appears).
+  let newMentions = null;
+  if (isGroup) {
+    pendingMentionUids = new Set((local && Array.isArray(local.mentions) ? local.mentions.map(x => x && x.uid) : []).filter(Boolean));
+    newMentions = resolveMentionedMembers(newText);
+    pendingMentionUids = new Set();
+  }
 
   // Optimistic: patch locally and repaint IMMEDIATELY, so the bubble (and the
   // chat-list preview) update the instant Save is tapped instead of waiting for
@@ -5737,6 +5751,7 @@ function saveEditMessage() {
   if (local) {
     local.text = newText;
     local.edited = true;
+    if (isGroup) local.mentions = newMentions;
     if (isGroup) {
       renderGroupMessageList(currentGroupMessages);
     } else {
@@ -5753,13 +5768,16 @@ function saveEditMessage() {
   const ref = isGroup
     ? db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id)
     : db.collection("chats").doc(id);
-  ref.update({ text: newText, edited: true, editedAt: Date.now() })
+  const updatePayload = isGroup
+    ? { text: newText, edited: true, editedAt: Date.now(), mentions: newMentions }
+    : { text: newText, edited: true, editedAt: Date.now() };
+  ref.update(updatePayload)
     .then(() => {
       // If the edited message is the newest, the group preview must reflect
       // the new text too (it was showing the old text).
       if (isGroup && selectedGroup && local
           && (local.createdAt || 0) >= (selectedGroup.lastMessageTime || 0)) {
-        updateGroupPreview(selectedGroup.id, groupMsgSnippet(local), local.senderName || '');
+        updateGroupPreview(selectedGroup.id, groupMsgSnippet(local), local.senderName || '', '', mentionUidsOf(local), local.createdAt || 0);
       }
     })
     .catch(e => {
@@ -5767,6 +5785,7 @@ function saveEditMessage() {
       if (local) {
         local.text = prevText;
         local.edited = prevEdited;
+        if (isGroup) local.mentions = prevMentions;
         if (isGroup) {
           renderGroupMessageList(currentGroupMessages);
         } else {
@@ -11123,13 +11142,20 @@ function renderMyGroups() {
 
   container.innerHTML = filtered.map(g => {
     const activeClass = (selectedGroup && selectedGroup.id === g.id) ? ' active' : '';
-    const avatar = g.avatarUrl || 'https://i.imgur.com/HeIi0wU.png';
+    const avatar = safeMediaUrl(g.avatarUrl) || 'https://i.imgur.com/HeIi0wU.png';
     const timeStr = g.lastMessageTime ? new Date(g.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const sender = g.lastSenderName ? `${escapeHtml(g.lastSenderName)}: ` : '';
     const preview = escapeHtml(g.lastMessage || 'No messages yet');
-    const mentionBadge = isMentionedInGroup(g.id)
-      ? `<span class="comm-mention-badge" title="You were mentioned">@</span>`
-      : '';
+    // @ badge reflects who the NEWEST message still tags (empty after that
+    // message is deleted or edited to drop the @). Mine is highlighted.
+    const mentionUids = Array.isArray(g.lastMentionUids) ? g.lastMentionUids : [];
+    const hasUnseen = (g.lastMessageTime || 0) > (getCommunitySeen()['g_' + g.id] || 0);
+    const iAmMentioned = hasUnseen && mentionUids.includes(currentUser.uid);
+    const mentionBadge = iAmMentioned
+      ? `<span class="comm-mention-badge comm-mention-badge-me" title="You were mentioned">@</span>`
+      : (mentionUids.length
+          ? `<span class="comm-mention-badge" title="Mentioned">@</span>`
+          : '');
 
     return `
       <div class="comm-group-item${activeClass}" onclick="handleSelectGroupItem('${g.id}')">
@@ -11335,7 +11361,6 @@ function loadGroupMessages(groupId, joinedAt) {
         msgs.push({ id: doc.id, ...doc.data() });
       });
       msgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      recordGroupMention(groupId, msgs);
       renderGroupMessageList(msgs);
     }, err => {
       console.error('Group messages error:', err);
@@ -11386,6 +11411,10 @@ function renderGroupMessageList(messages) {
   });
 
   scrollMessagesToBottom();
+  // Keep the chat-list "@" badge in step with the newest message: when the last
+  // tagging message is deleted or edited to drop the @, the badge disappears at
+  // once (the sidebar list lives behind the open chat).
+  if (selectedGroup && selectedGroup.id) renderMyGroups();
 }
 
 function buildGroupMessage(id, msg, fromMe) {
@@ -11611,13 +11640,21 @@ function groupMsgSnippet(msg) {
 
 // Single writer for a group's last-message preview. Every send/edit/delete/
 // forward path calls this so the list preview stays accurate before the chat
-// is opened (the old code only updated it on send).
-async function updateGroupPreview(groupId, snippet, senderName, prefix) {
+// is opened (the old code only updated it on send). `mentionUids` is the set of
+// uids the NEWEST message tags; it is denormalized onto the group doc so the
+// chat-list "@" badge is correct for every group (the list only holds the open
+// chat's messages) and disappears the instant the tagging message is deleted
+// or edited to drop the @. `at` is the preview timestamp — pass the surviving
+// newest message's createdAt on delete/edit so the row keeps its real time
+// instead of jumping to "now" (which also mis-sorts the list).
+async function updateGroupPreview(groupId, snippet, senderName, prefix, mentionUids, at) {
   if (!groupId) return;
+  const ts = (typeof at === 'number') ? at : Date.now();
   const patch = {
     lastMessage: (prefix || '') + (snippet || 'No messages yet'),
-    lastMessageTime: Date.now(),
+    lastMessageTime: ts,
     lastSenderName: senderName || '',
+    lastMentionUids: Array.isArray(mentionUids) ? mentionUids.filter(Boolean) : [],
     updatedAt: Date.now()
   };
   try {
@@ -11630,6 +11667,7 @@ async function updateGroupPreview(groupId, snippet, senderName, prefix) {
     g.lastMessage = patch.lastMessage;
     g.lastMessageTime = patch.lastMessageTime;
     g.lastSenderName = patch.lastSenderName;
+    g.lastMentionUids = patch.lastMentionUids;
     if (typeof renderMyGroups === 'function') renderMyGroups();
   }
 }
@@ -11643,12 +11681,20 @@ async function refreshGroupPreviewAfterDelete(groupId) {
     const snap = await db.collection('groups').doc(groupId).collection('messages')
       .orderBy('createdAt', 'desc').limit(1).get();
     if (snap.empty) {
-      await updateGroupPreview(groupId, 'No messages yet', '');
+      await updateGroupPreview(groupId, 'No messages yet', '', '', []);
       return;
     }
     const m = snap.docs[0].data() || {};
-    await updateGroupPreview(groupId, groupMsgSnippet(m), m.senderName || '');
+    const uids = Array.isArray(m.mentions) ? m.mentions.map(x => x && x.uid).filter(Boolean) : [];
+    await updateGroupPreview(groupId, groupMsgSnippet(m), m.senderName || '', '', uids, m.createdAt || 0);
   } catch (e) {}
+}
+
+// uids a message tags (for the denormalized lastMentionUids).
+function mentionUidsOf(msg) {
+  return msg && Array.isArray(msg.mentions)
+    ? msg.mentions.map(x => x && x.uid).filter(Boolean)
+    : [];
 }
 
 async function sendGroupMessageWithExtras(extras) {
@@ -11667,7 +11713,7 @@ async function sendGroupMessageWithExtras(extras) {
 
     // Update group recency snippet (shared writer).
     const snippet = groupMsgSnippet(payload);
-    await updateGroupPreview(selectedGroup.id, snippet, senderName);
+    await updateGroupPreview(selectedGroup.id, snippet, senderName, '', mentionUidsOf(payload));
     // Notify the other members (one bulk call, quota-free like 1:1 pushes).
     const groupRecipients = (selectedGroup.memberUids || []).filter(u => u && u !== currentUser.uid);
     if (groupRecipients.length) {
@@ -11694,32 +11740,13 @@ async function sendGroupMessageWithExtras(extras) {
 
 let currentGroupMembersList = [];
 
-// Groups where a recent message tags ME and I haven't opened the group since.
-// Populated from the message listener, consumed by renderMyGroups() for the
-// "you were mentioned" badge, cleared when the group is opened. Declared with
-// `var` + guarded reads so an early render before this line can't TDZ-throw.
-var groupMentionAlerts = {};
-
-function isMentionedInGroup(groupId) {
-  const lastSeen = getCommunitySeen()['g_' + groupId] || 0;
-  return ((groupMentionAlerts || {})[groupId] || 0) > lastSeen;
-}
-
-function recordGroupMention(groupId, msgs) {
-  if (!currentUser) return;
-  let newest = 0;
-  (msgs || []).forEach(m => {
-    if (m && m.senderUid !== currentUser.uid && Array.isArray(m.mentions)
-        && m.mentions.some(x => x && x.uid === currentUser.uid)) {
-      newest = Math.max(newest, m.createdAt || 0);
-    }
-  });
-  if (newest) {
-    groupMentionAlerts = groupMentionAlerts || {};
-    groupMentionAlerts[groupId] = Math.max(groupMentionAlerts[groupId] || 0, newest);
-    renderMyGroups();
-  }
-}
+// NOTE: the chat-list "@" badge is derived from the group doc's denormalized
+// `lastMentionUids` (written by updateGroupPreview) plus `lastMessageTime`,
+// compared against the per-group "seen" stamp. There is deliberately NO
+// client-side mention-alert accumulator any more: the old `groupMentionAlerts`
+// + `recordGroupMention` kept the MAX mention timestamp forever and only wrote
+// it `if (newest)`, so deleting (or editing the @ out of) the tagging message
+// left the badge stuck until the group was reopened.
 
 // ── Group Info Modal & Member Management ───────────────────────────────────
 async function openGroupInfo() {

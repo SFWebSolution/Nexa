@@ -79,7 +79,7 @@ console.log("\n3) group preview is written from EVERY path");
 {
   ok("updateGroupPreview helper exists", /async function updateGroupPreview\(/.test(appJs));
   ok("refreshGroupPreviewAfterDelete helper exists", /async function refreshGroupPreviewAfterDelete\(/.test(appJs));
-  ok("send path uses updateGroupPreview", /const snippet = groupMsgSnippet\(payload\);[\s\S]{0,80}?await updateGroupPreview\(selectedGroup\.id, snippet, senderName\)/.test(appJs));
+  ok("send path uses updateGroupPreview", /const snippet = groupMsgSnippet\(payload\);[\s\S]{0,80}?await updateGroupPreview\(selectedGroup\.id, snippet, senderName, '', mentionUidsOf\(payload\)\)/.test(appJs));
   ok("forward path uses updateGroupPreview", /await updateGroupPreview\(targetId, groupMsgSnippet\(payload\), senderName, '\u2933 '\)/.test(appJs));
   ok("delete path refreshes preview", /\.then\(\(\) => refreshGroupPreviewAfterDelete\(_gid\)\)/.test(appJs));
   ok("edit path updates preview", /if \(isGroup && selectedGroup && local[\s\S]{0,200}?updateGroupPreview\(selectedGroup\.id, groupMsgSnippet\(local\)/.test(appJs));
@@ -106,6 +106,37 @@ for (const file of ["login.html", "signup.html"]) {
   eq(file + ": allows bare same-origin file", f4("fallback.html"), "dashboard.html");
   const f5 = mk("");
   eq(file + ": no next -> fallback", f5("dashboard.html"), "dashboard.html");
+}
+
+console.log("\n4b) group @ badge reflects only the newest message (tag-then-delete)");
+{
+  // The old groupMentionAlerts/recordGroupMention accumulator kept the MAX
+  // mention timestamp forever, so deleting the tagging message (or editing the
+  // @ out) left the chat-list "@" badge stuck. It is gone; the badge now reads
+  // the group doc's denormalized lastMentionUids.
+  ok("old mention-alert accumulator removed", !/function recordGroupMention\(/.test(appJs) && !/groupMentionAlerts\s*=\s*\{/.test(appJs));
+  ok("old isMentionedInGroup helper removed", !/function isMentionedInGroup\(/.test(appJs));
+  ok("listener no longer calls recordGroupMention", !/recordGroupMention\(/.test(appJs));
+
+  // updateGroupPreview is the single writer of the denormalized mention set.
+  ok("updateGroupPreview accepts mention uids", /async function updateGroupPreview\(groupId, snippet, senderName, prefix, mentionUids, at\)/.test(appJs));
+  ok("updateGroupPreview writes lastMentionUids", /lastMentionUids: Array\.isArray\(mentionUids\) \? mentionUids\.filter\(Boolean\) : \[\]/.test(appJs));
+  ok("send path passes the mentions", /updateGroupPreview\(selectedGroup\.id, snippet, senderName, '', mentionUidsOf\(payload\)\)/.test(appJs));
+  ok("edit path passes the mentions", /updateGroupPreview\(selectedGroup\.id, groupMsgSnippet\(local\), local\.senderName \|\| '', '', mentionUidsOf\(local\), local\.createdAt \|\| 0\)/.test(appJs));
+  ok("delete recompute clears stale mentions", /refreshGroupPreviewAfterDelete[\s\S]{0,600}?updateGroupPreview\(groupId, groupMsgSnippet\(m\), m\.senderName \|\| '', '', uids, m\.createdAt \|\| 0\)/.test(appJs));
+  ok("empty group clears the mention set", /updateGroupPreview\(groupId, 'No messages yet', '', '', \[\]\)/.test(appJs));
+  ok("edit recomputes mentions from the new text", /newMentions = resolveMentionedMembers\(newText\)/.test(appJs));
+  ok("badge reads the denormalized set", /const mentionUids = Array\.isArray\(g\.lastMentionUids\) \? g\.lastMentionUids : \[\]/.test(appJs));
+  ok("badge only highlights when unseen", /const iAmMentioned = hasUnseen && mentionUids\.includes\(currentUser\.uid\)/.test(appJs));
+  ok("preview keeps the real time on delete/edit", /updateGroupPreview\(groupId, groupMsgSnippet\(m\), m\.senderName \|\| '', '', uids, m\.createdAt \|\| 0\)/.test(appJs) && /mentionUidsOf\(local\), local\.createdAt \|\| 0\)/.test(appJs));
+  ok("preview writer accepts an explicit timestamp", /async function updateGroupPreview\(groupId, snippet, senderName, prefix, mentionUids, at\)/.test(appJs));
+
+  // Evaluate the real helper that feeds lastMentionUids.
+  const fn = run(extractFn(appJs, "mentionUidsOf") + "\n;mentionUidsOf;", {});
+  eq("mentionUidsOf extracts uids", JSON.stringify(fn({ mentions: [{ uid: "a" }, { uid: "b" }] })), '["a","b"]');
+  eq("mentionUidsOf drops blank uids", JSON.stringify(fn({ mentions: [{ uid: "a" }, { name: "x" }, null] })), '["a"]');
+  eq("mentionUidsOf empty for no mentions", JSON.stringify(fn({ text: "hi" })), "[]");
+  eq("mentionUidsOf empty for null", JSON.stringify(fn(null)), "[]");
 }
 
 console.log("\n5) admin: Top-20 gone, communities section removed");
