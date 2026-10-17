@@ -1463,14 +1463,15 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `NEXA_LATEST_APP_VERSION`). Note the fixed `releases/download/latest/...` URL means
   a device must update to the CURRENT latest before the prompt clears — see the
   version-invariant note in the update-gate section.
-- **Browser vs in-app WebView:** `login.html` (and `signup.html`) redirect a
-  `?next=` `/join.html?…` target to `/dashboard.html?joinGroup=…` via
-  `nexaDashNext()`. That is harmless in a browser, but inside the 1.3.0 APK it would
-  put `joinGroup` on `dashboard.html`, which does NOT run the join handler — the
-  join only works when it reaches `join.html`. So join.html avoids sending an
-  unauthenticated native user to login; it renders the card and relies on
-  `autoContinue()` once the WebView's session restores. Don't "simplify" join.html's
-  signed-out native path to a login redirect without adding dashboard-side handling.
+- **Where the join actually runs:** `checkGroupInviteUrlParam()` /
+  `checkChannelInviteUrlParam()` run on `dashboard.html` boot (after auth), so
+  `dashboard.html?joinGroup=…` performs the join there. `login.html`/`signup.html`
+  redirect a `?next=` `/join.html?…` target to `/dashboard.html?joinGroup=…`
+  (`nexaDashNext()`), which is fine because the dashboard handles it. join.html's
+  native `autoContinue()` sends a signed-in WebView straight to
+  `dashboard.html?joinGroup=…` too. A signed-out native user gets the card and the
+  in-browser login fallback (the WebView normally restores its Firebase session, so
+  this is the rare case).
 
 ## Group list preview accuracy (do NOT regress)
 - `groupMsgSnippet(msg)` (app-main.js) is the single preview-string helper (text /
