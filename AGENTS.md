@@ -1266,12 +1266,13 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   and the APK must be uploaded BEFORE the web constant is raised. If the constant
   is above what `latest` serves, every native device is permanently "behind" and
   the prompt never clears after updating. If it is below, the dot/modal never fire.
-  `tests/invite-links.test.js` section 9 asserts the two stay equal. Current
-  published APK is **1.2.0**; the 1.3.0 build (App Link / deep-link) is in
-  `android-deeplink.patch` and is NOT published yet, so `NEXA_LATEST_APP_VERSION`
-  is still `1.2.0`. Raise it to 1.3.0 in the SAME commit that publishes the 1.3.0
-  APK (push `android-deeplink.patch` to `SFWebSolution/nexa-andriod` main — the
-  `Build Android APK` workflow rebuilds and re-uploads `latest` automatically).
+  `tests/invite-links.test.js` section 9 asserts the two stay equal. As of
+  2026-10-17 the 1.3.0 APK (App Link / deep-link, from `android-deeplink.patch`)
+  IS published — pushed to `SFWebSolution/nexa-andriod` main, `Build Android APK`
+  succeeded, `latest` re-uploaded — so `NEXA_LATEST_APP_VERSION` is `1.3.0` on
+  both sides. For the NEXT release: raise the constant in the SAME commit that
+  publishes the new APK (push the patch to `SFWebSolution/nexa-andriod` main; the
+  workflow rebuilds and re-uploads `latest` automatically).
 
 ## Sign-in first-load, notification history, calls, in-app update (2026-10)
 - **First load after sign-in must NOT block on FCM.** `auth.onAuthStateChanged`
