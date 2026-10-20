@@ -417,11 +417,29 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 ## Push coverage (what actually notifies)
 - **1:1 message** (text / photo / video / voice note / poll) — sender pushes.
+- **Connection request / acceptance** — `sendConnectRequest` pushes
+  `"<name> sent you a connection request"` to the recipient (single target,
+  `{isConnect:true, connectType:'request'}`); `acceptConnectRequest` pushes
+  `"<name> accepted your connection request"` back to the requester
+  (`connectType:'accepted'`). Category `connections`. Without this a request only
+  surfaced when the user happened to open the app and notice the Connect dot.
+- **Added to a group** — `submitCreateGroup` (the non-owner members) and
+  `submitAddMembersToGroup` (the just-added uids) bulk-push
+  `"👥 <group>" / "<name> added you to the group"` (`{isGroup:true, groupAdded:true}`).
+  Capture the added uids BEFORE `closeAddMemberModal()`.
 - **Reaction** on your message — `/api/send-notification` (`reactions` category).
 - **Incoming voice / video call** — `/api/send-notification` (`calls` category).
 - **Group message** — `sendGroupMessageWithExtras` pushes to the other
   `selectedGroup.memberUids` via **`POST /api/send-notification-bulk`**
   (`{targetUids:[...]}`), category `groups`.
+- **Group @mention** — a targeted `"🔔 <sender> mentioned you"` push to just the
+  tagged uids, ON TOP of the group push (WhatsApp surfaces mentions distinctly).
+- **Group @all** — `@all` (everyone) is expanded at SEND time (`sendGroupMessage`
+  sets `extras.mentionAll=true` + `mentions` = every member) so it works for every
+  member, no admin gate. It sends **ONE** combined push `"🔔 <sender> mentioned @all"`
+  to all members and **SKIPS** the plain group push, so nobody is double-pinged.
+  The `@all` token also highlights as "you were mentioned" for everyone
+  (`renderMentionText(text, mentions, mentionAll)`).
 - **Channel admin reply** — the ONLY channel notification. When an admin
   replies to a comment, the comment's author is notified directly
   (`prepareChannelCommentReply` carries `authorUid`). A normal channel post
@@ -435,8 +453,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Not notified:** nothing else. There is no push for profile changes, etc.
 - `sendPushNotification(title, body, targetUid, extraData)` takes EITHER a
   single `targetUid` OR `extraData.recipientUids` (bulk). Category gates:
-  `messages` (default), `groups`, `stories`, `calls`, `reactions`. The
-  `recipientUids` key is stripped from the FCM `data` before sending.
+  `messages` (default), `groups`, `stories`, `calls`, `reactions`, `connections`.
+  The `recipientUids` key is stripped from the FCM `data` before sending.
+- Notification-history icons come from `notifIconForData(title, data)` (flags
+  FIRST — `groupAdded`/`isConnect`/`isMention`/`mentionAll`/`isStory`/`isGroup` —
+  because connect/mention push titles are often just the sender's NAME, which the
+  title heuristic can't classify), falling back to `notifHistoryIconFor(title)`.
 - The bulk endpoint keeps a **5-minute per-uid token cache** (invalidated on
   `save-token`) so a fan-out is not one Firestore read per recipient; it caps at
   500 uids. Recipients always exclude the sender.
@@ -972,12 +994,15 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 ## Notifications master toggle (do NOT regress)
 - Settings → Notifications has a master **All notifications** switch (`#tabNotifAll`,
   `toggleNotif('all')`) that flips EVERY category at once. The master ON means
-  `NEXA_NOTIF_TYPES = ["messages","stories","calls","reactions"]` are all enabled;
-  turning ANY one off drops the master to off (so it's a true reflection, not a
-  separate flag). `setAllNotif(on)` / `isNotifAllOn()` own this.
+  `NEXA_NOTIF_TYPES = ["messages","groups","stories","reactions","connections"]`
+  are all enabled; turning ANY one off drops the master to off (so it's a true
+  reflection, not a separate flag). `setAllNotif(on)` / `isNotifAllOn()` own this.
+- `connections` is a first-class category (`notificationSettings.connections`,
+  default true) gating the connect-request/accept pushes (`extraData.isConnect`).
 - Settings UI has TWO id sets for the same toggles: the Settings **subpage**
-  (`tabNotifMessages`/`tabNotifStories`/`tabNotifCalls`/`tabNotifReactions`) and the
-  quick **modal** (`notifMessages`/`notifStories`/`notifCalls`/`notifReactions`).
+  (`tabNotifMessages`/`tabNotifGroups`/`tabNotifStories`/`tabNotifConnections`/
+  `tabNotifReactions`) and the quick **modal** (`notifMessages`/`notifGroups`/
+  `notifStories`/`notifConnections`/`notifReactions`).
   `updateNotifUI()` MUST sync BOTH sets (and the Reactions toggle — that was the
   unsynced one). Do NOT reintroduce a manual partial sync block; `loadNotificationSettings()`
   calls `updateNotifUI()` which is the single source of UI truth.
@@ -1049,6 +1074,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Stories are connection-gated:** `renderStoriesBar`, `renderStoriesTab`, `updateStoryTabDot`, and `openStoryViewer` all skip non-connections (client-side; the `status` rules still allow any signed-in read — hardening the rules is a future option).
 - **Connect tab UI** (`#tabPaneConnect`): segmented `Discover` | `Requests` (`switchConnectSubTab`), `renderConnectDiscover` (all users, action button per relationship: Connect / Requested / Accept / Message), `renderConnectRequests` (incoming + Sent section). Requests search box (`#connectSearchWrap`) is hidden on the Requests sub-tab.
 - **Green update dot** (`.connect-tab-dot` on `sTabConnect` + `navBtnConnect`): `updateConnectTabDot()` shows it for a new incoming pending request or an accepted outgoing request newer than `nexa_connect_seen_<uid>`; opening the Connect tab (`switchTab('connect')` -> `markConnectRequestsSeen`) clears it.
+- **Connect requests push a notification** (category `connections`): `sendConnectRequest` -> recipient, `acceptConnectRequest` -> requester. See "Push coverage". The dot is the in-app signal; the push is the out-of-app one.
 - Actions: `sendConnectRequest` / `acceptConnectRequest` (recipient flips status) / `declineConnectRequest` / `cancelConnectRequest` / `disconnectUser` (both delete the doc) / `openConnectedChat(uid)` (switches to Chats and selects). Accept just shows the person in the 1:1 list — no auto-open.
 - **Channels are NOT message-forward targets.** The Forward modal lists contacts (accepted connections) + groups only. A channel is a broadcast feed where only the owner/admins may post, so a follower must never be able to push a message into one. `renderForwardTargets` no longer adds `myChannels`, and `executeForward` skips a `channel` target (`continue`) instead of writing a `channels/{id}/posts` doc. Do NOT re-add channels to the forward list.
 - **Every contact picker is connection-gated (not just chat/stories/Live).** Only ACCEPTED connections (`isConnectedTo`) may be picked for: message Forward targets (`renderForwardTargets`), the "Invite to Group"/"Invite to Channel" picker (same forward modal via `openInvitePicker`), Create-Group members (`renderCreateGroupContacts`), and Add-Member-to-Group (`renderAddMemberContacts`). `sendGroupInviteToChat`/`sendChannelInviteToChat` ALSO re-check `isConnectedTo(contactUid)` server-side and refuse with "You can only invite your connections". Do NOT re-widen any of these to `allUsersData` — a stranger must never be forwardable-to or invitable into a group/channel. The Voice Room/Live invite list is gated too (`renderUserInviteList` -> `isConnection`).

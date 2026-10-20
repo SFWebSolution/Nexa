@@ -637,6 +637,13 @@
                 </div>
                 <div class="notif-toggle" id="tabNotifStories" onclick="toggleNotif('stories')"></div>
               </div>
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Connections</label>
+                  <div class="notif-item-desc">Connection requests and acceptances</div>
+                </div>
+                <div class="notif-toggle" id="tabNotifConnections" onclick="toggleNotif('connections')"></div>
+              </div>
               <div class="notif-item notif-item-btn" onclick="openNotificationHistory()">
                 <div class="notif-item-info">
                   <label class="notif-item-label"><i data-lucide="clock" style="width: 14px; height: 14px;"></i> Notification History</label>
@@ -1569,6 +1576,22 @@
         <div class="notif-item-desc">Get notified when friends share stories</div>
       </div>
       <div class="notif-toggle" id="notifStories" onclick="toggleNotif('stories')"></div>
+    </div>
+
+    <div class="notif-item">
+      <div class="notif-item-info">
+        <label class="notif-item-label">Groups &amp; Channels</label>
+        <div class="notif-item-desc">Group messages, mentions and being added to a group</div>
+      </div>
+      <div class="notif-toggle" id="notifGroups" onclick="toggleNotif('groups')"></div>
+    </div>
+
+    <div class="notif-item">
+      <div class="notif-item-info">
+        <label class="notif-item-label">Connections</label>
+        <div class="notif-item-desc">Connection requests and acceptances</div>
+      </div>
+      <div class="notif-toggle" id="notifConnections" onclick="toggleNotif('connections')"></div>
     </div>
 
     <div class="notif-item">

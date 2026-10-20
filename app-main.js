@@ -301,11 +301,12 @@ let notificationSettings = {
   groups: true,
   stories: true,
   calls: true,
-  reactions: true
+  reactions: true,
+  connections: true
 };
 
 // The individual categories the master switch drives (everything except `all`).
-const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "reactions"];
+const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "reactions", "connections"];
 
 // The master reads "on" only when EVERY category is on. This stays honest no
 // matter how the user got there — flipped the master, or flipped each type.
@@ -797,14 +798,29 @@ function _nhSave(obj) {
 function notifHistoryIconFor(title) {
   const t = String(title || '').toLowerCase();
   if (!t) return '🔔';
+  if (t.includes('connection')) return '🤝';
   if (t.includes('call')) return '📞';
   if (t.includes('react')) return '❤️';
   if (t.includes('story')) return '📸';
   if (t.includes('poll')) return '📊';
+  if (t.includes('added to')) return '👥';
   if (t.includes('group')) return '👥';
   if (t.includes('channel') || t.includes('broadcast')) return '📣';
   if (t.includes('follow')) return '➕';
   return '💬';
+}
+
+// Push payloads carry the event kind in `data` (the human title is often just
+// the sender's name, e.g. "Ada"), so derive the history icon from the flags
+// first and fall back to the title heuristic.
+function notifIconForData(title, data) {
+  data = data || {};
+  if (data.groupAdded) return '👥';
+  if (data.isConnect) return '🤝';
+  if (data.isMention || data.mentionAll) return '🔔';
+  if (data.isStory) return '📸';
+  if (data.isGroup) return '👥';
+  return notifHistoryIconFor(title);
 }
 
 function recordNotificationHistory({ icon, title, body, at }) {
@@ -940,14 +956,17 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   const isReaction = title.toLowerCase().includes("react");
   const isGroup = extraData.isGroup === true;
   const isStory = extraData.isStory === true;
+  const isConnect = extraData.isConnect === true;
 
   if (isReaction && !notificationSettings.reactions) return;
   if (isGroup && !notificationSettings.groups) return;
   if (isStory && !notificationSettings.stories) return;
-  if (!isReaction && !isGroup && !isStory && !notificationSettings.messages) return;
+  if (isConnect && !notificationSettings.connections) return;
+  if (!isReaction && !isGroup && !isStory && !isConnect && !notificationSettings.messages) return;
 
-  // Lock-screen privacy: strip the message text from the push body.
-  if (hideNotifPreviewOn()) body = 'New message';
+  // Lock-screen privacy: strip the message text from the push body. Connection
+  // events carry no message content, so keep their body (it's the whole point).
+  if (hideNotifPreviewOn() && !isConnect) body = 'New message';
 
   // A single stable id for THIS notification. The receiver's service worker
   // uses it as the notification tag so that if the backend delivers the same
@@ -1113,7 +1132,7 @@ async function initFCM(uid) {
         const body = data.body || 'You have a new message';
 
         // Record into the in-app notification history (self doc, capped).
-        recordNotificationHistory({ icon: notifHistoryIconFor(title), title, body, at: Number(data.timestamp) || Date.now() });
+        recordNotificationHistory({ icon: notifIconForData(title, data), title, body, at: Number(data.timestamp) || Date.now() });
 
         // Show an in-app toast
         if (typeof showNotifToast === 'function') {
@@ -1885,6 +1904,13 @@ function maybeMigrateExistingChats() {
 }
 
 // ── Actions ────────────────────────────────────────────────────────────────
+// The sender's display name for a notification title (mirrors notifyPeerOfMessage).
+function nexaMyPushName() {
+  return (document.getElementById('myName')?.textContent
+    || (currentUser && currentUser.displayName)
+    || (currentUser && currentUser.email ? currentUser.email.split('@')[0] : 'Someone')).trim();
+}
+
 function sendConnectRequest(uid) {
   if (!currentUser || !uid || uid === currentUser.uid) return;
   if (myConnections[uid]) return;
@@ -1899,6 +1925,13 @@ function sendConnectRequest(uid) {
   }).then(() => {
     showNotifToast('Connection request sent', 'success');
     renderConnectTab();
+    // Tell the recipient right away — otherwise a request only surfaces when
+    // they happen to open the app and notice the Connect dot.
+    sendPushNotification(nexaMyPushName(), 'sent you a connection request', uid, {
+      isConnect: true,
+      connectType: 'request',
+      chatUid: currentUser.uid
+    });
   }).catch(err => {
     console.error('sendConnectRequest', err);
     showNotifToast('Could not send request', 'error');
@@ -1914,6 +1947,12 @@ function acceptConnectRequest(uid) {
   }).then(() => {
     showNotifToast('Connected! You can now chat.', 'success');
     renderConnectTab();
+    // Let the requester know they were accepted (they can now message).
+    sendPushNotification(nexaMyPushName(), 'accepted your connection request', uid, {
+      isConnect: true,
+      connectType: 'accepted',
+      chatUid: currentUser.uid
+    });
   }).catch(err => {
     console.error('acceptConnectRequest', err);
     showNotifToast('Could not accept request', 'error');
@@ -5729,6 +5768,7 @@ function saveEditMessage() {
   const prevText = local ? local.text : null;
   const prevEdited = local ? local.edited : false;
   const prevMentions = local && Array.isArray(local.mentions) ? local.mentions : null;
+  const prevMentionAll = !!(local && local.mentionAll);
 
   // Recompute mentions from the edited text BEFORE the optimistic repaint:
   // backspacing the @name out must drop it from the group's denormalized
@@ -5737,10 +5777,18 @@ function saveEditMessage() {
   // the message's current mentions so an untouched @name is preserved
   // (resolveMentionedMembers only keeps uids whose @name still appears).
   let newMentions = null;
+  let newMentionAll = false;
   if (isGroup) {
-    pendingMentionUids = new Set((local && Array.isArray(local.mentions) ? local.mentions.map(x => x && x.uid) : []).filter(Boolean));
-    newMentions = resolveMentionedMembers(newText);
-    pendingMentionUids = new Set();
+    if (/\B@all\b/i.test(newText)) {
+      newMentionAll = true;
+      newMentions = (selectedGroup.memberUids || [])
+        .filter(u => u && u !== currentUser.uid)
+        .map(u => ({ uid: u, name: 'all' }));
+    } else {
+      pendingMentionUids = new Set((local && Array.isArray(local.mentions) ? local.mentions.map(x => x && x.uid) : []).filter(Boolean));
+      newMentions = resolveMentionedMembers(newText);
+      pendingMentionUids = new Set();
+    }
   }
 
   // Optimistic: patch locally and repaint IMMEDIATELY, so the bubble (and the
@@ -5751,7 +5799,7 @@ function saveEditMessage() {
   if (local) {
     local.text = newText;
     local.edited = true;
-    if (isGroup) local.mentions = newMentions;
+    if (isGroup) { local.mentions = newMentions; local.mentionAll = newMentionAll; }
     if (isGroup) {
       renderGroupMessageList(currentGroupMessages);
     } else {
@@ -5769,7 +5817,7 @@ function saveEditMessage() {
     ? db.collection("groups").doc(selectedGroup.id).collection("messages").doc(id)
     : db.collection("chats").doc(id);
   const updatePayload = isGroup
-    ? { text: newText, edited: true, editedAt: Date.now(), mentions: newMentions }
+    ? { text: newText, edited: true, editedAt: Date.now(), mentions: newMentions, mentionAll: newMentionAll }
     : { text: newText, edited: true, editedAt: Date.now() };
   ref.update(updatePayload)
     .then(() => {
@@ -5785,7 +5833,7 @@ function saveEditMessage() {
       if (local) {
         local.text = prevText;
         local.edited = prevEdited;
-        if (isGroup) local.mentions = prevMentions;
+        if (isGroup) { local.mentions = prevMentions; local.mentionAll = prevMentionAll; }
         if (isGroup) {
           renderGroupMessageList(currentGroupMessages);
         } else {
@@ -11085,6 +11133,14 @@ async function submitCreateGroup() {
 
     await batch.commit();
 
+    // Tell the freshly-added members they're in a new group (single bulk call).
+    const addedUids = memberUids.filter(u => u && u !== currentUser.uid);
+    if (addedUids.length) {
+      sendPushNotification(`👥 ${name}`, `${nexaMyPushName()} added you to the group`, null, {
+        isGroup: true, groupAdded: true, recipientUids: addedUids, chatUid: docRef.id
+      });
+    }
+
     closeCreateGroupModal();
     showNotifToast('✓ Group created!', 'success');
 
@@ -11470,7 +11526,7 @@ function buildGroupMessage(id, msg, fromMe) {
 
   // 3. Text (skip raw text for polls since poll card shows the question)
   if (msg.text && msg.type !== 'poll') {
-    const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text), msg.mentions) : linkify(msg.text);
+    const textHtml = typeof renderMentionText === 'function' ? renderMentionText(linkify(msg.text), msg.mentions, msg.mentionAll) : linkify(msg.text);
     inner += `<div class="msg-text">${textHtml}</div>`;
     inner += maybeTranslationStrip(id, msg.text, fromMe);
   }
@@ -11595,6 +11651,16 @@ async function sendGroupMessage() {
   // recipient side can highlight "you" and send a targeted notification.
   const mentions = resolveMentionedMembers(text);
   if (mentions.length) extras.mentions = mentions;
+  // "@all" tags every member at once (WhatsApp-style). Stored as a flag so the
+  // recipient side can highlight "you were mentioned" for everyone, and the
+  // push is sent ONCE to all members instead of per-mention + group (no double
+  // ping). The sender's own uid is excluded.
+  if (/\B@all\b/i.test(text)) {
+    extras.mentionAll = true;
+    extras.mentions = (selectedGroup.memberUids || [])
+      .filter(u => u && u !== currentUser.uid)
+      .map(u => ({ uid: u, name: 'all' }));
+  }
   if (messageRepliedTo) {
     extras.replyTo = messageRepliedTo.id;
     extras.replyToText = messageRepliedTo.text || (messageRepliedTo.image ? "(Photo)" : messageRepliedTo.video ? "(Video)" : messageRepliedTo.audio ? "(Voice note)" : "(message)");
@@ -11716,18 +11782,25 @@ async function sendGroupMessageWithExtras(extras) {
     await updateGroupPreview(selectedGroup.id, snippet, senderName, '', mentionUidsOf(payload));
     // Notify the other members (one bulk call, quota-free like 1:1 pushes).
     const groupRecipients = (selectedGroup.memberUids || []).filter(u => u && u !== currentUser.uid);
-    if (groupRecipients.length) {
+    const isMentionAll = extras.mentionAll === true;
+    if (groupRecipients.length && !isMentionAll) {
       sendPushNotification(`${senderName} · ${selectedGroup.name || 'Group'}`, snippet, null, {
         isGroup: true, recipientUids: groupRecipients, chatUid: selectedGroup.id
       });
     }
     // A targeted "you were mentioned" push to the tagged members, in addition
     // to the group notification. Recipients who were tagged get both, which is
-    // intentional — WhatsApp surfaces mentions distinctly.
+    // intentional — WhatsApp surfaces mentions distinctly. For @all we send ONE
+    // combined push to everyone instead (the group push above is skipped), so
+    // nobody gets two notifications.
     const mentionedUids = Array.isArray(extras.mentions)
       ? extras.mentions.map(m => m && m.uid).filter(u => u && u !== currentUser.uid)
       : [];
-    if (mentionedUids.length) {
+    if (isMentionAll && mentionedUids.length) {
+      sendPushNotification(`🔔 ${senderName} mentioned @all`, `In ${selectedGroup.name || 'Group'}: ${snippet}`, null, {
+        isGroup: true, isMention: true, mentionAll: true, recipientUids: mentionedUids, chatUid: selectedGroup.id
+      });
+    } else if (mentionedUids.length) {
       sendPushNotification(`🔔 ${senderName} mentioned you`, `In ${selectedGroup.name || 'Group'}: ${snippet}`, null, {
         isGroup: true, isMention: true, recipientUids: mentionedUids, chatUid: selectedGroup.id
       });
@@ -12135,8 +12208,17 @@ async function submitAddMembersToGroup() {
     });
 
     await batch.commit();
+    // Capture before close (closeAddMemberModal does not clear the set, but
+    // don't depend on that).
+    const addedUids = Array.from(selectedGroupMemberUids).filter(u => u && u !== currentUser.uid);
     closeAddMemberModal();
     showNotifToast(`✓ Added ${selectedGroupMemberUids.size} member(s)`, 'success');
+    // Notify the added members (they otherwise only discover it on next open).
+    if (addedUids.length) {
+      sendPushNotification(`👥 ${selectedGroup.name || 'Group'}`, `${nexaMyPushName()} added you to the group`, null, {
+        isGroup: true, groupAdded: true, recipientUids: addedUids, chatUid: groupId
+      });
+    }
     openGroupInfo();
   } catch (err) {
     showNotifToast('Failed to add members: ' + err.message, 'error');
@@ -14950,7 +15032,9 @@ function showMentionsPopup(query) {
     return !query || name.includes(query);
   });
 
-  if (!filtered.length) {
+  // Does the "@all" row apply to this query? (empty, or a prefix of all/everyone)
+  const showAllRow = !query || 'all'.startsWith(query) || 'everyone'.startsWith(query);
+  if (!filtered.length && !showAllRow) {
     hideMentionsPopup();
     return;
   }
@@ -14966,6 +15050,17 @@ function showMentionsPopup(query) {
       </div>
     `;
   }).join('');
+
+  // "@all" — tags every member at once (WhatsApp-style). Shown for every group
+  // member (no admin gate) and matched when the query is empty or a prefix of
+  // "all"/"everyone".
+  if (showAllRow) {
+    list.innerHTML = `
+      <div class="mention-row mention-row-all" onclick="insertMentionAll()">
+        <div class="mention-row-av mention-row-av-all">@</div>
+        <div class="mention-row-name">all <span class="mention-row-hint">Everyone in this group</span></div>
+      </div>` + list.innerHTML;
+  }
 
   popup.style.display = 'block';
 }
@@ -14999,16 +15094,37 @@ function insertMention(name, uid) {
   hideMentionsPopup();
 }
 
+// Insert the "@all" token. No uid is tracked here — the send path expands
+// "@all" to every member (see sendGroupMessage) so a member added after the
+// popup was opened is still tagged.
+function insertMentionAll() {
+  const ta = document.getElementById('text');
+  if (!ta) return;
+  const val = ta.value;
+  const cursorPos = ta.selectionStart;
+  const before = val.substring(0, mentionStartPos);
+  const after = val.substring(cursorPos);
+  const mentionText = '@all ';
+  ta.value = before + mentionText + after;
+  const newPos = before.length + mentionText.length;
+  ta.setSelectionRange(newPos, newPos);
+  ta.focus();
+  hideMentionsPopup();
+}
+
 // Render @mention highlights in message text. When `mentions` (the array of
 // {uid,name} the sender picked) contains me, my @name is wrapped in a stronger
 // "you were mentioned" highlight instead of the plain blue one.
-function renderMentionText(text, mentions) {
+function renderMentionText(text, mentions, mentionAll) {
   if (!text) return '';
   const myUid = currentUser ? currentUser.uid : null;
-  const mentionedMe = !!(mentions && myUid && mentions.some(m => m && m.uid === myUid));
+  const mentionedMe = !!(mentionAll
+    || (mentions && myUid && mentions.some(m => m && m.uid === myUid)));
   return text.replace(/@(\w[\w\s]{0,30}?)(?=\s|$|[,.])/g, (full, captured) => {
     const name = captured.trim();
-    const isMe = mentionedMe && name && myUid && (mentions || []).some(m => m && m.uid === myUid && m.name === name);
+    // "@all" is everyone's tag — always highlight it as "you were mentioned".
+    const isAll = /^all$/i.test(name);
+    const isMe = isAll || (mentionedMe && name && myUid && (mentions || []).some(m => m && m.uid === myUid && m.name === name));
     const cls = isMe ? 'mention-highlight mention-highlight-me' : 'mention-highlight';
     return `<span class="${cls}">@${captured}</span>`;
   });

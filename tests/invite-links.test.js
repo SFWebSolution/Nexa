@@ -139,6 +139,54 @@ console.log("\n4b) group @ badge reflects only the newest message (tag-then-dele
   eq("mentionUidsOf empty for null", JSON.stringify(fn(null)), "[]");
 }
 
+console.log("\n4c) notifications: connection requests, group-added, @all");
+{
+  // Connections is a real category and drives the master switch.
+  ok("connections notif setting declared", /connections:\s*true/.test(appJs));
+  ok("connections in NEXA_NOTIF_TYPES", /NEXA_NOTIF_TYPES = \["messages", "groups", "stories", "reactions", "connections"\]/.test(appJs));
+  ok("push gates on connections", /if \(isConnect && !notificationSettings\.connections\) return;/.test(appJs));
+  ok("push reads isConnect flag", /const isConnect = extraData\.isConnect === true;/.test(appJs));
+
+  // Connection request / accept pushes exist and are single-target.
+  ok("request sends a connect push", /sent you a connection request', uid, \{[\s\S]{0,80}?isConnect: true,/.test(appJs));
+  ok("accept sends a connect push", /accepted your connection request', uid, \{[\s\S]{0,80}?isConnect: true,/.test(appJs));
+  ok("connect push marks isConnect", /connectType: 'request'/.test(appJs) && /connectType: 'accepted'/.test(appJs));
+
+  // Group-added push on both create and add-members.
+  ok("create-group notifies added members", /addedUids = memberUids\.filter\(u => u && u !== currentUser\.uid\);[\s\S]{0,160}?added you to the group/.test(appJs));
+  ok("add-members notifies added members", /addedUids = Array\.from\(selectedGroupMemberUids\)[\s\S]{0,400}?added you to the group/.test(appJs));
+  ok("group-added push tagged isGroup+groupAdded", /isGroup: true, groupAdded: true, recipientUids: addedUids/.test(appJs));
+
+  // @all: popup row, insert, expansion, single combined push, highlight.
+  ok("mention popup shows an @all row", /mention-row mention-row-all" onclick="insertMentionAll\(\)"/.test(appJs));
+  ok("insertMentionAll exists", /function insertMentionAll\(\)/.test(appJs));
+  ok("popup keeps @all visible on empty filter", /const showAllRow = !query \|\| 'all'\.startsWith\(query\) \|\| 'everyone'\.startsWith\(query\)/.test(appJs));
+  ok("send expands @all to all members", /if \(\/\\B@all\\b\/i\.test\(text\)\) \{[\s\S]{0,200}?extras\.mentionAll = true;/.test(appJs));
+  ok("@all push is a single combined push", /isMentionAll && mentionedUids\.length[\s\S]{0,160}?mentioned @all/.test(appJs));
+  ok("@all skips the plain group push", /if \(groupRecipients\.length && !isMentionAll\)/.test(appJs));
+  ok("renderMentionText highlights @all for everyone", /function renderMentionText\(text, mentions, mentionAll\)/.test(appJs) && /const isAll = \/\^all\$\/i\.test\(name\);/.test(appJs));
+  ok("edit path understands @all", /let newMentionAll = false;/.test(appJs) && /mentionAll: newMentionAll/.test(appJs));
+
+  // Icon mapping for the new event types.
+  const icon = run(extractFn(appJs, "notifHistoryIconFor") + "\n;notifHistoryIconFor;", {});
+  eq("icon: connection request (title)", icon("Ada sent you a connection request"), "\u{1F91D}");
+  eq("icon: group added (title)", icon("Ada added you to the group"), "\u{1F465}");
+  eq("icon: mention (title)", icon("🔔 Ada mentioned you"), "\u{1F4AC}");
+
+  const iconForData = run(extractFn(appJs, "notifHistoryIconFor") + "\n" + extractFn(appJs, "notifIconForData") + "\n;notifIconForData;", {});
+  eq("iconForData: connect", iconForData("Ada", { isConnect: true }), "\u{1F91D}");
+  eq("iconForData: group added", iconForData("Ada", { groupAdded: true }), "\u{1F465}");
+  eq("iconForData: mention-all", iconForData("Ada", { mentionAll: true }), "\u{1F514}");
+  eq("iconForData: plain message falls back", iconForData("Ada", {}), "\u{1F4AC}");
+
+  // The @all detector used on send must match standalone tokens only.
+  const isAll = t => /\B@all\b/i.test(t);
+  ok("@all matches 'hi @all'", isAll("hi @all"));
+  ok("@all matches '@ALL there'", isAll("@ALL there"));
+  ok("@all rejects 'email@all.com'", !isAll("email@all.com"));
+  ok("@all rejects 'call'", !isAll("call me"));
+}
+
 console.log("\n5) admin: Top-20 gone, communities section removed");
 {
   const admin = read("admin.html");
