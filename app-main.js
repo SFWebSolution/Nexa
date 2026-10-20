@@ -4403,6 +4403,41 @@ function loadChatMsgCache(uid) {
 function clearChatMsgCache(uid) {
   try { const k = chatMsgCacheKey(uid); if (k) localStorage.removeItem(k); } catch (e) {}
 }
+
+// ── Community (group + channel) message cache ─────────────────────────────
+// Groups and channels previously had no local cache, so every open painted a
+// "Loading…" placeholder until the first Firestore snapshot arrived. These
+// mirror the 1:1 chat cache so an already-visited group/channel paints its
+// newest messages immediately, then the live listener reconciles by id.
+const COMM_MSG_CACHE_MAX = 24;
+function commMsgCacheKey(kind, id) {
+  const me = (currentUser && currentUser.uid) || localStorage.getItem("nexa_last_uid");
+  return me ? ("nexa_comm_msgs_" + me + "_" + kind + "_" + id) : null;
+}
+function saveCommMsgCache(kind, id, msgs) {
+  try {
+    if (!currentUser || !id) return;
+    const k = commMsgCacheKey(kind, id);
+    if (!k) return;
+    const clean = (msgs || [])
+      .filter(m => !m.isSystem) // system notices are re-derived from the live doc
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const slice = clean.slice(-COMM_MSG_CACHE_MAX);
+    if (!slice.length) return;
+    localStorage.setItem(k, JSON.stringify(slice));
+  } catch (e) {}
+}
+function loadCommMsgCache(kind, id) {
+  try {
+    const k = commMsgCacheKey(kind, id);
+    if (!k) return [];
+    const arr = JSON.parse(localStorage.getItem(k) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+function clearCommMsgCache(kind, id) {
+  try { const k = commMsgCacheKey(kind, id); if (k) localStorage.removeItem(k); } catch (e) {}
+}
 function setLastOpenChat(uid) {
   try {
     if (!currentUser) return;
@@ -11342,6 +11377,17 @@ function selectGroupChat(group) {
   // member added later never sees history that predates them (WhatsApp
   // behaviour). The creator / original members joined at (or before) group
   // creation and keep seeing everything. One cheap doc read, then subscribe.
+  //
+  // Paint the cached messages (or the loading placeholder) NOW, synchronously,
+  // before that await — otherwise the previous chat's messages stay on screen
+  // for the whole read and the group looks like it opened "wrong" first.
+  const _cachedGroupMsgs = loadCommMsgCache('group', group.id);
+  if (_cachedGroupMsgs.length) {
+    renderGroupMessageList(_cachedGroupMsgs);
+  } else {
+    const gbox = document.getElementById('messages');
+    if (gbox) gbox.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading group messages…</div>';
+  }
   resolveGroupJoinedAt(group.id).then(joinedAt => {
     if (selectedGroup && selectedGroup.id === group.id) loadGroupMessages(group.id, joinedAt);
   });
@@ -11399,8 +11445,11 @@ async function loadGroupMembersForMentions(groupId) {
 
 function loadGroupMessages(groupId, joinedAt) {
   if (unsubGroupMessages) unsubGroupMessages();
-  const box = document.getElementById('messages');
-  if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading group messages…</div>';
+
+  // NOTE: the cached paint / "Loading…" placeholder is handled synchronously by
+  // selectGroupChat (before its member-read await) so the box never shows the
+  // PREVIOUS chat's messages in the gap. This function only subscribes; the
+  // first snapshot replaces whatever is on screen.
 
   // joinedAt (ms) hides history that predates this member; null/undefined
   // shows everything. Single-field range on the same field as the orderBy,
@@ -11428,6 +11477,14 @@ function renderGroupMessageList(messages) {
   currentGroupMessages = messages || [];
   const box = document.getElementById('messages');
   if (!box) return;
+
+  // Persist for the next instant-open. An empty live list means nothing is
+  // visible (or all history was deleted), so drop the cache to avoid a stale
+  // phantom paint on the next open.
+  if (selectedGroup && selectedGroup.id) {
+    if (messages && messages.length) saveCommMsgCache('group', selectedGroup.id, messages);
+    else clearCommMsgCache('group', selectedGroup.id);
+  }
 
   if (!messages.length) {
     box.innerHTML = `
@@ -12976,17 +13033,22 @@ function selectChannelFeed(channel) {
 function loadChannelPosts(channelId) {
   if (unsubChannelPosts) unsubChannelPosts();
   const box = document.getElementById('messages');
-  if (box) box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading broadcast posts…</div>';
 
-  // A fresh open must ALWAYS full-render its first snapshot. The reactions-only
-  // fast path compares the snapshot against _nexaChannelPostsCache — if we kept
-  // the previous cache, re-opening the SAME channel produces an identical
-  // snapshot that short-circuits without rendering, leaving the "Loading
-  // broadcast posts…" placeholder stuck on screen (the "2nd open shows
-  // nothing" bug). Reset it here so prev is empty and the first paint always
-  // happens; the delta optimization still applies to later live updates.
+  // Instant open: paint the channel's cached newest posts immediately (same
+  // approach as 1:1 chat and groups). A fresh open must still ALWAYS
+  // full-render its first snapshot — the reactions-only fast path below
+  // compares against _nexaChannelPostsCache, and the initial cache paint must
+  // not seed that with the (possibly stale) localStorage copy or a first
+  // snapshot could short-circuit to a no-op. Reset it here, then paint.
   window._nexaChannelPostsCache = null;
   window._nexaChannelPostsChannelId = channelId;
+
+  const cachedPosts = loadCommMsgCache('channel', channelId);
+  if (cachedPosts.length) {
+    renderChannelPostsList(cachedPosts);
+  } else if (box) {
+    box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">Loading broadcast posts…</div>';
+  }
 
   unsubChannelPosts = db.collection('channels').doc(channelId).collection('posts')
     .orderBy('createdAt', 'desc')
@@ -13040,6 +13102,12 @@ function loadChannelPosts(channelId) {
 function renderChannelPostsList(posts) {
   const box = document.getElementById('messages');
   if (!box) return;
+
+  // Persist for the next instant-open (mirrors the 1:1/group cache).
+  if (selectedChannel && selectedChannel.id) {
+    if (posts && posts.length) saveCommMsgCache('channel', selectedChannel.id, posts);
+    else clearCommMsgCache('channel', selectedChannel.id);
+  }
 
   if (!posts.length) {
     box.innerHTML = `

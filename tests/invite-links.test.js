@@ -42,6 +42,14 @@ function run(code, sandbox) {
   }, sandbox));
 }
 
+// Pull a top-level `const NAME = ...;` declaration verbatim.
+function extractConst(src, name) {
+  const re = new RegExp("const\\s+" + name + "\\s*=\\s*[^;]+;");
+  const m = re.exec(src);
+  if (!m) throw new Error("const not found: " + name);
+  return m[0];
+}
+
 console.log("\n1) join.html / dashboard invite URL + preview helpers");
 const appJs = read("app-main.js");
 
@@ -318,6 +326,73 @@ console.log("\n9) in-app update gate");
   ok("update modal exists", /id="appUpdateModal"/.test(modal));
   ok("update-now button wired", /onclick="updateAppNow\(\)"/.test(modal));
   ok("native in-place update bridge used", /NexaAndroid\.installUpdate/.test(src));
+}
+
+console.log("\n8) group/channel instant-open message cache");
+{
+  // A fake localStorage shared between save and load, plus the minimal globals
+  // the cache helpers touch (currentUser + the storage object).
+  const store = {};
+  const localStorage = {
+    getItem: k => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: k => { delete store[k]; },
+  };
+  const sandbox = { localStorage, currentUser: { uid: "me" } };
+  const cacheCode = [
+    extractConst(appJs, "COMM_MSG_CACHE_MAX"),
+    extractFn(appJs, "commMsgCacheKey"),
+    extractFn(appJs, "saveCommMsgCache"),
+    extractFn(appJs, "loadCommMsgCache"),
+    extractFn(appJs, "clearCommMsgCache"),
+    "\n;({ saveCommMsgCache, loadCommMsgCache, clearCommMsgCache, commMsgCacheKey, COMM_MSG_CACHE_MAX });",
+  ].join("\n");
+  const C = run(cacheCode, sandbox);
+
+  ok("cache is capped (mirrors 1:1 cache)", C.COMM_MSG_CACHE_MAX === 24);
+
+  const key = C.commMsgCacheKey("group", "g1");
+  eq("key is scoped to user + kind + id", key, "nexa_comm_msgs_me_group_g1");
+  ok("group and channel keys differ",
+    C.commMsgCacheKey("group", "x") !== C.commMsgCacheKey("channel", "x"));
+
+  const msgs = [
+    { id: "m1", createdAt: 1, text: "one" },
+    { id: "m2", createdAt: 2, text: "two" },
+    { id: "s1", createdAt: 3, isSystem: true, text: "joined" },
+  ];
+  C.saveCommMsgCache("group", "g1", msgs);
+  const loaded = C.loadCommMsgCache("group", "g1");
+  eq("round-trips the newest messages", loaded.map(m => m.id).join(","), "m1,m2");
+  ok("system notices are not cached", !loaded.some(m => m.isSystem));
+  eq("a different chat loads empty", C.loadCommMsgCache("group", "other").length, 0);
+
+  // Cap: 30 messages -> only the newest 24 survive, oldest first.
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: "n" + i, createdAt: i + 1 }));
+  C.saveCommMsgCache("channel", "c1", many);
+  const capped = C.loadCommMsgCache("channel", "c1");
+  eq("cache keeps only the newest COMM_MSG_CACHE_MAX", capped.length, 24);
+  eq("cache is oldest-first", capped[0].id, "n6");
+  eq("cache keeps the newest", capped[capped.length - 1].id, "n29");
+
+  C.clearCommMsgCache("group", "g1");
+  eq("clear drops the entry", C.loadCommMsgCache("group", "g1").length, 0);
+
+  // The live listeners must consult the cache on open (not just paint a
+  // loading placeholder) and persist on render — otherwise the "Loading…"
+  // flash on every group/channel open comes back.
+  ok("group open paints from cache", /loadCommMsgCache\('group', group\.id\)/.test(appJs));
+  ok("group cache paint runs before the join-time await",
+    /loadCommMsgCache\('group', group\.id\)[\s\S]{0,400}?resolveGroupJoinedAt\(group\.id\)/.test(appJs));
+  ok("group render persists to cache", /saveCommMsgCache\('group', selectedGroup\.id, messages\)/.test(appJs));
+  ok("channel open paints from cache", /loadCommMsgCache\('channel', channelId\)/.test(appJs));
+  ok("channel render persists to cache", /saveCommMsgCache\('channel', selectedChannel\.id, posts\)/.test(appJs));
+  ok("empty group render clears the cache", /clearCommMsgCache\('group', selectedGroup\.id\)/.test(appJs));
+  ok("empty channel render clears the cache", /clearCommMsgCache\('channel', selectedChannel\.id\)/.test(appJs));
+  // The reactions-only fast path must still be reset before the first snapshot
+  // (the "2nd open shows nothing" regression).
+  ok("channel posts cache is reset before subscribing",
+    /window\._nexaChannelPostsCache = null;\s*\n\s*window\._nexaChannelPostsChannelId = channelId;\s*\n\s*\n\s*const cachedPosts/.test(appJs));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
