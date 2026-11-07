@@ -1101,7 +1101,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   transform: scale(0.92) !important;
 }
 
-/* ---------- Live rooms: voice/video mode, video tile wall, mode chooser ---------- */
+/* ---------- Voice rooms: voice/video mode, video tile wall, mode chooser ---------- */
 
 .nexa-vr-mode-badge {
   display: inline-flex;

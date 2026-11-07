@@ -185,8 +185,8 @@
       <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
       <div class="sidebar-tab-switcher">
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
-        <button class="s-tab-btn start-voice-chat-btn" title="Start a Live room" style="color: #25d366;"><i data-lucide="radio"></i></button>
-        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Stories"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
+        <button class="s-tab-btn start-voice-chat-btn" title="Start a Voice room" style="color: #25d366;"><i data-lucide="radio"></i></button>
+        <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Moments"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabConnect" onclick="switchTab('connect')" title="Connect"><i data-lucide="user-plus"></i><span class="connect-tab-dot" id="connectTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabSettings" onclick="switchTab('settings')" title="Settings"><i data-lucide="settings"></i><span class="app-update-dot" id="settingsTabDotDesktop" style="display:none;"></span></button>
@@ -198,9 +198,9 @@
       <!-- 1. CHATS TAB -->
       <div class="tab-pane active" id="tabPaneChats">
         <div class="voice-chat-start-strip" style="padding: 10px 14px 2px 14px; display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-size: 12px; font-weight: 700; color: var(--text-3, #8b949e); text-transform: uppercase; letter-spacing: 0.5px;">Live Rooms</span>
+          <span style="font-size: 12px; font-weight: 700; color: var(--text-3, #8b949e); text-transform: uppercase; letter-spacing: 0.5px;">Voice Rooms</span>
           <button class="start-voice-chat-btn" style="background: rgba(37, 211, 102, 0.12); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.4); font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; transition: all 0.2s ease;">
-            <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start a Live room
+            <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start a Voice room
           </button>
         </div>
         <div class="search-wrap">
@@ -274,22 +274,36 @@
       <!-- 2. STORIES TAB -->
       <div class="tab-pane" id="tabPaneStories">
         <div class="tab-pane-header">
-          <h2>Stories</h2>
-          <button class="create-story-btn-sm" onclick="openStatusModal()">+ New Story</button>
+          <h2>Moments</h2>
+          <button class="create-story-btn-sm" id="momentsNewStoryBtn" onclick="openStatusModal()">+ New Story</button>
         </div>
-        <div class="my-story-card" onclick="openMyStoryOrAdd()">
-          <div class="story-avatar-wrap">
-            <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar">
-            <div class="story-plus-badge">+</div>
+        <div class="connect-subtabs">
+          <button class="connect-subtab active" id="momentsSubTabStories" onclick="switchMomentsSubTab('stories')"><i data-lucide="circle-dot" style="width:15px;height:15px;"></i> Stories</button>
+          <button class="connect-subtab" id="momentsSubTabVideos" onclick="switchMomentsSubTab('videos')"><i data-lucide="clapperboard" style="width:15px;height:15px;"></i> Videos <span class="moments-soon-pill">Soon</span></button>
+        </div>
+        <div class="connect-view active" id="momentsStoriesView">
+          <div class="my-story-card" onclick="openMyStoryOrAdd()">
+            <div class="story-avatar-wrap">
+              <img src="https://i.imgur.com/HeIi0wU.png" id="storyTabMyPic" class="story-avatar">
+              <div class="story-plus-badge">+</div>
+            </div>
+            <div class="story-card-info">
+              <div class="story-card-title">My Story</div>
+              <div class="story-card-sub" id="storyTabMySub">Tap to add or view story</div>
+            </div>
           </div>
-          <div class="story-card-info">
-            <div class="story-card-title">My Story</div>
-            <div class="story-card-sub" id="storyTabMySub">Tap to add or view story</div>
+          <div class="section-divider-title">Recent Updates</div>
+          <div class="stories-feed-list" id="storiesFeedList">
+            <div class="no-stories-msg">No recent stories</div>
           </div>
         </div>
-        <div class="section-divider-title">Recent Updates</div>
-        <div class="stories-feed-list" id="storiesFeedList">
-          <div class="no-stories-msg">No recent stories</div>
+        <div class="connect-view" id="momentsVideosView">
+          <div class="moments-coming-soon">
+            <div class="moments-cs-icon"><i data-lucide="clapperboard" style="width:34px;height:34px;"></i></div>
+            <div class="moments-cs-title">Videos — Coming Soon</div>
+            <div class="moments-cs-text">Share short videos with everyone on Nexa. A full-screen feed with likes, comments and shares is on the way.</div>
+            <div class="moments-cs-badge">🚧 In development</div>
+          </div>
         </div>
       </div>
 
@@ -564,7 +578,7 @@
             </div>
             <div class="settings-group">
               <div class="settings-group-title"><i data-lucide="info" style="width: 15px; height: 15px;"></i> Good to know</div>
-              <div class="settings-note">Nexa never shows your password to anyone. Your messages are delivered over an encrypted connection. Only your connections can join your Live rooms.</div>
+              <div class="settings-note">Nexa never shows your password to anyone. Your messages are delivered over an encrypted connection. Only your connections can join your Voice rooms.</div>
             </div>
           </div>
         </div>
@@ -866,7 +880,7 @@
                 <span class="settings-row-icon"><i data-lucide="message-square" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
                   <span class="settings-row-title">Messages, calls &amp; stories</span>
-                  <span class="settings-row-sub">Private chat, groups, channels and Live rooms</span>
+                  <span class="settings-row-sub">Private chat, groups, channels and Voice rooms</span>
                 </span>
               </div>
             </div>
@@ -1185,7 +1199,7 @@
   </button>
   <button class="nav-item" id="navBtnStories" onclick="switchTab('stories')">
     <span class="nav-icon"><i data-lucide="circle-dot" style="width: 20px; height: 20px;"></i></span>
-    <span class="nav-label">Stories</span>
+    <span class="nav-label">Moments</span>
     <span class="story-tab-dot" id="storyTabDotMobile" style="display:none;"></span>
   </button>
   <button class="nav-item" id="navBtnConnect" onclick="switchTab('connect')">
@@ -2376,7 +2390,7 @@
   </div>
 </div>
 
-<!-- Nexa Live Rooms (multi-user audio) -->
+<!-- Nexa Voice Rooms (multi-user audio) -->
 <script src="nexa-voice-room.js"></script>
 </body>
 </html>

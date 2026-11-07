@@ -1,8 +1,8 @@
 /**
  * NEXA MULTI-USER LIVE ROOM SYSTEM v5.2 (REAL USERS & FIRESTORE WEBRTC INTEGRATION)
- * Multi-User Live room connecting actual registered Nexa accounts.
+ * Multi-User Voice room connecting actual registered Nexa accounts.
  * Features: Real Firestore user database integration, WebRTC Audio Mesh with PeerJS,
- * Web Audio API Studio DSP, Minimized Floating Bar, Speaking Wave Rings & Live Invites.
+ * Web Audio API Studio DSP, Minimized Floating Bar, Speaking Wave Rings & Voice Invites.
  */
 
 (function () {
@@ -90,7 +90,7 @@
             if (this.activeRoom && this.activeRoom.id === roomId) return; // already in
             this.joinRoom({
               id: roomId,
-              title: data.title || 'Live room',
+              title: data.title || 'Voice room',
               hostId: data.hostId,
               hostName: data.hostName,
               mode: data.mode || 'voice',
@@ -208,7 +208,7 @@
               <div class="nexa-vr-header-icon">🎙️</div>
               <div>
                 <h3 class="nexa-vr-title" id="nexaVrTitle">
-                  Live room
+                  Voice room
                   <span class="nexa-vr-status-badge" id="nexaVrCountBadge">1 Connected</span>
                 </h3>
                 <div class="nexa-vr-subtitle" id="nexaVrSubtitle">Started by Host • 00:00</div>
@@ -218,7 +218,7 @@
               <button class="nexa-vr-hdr-btn invite-btn" id="nexaVrHdrInviteBtn">
                 <span>➕ Invite Users</span>
               </button>
-              <button class="nexa-vr-hdr-btn" id="nexaVrMinimizeBtn" title="Minimize Live room">
+              <button class="nexa-vr-hdr-btn" id="nexaVrMinimizeBtn" title="Minimize Voice room">
                 <span>🗕</span>
               </button>
               <button class="nexa-vr-hdr-btn close-btn" id="nexaVrCloseOverlayBtn" title="Hide Overlay">
@@ -250,7 +250,7 @@
 
             <!-- Participant Grid -->
             <div class="nexa-vr-grid-header">
-              <div class="nexa-vr-grid-title">Live participants</div>
+              <div class="nexa-vr-grid-title">Voice participants</div>
             </div>
             <div class="nexa-vr-grid" id="nexaVrParticipantGrid">
               <!-- Cards dynamically rendered -->
@@ -289,7 +289,7 @@
             <button class="nexa-vr-ctrl-btn" id="nexaVrFooterInviteBtn" title="Invite Friends">
               👥
             </button>
-            <button class="nexa-vr-ctrl-btn end-call" id="nexaVrEndBtn" title="Leave Live room">
+            <button class="nexa-vr-ctrl-btn end-call" id="nexaVrEndBtn" title="Leave Voice room">
               📞
             </button>
           </div>
@@ -310,7 +310,7 @@
         <div class="nexa-vr-mini-avatars" id="nexaVrMiniAvatars">
           <img src="${user.avatar}" class="nexa-vr-mini-avatar" onerror="this.src='icon-192.png'">
         </div>
-        <div class="nexa-vr-mini-title" id="nexaVrMiniTitle">Live room</div>
+        <div class="nexa-vr-mini-title" id="nexaVrMiniTitle">Voice room</div>
         <div class="nexa-vr-mini-speaker">
           <div class="nexa-vr-mini-speaker-bar"></div>
           <div class="nexa-vr-mini-speaker-bar"></div>
@@ -318,7 +318,7 @@
         </div>
         <div class="nexa-vr-mini-actions">
           <button class="nexa-vr-mini-btn" id="nexaVrMiniMicBtn" title="Mute/Unmute">🎙️</button>
-          <button class="nexa-vr-mini-btn" id="nexaVrMiniExpandBtn" title="Expand Live room">⛶</button>
+          <button class="nexa-vr-mini-btn" id="nexaVrMiniExpandBtn" title="Expand Voice room">⛶</button>
           <button class="nexa-vr-mini-btn danger" id="nexaVrMiniLeaveBtn" title="Leave Chat">✕</button>
         </div>
       `;
@@ -347,7 +347,7 @@
       `;
       document.body.appendChild(inviteModal);
 
-      // Start-mode chooser. Shown EVERY time a Live room is started; the mode
+      // Start-mode chooser. Shown EVERY time a Voice room is started; the mode
       // is stored on the room doc and inherited by everyone who joins.
       const modeModal = document.createElement('div');
       modeModal.id = 'nexaVrModeModal';
@@ -355,7 +355,7 @@
       modeModal.innerHTML = `
         <div class="nexa-vr-modal-card nexa-vr-mode-card">
           <div class="nexa-vr-modal-hdr">
-            <h4 class="nexa-vr-modal-title">Start a Live room</h4>
+            <h4 class="nexa-vr-modal-title">Start a Voice room</h4>
             <button class="nexa-vr-hdr-btn close-btn" id="nexaVrModeCloseBtn">✕</button>
           </div>
           <div class="nexa-vr-mode-options">
@@ -382,8 +382,8 @@
         <div class="nexa-vr-inc-details">
           <img src="icon-192.png" class="nexa-vr-inc-avatar" id="nexaVrIncAvatar" onerror="this.src='icon-192.png'">
           <div>
-            <div class="nexa-vr-inc-title" id="nexaVrIncTitle">Live invite</div>
-            <div class="nexa-vr-inc-sub" id="nexaVrIncSub">Invited you to a Live room</div>
+            <div class="nexa-vr-inc-title" id="nexaVrIncTitle">Voice invite</div>
+            <div class="nexa-vr-inc-sub" id="nexaVrIncSub">Invited you to a Voice room</div>
           </div>
         </div>
         <div class="nexa-vr-inc-actions">
@@ -607,7 +607,7 @@
       this.isCameraOn = true;
 
       const user = this.getCurrentUser();
-      const title = roomTitle || `${user.name}'s Live room`;
+      const title = roomTitle || `${user.name}'s Voice room`;
       const roomId = 'room_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
 
       this.activeRoom = {
@@ -652,7 +652,7 @@
       this.subscribeToRoomFirestore();
       this.subscribeToRoomChat();
 
-      this.showToast(`🎙️ Live room started: "${title}"`);
+      this.showToast(`🎙️ Voice room started: "${title}"`);
     }
 
     // Invite-only access check. Reads the room doc's `invitedUids` array.
@@ -696,7 +696,7 @@
           const snap = await window.db.collection('voice_rooms').doc(roomData.id)
             .collection('participants').get();
           if (snap.size >= this.maxParticipants) {
-            this.showToast(`🚫 Live room is full (max ${this.maxParticipants})`);
+            this.showToast(`🚫 Voice room is full (max ${this.maxParticipants})`);
             return;
           }
         } catch (e) {
@@ -711,15 +711,15 @@
       if (allowed !== 'ok') {
         this.showToast(
           allowed === 'no-connection'
-            ? '🚫 Connect with the host first to join their Live room.'
-            : '🚫 You need an invite from the host to join this Live room.'
+            ? '🚫 Connect with the host first to join their Voice room.'
+            : '🚫 You need an invite from the host to join this Voice room.'
         );
         return;
       }
 
       this.activeRoom = {
         id: roomData.id,
-        title: roomData.title || 'Live room',
+        title: roomData.title || 'Voice room',
         mode: this.roomMode,
         hostId: roomData.hostId,
         hostName: roomData.hostName || 'Host',
@@ -756,7 +756,7 @@
       this.subscribeToRoomFirestore();
       this.subscribeToRoomChat();
 
-      this.showToast(`🟢 Joined Live room: "${this.activeRoom.title}"`);
+      this.showToast(`🟢 Joined Voice room: "${this.activeRoom.title}"`);
     }
 
     leaveRoom() {
@@ -829,7 +829,7 @@
       // doc, and broadcast ROOM_CLOSED. Non-host participants are kicked via:
       // (1) the room doc onSnapshot (roomDocUnsub, set up in
       // subscribeToRoomFirestore) sees the deletion and auto-leaveRoom()s
-      // with "📞 The host ended the Live room." (cross-device signal);
+      // with "📞 The host ended the Voice room." (cross-device signal);
       // (2) same-browser tabs get the ROOM_CLOSED BroadcastChannel.
       // A NON-host leaving only deletes their OWN participant doc (no room
       // deletion, no migration).
@@ -876,7 +876,7 @@
       const miniBar = document.getElementById('nexaVrMiniBar');
       if (miniBar) miniBar.style.display = 'none';
 
-      this.showToast(wasHost ? '📞 You ended the Live room' : '📞 Left Live room');
+      this.showToast(wasHost ? '📞 You ended the Voice room' : '📞 Left Voice room');
     }
 
     // Called by the room-doc onSnapshot listener (roomDocUnsub) when the host
@@ -916,7 +916,7 @@
       const miniBar = document.getElementById('nexaVrMiniBar');
       if (miniBar) miniBar.style.display = 'none';
 
-      this.showToast(reason || '📞 The host ended the Live room.');
+      this.showToast(reason || '📞 The host ended the Voice room.');
     }
 
     /* --------------------------------------------------------------------- */
@@ -1447,7 +1447,7 @@
       const link = `${window.location.origin}${window.location.pathname}?voiceroom=${roomId}`;
 
       navigator.clipboard.writeText(link).then(() => {
-        this.showToast('📋 Live room join link copied! Only your connections can join.');
+        this.showToast('📋 Voice room join link copied! Only your connections can join.');
       }).catch(() => {
         this.showToast('📋 Link copied to clipboard');
       });
@@ -1593,7 +1593,7 @@
         }
       }
 
-      this.showToast(`📩 Live room invite sent to ${userName}`);
+      this.showToast(`📩 Voice room invite sent to ${userName}`);
       this.closeInviteModal();
     }
 
@@ -1857,7 +1857,7 @@
 
       // Host-close signal: when the HOST leaves they delete the room doc. This
       // onSnapshot (cross-device) sees the deletion and kicks all non-host
-      // participants out with "📞 The host ended the Live room." The host
+      // participants out with "📞 The host ended the Voice room." The host
       // itself has already torn down locally via leaveRoom().
       const me = this.getCurrentUser();
       this.roomDocUnsub = window.db.collection('voice_rooms').doc(roomId)
@@ -1866,7 +1866,7 @@
             // Avoid re-entrant teardown if we are already the host leaving.
             const iAmHost = this.activeRoom.hostId === me.id;
             if (!iAmHost) {
-              this.leaveRoomFromHostClose('📞 The host ended the Live room.');
+              this.leaveRoomFromHostClose('📞 The host ended the Voice room.');
             }
           }
         }, err => console.warn('[VoiceRoom] Room doc listener notice:', err));
@@ -2031,7 +2031,7 @@
                 isSpeaking: false
               });
               this.updateUI();
-              this.showToast(`🟢 ${payload.user.name} joined the Live room`);
+              this.showToast(`🟢 ${payload.user.name} joined the Voice room`);
               this.playChime('join');
             }
             break;
@@ -2052,7 +2052,7 @@
             // cross-device signal comes through the room-doc onSnapshot
             // (roomDocUnsub); this handles other tabs on the same browser.
             if (this.activeRoom && payload.roomId === this.activeRoom.id) {
-              this.leaveRoomFromHostClose('📞 The host ended the Live room.');
+              this.leaveRoomFromHostClose('📞 The host ended the Voice room.');
             }
             break;
 
@@ -2096,7 +2096,7 @@
 
       if (toast && payload.room) {
         titleEl.textContent = `${payload.room.mode === 'video' ? '📹' : '🎙️'} ${payload.room.title}`;
-        subEl.textContent = `${payload.inviter.name} invited you to a Live room`;
+        subEl.textContent = `${payload.inviter.name} invited you to a Voice room`;
         avatarEl.src = payload.inviter.avatar || 'icon-192.png';
 
         toast.classList.add('active');
@@ -2118,7 +2118,7 @@
                 if (doc.exists) {
                   this.joinRoom(payload.room);
                 } else {
-                  this.showToast('📞 This Live room has ended.');
+                  this.showToast('📞 This Voice room has ended.');
                 }
               })
               .catch(() => this.joinRoom(payload.room));

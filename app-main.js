@@ -1774,6 +1774,7 @@ let myConnections = {};        // otherUid -> {id, status, from, to, otherUid, c
 let connectListenerUnsub = null;
 let connectMigrationDone = false;
 let activeConnectSubTab = 'discover';
+let activeMomentsSubTab = 'stories';
 // True once the connections snapshot has delivered at least one result. Gates
 // both the boot progress and the "No users found" empty state, so a cold start
 // shows "Loading…" (not "no users") until the real connection list arrives.
@@ -1999,6 +2000,22 @@ function openConnectedChat(uid) {
 }
 
 // ── Connect tab rendering ───────────────────────────────────────────────────
+function switchMomentsSubTab(tab) {
+  activeMomentsSubTab = tab;
+  const sv = document.getElementById('momentsSubTabStories');
+  const vv = document.getElementById('momentsSubTabVideos');
+  const sc = document.getElementById('momentsStoriesView');
+  const vc = document.getElementById('momentsVideosView');
+  const nb = document.getElementById('momentsNewStoryBtn');
+  if (sv) sv.classList.toggle('active', tab === 'stories');
+  if (vv) vv.classList.toggle('active', tab === 'videos');
+  if (sc) sc.classList.toggle('active', tab === 'stories');
+  if (vc) vc.classList.toggle('active', tab === 'videos');
+  if (nb) nb.style.display = tab === 'stories' ? '' : 'none';
+  if (tab === 'stories') renderStoriesTab();
+  if (window.lucide) lucide.createIcons();
+}
+
 function switchConnectSubTab(tab) {
   activeConnectSubTab = tab;
   const d = document.getElementById('connectSubTabDiscover');
@@ -2202,7 +2219,7 @@ function switchTab(tabName) {
 
   // 5. Trigger tab-specific renders
   if (tabName === 'stories') {
-    renderStoriesTab();
+    switchMomentsSubTab(activeMomentsSubTab);
     updateStoryTabDot();
   } else if (tabName === 'settings') {
     renderSettingsTab();

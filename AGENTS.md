@@ -1619,3 +1619,31 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   honour custom schemes from a page's top-level navigation. So "open the app"
   really means the native APK; the `nexa://` step is best-effort and the browser
   fallback is the guaranteed path.
+
+
+## "Voice Room" naming + Moments tab (2026-11) — do NOT regress
+- **The multi-user audio feature is now called "Voice Room" in ALL user-facing
+  copy** (was "Live room"). The rename is TEXT ONLY: file `nexa-voice-room.js`,
+  class `NexaVoiceRoomManager`, CSS `nexa-vr-*`, Firestore `voice_rooms` +
+  `voice_invites`, the `?voiceroom=` URL param, and BroadcastChannel names are
+  UNCHANGED. Do NOT rename those identifiers — it would break existing rooms,
+  shared join links, and rules. The brand tagline "Connect · Share · Live" and
+  the wallpaper "live preview" strings are intentionally left as-is.
+- **The former "Stories" tab is now "Moments"** (user-facing label only): rail
+  tooltip `title="Moments"`, mobile `nav-label` "Moments", pane `<h2>Moments</h2>`.
+  Internal ids stay `sTabStories` / `navBtnStories` / `tabPaneStories` /
+  `switchTab('stories')` / `renderStoriesTab` — do NOT rename them.
+- **Moments holds a segmented switch**: `switchMomentsSubTab('stories'|'videos')`
+  (`app-main.js`, mirrors `switchConnectSubTab`) drives `#momentsSubTabStories` /
+  `#momentsSubTabVideos` and the two views `#momentsStoriesView` (the existing
+  connection-gated story feed, unchanged) / `#momentsVideosView`. State lives in
+  `activeMomentsSubTab` (default 'stories'); `switchTab('stories')` calls
+  `switchMomentsSubTab(activeMomentsSubTab)` so the last sub-tab is restored and
+  the story feed still renders. `#momentsNewStoryBtn` (+ New Story) is hidden on
+  the Videos sub-tab.
+- **Videos is a COMING SOON placeholder — NOT activated.** `#momentsVideosView`
+  is a static `.moments-coming-soon` card (`.moments-cs-*` + `.moments-soon-pill`
+  CSS appended to dashboard.css). There is deliberately NO `videos` Firestore
+  collection, no rules, no feed wiring yet. Do NOT wire a real video feed without
+  an explicit request (the intended model: public, NOT connection-gated, with
+  likes/comments/shares, uploaded via the existing Cloudinary `uploadFile()`).

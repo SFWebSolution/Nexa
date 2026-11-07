@@ -14108,3 +14108,67 @@ html.nexa-native .story-viewer-main {
   box-shadow: 0 0 8px rgba(37,211,102,0.55);
   animation: commTabPulse 1.6s ease-in-out infinite;
 }
+
+
+/* ---------- Moments tab: Stories | Videos switch ---------- */
+.moments-soon-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(37, 211, 102, 0.16);
+  color: #25d366;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.connect-subtab.active .moments-soon-pill {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.moments-coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  padding: 48px 28px;
+  min-height: 320px;
+  color: var(--text-2);
+}
+.moments-cs-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--border-md);
+}
+.moments-cs-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-0);
+  font-family: var(--font-display);
+}
+.moments-cs-text {
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 340px;
+  color: var(--text-2);
+}
+.moments-cs-badge {
+  margin-top: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-md);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+}
