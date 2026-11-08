@@ -822,6 +822,7 @@ function notifIconForData(title, data) {
   if (data.isConnect) return '🤝';
   if (data.isMention || data.mentionAll) return '🔔';
   if (data.isStory) return '📸';
+  if (data.isVideoComment) return '💬';
   if (data.isVideo) return '🎬';
   if (data.isGroup) return '👥';
   return notifHistoryIconFor(title);

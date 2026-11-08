@@ -57,6 +57,10 @@
     posting: false,
     commentsUnsub: null,
     commentsVideoId: null,
+    commentItems: [],       // last snapshot of the open video's comments
+    likedComments: {},      // commentId -> did *I* like it
+    checkedCommentLikes: {}, // commentId -> marker already resolved this open
+    commentReplyTo: null,   // { id, name } while composing a reply
     lastTapAt: 0,
     lastTapId: null,
     pendingDurationMs: 0,
@@ -825,6 +829,11 @@
             '<button class="nv-sheet-close" onclick="nexaVideosCloseComments()">' +
               '<i data-lucide="x" style="width:16px;height:16px;"></i></button></div>' +
           '<div class="nv-comments" id="nvCommentsList"></div>' +
+          '<div class="nv-comment-reply-chip" id="nvCommentReplyChip" style="display:none;">' +
+            '<span id="nvCommentReplyText"></span>' +
+            '<button onclick="nexaVideosCancelCommentReply()" aria-label="Cancel reply">' +
+              '<i data-lucide="x" style="width:14px;height:14px;"></i></button>' +
+          '</div>' +
           '<div class="nv-comment-input">' +
             '<img class="nv-comment-me" src="' + esc(safeUrl(myPhoto())) + '" alt="">' +
             '<input id="nvCommentInput" type="text" maxlength="500" placeholder="Add a comment…" autocomplete="off">' +
@@ -843,6 +852,10 @@
 
   function loadComments(id) {
     if (state.commentsUnsub) { try { state.commentsUnsub(); } catch (e) {} state.commentsUnsub = null; }
+    state.commentItems = [];
+    state.likedComments = {};
+    state.checkedCommentLikes = {};
+    cancelCommentReply();
     const list = el('nvCommentsList');
     if (list) list.innerHTML = '<div class="nv-comments-empty">Loading…</div>';
     state.commentsUnsub = window.db.collection('videos').doc(id).collection('comments')
@@ -850,30 +863,144 @@
       .onSnapshot(snap => {
         const items = [];
         snap.forEach(d => items.push(Object.assign({ id: d.id }, d.data())));
-        const listEl = el('nvCommentsList');
-        if (!listEl) return;
-        if (!items.length) { listEl.innerHTML = '<div class="nv-comments-empty">No comments yet. Say something nice!</div>'; return; }
-        listEl.innerHTML = items.map(commentHtml).join('');
-        listEl.scrollTop = listEl.scrollHeight;
-        if (window.lucide) window.lucide.createIcons();
+        state.commentItems = items;
+        renderComments(false);
+        // One batched read for my like markers on THIS video's comments (no
+        // per-comment get) — then re-render once so the hearts settle.
+        const ids = items.map(c => c.id);
+        if (ids.length) refreshMyCommentLikes(id, ids);
       }, err => {
         console.warn('comments listener error', err && err.message);
         if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
       });
   }
 
-  function commentHtml(c) {
+  function refreshMyCommentLikes(videoId, ids) {
+    // Only resolve markers we haven't already looked up this open — a busy video
+    // re-snapshots on every new comment, and re-querying the same ids each time
+    // would burn reads for nothing.
+    ids = ids.filter(cid => !state.checkedCommentLikes[cid]);
+    if (!ids.length) return;
+    ids.forEach(cid => { state.checkedCommentLikes[cid] = true; });
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+    Promise.all(chunks.map(chunk => window.db.collection('videos').doc(videoId)
+      .collection('comment_likes')
+      .where('uid', '==', myUid())
+      .where('cid', 'in', chunk)
+      .get()
+      .catch(() => ({ forEach() {} }))))
+      .then(snaps => {
+        snaps.forEach(sn => sn.forEach && sn.forEach(d => {
+          const data = d.data ? d.data() : {};
+          if (data && data.cid) state.likedComments[data.cid] = true;
+        }));
+        renderComments(false);
+      });
+  }
+
+  // Reply threads are grouped client-side (replyTo) so a comment and its
+  // replies read top-to-bottom in one pass — no extra Firestore collection.
+  function buildCommentTree(items) {
+    const byId = {};
+    items.forEach(c => { byId[c.id] = c; });
+    const top = [], replies = {};
+    items.forEach(c => {
+      const parent = c.replyTo;
+      if (parent && byId[parent]) { (replies[parent] = replies[parent] || []).push(c); }
+      else { top.push(c); }   // orphaned replies fall back to top level
+    });
+    return { top, replies };
+  }
+
+  function renderComments(scroll) {
+    const listEl = el('nvCommentsList');
+    if (!listEl) return;
+    const items = state.commentItems || [];
+    if (!items.length) { listEl.innerHTML = '<div class="nv-comments-empty">No comments yet. Say something nice!</div>'; return; }
+    const tree = buildCommentTree(items);
+    const html = tree.top.map(c =>
+      commentHtml(c) + (tree.replies[c.id] || []).map(r => commentHtml(r, c)).join('')
+    ).join('');
+    listEl.innerHTML = html;
+    if (scroll) listEl.scrollTop = listEl.scrollHeight;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function commentLikesText(n) {
+    n = Number(n) || 0;
+    if (!n) return '';
+    return '<span class="nv-comment-likes-n">' + n + '</span>';
+  }
+
+  function commentHtml(c, parent) {
     const mine = c.uid === myUid();
-    return '<div class="nv-comment" data-id="' + esc(c.id) + '">' +
+    const liked = !!state.likedComments[c.id];
+    const likes = Number(c.likes) || 0;
+    const reply = parent
+      ? '<span class="nv-comment-replyto">@' + esc(parent.name || 'user') + '</span> '
+      : '';
+    return '<div class="nv-comment' + (parent ? ' nv-comment-child' : '') + '" data-id="' + esc(c.id) + '">' +
       '<img class="nv-comment-pic" src="' + esc(safeUrl(c.photo || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
       '<div class="nv-comment-body">' +
         '<div class="nv-comment-top"><span class="nv-comment-name">' + esc(c.name || 'user') + '</span>' +
           '<span class="nv-comment-time">' + esc(timeAgo(Number(c.createdAt))) + '</span></div>' +
-        '<div class="nv-comment-text">' + esc(c.text || '') + '</div>' +
+        '<div class="nv-comment-text">' + reply + esc(c.text || '') + '</div>' +
+        '<div class="nv-comment-acts">' +
+          '<button class="nv-comment-act nv-comment-like' + (liked ? ' liked' : '') + '"' +
+            ' onclick="nexaVideosLikeComment(\'' + esc(c.id) + '\')" aria-label="Like comment">' +
+            '<i data-lucide="heart" style="width:14px;height:14px;"></i>' + commentLikesText(likes) + '</button>' +
+          '<button class="nv-comment-act" onclick="nexaVideosReplyComment(\'' + esc(c.id) + '\')" aria-label="Reply">Reply</button>' +
+          (mine ? '<button class="nv-comment-act nv-comment-del" onclick="nexaVideosDeleteComment(\'' + esc(c.id) + '\')" aria-label="Delete">Delete</button>' : '') +
+        '</div>' +
       '</div>' +
-      (mine ? '<button class="nv-comment-del" onclick="nexaVideosDeleteComment(\'' + esc(c.id) + '\')">' +
-        '<i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>' : '') +
     '</div>';
+  }
+
+  function likeComment(cid) {
+    const id = state.commentsVideoId;
+    if (!id || !cid) return;
+    const liked = !!state.likedComments[cid];
+    const ref = window.db.collection('videos').doc(id).collection('comments').doc(cid);
+    const likeRef = window.db.collection('videos').doc(id).collection('comment_likes').doc(cid + '_' + myUid());
+    const items = state.commentItems || [];
+    const c = items.find(x => x.id === cid);
+    if (!c) return;
+    const next = liked ? Math.max(0, (Number(c.likes) || 0) - 1) : (Number(c.likes) || 0) + 1;
+    // Optimistic — re-render keeps scroll position (renderComments(false)).
+    c.likes = next;
+    if (liked) delete state.likedComments[cid]; else state.likedComments[cid] = true;
+    renderComments(false);
+    window.db.runTransaction(tx => tx.get(ref).then(doc => {
+      if (!doc.exists) return;
+      const cur = Number(doc.data().likes) || 0;
+      tx.update(ref, { likes: liked ? Math.max(0, cur - 1) : cur + 1 });
+      if (liked) tx.delete(likeRef); else tx.set(likeRef, { uid: myUid(), cid: cid, at: Date.now() });
+    })).catch(err => {
+      console.warn('comment like failed', err);
+      c.likes = liked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 0) - 1);
+      if (liked) state.likedComments[cid] = true; else delete state.likedComments[cid];
+      renderComments(false);
+      toast('Could not update like', 'error');
+    });
+  }
+
+  function replyComment(cid) {
+    const c = (state.commentItems || []).find(x => x.id === cid);
+    if (!c) return;
+    state.commentReplyTo = { id: cid, name: c.name || 'user', uid: c.uid };
+    const chip = el('nvCommentReplyChip');
+    const txt = el('nvCommentReplyText');
+    if (txt) txt.textContent = 'Replying to @' + (c.name || 'user');
+    if (chip) chip.style.display = 'flex';
+    const inp = el('nvCommentInput');
+    if (inp) inp.focus();
+  }
+
+  function cancelCommentReply() {
+    state.commentReplyTo = null;
+    const chip = el('nvCommentReplyChip');
+    if (chip) chip.style.display = 'none';
   }
 
   function sendComment() {
@@ -882,19 +1009,39 @@
     if (!id || !inp) return;
     const text = (inp.value || '').trim();
     if (!text) return;
+    const reply = state.commentReplyTo;
+    const doc = {
+      uid: myUid(), name: myName(), photo: myPhoto(), text: text,
+      createdAt: Date.now(), likes: 0
+    };
+    if (reply && reply.id) { doc.replyTo = reply.id; doc.replyToName = reply.name || 'user'; doc.replyToUid = reply.uid || null; }
     inp.value = '';
-    window.db.collection('videos').doc(id).collection('comments').add({
-      uid: myUid(), name: myName(), photo: myPhoto(), text: text, createdAt: Date.now(), likes: 0
-    }).then(() => {
+    cancelCommentReply();
+    window.db.collection('videos').doc(id).collection('comments').add(doc).then(() => {
       window.db.collection('videos').doc(id).update({ commentsCount: fv().increment(1) }).catch(() => {});
       const c = el('nvCommentCount-' + id);
       if (c) c.textContent = fmtCount(parseCount(c.textContent) + 1);
+      // Notify the person you replied to (or the video's author for a top-level
+      // comment). Best-effort; the sender-side push costs no Firestore writes.
+      try {
+        const v = findVideo(id);
+        const target = (reply && reply.uid) ? reply.uid : (v && v.uid);
+        if (target && target !== myUid() && window.sendPushNotification) {
+          window.sendPushNotification(myName(), (reply ? 'replied to your comment' : 'commented on your video'), target, { isVideo: true, isVideoComment: true });
+        }
+      } catch (e) { /* non-fatal */ }
     }).catch(err => { toast('Could not post comment', 'error'); console.warn(err); });
   }
 
   function deleteComment(cid) {
     const id = state.commentsVideoId;
     if (!id) return;
+    // Like markers are keyed <cid>_<uid>; only each liker may delete their own
+    // (least privilege), so the author deleting a comment drops only their own
+    // marker here. Other likers' orphaned markers are harmless — they are looked
+    // up by cid and the comment is gone.
+    const myMarker = window.db.collection('videos').doc(id).collection('comment_likes').doc(cid + '_' + myUid());
+    myMarker.delete().catch(() => {});
     window.db.collection('videos').doc(id).collection('comments').doc(cid).delete()
       .then(() => {
         window.db.collection('videos').doc(id).update({ commentsCount: fv().increment(-1) }).catch(() => {});
@@ -909,6 +1056,10 @@
     if (sheet) sheet.classList.remove('active');
     if (state.commentsUnsub) { try { state.commentsUnsub(); } catch (e) {} state.commentsUnsub = null; }
     state.commentsVideoId = null;
+    state.commentItems = [];
+    state.likedComments = {};
+    state.checkedCommentLikes = {};
+    cancelCommentReply();
   }
 
   function backdropClick(e) {
@@ -1362,7 +1513,8 @@
     refresh: () => { state.started = false; if (el('nexaVideosRoot')) { el('nexaVideosRoot').dataset.built = ''; } open(); },
     renderMyVideos: renderMyVideos,
     closeMyVideos: closeMyVideos,
-    openFocus: (id) => { state.focusVideoId = id; open(id); }
+    openFocus: (id) => { state.focusVideoId = id; open(id); },
+    openComments: openComments
   };
   window.nexaVideosToggleSound = toggleSound;
   window.nexaVideosTogglePreviewSound = togglePreviewSound;
@@ -1375,6 +1527,9 @@
   window.nexaVideosBackdropClick = backdropClick;
   window.nexaVideosSendComment = sendComment;
   window.nexaVideosDeleteComment = deleteComment;
+  window.nexaVideosLikeComment = likeComment;
+  window.nexaVideosReplyComment = replyComment;
+  window.nexaVideosCancelCommentReply = cancelCommentReply;
   window.nexaVideosEdit = openEditVideo;
   window.nexaVideosCloseEdit = closeEdit;
   window.nexaVideosEditBackdrop = editBackdrop;

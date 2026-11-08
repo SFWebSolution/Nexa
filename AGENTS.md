@@ -1135,7 +1135,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 ## PWA service worker caching (firebase-messaging-sw.js) — do NOT regress
 - The service worker caches `dashboard.html`, `nexa-voice-room.js`/`.css`, `app-main.js` etc. If first-party JS/CSS is served Stale-While-Revalidate, **the first load after every deploy runs the PREVIOUS version** — so a pushed fix silently doesn't apply until a second reload (this is exactly why "the echo is still there" / "the layout is still broken" after a fix was deployed). First-party `.js`/`.css` are now NETWORK-FIRST (falling back to cache only when offline); HTML navigations were already network-first.
-- `CACHE_NAME` must be BUMPED on each release (`nexa-v9-player` → `nexa-v10-preview`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
+- `CACHE_NAME` must be BUMPED on each release (`nexa-v10-preview` → `nexa-v11-comments`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
 - When adding a new first-party script/style to the page, add it to `ASSETS_TO_CACHE` too (currently `nexa-voice-room.css` + `nexa-voice-room.js` are listed).
 
 ## Live video layout (nexa-voice-room.css) — do NOT regress
@@ -1143,6 +1143,42 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **`grid-auto-rows: max-content` + `align-content: start` are REQUIRED on `.nexa-vr-grid-video` when it has `max-height` + `overflow-y:auto`.** Without them a height-constrained grid squishes its rows to a fraction of the card height while `aspect-ratio` forces each card tall → **the cards overlap each other** (the "arrangement scattered" bug). Every row must be as tall as its card.
 
 - Firestore needs NO rules change for video — the `voice_rooms` update rule only pins `hostId`, so the `mode` field and participant `isCameraOn` are allowed. `nexa-voice-room.css` holds `.nexa-vr-mode-*`, `.nexa-vr-local-video`, `.nexa-vr-video-card` styles.
+
+## Video comments — like · reply · notify (do NOT regress)
+- The video comment sheet (`nexa-videos.js`, `#nvCommentsSheet`) is a full
+  interaction surface: each comment has **Like** (heart + count), **Reply**, and
+  **Delete** (own comments only). It used to be text + delete only.
+- **Comment likes** use a per-user marker subcollection
+  `videos/{id}/comment_likes/{commentId}_{uid}` (`{uid, cid, at}`) and a
+  transaction that flips the marker AND the comment's `likes` count together —
+  the same pattern as the parent video like (no unbounded array on the comment).
+  Which comments YOU liked is resolved with ONE batched read
+  (`where('uid','==',me).where('cid','in',[chunks of 10])`), never a get per
+  comment. Optimistic paint + rollback on failure; re-render uses
+  `renderComments(false)` so the scroll position is kept.
+- **Replies thread via `replyTo`** on the comment doc (+ `replyToName` for the
+  `@name` tag, `replyToUid` for the notification). The tree is grouped
+  CLIENT-SIDE in `buildCommentTree(items)` (no extra collection, no extra read);
+  orphans fall back to top level. `renderComments()` renders each top-level
+  comment followed by its indented `.nv-comment-child` replies.
+- **Reply notifications:** a reply pushes to the parent comment's author; a
+  top-level comment pushes to the video's author (skip self). Sent
+  sender-side via `sendPushNotification` with `{isVideo:true, isVideoComment:true}`
+  — no Firestore writes. `notifIconForData` maps `isVideoComment` → 💬 (checked
+  BEFORE `isVideo`).
+- **Rules (`firestore.rules`, must be DEPLOYED):** the comments `update` rule now
+  allows the author OR any signed-in user changing ONLY `likes`
+  (`affectedKeys().hasOnly(['likes'])`) — mirroring the parent video's
+  views/likes rule — so a non-author can like without being able to edit the
+  text. New `match /comment_likes/{likeId}`: read = any signed-in; create =
+  `request.resource.data.uid == auth.uid`; delete = `resource.data.uid == auth.uid`
+  (**NOT `request.resource`** — it is null on delete and would deny every unlike);
+  update = false. Deleting a comment also best-effort deletes the author's own
+  like marker (other likers' markers are harmless orphans, looked up by cid).
+- CSS (`.nv-comment-acts`, `.nv-comment-like.liked` filled heart, `.nv-comment-child`
+  indent, `.nv-comment-replyto`, `.nv-comment-reply-chip`) lives in
+  `nexa-videos.css` next to the base comment rules. `openComments(id)` is exported
+  as `NexaVideos.openComments` for tests.
 
 ## Video composer preview — audio must STOP when the composer closes (do NOT regress)
 - **A hidden `<video>` keeps playing.** The video composer preview

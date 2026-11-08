@@ -289,6 +289,9 @@ service cloud.firestore {
       }
 
       // Comments — anyone signed in may read; the author owns their comment.
+      // Anyone may bump `likes` (mirrors the parent video's views/likes rule);
+      // everything else is author-only. The affectedKeys().hasOnly guard is what
+      // stops a non-author rewriting the text.
       match /comments/{commentId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn()
@@ -296,10 +299,26 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 1000;
-        allow update: if isSignedIn()
-          && resource.data.uid == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.uid == request.auth.uid
+          || request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['likes'])
+        );
         allow delete: if isSignedIn()
           && resource.data.uid == request.auth.uid;
+      }
+
+      // Per-user comment-like marker — id "<commentId>_<uid>". Any signed-in user
+      // may read (the UI resolves which comments YOU liked in one batched query);
+      // create/delete is owner-only so a like cannot be forged or removed for
+      // someone else.
+      match /comment_likes/{likeId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.resource.data.uid == request.auth.uid;
+        allow delete: if isSignedIn()
+          && resource.data.uid == request.auth.uid;
+        allow update: if false;
       }
     }
 

@@ -619,5 +619,37 @@ console.log("\n8) group/channel instant-open message cache");
   ok("report CSS present", /\.report-coming-modal/.test(css) && /\.report-cap\b/.test(css) && /\.settings-row-pill/.test(css));
 }
 
+// ── Videos: comments (like · reply · notify · delete) ──────────────────────
+{
+  const nv = read("nexa-videos.js");
+  const css = read("nexa-videos.css");
+  const rules = read("firestore.rules");
+
+  ok("comment like handler defined + exported",
+    /function likeComment\(cid\)/.test(nv) && /window\.nexaVideosLikeComment = likeComment;/.test(nv));
+  ok("comment reply handler defined + exported",
+    /function replyComment\(cid\)/.test(nv) && /window\.nexaVideosReplyComment = replyComment;/.test(nv));
+  ok("comment reply cancel defined + exported",
+    /function cancelCommentReply\(\)/.test(nv) && /window\.nexaVideosCancelCommentReply = cancelCommentReply;/.test(nv));
+  ok("comment likes are a transaction (marker + count together)",
+    /runTransaction\(tx => tx\.get\(ref\)/.test(nv) && /collection\('comment_likes'\)/.test(nv));
+  ok("comment like markers resolved in ONE batched query (no per-comment get)",
+    /where\('cid', 'in', chunk\)/.test(nv));
+  ok("replies are grouped client-side (replyTo threading)", /function buildCommentTree\(items\)/.test(nv) && /c\.replyTo/.test(nv));
+  ok("reply carries replyTo/replyToName/replyToUid", /doc\.replyTo = reply\.id;/.test(nv) && /doc\.replyToName/.test(nv));
+  ok("replying notifies the parent author, else the video author",
+    /replied to your comment/.test(nv) && /commented on your video/.test(nv));
+  ok("comment action row CSS present",
+    /\.nv-comment-acts/.test(css) && /\.nv-comment-like\.liked/.test(css) && /\.nv-comment-reply-chip/.test(css) && /\.nv-comment-child/.test(css));
+  ok("rules allow a non-author to bump only `likes`",
+    /affectedKeys\(\)\.hasOnly\(\['likes'\]\)/.test(rules));
+  ok("rules add the comment_likes subcollection (owner-only create/delete)",
+    /match \/comment_likes\/\{likeId\}/.test(rules)
+    && /allow create: if isSignedIn\(\)\s*\r?\n\s*&& request\.resource\.data\.uid == request\.auth\.uid;/.test(rules)
+    && /allow delete: if isSignedIn\(\)\s*\r?\n\s*&& resource\.data\.uid == request\.auth\.uid;/.test(rules));
+  ok("comment_likes delete rule uses resource.data (request.resource is null on delete)",
+    !/allow create, delete: if isSignedIn\(\)\s*\r?\n\s*&& request\.resource\.data\.uid/.test(rules));
+}
+
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
 process.exit(fail ? 1 : 0);

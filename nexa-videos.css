@@ -296,6 +296,37 @@
 .nv-comment-time { font-size: 11px; color: var(--text-3, #7f8ea6); }
 .nv-comment-text { font-size: 13.5px; line-height: 1.45; color: var(--text-0, #e9eef6); word-break: break-word; }
 .nv-comment-del { background: transparent; border: none; color: var(--text-3, #7f8ea6); cursor: pointer; padding: 2px; }
+/* Comment action row: Like (heart + count) · Reply · Delete (mine only) */
+.nv-comment-acts { display: flex; align-items: center; gap: 16px; margin-top: 3px; }
+.nv-comment-act {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; border: none; padding: 0; cursor: pointer;
+  font-size: 11.5px; font-weight: 600; color: var(--text-3, #7f8ea6);
+  transition: color 0.15s ease, transform 0.12s ease;
+}
+.nv-comment-act:hover { color: var(--text-1, #cfd8e6); }
+.nv-comment-act:active { transform: scale(0.94); }
+.nv-comment-like.liked { color: #ff4d6d; }
+.nv-comment-like.liked svg { fill: #ff4d6d; }
+.nv-comment-likes-n { font-variant-numeric: tabular-nums; }
+.nv-comment-del:hover { color: #ff6b6b; }
+/* Replies are indented under their parent comment. */
+.nv-comment-child { margin-left: 40px; }
+.nv-comment-child .nv-comment-pic { width: 26px; height: 26px; }
+.nv-comment-replyto { color: var(--primary, #4a94f0); font-weight: 600; }
+/* "Replying to @name" chip above the input. */
+.nv-comment-reply-chip {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 12px; padding: 7px 12px;
+  background: var(--bg-2, #1a2030);
+  border-left: 3px solid var(--primary, #166fe5);
+  border-radius: 6px;
+  font-size: 12px; color: var(--text-2, #a9b6c9);
+}
+.nv-comment-reply-chip button {
+  background: transparent; border: none; color: var(--text-3, #7f8ea6);
+  cursor: pointer; display: flex; padding: 2px;
+}
 .nv-comment-input {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
