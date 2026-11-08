@@ -1641,9 +1641,55 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `switchMomentsSubTab(activeMomentsSubTab)` so the last sub-tab is restored and
   the story feed still renders. `#momentsNewStoryBtn` (+ New Story) is hidden on
   the Videos sub-tab.
-- **Videos is a COMING SOON placeholder — NOT activated.** `#momentsVideosView`
-  is a static `.moments-coming-soon` card (`.moments-cs-*` + `.moments-soon-pill`
-  CSS appended to dashboard.css). There is deliberately NO `videos` Firestore
-  collection, no rules, no feed wiring yet. Do NOT wire a real video feed without
-  an explicit request (the intended model: public, NOT connection-gated, with
-  likes/comments/shares, uploaded via the existing Cloudinary `uploadFile()`).
+- **Videos is ACTIVATED (Moments -> Videos).** `#momentsVideosView` hosts
+  `#nexaVideosRoot`, driven by the standalone `nexa-videos.js` + `nexa-videos.css`
+  (loaded after `nexa-voice-room.js`). It is a full-screen, scroll-snap,
+  TikTok-style feed. `switchMomentsSubTab('videos')` calls `window.NexaVideos.open()`;
+  `switchTab()` calls `window.NexaVideos.close()` whenever the Moments tab is left
+  (tears the listener down -- Spark-quota friendly).
+- **Firestore `videos/{id}`** `{uid, authorName, authorPhoto, videoUrl, thumbUrl,
+  caption, music, duration, createdAt(ms int), views, likes, commentsCount, shares,
+  saves, visibility}` + subcollections `likes/{uid}` and `comments/{cid}`. Rules in
+  `firestore.rules` (must be DEPLOYED): read = any signed-in; create = own uid +
+  int createdAt + non-empty videoUrl; update = author OR non-author touching ONLY
+  `views/likes/commentsCount/shares/saves` (the `affectedKeys().hasOnly` pattern);
+  delete = author. Likes are a per-user subcollection doc (NOT an unbounded array on
+  the parent) so the parent doc never grows; the parent keeps a denormalised `likes`
+  count for cheap rendering. Do NOT move likes into an array field.
+- **Visibility is PUBLIC, notification is CONNECTION-ONLY (the product rule).**
+  Any signed-in user can read/watch any video (the feed is NOT connection-gated --
+  unlike Stories). But `notifyConnections()` only pushes to
+  `window.nexaMyConnections` entries with `status === 'accepted'`, via
+  `sendPushNotification(name, 'posted a new video', null, {isVideo:true,
+  recipientUids: [...]})`. Non-connections see the post and get NO notification.
+  Do NOT widen the push to all users, and do NOT gate the feed by connection.
+- **`videos` is a first-class notification category** (`NEXA_NOTIF_TYPES` now
+  includes it; default true; two UI toggles `#tabNotifVideos` (Settings sub-page)
+  and `#notifVideos` (quick modal); `sendPushNotification` gates on
+  `isVideo && !notificationSettings.videos`; `notifIconForData` returns the
+  clapper icon). `isVideo` is deliberately EXEMPT from the `hideNotifPreviewOn()`
+  body-strip so the notification still says "posted a new video".
+- **`nexa-videos.js` bridge:** the module is a separate `<script>` (like
+  nexa-voice-room.js) and reaches app-main.js via `window.*`. Function
+  declarations (`uploadFile`, `escapeHtml`, `safeMediaUrl`, `isConnectedTo`,
+  `sendPushNotification`, `nexaConfirm`, `showNotifToast`, `nexaNoteQuotaError`)
+  are real globals via hoisting; the `let`/`const` bindings it needs are exposed in
+  the bridge block at the END of app-main.js -- `window.BACKEND_URL`,
+  `window.nexaMyConnections` + `window.nexaCurrentUser` as LIVE getters (they are
+  reassigned). Do NOT put `isConnectedTo` in `Object.defineProperties` (a function
+  declaration already owns that window property; redefining throws and halts init).
+- **Player:** one IntersectionObserver drives autoplay (a card plays only when
+  >=60% visible; the previous one pauses). `views` is bumped ONCE per session per
+  video (`state.viewed`) and never for your own video -- scrolling back and forth
+  must not write on every pass. Single tap = pause/play, double tap = like (with a
+  heart burst), long-press = cycle playback speed 0.5/1/1.5/2x. Poster comes from
+  the Cloudinary `so_0` transform (`cloudThumb`), best-effort. Likes are optimistic
+  (local count + liked state flip immediately, rollback on failure).
+- **Upload** reuses the existing Cloudinary `uploadFile(file, onProgress)` (XHR,
+  real byte progress) -- CLOUD_NAME `doasf3d1u`, preset `NeuroStack`. The composer
+  has its own SVG progress ring (`nvRingFill`, dasharray `2*pi*52`). Gallery AND
+  camera capture come for free from `<input type="file" accept="video/*">`.
+  Uploaded files are capped at 100 MB client-side.
+- **Do NOT re-add a "Coming Soon" card or the `moments-soon-pill`** to the Videos
+  pane -- that was the pre-activation placeholder. Also do NOT re-add the
+  `.moments-coming-soon` / `.moments-cs-*` CSS (removed from dashboard.css).

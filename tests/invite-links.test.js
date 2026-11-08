@@ -151,7 +151,9 @@ console.log("\n4c) notifications: connection requests, group-added, @all");
 {
   // Connections is a real category and drives the master switch.
   ok("connections notif setting declared", /connections:\s*true/.test(appJs));
-  ok("connections in NEXA_NOTIF_TYPES", /NEXA_NOTIF_TYPES = \["messages", "groups", "stories", "reactions", "connections"\]/.test(appJs));
+  ok("connections in NEXA_NOTIF_TYPES", /NEXA_NOTIF_TYPES = \["messages", "groups", "stories", "videos", "reactions", "connections"\]/.test(appJs));
+  ok("videos in NEXA_NOTIF_TYPES", /NEXA_NOTIF_TYPES = \[[^\]]*"videos"/.test(appJs));
+  ok("video push gate reads isVideo flag", /isVideo && !notificationSettings\.videos/.test(appJs));
   ok("push gates on connections", /if \(isConnect && !notificationSettings\.connections\) return;/.test(appJs));
   ok("push reads isConnect flag", /const isConnect = extraData\.isConnect === true;/.test(appJs));
 

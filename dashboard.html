@@ -18,6 +18,49 @@
   <link rel="manifest" href="manifest.json">
   
   <title>Nexa Messenger - Premium Edition</title>
+  <!-- CRITICAL SPLASH CSS (inline) — paints the branded splash on the very
+       first frame, before the external stylesheets arrive. Without it the
+       splash markup renders unstyled (a plain white page) for a beat, which
+       read as a white flash on cold start. Kept tiny + theme-aware; the full
+       styling still lives in dashboard.css (loaded later) and wins on tie. -->
+  <style>
+    html, body { background: #eef3fb; }
+    html[data-theme="nexa"], html[data-theme="nexa"] body { background: #06080d; }
+    .nexa-splash {
+      position: fixed; inset: 0; z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(120% 120% at 50% 30%, #f2f6ff 0%, #e8eefb 45%, #dfe7f6 100%);
+      color: #0d1830;
+      transition: opacity .55s ease, visibility .55s ease;
+    }
+    html[data-theme="nexa"] .nexa-splash {
+      background: radial-gradient(120% 120% at 50% 35%, #0c0f16 0%, #06080d 55%, #04050a 100%);
+      color: #e6ebf2;
+    }
+    .nexa-splash-inner { display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; }
+    .nexa-splash-logo {
+      width: 86px; height: 86px; border-radius: 26px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 46px; font-weight: 700; color: #fff;
+      background: linear-gradient(135deg, #4a94f0 0%, #166fe5 50%, #0b5bd3 100%);
+      box-shadow: 0 18px 50px rgba(22,111,229,.45), 0 0 0 1px rgba(255,255,255,.12) inset;
+    }
+    .nexa-splash-name { font-size: 30px; font-weight: 800; letter-spacing: .5px; }
+    .nexa-splash-tag { font-size: 13px; font-weight: 600; letter-spacing: 3.5px; text-transform: uppercase; opacity: .55; }
+    .nexa-splash-dots { display: flex; gap: 7px; }
+    .nexa-splash-dots span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .28; animation: splashPulse 1.2s infinite; }
+    .nexa-splash-dots span:nth-child(2) { animation-delay: .18s; }
+    .nexa-splash-dots span:nth-child(3) { animation-delay: .36s; }
+    .nexa-splash-progress { width: 210px; max-width: 70vw; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .nexa-splash-bar { width: 100%; height: 4px; border-radius: 999px; background: rgba(13,24,48,.12); overflow: hidden; }
+    html[data-theme="nexa"] .nexa-splash-bar { background: rgba(230,235,242,.14); }
+    .nexa-splash-bar-fill { width: 0%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #4a94f0 0%, #166fe5 60%, #35c98a 100%); box-shadow: 0 0 12px rgba(22,111,229,.55); transition: width .45s cubic-bezier(.22,1,.36,1); }
+    .nexa-splash-pct { font-size: 12px; font-weight: 700; letter-spacing: 1px; opacity: .6; font-variant-numeric: tabular-nums; }
+    .nexa-splash-hold { min-height: 14px; font-size: 11.5px; font-weight: 500; letter-spacing: .2px; opacity: .5; }
+    @keyframes splashPulse { 0%,100% { opacity:.25; transform:scale(.85); } 50% { opacity:1; transform:scale(1); } }
+    @media (prefers-reduced-motion: reduce) { .nexa-splash-dots span { animation: none; } }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Pre-warm the image hosts (avatars, story thumbnails, media uploads) so
@@ -49,6 +92,7 @@
 </script>
 <link rel="stylesheet" href="dashboard.css">
 <link rel="stylesheet" href="nexa-voice-room.css">
+<link rel="stylesheet" href="nexa-videos.css">
 <script>
   // Pre-paint theme: apply the SAVED theme before the first frame so the
   // splash/background is already the right color. Without this, a light-theme
@@ -59,7 +103,9 @@
   (function () {
     try {
       var p = JSON.parse(localStorage.getItem('nexaPrefs') || '{}');
-      if (p && p.theme === 'nexa') document.documentElement.setAttribute('data-theme', 'nexa');
+      var dark = !!(p && p.theme === 'nexa');
+      if (dark) document.documentElement.setAttribute('data-theme', 'nexa');
+      document.documentElement.style.background = dark ? '#06080d' : '#eef3fb';
     } catch (e) {}
     // APK detection: the Android shell sets a "NexaMobileNative/<version>" UA
     // token in MainActivity. Marking <html> lets dashboard.css apply the
@@ -279,7 +325,7 @@
         </div>
         <div class="connect-subtabs">
           <button class="connect-subtab active" id="momentsSubTabStories" onclick="switchMomentsSubTab('stories')"><i data-lucide="circle-dot" style="width:15px;height:15px;"></i> Stories</button>
-          <button class="connect-subtab" id="momentsSubTabVideos" onclick="switchMomentsSubTab('videos')"><i data-lucide="clapperboard" style="width:15px;height:15px;"></i> Videos <span class="moments-soon-pill">Soon</span></button>
+          <button class="connect-subtab" id="momentsSubTabVideos" onclick="switchMomentsSubTab('videos')"><i data-lucide="clapperboard" style="width:15px;height:15px;"></i> Videos</button>
         </div>
         <div class="connect-view active" id="momentsStoriesView">
           <div class="my-story-card" onclick="openMyStoryOrAdd()">
@@ -298,12 +344,7 @@
           </div>
         </div>
         <div class="connect-view" id="momentsVideosView">
-          <div class="moments-coming-soon">
-            <div class="moments-cs-icon"><i data-lucide="clapperboard" style="width:34px;height:34px;"></i></div>
-            <div class="moments-cs-title">Videos — Coming Soon</div>
-            <div class="moments-cs-text">Share short videos with everyone on Nexa. A full-screen feed with likes, comments and shares is on the way.</div>
-            <div class="moments-cs-badge">🚧 In development</div>
-          </div>
+          <div id="nexaVideosRoot"></div>
         </div>
       </div>
 
@@ -650,6 +691,13 @@
                   <div class="notif-item-desc">Notifications when contacts post stories</div>
                 </div>
                 <div class="notif-toggle" id="tabNotifStories" onclick="toggleNotif('stories')"></div>
+              </div>
+              <div class="notif-item">
+                <div class="notif-item-info">
+                  <label class="notif-item-label">Videos</label>
+                  <div class="notif-item-desc">Notifications when contacts post a video</div>
+                </div>
+                <div class="notif-toggle" id="tabNotifVideos" onclick="toggleNotif('videos')"></div>
               </div>
               <div class="notif-item">
                 <div class="notif-item-info">
@@ -1193,26 +1241,27 @@
 
 <!-- MOBILE BOTTOM NAVIGATION BAR -->
 <div class="mobile-bottom-nav" id="mobileBottomNav">
-  <button class="nav-item active" id="navBtnChats" onclick="switchTab('chats')">
+  <span class="nav-indicator" id="navIndicator" aria-hidden="true"></span>
+  <button class="nav-item active" id="navBtnChats" onclick="navTap('chats')">
     <span class="nav-icon"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Chats</span>
   </button>
-  <button class="nav-item" id="navBtnStories" onclick="switchTab('stories')">
+  <button class="nav-item" id="navBtnStories" onclick="navTap('stories')">
     <span class="nav-icon"><i data-lucide="circle-dot" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Moments</span>
     <span class="story-tab-dot" id="storyTabDotMobile" style="display:none;"></span>
   </button>
-  <button class="nav-item" id="navBtnConnect" onclick="switchTab('connect')">
+  <button class="nav-item" id="navBtnConnect" onclick="navTap('connect')">
     <span class="nav-icon"><i data-lucide="user-plus" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Connect</span>
     <span class="connect-tab-dot" id="connectTabDotMobile" style="display:none;"></span>
   </button>
-  <button class="nav-item" id="navBtnCommunity" onclick="switchTab('community')">
+  <button class="nav-item" id="navBtnCommunity" onclick="navTap('community')">
     <span class="nav-icon"><i data-lucide="users" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Community</span>
     <span class="comm-tab-dot" id="commTabDotMobile" style="display:none;"></span>
   </button>
-  <button class="nav-item" id="navBtnSettings" onclick="switchTab('settings')">
+  <button class="nav-item" id="navBtnSettings" onclick="navTap('settings')">
     <span class="nav-icon"><i data-lucide="settings" style="width: 20px; height: 20px;"></i></span>
     <span class="nav-label">Settings</span>
     <span class="app-update-dot" id="settingsTabDotMobile" style="display:none;"></span>
@@ -1590,6 +1639,14 @@
         <div class="notif-item-desc">Get notified when friends share stories</div>
       </div>
       <div class="notif-toggle" id="notifStories" onclick="toggleNotif('stories')"></div>
+    </div>
+
+    <div class="notif-item">
+      <div class="notif-item-info">
+        <label class="notif-item-label">Videos</label>
+        <div class="notif-item-desc">Get notified when friends post a video</div>
+      </div>
+      <div class="notif-toggle" id="notifVideos" onclick="toggleNotif('videos')"></div>
     </div>
 
     <div class="notif-item">
@@ -2392,5 +2449,6 @@
 
 <!-- Nexa Voice Rooms (multi-user audio) -->
 <script src="nexa-voice-room.js"></script>
+<script src="nexa-videos.js"></script>
 </body>
 </html>

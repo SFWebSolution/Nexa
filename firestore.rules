@@ -260,6 +260,49 @@ service cloud.firestore {
           if isSignedIn() && request.auth.uid == uid;
     }
 
+    // ── Videos (Moments → Videos) ──
+    // PUBLIC feed: any signed-in user can read and watch. NOT connection-gated
+    // (the notification fan-out is connection-only, but visibility is public).
+    // Only the author may edit/delete; a non-author may ONLY bump the counters
+    // (views/likes/commentsCount/shares/saves) — the same affectedKeys().hasOnly
+    // pattern the `status` collection uses. A non-author's update that touches
+    // any other field is denied.
+    match /videos/{videoId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt is int
+        && request.resource.data.videoUrl is string
+        && request.resource.data.videoUrl.size() > 0;
+      allow update: if isSignedIn() && (
+        resource.data.uid == request.auth.uid
+        || request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['views','likes','commentsCount','shares','saves'])
+      );
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+
+      // Per-user like marker — no unbounded array on the parent doc.
+      match /likes/{uid} {
+        allow read: if isSignedIn();
+        allow create, delete: if isSignedIn() && request.auth.uid == uid;
+        allow update: if false;
+      }
+
+      // Comments — anyone signed in may read; the author owns their comment.
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000;
+        allow update: if isSignedIn()
+          && resource.data.uid == request.auth.uid;
+        allow delete: if isSignedIn()
+          && resource.data.uid == request.auth.uid;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -14110,65 +14110,100 @@ html.nexa-native .story-viewer-main {
 }
 
 
-/* ---------- Moments tab: Stories | Videos switch ---------- */
-.moments-soon-pill {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: rgba(37, 211, 102, 0.16);
-  color: #25d366;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  vertical-align: middle;
+
+
+/* ---------- Splash polish: soft glow ring behind the logo ---------- */
+.nexa-splash-inner { position: relative; }
+.nexa-splash-logo { position: relative; z-index: 1; animation: nexaLogoIn 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+.nexa-splash-inner::before {
+  content: "";
+  position: absolute;
+  top: 43px;
+  left: 50%;
+  width: 86px;
+  height: 86px;
+  margin-left: -43px;
+  border-radius: 26px;
+  background: radial-gradient(circle, rgba(22, 111, 229, 0.42) 0%, rgba(22, 111, 229, 0) 70%);
+  filter: blur(6px);
+  animation: nexaLogoHalo 2.4s ease-in-out infinite;
+  pointer-events: none;
 }
-.connect-subtab.active .moments-soon-pill {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+@keyframes nexaLogoIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: none; }
 }
-.moments-coming-soon {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 10px;
-  padding: 48px 28px;
-  min-height: 320px;
-  color: var(--text-2);
+@keyframes nexaLogoHalo {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.12); }
 }
-.moments-cs-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
-  color: var(--primary);
-  box-shadow: inset 0 0 0 1px var(--border-md);
+@media (prefers-reduced-motion: reduce) {
+  .nexa-splash-logo { animation: none; }
+  .nexa-splash-inner::before { animation: none; }
 }
-.moments-cs-title {
-  font-size: 17px;
-  font-weight: 800;
-  color: var(--text-0);
-  font-family: var(--font-display);
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PREMIUM MOBILE BOTTOM NAV (2026-11) — floating pill + sliding indicator.
+   Additive and scoped to the SAME ≤768px breakpoint the base nav uses, so the
+   desktop rail is completely untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    left: 10px;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    height: 60px;
+    border-radius: 20px;
+    padding: 0 4px;
+    border: 1px solid var(--border-dk);
+    box-shadow: 0 10px 30px rgba(13, 24, 48, 0.16), 0 2px 8px rgba(13, 24, 48, 0.08);
+    overflow: hidden;
+  }
+  :root[data-theme="nexa"] .mobile-bottom-nav {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Reserve room for the floating bar so the last chat row clears it. */
+  .sidebar { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+
+  .mobile-bottom-nav .nav-item {
+    border-radius: 16px;
+    transition: color var(--tf) var(--ease), transform 0.22s var(--ease);
+  }
+  .mobile-bottom-nav .nav-item:active { transform: scale(0.94); }
+  .mobile-bottom-nav .nav-item.active { color: var(--primary); }
+  .mobile-bottom-nav .nav-item.active .nav-icon { transform: scale(1.16) translateY(-1px); }
+  .mobile-bottom-nav .nav-item .nav-icon { transition: transform 0.28s cubic-bezier(0.34, 1.4, 0.64, 1); }
+  .mobile-bottom-nav .nav-item.active .nav-label { font-weight: 700; }
+
+  /* Sliding active indicator — positioned by updateNavIndicator() in app-main.js */
+  .nav-indicator {
+    position: absolute;
+    top: 7px;
+    left: 0;
+    height: 3px;
+    width: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #4a94f0 0%, #166fe5 60%, #35c98a 100%);
+    box-shadow: 0 0 10px rgba(22, 111, 229, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.2s ease;
+    z-index: 2;
+  }
+
+  /* Badges sit a touch higher now the bar floats. */
+  .nav-item .nav-unread-badge { top: 1px; }
+  .nav-item .story-tab-dot,
+  .nav-item .connect-tab-dot,
+  .nav-item .comm-tab-dot { top: 2px; }
+  .nav-item .app-update-dot { top: 2px; }
 }
-.moments-cs-text {
-  font-size: 13px;
-  line-height: 1.55;
-  max-width: 340px;
-  color: var(--text-2);
-}
-.moments-cs-badge {
-  margin-top: 4px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-md);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-2);
+
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+  .nav-indicator { transition: opacity 0.2s ease; }
+  .mobile-bottom-nav .nav-item.active .nav-icon { transform: none; }
 }

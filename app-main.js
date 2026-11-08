@@ -300,13 +300,14 @@ let notificationSettings = {
   messages: true,
   groups: true,
   stories: true,
+  videos: true,
   calls: true,
   reactions: true,
   connections: true
 };
 
 // The individual categories the master switch drives (everything except `all`).
-const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "reactions", "connections"];
+const NEXA_NOTIF_TYPES = ["messages", "groups", "stories", "videos", "reactions", "connections"];
 
 // The master reads "on" only when EVERY category is on. This stays honest no
 // matter how the user got there — flipped the master, or flipped each type.
@@ -735,6 +736,7 @@ function revealNexaApp() {
   // Give the browser one frame to paint the ready app before fading.
   requestAnimationFrame(() => {
     splash.classList.add('nexa-done');
+    try { updateNavIndicator(currentTab); } catch (e) {}
     setTimeout(() => {
       splash.style.display = 'none';
     }, 650);
@@ -819,6 +821,7 @@ function notifIconForData(title, data) {
   if (data.isConnect) return '🤝';
   if (data.isMention || data.mentionAll) return '🔔';
   if (data.isStory) return '📸';
+  if (data.isVideo) return '🎬';
   if (data.isGroup) return '👥';
   return notifHistoryIconFor(title);
 }
@@ -956,17 +959,19 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   const isReaction = title.toLowerCase().includes("react");
   const isGroup = extraData.isGroup === true;
   const isStory = extraData.isStory === true;
+  const isVideo = extraData.isVideo === true;
   const isConnect = extraData.isConnect === true;
 
   if (isReaction && !notificationSettings.reactions) return;
   if (isGroup && !notificationSettings.groups) return;
   if (isStory && !notificationSettings.stories) return;
+  if (isVideo && !notificationSettings.videos) return;
   if (isConnect && !notificationSettings.connections) return;
-  if (!isReaction && !isGroup && !isStory && !isConnect && !notificationSettings.messages) return;
+  if (!isReaction && !isGroup && !isStory && !isVideo && !isConnect && !notificationSettings.messages) return;
 
   // Lock-screen privacy: strip the message text from the push body. Connection
   // events carry no message content, so keep their body (it's the whole point).
-  if (hideNotifPreviewOn() && !isConnect) body = 'New message';
+  if (hideNotifPreviewOn() && !isConnect && !isVideo) body = 'New message';
 
   // A single stable id for THIS notification. The receiver's service worker
   // uses it as the notification tag so that if the backend delivers the same
@@ -2013,6 +2018,10 @@ function switchMomentsSubTab(tab) {
   if (vc) vc.classList.toggle('active', tab === 'videos');
   if (nb) nb.style.display = tab === 'stories' ? '' : 'none';
   if (tab === 'stories') renderStoriesTab();
+  if (window.NexaVideos) {
+    if (tab === 'videos') window.NexaVideos.open();
+    else window.NexaVideos.close();
+  }
   if (window.lucide) lucide.createIcons();
 }
 
@@ -2190,6 +2199,33 @@ function markConnectRequestsSeen() {
    ========================================================================= */
 let currentTab = 'chats';
 
+// Mobile bottom-nav tap: a light haptic (where supported) + the normal tab
+// switch. Kept separate from switchTab so the rail (desktop) stays silent.
+function navTap(tabName) {
+  try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+  switchTab(tabName);
+}
+
+// Slide the active-pill indicator under the tapped mobile nav item. Called
+// from switchTab so programmatic switches stay in sync too. No-op on desktop
+// (the indicator is display:none there).
+function updateNavIndicator(tabName) {
+  const nav = document.getElementById('mobileBottomNav');
+  const ind = document.getElementById('navIndicator');
+  if (!nav || !ind) return;
+  if (nav.offsetParent === null) return; // hidden (desktop / chat open)
+  const btn = document.getElementById('navBtn' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+  if (!btn) { ind.style.opacity = '0'; return; }
+  const navRect = nav.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  const w = btnRect.width;
+  ind.style.width = w + 'px';
+  ind.style.transform = 'translateX(' + (btnRect.left - navRect.left) + 'px)';
+  ind.style.opacity = '1';
+}
+window.addEventListener('resize', () => { try { updateNavIndicator(currentTab); } catch (e) {} });
+window.addEventListener('orientationchange', () => { setTimeout(() => { try { updateNavIndicator(currentTab); } catch (e) {} }, 250); });
+
 function switchTab(tabName) {
   closeStoryViewer();
   currentTab = tabName;
@@ -2216,6 +2252,11 @@ function switchTab(tabName) {
   if (window.innerWidth <= 768) {
     closeMobileChat();
   }
+
+  // Leaving the Moments tab tears down the video feed listener so it doesn't
+  // keep reading in the background (Spark-quota friendly); it re-subscribes
+  // when the Videos sub-tab is opened again.
+  if (tabName !== 'stories' && window.NexaVideos) window.NexaVideos.close();
 
   // 5. Trigger tab-specific renders
   if (tabName === 'stories') {
@@ -2247,6 +2288,7 @@ function switchTab(tabName) {
     if (videoBtn) videoBtn.style.display = 'flex';
   }
   updatePollButtonVisibility();
+  updateNavIndicator(tabName);
 
   if (window.lucide) lucide.createIcons();
 }
@@ -15960,3 +16002,26 @@ function toggleShowOriginalPref() {
   updateLanguageUI();
   renderMessageList();
 }
+
+
+/* ── Bridge for the Videos module (nexa-videos.js) ─────────────────────────
+   Function declarations (uploadFile, isConnectedTo, escapeHtml, safeMediaUrl,
+   linkify, openForwardModal, sendPushNotification…) are already real window
+   globals via hoisting. Only the `let`/`const` bindings below need an explicit
+   bridge — and the two reassigned caches need LIVE getters (a one-time copy
+   would freeze a stale reference). isConnectedTo must NOT go through
+   Object.defineProperties (a function declaration already owns that window
+   property; redefining it throws and halts init). */
+try {
+  window.BACKEND_URL = BACKEND_URL;
+  Object.defineProperties(window, {
+    nexaMyConnections: {
+      configurable: true,
+      get() { try { return myConnections; } catch (_) { return {}; } }
+    },
+    nexaCurrentUser: {
+      configurable: true,
+      get() { try { return currentUser; } catch (_) { return null; } }
+    }
+  });
+} catch (e) { console.warn('Nexa bridge exposure failed', e); }
