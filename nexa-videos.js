@@ -36,6 +36,10 @@
   const MAX_VIDEO_MS = MAX_VIDEO_MIN * 60 * 1000;
   const MAX_VIDEO_MB = 100;
   const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
+  // Public share links must resolve from ANY device (not just the one that
+  // shared), so they point at the canonical web host rather than this origin.
+  const SHARE_ORIGIN = 'https://nexa-qydr.onrender.com';
+  const SEEK_STEP = 10; // seconds moved by a double-tap on the left/right zone
 
   const state = {
     started: false,
@@ -60,6 +64,9 @@
     editVideoId: null,
     myVideos: [],
     myUnsub: null,
+    lastTapZone: 'c',      // 'l' | 'c' | 'r' — which third of the card was tapped
+    focusVideoId: null,    // ?video=<id> deep-link target
+    focusFetching: false,
     soundOn: (function () { try { var s = localStorage.getItem('nexa_videos_sound'); return s === null ? true : s === '1'; } catch (e) { return true; } })()
   };
 
@@ -124,10 +131,12 @@
   }
 
   // ── feed: subscribe / page ───────────────────────────────────────────────
-  function open() {
+  function open(focusVideoId) {
     if (!window.db || !myUid()) return;
+    if (focusVideoId) state.focusVideoId = focusVideoId;
     renderShell();
     if (!state.started) start();
+    else if (state.focusVideoId) focusPendingVideo();
   }
 
   function start() {
@@ -163,6 +172,9 @@
 
   function stop() {
     if (state.unsub) { try { state.unsub(); } catch (e) {} state.unsub = null; }
+    // Leaving the tab must silence the clip, not just drop the listener.
+    const feed = el('nvFeed');
+    if (feed) feed.querySelectorAll('.nv-video').forEach(v => { try { v.pause(); } catch (e) {} });
     state.started = false;
   }
 
@@ -217,6 +229,11 @@
     }
   }
 
+  // The feed used to do `feed.innerHTML = …` on every snapshot, which recreated
+  // every <video> element — so any like/comment/share from anyone restarted the
+  // clip you were watching. It now diffs: existing cards are REUSED (their
+  // <video> is never touched) and only the changed numbers/meta are patched;
+  // new cards are inserted, deleted ones removed, order fixed.
   function renderFeed() {
     const feed = el('nvFeed');
     if (!feed) return;
@@ -224,15 +241,89 @@
       renderEmpty('No videos yet. Be the first to post one!');
       return;
     }
-    feed.innerHTML = state.videos.map(cardHtml).join('');
+    const empty = feed.querySelector('.nv-empty');
+    if (empty) empty.remove();
+
+    const existing = {};
+    feed.querySelectorAll('.nv-card').forEach(c => { existing[c.getAttribute('data-id')] = c; });
+
+    const wanted = {};
+    state.videos.forEach(v => { wanted[v.id] = true; });
+    Object.keys(existing).forEach(id => { if (!wanted[id]) existing[id].remove(); });
+
+    let prev = null;
+    state.videos.forEach(v => {
+      let card = existing[v.id];
+      if (!card) {
+        const t = document.createElement('div');
+        t.innerHTML = cardHtml(v);
+        card = t.firstElementChild;
+        existing[v.id] = card;
+      } else {
+        patchCard(card, v);
+      }
+      const shouldBe = prev ? prev.nextSibling : feed.firstChild;
+      if (card !== shouldBe) feed.insertBefore(card, shouldBe);
+      prev = card;
+    });
+
     applySound();
     if (window.lucide) window.lucide.createIcons();
-    // (Re)attach the observer to the fresh nodes and prime the first card.
     setupObserver();
-    requestAnimationFrame(() => {
+    if (!feed.querySelector('.nv-card.nv-visible')) {
       const first = feed.querySelector('.nv-card');
       if (first) first.classList.add('nv-visible');
-    });
+    }
+    if (state.focusVideoId) focusPendingVideo();
+  }
+
+  // Patch the volatile bits of a card WITHOUT touching its <video>.
+  function metaSig(v) { return (v.caption || '') + '|' + (v.music || ''); }
+
+  function patchCard(card, v) {
+    const set = (sel, text) => {
+      const n = card.querySelector(sel);
+      if (n && n.textContent !== text) n.textContent = text;
+    };
+    set('.nv-rail-like .nv-rail-count', fmtCount(v.likes));
+    set('[data-act="comment"] .nv-rail-count', fmtCount(v.commentsCount));
+    set('[data-act="share"] .nv-rail-count', fmtCount(v.shares));
+    set('.nv-dur', v.duration ? fmtDur(Number(v.duration) * 1000) : '');
+    const likeBtn = card.querySelector('.nv-rail-like');
+    if (likeBtn) likeBtn.classList.toggle('liked', !!state.likedMine[v.id]);
+    const meta = card.querySelector('.nv-meta');
+    if (meta && meta.getAttribute('data-sig') !== metaSig(v)) meta.outerHTML = metaHtml(v);
+  }
+
+  // Scroll to + play the ?video=<id> deep-link target, fetching it directly if
+  // it is not in the first page of the feed.
+  function focusPendingVideo() {
+    const id = state.focusVideoId;
+    if (!id) return;
+    const feed = el('nvFeed');
+    if (!feed) return;
+    const jump = () => {
+      const card = feed.querySelector('.nv-card[data-id="' + id.replace(/["'\\]/g, '') + '"]');
+      if (!card) return false;
+      card.scrollIntoView({ block: 'start' });
+      card.classList.add('nv-visible');
+      const video = card.querySelector('.nv-video');
+      if (video) tryPlay(video);
+      state.focusVideoId = null;
+      return true;
+    };
+    if (jump()) return;
+    if (state.focusFetching) return;
+    state.focusFetching = true;
+    window.db.collection('videos').doc(id).get().then(d => {
+      state.focusFetching = false;
+      if (!d.exists) { state.focusVideoId = null; return; }
+      if (!state.videos.some(v => v.id === id)) {
+        state.videos = [Object.assign({ id: d.id }, d.data())].concat(state.videos);
+        renderFeed();
+      }
+      requestAnimationFrame(() => { if (state.focusVideoId) focusPendingVideo(); });
+    }).catch(() => { state.focusFetching = false; state.focusVideoId = null; });
   }
 
   function appendCards(list) {
@@ -260,7 +351,7 @@
 
   function metaHtml(v) {
     return '' +
-      '<div class="nv-meta">' +
+      '<div class="nv-meta" data-sig="' + esc(metaSig(v)) + '">' +
         '<div class="nv-author">' +
           '<img class="nv-author-pic" src="' + esc(safeUrl(v.authorPhoto || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
           '<span class="nv-author-name">@' + esc(v.authorName || 'user') + '</span>' +
@@ -286,6 +377,7 @@
           '<i data-lucide="heart" style="width:84px;height:84px;"></i></div>' +
         '<div class="nv-play-hint" aria-hidden="true">' +
           '<i data-lucide="play" style="width:30px;height:30px;"></i></div>' +
+        '<div class="nv-dur">' + (v.duration ? fmtDur(Number(v.duration) * 1000) : '') + '</div>' +
         metaHtml(v) +
         '<div class="nv-rail">' +
           '<button class="nv-rail-btn nv-rail-like' + (liked ? ' liked' : '') + '" data-act="like" data-id="' + esc(v.id) + '" aria-label="Like">' +
@@ -318,6 +410,7 @@
         if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
           card.classList.add('nv-visible');
           state.activeId = id;
+          attachVideoTime(card, video);
           tryPlay(video);
           bumpView(id, card.getAttribute('data-uid'));
           ensureLikedState(id, card);
@@ -328,6 +421,83 @@
       });
     }, { root: feed, threshold: [0, 0.6, 0.95] });
     feed.querySelectorAll('.nv-card').forEach(c => _observer.observe(c));
+  }
+
+  // Drives the progress bar + duration badge from the real media clock.
+  function attachVideoTime(card, video) {
+    if (!video || video._nvTime) return;
+    video._nvTime = true;
+    const prog = card.querySelector('.nv-progress > i');
+    const durEl = card.querySelector('.nv-dur');
+    const paint = () => {
+      const d = video.duration;
+      if (durEl && isFinite(d) && d > 0) durEl.textContent = fmtDur(d * 1000);
+      if (prog && isFinite(d) && d > 0) {
+        prog.style.width = Math.min(100, (video.currentTime / d) * 100) + '%';
+      }
+    };
+    video.addEventListener('timeupdate', paint);
+    video.addEventListener('loadedmetadata', paint);
+    video.addEventListener('durationchange', paint);
+    paint();
+  }
+
+  // Double-tap on the left/right third: jump SEEK_STEP seconds back/forward.
+  function seekBy(card, delta) {
+    const video = card.querySelector('.nv-video');
+    if (!video) return;
+    const d = video.duration;
+    if (!isFinite(d) || d <= 0) return;
+    video.currentTime = Math.max(0, Math.min(d - 0.05, (video.currentTime || 0) + delta));
+    const prog = card.querySelector('.nv-progress > i');
+    if (prog) prog.style.width = Math.min(100, (video.currentTime / d) * 100) + '%';
+    showSeekPill(card, delta);
+  }
+
+  function showSeekPill(card, delta) {
+    let pill = card.querySelector('.nv-seek-pill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.className = 'nv-seek-pill';
+      card.appendChild(pill);
+    }
+    pill.textContent = delta < 0 ? '⏪ ' + Math.abs(delta) + 's' : delta + 's ⏩';
+    pill.classList.toggle('nv-seek-pill-l', delta < 0);
+    pill.classList.add('show');
+    clearTimeout(pill._t);
+    pill._t = setTimeout(() => pill.classList.remove('show'), 700);
+  }
+
+  // Drag the bottom bar to scrub (pointer capture on the document so the drag
+  // survives leaving the 3px track).
+  function startScrub(e) {
+    const bar = e.target.closest && e.target.closest('.nv-progress');
+    const card = cardAt(e.target);
+    if (!bar || !card) return false;
+    const video = card.querySelector('.nv-video');
+    if (!video || !isFinite(video.duration) || video.duration <= 0) return false;
+    clearLongPress();
+    try { e.preventDefault(); } catch (err) {}
+    card.classList.add('nv-scrubbing');
+    const rect = bar.getBoundingClientRect();
+    const prog = bar.querySelector('i');
+    const apply = (clientX) => {
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1)));
+      try { video.currentTime = ratio * video.duration; } catch (err) {}
+      if (prog) prog.style.width = (ratio * 100) + '%';
+    };
+    apply(e.clientX);
+    const move = ev => apply(ev.clientX);
+    const up = () => {
+      card.classList.remove('nv-scrubbing');
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+    return true;
   }
 
   function tryPlay(video) {
@@ -431,26 +601,44 @@
       else if (act === 'delete') deleteVideo(id);
       return;
     }
-    // Tap the video surface: single tap = pause/play, double tap = like.
+    // Tap the video surface. Single tap = pause/play. Double tap: LEFT third
+    // seeks back 10s, RIGHT third seeks forward 10s, CENTRE likes (the habit).
     const card = cardAt(e.target);
     if (!card) return;
     const id = card.getAttribute('data-id');
     const now = Date.now();
+    const zone = tapZone(card, e.clientX);
     if (state.lastTapId === id && now - state.lastTapAt < DOUBLE_TAP_MS) {
+      const prevZone = state.lastTapZone;
       state.lastTapAt = 0; state.lastTapId = null;
-      likeBurst(id, card);
+      const z = prevZone === 'c' ? zone : prevZone;
+      if (z === 'l') seekBy(card, -SEEK_STEP);
+      else if (z === 'r') seekBy(card, SEEK_STEP);
+      else likeBurst(id, card);
       return;
     }
-    state.lastTapAt = now; state.lastTapId = id;
+    state.lastTapAt = now; state.lastTapId = id; state.lastTapZone = zone;
     setTimeout(() => {
       if (state.lastTapAt !== now) return; // a second tap happened → it was a double
       togglePlay(card);
     }, DOUBLE_TAP_MS);
   }
 
+  function tapZone(card, clientX) {
+    try {
+      const r = card.getBoundingClientRect();
+      if (!r.width) return 'c';
+      const x = (clientX - r.left) / r.width;
+      if (x < 0.35) return 'l';
+      if (x > 0.65) return 'r';
+    } catch (e) {}
+    return 'c';
+  }
+
   function togglePlay(card) {
     const video = card.querySelector('.nv-video');
     if (!video) return;
+    attachVideoTime(card, video);
     if (video.paused) { tryPlay(video); card.classList.add('nv-playing'); }
     else { try { video.pause(); } catch (e) {} card.classList.add('nv-paused'); }
     card.classList.toggle('nv-paused', video.paused);
@@ -480,21 +668,33 @@
     if (btn) btn.classList.toggle('liked', liked);
   }
 
+  // The per-user marker and the denormalised count move TOGETHER in one
+  // transaction, so a double-tap can't double-count and a failed write can't
+  // leave the badge ahead of the server. Optimistic paint first for feel; the
+  // next feed snapshot then reconciles the number to the truth.
   function doLike(id, liked) {
     state.likedMine[id] = liked;
-    const likeRef = window.db.collection('videos').doc(id).collection('likes').doc(myUid());
     const vidRef = window.db.collection('videos').doc(id);
+    const likeRef = vidRef.collection('likes').doc(myUid());
     const countEl = el('nvLikeCount-' + id);
-    const cur = Number((countEl && countEl.textContent) ? parseCount(countEl.textContent) : 0);
-    if (countEl) countEl.textContent = fmtCount(Math.max(0, cur + (liked ? 1 : -1)));
-    const p = liked ? likeRef.set({ at: Date.now() }) : likeRef.delete();
-    p.then(() => vidRef.update({ likes: fv().increment(liked ? 1 : -1) }))
-      .catch(err => {
-        console.warn('like failed', err && err.message);
-        state.likedMine[id] = !liked;
-        const b = document.querySelector('.nv-rail-like[data-id="' + id + '"]');
-        if (b) b.classList.toggle('liked', !liked);
-      });
+    const prev = countEl ? parseCount(countEl.textContent) : 0;
+    if (countEl) countEl.textContent = fmtCount(Math.max(0, prev + (liked ? 1 : -1)));
+    const paintBtn = (on) => {
+      const b = document.querySelector('.nv-rail-like[data-id="' + id + '"]');
+      if (b) b.classList.toggle('liked', on);
+    };
+    paintBtn(liked);
+    window.db.runTransaction(tx => tx.get(likeRef).then(d => {
+      const has = d.exists;
+      if (liked && !has) { tx.set(likeRef, { at: Date.now() }); tx.update(vidRef, { likes: fv().increment(1) }); }
+      else if (!liked && has) { tx.delete(likeRef); tx.update(vidRef, { likes: fv().increment(-1) }); }
+    })).catch(err => {
+      console.warn('like failed', err && err.message);
+      state.likedMine[id] = !liked;
+      if (countEl) countEl.textContent = fmtCount(prev);
+      paintBtn(!liked);
+      toast('Could not update like', 'error');
+    });
   }
 
   // "1.2K" → 1200 (so an optimistic +1/-1 stays sane)
@@ -513,21 +713,29 @@
     toast(saved ? 'Saved' : 'Removed from saved', 'success');
   }
 
+  // The share link points at the watch.html landing (canonical host) so it
+  // opens the ACTUAL video on another device — not the app's home screen.
+  function shareUrlFor(id) { return SHARE_ORIGIN + '/watch.html?v=' + encodeURIComponent(id); }
+
   function shareVideo(id) {
-    const v = state.videos.find(x => x.id === id);
-    const url = window.location.origin + '/dashboard.html';
+    const v = state.videos.find(x => x.id === id) || state.myVideos.find(x => x.id === id);
+    const url = shareUrlFor(id);
     const text = (v && v.caption) ? v.caption : 'Watch this video on Nexa';
-    const finish = () => {
+    // Count ONLY when a share really completed — cancelling the OS sheet or a
+    // failed clipboard write must not inflate the number.
+    const countShare = () => {
       window.db.collection('videos').doc(id).update({ shares: fv().increment(1) }).catch(() => {});
       const c = el('nvShareCount-' + id);
       if (c) c.textContent = fmtCount(parseCount(c.textContent) + 1);
     };
     if (navigator.share) {
-      navigator.share({ title: 'Nexa', text: text, url: url }).then(finish).catch(() => {});
+      navigator.share({ title: 'Nexa', text: text, url: url }).then(countShare).catch(() => {});
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(text + ' ' + url).then(() => { toast('Link copied', 'success'); finish(); }).catch(() => {});
+      navigator.clipboard.writeText(text + ' ' + url)
+        .then(() => { toast('Link copied', 'success'); countShare(); })
+        .catch(() => toast('Could not copy the link', 'error'));
     } else {
-      finish();
+      toast('Sharing is not supported on this device', 'error');
     }
   }
 
@@ -569,6 +777,7 @@
   let _lpTimer = null;
   const SPEEDS = [0.5, 1, 1.5, 2];
   function onFeedPointerDown(e) {
+    if (e.target.closest && e.target.closest('.nv-progress')) { startScrub(e); return; }
     const card = cardAt(e.target);
     if (!card || (e.target.closest && e.target.closest('[data-act]'))) return;
     clearLongPress();
@@ -726,7 +935,10 @@
               '<div class="nv-pick-title">Select a video</div>' +
               '<div class="nv-pick-sub">From your gallery or camera · up to ' + MAX_VIDEO_MIN + ' min · max ' + MAX_VIDEO_MB + ' MB</div>' +
             '</div>' +
-            '<video class="nv-composer-preview" id="nvComposerPreview" playsinline muted loop style="display:none;"></video>' +
+            '<video class="nv-composer-preview" id="nvComposerPreview" playsinline loop style="display:none;"></video>' +
+            '<button class="nv-composer-mute" id="nvComposerMute" onclick="nexaVideosTogglePreviewSound()" aria-label="Toggle preview sound" style="display:none;">' +
+              '<i data-lucide="volume-2" style="width:18px;height:18px;"></i></button>' +
+            '<div class="nv-composer-dur" id="nvComposerDur" style="display:none;"></div>' +
             '<div class="nv-upload-ring" id="nvUploadRing" style="display:none;">' +
               '<svg viewBox="0 0 120 120"><circle class="nv-ring-track" cx="60" cy="60" r="52"></circle>' +
               '<circle class="nv-ring-fill" id="nvRingFill" cx="60" cy="60" r="52"></circle></svg>' +
@@ -754,7 +966,9 @@
     state.pendingTooLong = false;
     state.pendingTooBig = false;
     const prev = el('nvComposerPreview');
-    if (prev) { prev.style.display = 'none'; prev.removeAttribute('src'); }
+    if (prev) { prev.style.display = 'none'; prev.muted = false; prev.removeAttribute('src'); }
+    const muteBtn = el('nvComposerMute'); if (muteBtn) muteBtn.style.display = 'none';
+    const durBox = el('nvComposerDur'); if (durBox) { durBox.style.display = 'none'; durBox.textContent = ''; }
     const pick = el('nvComposerPick');
     if (pick) pick.style.display = '';
     const cap = el('nvComposerCaption'); if (cap) cap.value = '';
@@ -804,13 +1018,27 @@
     if (prev) {
       prev.src = URL.createObjectURL(file);
       prev.style.display = '';
+      prev.muted = false; // hear what you are about to post
       prev.load();
-      prev.play().catch(() => {});
+      prev.play().catch(() => {
+        // Audible autoplay refused → start muted and reflect it on the toggle.
+        prev.muted = true;
+        const mb = el('nvComposerMute');
+        if (mb) mb.innerHTML = '<i data-lucide="volume-x" style="width:18px;height:18px;"></i>';
+        if (window.lucide) window.lucide.createIcons();
+        try { prev.play().catch(() => {}); } catch (e) {}
+      });
+      const muteBtn = el('nvComposerMute'); if (muteBtn) muteBtn.style.display = 'flex';
       prev.onloadedmetadata = () => {
         const durMs = Math.round((prev.duration || 0) * 1000);
         state.pendingDurationMs = durMs;
         state.pendingDuration = Math.round(prev.duration || 0);
         state.pendingTooLong = durMs > MAX_VIDEO_MS;
+        const durBox = el('nvComposerDur');
+        if (durBox) {
+          durBox.style.display = '';
+          durBox.textContent = fmtDur(durMs) + ' · ' + Math.max(1, Math.round(file.size / (1024 * 1024))) + ' MB';
+        }
         const postBtn = el('nvComposerPost');
         if (state.pendingTooLong) {
           toast('Video is ' + fmtDur(durMs) + ' … the max is ' + MAX_VIDEO_MIN +
@@ -821,6 +1049,18 @@
         }
       };
     }
+  }
+
+  function togglePreviewSound() {
+    const prev = el('nvComposerPreview');
+    if (!prev) return;
+    prev.muted = !prev.muted;
+    const btn = el('nvComposerMute');
+    if (btn) {
+      btn.innerHTML = '<i data-lucide="' + (prev.muted ? 'volume-x' : 'volume-2') + '" style="width:18px;height:18px;"></i>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+    if (!prev.muted) { try { prev.play().catch(() => {}); } catch (e) {} }
   }
 
   function setRing(active, pct, stage) {
@@ -1074,9 +1314,11 @@
     close: stop,
     refresh: () => { state.started = false; if (el('nexaVideosRoot')) { el('nexaVideosRoot').dataset.built = ''; } open(); },
     renderMyVideos: renderMyVideos,
-    closeMyVideos: closeMyVideos
+    closeMyVideos: closeMyVideos,
+    openFocus: (id) => { state.focusVideoId = id; open(id); }
   };
   window.nexaVideosToggleSound = toggleSound;
+  window.nexaVideosTogglePreviewSound = togglePreviewSound;
   window.nexaVideosOpenComposer = openComposer;
   window.nexaVideosCloseComposer = closeComposer;
   window.nexaVideosComposerBackdrop = composerBackdrop;

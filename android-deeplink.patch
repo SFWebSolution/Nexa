@@ -30,11 +30,11 @@ index c341ddd..b8b4f4d 100644
                  <category android:name="android.intent.category.LAUNCHER" />
              </intent-filter>
 +
-+            <!-- App Link: an invite link (join.html) opens straight in the app.
-+                 autoVerify makes Android check
-+                 https://nexa-qydr.onrender.com/.well-known/assetlinks.json;
++            <!-- App Links: an invite link (join.html) or a shared video link
++                 (watch.html) opens straight in the app. autoVerify makes Android
++                 check https://nexa-qydr.onrender.com/.well-known/assetlinks.json;
 +                 when it matches, the OS opens the app with no chooser dialog.
-+                 The pathPrefix keeps this scoped to invite links only. -->
++                 The pathPrefixes keep this scoped to those two entry points. -->
 +            <intent-filter android:autoVerify="true">
 +                <action android:name="android.intent.action.VIEW" />
 +                <category android:name="android.intent.category.DEFAULT" />
@@ -42,6 +42,9 @@ index c341ddd..b8b4f4d 100644
 +                <data android:scheme="https"
 +                      android:host="nexa-qydr.onrender.com"
 +                      android:pathPrefix="/join.html" />
++                <data android:scheme="https"
++                      android:host="nexa-qydr.onrender.com"
++                      android:pathPrefix="/watch.html" />
 +            </intent-filter>
 +
 +            <!-- Custom scheme fallback (nexa://join.html?...). Used when the
@@ -120,7 +123,8 @@ index dc57c6f..4eb7419 100644
 +    /**
 +     * Resolves a Nexa deep-link intent to an https URL the WebView can load,
 +     * or null when the intent is not one. Accepts the verified App Link
-+     * (https://<APP_HOST>/join.html?...) and the nexa:// custom scheme.
++     * (https://<APP_HOST>/join.html?..., /watch.html?...) and the nexa://
++     * custom scheme.
 +     */
 +    private String deepLinkTarget(Intent intent) {
 +        if (intent == null || intent.getData() == null) return null;

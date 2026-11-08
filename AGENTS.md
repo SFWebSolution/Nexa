@@ -1135,7 +1135,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 ## PWA service worker caching (firebase-messaging-sw.js) — do NOT regress
 - The service worker caches `dashboard.html`, `nexa-voice-room.js`/`.css`, `app-main.js` etc. If first-party JS/CSS is served Stale-While-Revalidate, **the first load after every deploy runs the PREVIOUS version** — so a pushed fix silently doesn't apply until a second reload (this is exactly why "the echo is still there" / "the layout is still broken" after a fix was deployed). First-party `.js`/`.css` are now NETWORK-FIRST (falling back to cache only when offline); HTML navigations were already network-first.
-- `CACHE_NAME` must be BUMPED on each release (`nexa-v6-perf` → `nexa-v7-av`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
+- `CACHE_NAME` must be BUMPED on each release (`nexa-v8-videos` → `nexa-v9-player`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
 - When adding a new first-party script/style to the page, add it to `ASSETS_TO_CACHE` too (currently `nexa-voice-room.css` + `nexa-voice-room.js` are listed).
 
 ## Live video layout (nexa-voice-room.css) — do NOT regress
@@ -1786,6 +1786,46 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   (`nb` shown on Stories, `vb` shown on Videos). The old `.nv-fab` (a floating +
   over the feed) was removed -- it overlapped the rail and was redundant. Do NOT
   re-add `.nv-fab`.
+- **The feed PATCHES cards in place; it never rebuilds them.** `renderFeed()` used
+  to do `feed.innerHTML = state.videos.map(cardHtml).join('')` on every snapshot,
+  which recreated every `<video>` element -- so any like/comment/share (yours or
+  anyone's) RESTARTED the clip you were watching. It now diffs: existing cards are
+  reused (their `<video>` is never touched), `patchCard(card, v)` updates only the
+  like/comment/share counts, the duration badge and (when `data-sig` changes) the
+  `.nv-meta` block, new cards are inserted and deleted ones removed with order
+  fixed via `insertBefore`. Do NOT go back to a wholesale `innerHTML` rebuild, and
+  do NOT let `patchCard` touch `.nv-video`.
+- **Player gestures:** single tap = play/pause; **double-tap LEFT third = -10s,
+  RIGHT third = +10s, CENTRE = like** (`SEEK_STEP`, `tapZone()`, `seekBy()`,
+  `showSeekPill()`). The progress bar is driven from the real media clock
+  (`attachVideoTime()` wires `timeupdate`/`loadedmetadata`) and is **draggable**
+  (`startScrub()` intercepts `pointerdown` on `.nv-progress` BEFORE the
+  long-press speed handler, with a 22px invisible hit area via `.nv-progress::after`
+  because the visible track is only 3px). A duration badge (`.nv-dur`) sits
+  top-left. `stop()` also PAUSES every clip, not just unsubscribes.
+- **Counts are accurate:** likes move the per-user marker AND the denormalised
+  count TOGETHER in one `runTransaction` (idempotent -- a double-tap can't
+  double-count and a failed write rolls the badge back); the share counter
+  increments ONLY when `navigator.share` resolves or the clipboard copy succeeds
+  (cancelling the OS sheet must not inflate it). Optimistic paint happens first
+  for feel; the next feed snapshot reconciles the number to the server truth.
+- **Share = a real external link.** `shareUrlFor(id)` returns
+  `https://nexa-qydr.onrender.com/watch.html?v=<id>` (`SHARE_ORIGIN` is the
+  CANONICAL host, not `window.location.origin`, so the link resolves from any
+  device). `watch.html` is a self-contained landing page (own Firebase config +
+  CSS, does NOT load app-main.js) that previews the clip (download-first blob so
+  it doesn't stall), shows author/caption/duration/stats, and offers an
+  Android `intent://` + `nexa://` hand-off (mirroring `join.html`). Signed-out
+  viewers route through `/login.html?next=`, signed-in ones through
+  `/dashboard.html?video=<id>`. `checkVideoUrlParam()` (app-main.js, boot) opens
+  Moments -> Videos and calls `window.NexaVideos.openFocus(id)`, which scrolls to
+  the clip and fetches it directly if it is not in the first feed page.
+  `android-deeplink.patch` carries a matching `/watch.html` App Link filter.
+- **Composer preview is audible + shows the duration.** `#nvComposerPreview` is no
+  longer hard-`muted`; it plays with sound and has a `.nv-composer-mute` toggle
+  (`togglePreviewSound()`), falling back to muted (and flipping the icon) if the
+  browser blocks audible autoplay. `#nvComposerDur` shows `M:SS · N MB` once the
+  file's metadata loads. Do NOT re-add the bare `muted` attribute.
 - **Settings -> My Videos** (`data-subpage="myvideos"`, `#nvMyVideosList`,
   `#myVideosRow`): lists ONLY the user's own videos (never stories). It uses a
   SINGLE-FIELD equality query `videos.where('uid','==',me).limit(100)` and sorts

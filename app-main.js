@@ -611,6 +611,7 @@ auth.onAuthStateChanged(async (user) => {
     maybeReopenLastChannel(); // no-op if channels haven't arrived yet — retried in listenMyChannels
     checkGroupInviteUrlParam();
     checkChannelInviteUrlParam();
+    checkVideoUrlParam();
     nexaBootStep('community');
     console.log("✅ App fully ready");
     // Final milestone: let the browser paint the ready dashboard behind the
@@ -15572,6 +15573,24 @@ async function _resolveGroupByInviteToken(token) {
     if (doc.exists) return { id: doc.id, ...doc.data() };
   } catch (e) {}
   return null;
+}
+
+// ?video=<id> deep link (from a shared watch.html link) — opens the Moments →
+// Videos feed and jumps straight to that clip.
+async function checkVideoUrlParam() {
+  if (!currentUser) return;
+  const params = new URLSearchParams(window.location.search);
+  const vid = params.get('video');
+  if (!vid) return;
+  try {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } catch (e) {}
+  switchTab('stories');
+  switchMomentsSubTab('videos');
+  if (window.NexaVideos) {
+    if (window.NexaVideos.openFocus) window.NexaVideos.openFocus(vid);
+    else window.NexaVideos.open(vid);
+  }
 }
 
 async function checkGroupInviteUrlParam() {

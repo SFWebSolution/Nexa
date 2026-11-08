@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https: wss:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch on Nexa — Nexa Messenger</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --nx-primary: #0b57d0;
+      --nx-primary-lt: #1d6bf3;
+      --nx-bg: #f4f6fa;
+      --nx-surface: #ffffff;
+      --nx-border: #e2e8f0;
+      --nx-text-0: #081226;
+      --nx-text-dim: #5c6c84;
+      --nx-text-muted: #8a99ad;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-display: 'Sora', 'Plus Jakarta Sans', sans-serif;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-body);
+      background: radial-gradient(1200px 600px at 50% -10%, #e8effb 0%, var(--nx-bg) 55%, #eef2f8 100%);
+      color: var(--nx-text-0);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 18px; min-height: 100vh; min-height: 100dvh;
+    }
+    .wcard {
+      width: 100%; max-width: 440px; background: var(--nx-surface);
+      border: 1px solid var(--nx-border); border-radius: 24px;
+      box-shadow: 0 24px 60px -20px rgba(8, 18, 38, .28), 0 2px 8px rgba(8, 18, 38, .05);
+      padding: 22px 22px 22px; text-align: center;
+      animation: wrise .5s cubic-bezier(.22,1,.36,1) both;
+    }
+    @keyframes wrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .wbrand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 16px; }
+    .wbrand img { width: 30px; height: 30px; border-radius: 9px; }
+    .wbrand span { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -.2px; }
+    .wstage {
+      position: relative; width: 100%; aspect-ratio: 9/16; max-height: 60vh;
+      border-radius: 18px; overflow: hidden; background: #05070c;
+      border: 1px solid var(--nx-border); box-shadow: 0 12px 30px -14px rgba(8,18,38,.4);
+      margin: 0 auto 16px;
+    }
+    .wstage video { width: 100%; height: 100%; object-fit: contain; background: #05070c; display: block; }
+    .wposter { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .wplay {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.55));
+      cursor: pointer; border: none; width: 100%;
+    }
+    .wplay span {
+      width: 66px; height: 66px; border-radius: 50%;
+      background: rgba(255,255,255,.94); color: #0b57d0;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 10px 26px -8px rgba(0,0,0,.6);
+      transition: transform .15s ease;
+    }
+    .wplay:active span { transform: scale(.92); }
+    .wmeta { text-align: left; margin-bottom: 16px; }
+    .wauthor { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .wauthor img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #eef2f8; border: 1px solid var(--nx-border); }
+    .wname { font-weight: 700; font-size: 15px; }
+    .wsub { font-size: 12.5px; color: var(--nx-text-muted); }
+    .wcap { font-size: 14.5px; line-height: 1.5; color: var(--nx-text-0); margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; }
+    .wmusic { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--nx-text-dim); }
+    .wstats { display: flex; gap: 14px; font-size: 12.5px; color: var(--nx-text-muted); font-weight: 600; margin-top: 8px; }
+    .wbtn {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      width: 100%; border: none; cursor: pointer; font-family: inherit;
+      font-size: 15.5px; font-weight: 700; padding: 15px 18px; border-radius: 14px;
+      transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+      text-decoration: none;
+    }
+    .wbtn:active { transform: scale(.98); }
+    .wbtn-primary { background: linear-gradient(135deg, var(--nx-primary-lt), var(--nx-primary)); color: #fff; box-shadow: 0 12px 26px -12px rgba(11,87,208,.75); margin-bottom: 11px; }
+    .wbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: 13.5px; padding: 11px; }
+    .wstatus { font-size: 13.5px; font-weight: 600; padding: 11px 14px; border-radius: 13px; margin-bottom: 14px; line-height: 1.4; }
+    .wstatus.err { background: #fdeaea; color: #a12626; }
+    .wspinner {
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 3.5px solid #dfe6f0; border-top-color: var(--nx-primary);
+      margin: 14px auto 18px; animation: wspin .8s linear infinite;
+    }
+    @keyframes wspin { to { transform: rotate(360deg); } }
+    .wloading { font-size: 14px; color: var(--nx-text-dim); }
+    .whint { font-size: 12px; color: var(--nx-text-muted); margin-top: 6px; line-height: 1.5; }
+    .wfoot { font-size: 11.5px; color: var(--nx-text-muted); margin-top: 18px; line-height: 1.5; }
+    .wfoot a { color: var(--nx-text-dim); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="wcard" id="wcard">
+    <div class="wbrand"><img src="icon-192.png" alt=""><span>Nexa Messenger</span></div>
+    <div id="wbody">
+      <div class="wspinner"></div>
+      <div class="wloading" id="wloading">Loading video…</div>
+    </div>
+    <div class="wfoot">Nexa Messenger · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></div>
+  </main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBczCrV1vpJB_0DTsbBDupTXQuEV7l5IDg",
+  authDomain: "mel-odix.firebaseapp.com",
+  projectId: "mel-odix",
+  storageBucket: "mel-odix.firebasestorage.app",
+  messagingSenderId: "217595352090",
+  appId: "1:217595352090:web:56696fd53ae5bb59d2eda3"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// The APK's applicationId — used to build an Android intent:// URL so an
+// installed Nexa app opens the watch page directly; without the app the intent
+// falls back to this page (browser_fallback_url).
+const NEXA_ANDROID_PACKAGE = "com.nexa.messenger";
+
+const params = new URLSearchParams(window.location.search);
+const videoId = params.get("v");
+const body = document.getElementById("wbody");
+
+function isAndroid() { try { return /Android/i.test(navigator.userAgent || ""); } catch (e) { return false; } }
+function isNativeApp() { try { return /NexaMobileNative/i.test(navigator.userAgent || ""); } catch (e) { return false; } }
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function safeUrl(u) {
+  const v = String(u || "").trim().replace(/["'\\]/g, "");
+  return /^(https?:|data:image\/|blob:)/i.test(v) ? v : "";
+}
+function fmtCount(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(n % 1e6 >= 1e5 ? 1 : 0) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(n % 1e3 >= 100 ? 1 : 0) + "K";
+  return String(n);
+}
+function fmtDur(ms) {
+  const total = Math.round((Number(ms) || 0) / 1000);
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return m + ":" + String(sec).padStart(2, "0");
+}
+function timeAgo(ms) {
+  if (!ms) return "";
+  const s = Math.max(1, Math.floor((Date.now() - ms) / 1000));
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + "d ago";
+  const w = Math.floor(d / 7);
+  if (w < 5) return w + "w ago";
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return mo + "mo ago";
+  return Math.floor(d / 365) + "y ago";
+}
+
+// The dashboard deep-link that opens this exact video in the feed.
+function continueUrl() { return "/dashboard.html?video=" + encodeURIComponent(videoId); }
+function loginUrl() {
+  const back = "/watch.html?v=" + encodeURIComponent(videoId);
+  return "/login.html?next=" + encodeURIComponent(back);
+}
+
+// Android intent:// + nexa:// scheme, mirroring join.html's hand-off.
+function androidIntentUrl(fallbackHref) {
+  const host = window.location.host;
+  const path = window.location.pathname + window.location.search;
+  const fb = encodeURIComponent(new URL(fallbackHref, window.location.href).href);
+  return "intent://" + host + path + "#Intent;scheme=https;package=" + NEXA_ANDROID_PACKAGE +
+         ";S.browser_fallback_url=" + fb + ";end";
+}
+function nexaSchemeUrl() { return "nexa://" + window.location.host + window.location.pathname + window.location.search; }
+
+let _busy = false;
+function tryOpenApp(target, onDone, delay) {
+  if (_busy) return;
+  _busy = true;
+  let done = false;
+  const onHide = () => { if (document.visibilityState === "hidden") finish(); };
+  const cleanup = () => { _busy = false; document.removeEventListener("visibilitychange", onHide); clearTimeout(timer); };
+  const finish = () => { if (done) return; done = true; cleanup(); if (onDone) onDone(); };
+  document.addEventListener("visibilitychange", onHide);
+  const timer = setTimeout(finish, delay || 1400);
+  try { window.location.href = target; } catch (e) { finish(); }
+}
+function openAppOrFallback(fallback) {
+  const abs = new URL(fallback, window.location.href).href;
+  if (isAndroid()) {
+    tryOpenApp(androidIntentUrl(abs), () => {
+      tryOpenApp(nexaSchemeUrl(), () => { window.location.href = abs; }, 900);
+    }, 1400);
+  } else {
+    tryOpenApp(nexaSchemeUrl(), () => { window.location.href = abs; }, 900);
+  }
+}
+
+function renderError(message) {
+  body.innerHTML =
+    '<div class="wstatus err">⚠️ ' + esc(message) + '</div>' +
+    '<a class="wbtn wbtn-primary" href="/dashboard.html">Open Nexa</a>' +
+    '<a class="wbtn wbtn-ghost" href="/">Go to homepage</a>';
+}
+
+// Blob-cache the clip before playing it so the watch page does not stall on a
+// half-buffered remote URL (same download-first rule as the in-app viewer).
+async function loadVideoInto(stage, url) {
+  try {
+    const res = await fetch(url, { mode: "cors", credentials: "omit" });
+    const blob = await res.blob();
+    const obj = URL.createObjectURL(blob);
+    const video = stage.querySelector("video");
+    if (video) { video.src = obj; video.play().catch(() => {}); }
+    const play = stage.querySelector(".wplay");
+    if (play) play.remove();
+  } catch (e) {
+    // Fall back to streaming the remote URL directly.
+    const video = stage.querySelector("video");
+    if (video) { video.src = url; }
+    const play = stage.querySelector(".wplay");
+    if (play) play.remove();
+  }
+}
+
+function renderCard(v, signedIn) {
+  const poster = safeUrl(v.thumbUrl) || "";
+  const videoUrl = safeUrl(v.videoUrl);
+  const dur = v.duration ? fmtDur(Number(v.duration) * 1000) : "";
+
+  body.innerHTML =
+    '<div class="wstage" id="wstage">' +
+      (poster ? '<img class="wposter" id="wposter" src="' + esc(poster) + '" alt="">' : '') +
+      '<video class="hidden" id="wvideo" playsinline webkit-playsinline controls' + (poster ? ' poster="' + esc(poster) + '"' : '') + '></video>' +
+      '<button class="wplay" id="wplay" aria-label="Play video">' +
+        '<span><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>' +
+      '</button>' +
+    '</div>' +
+    '<div class="wmeta">' +
+      '<div class="wauthor">' +
+        '<img src="' + esc(safeUrl(v.authorPhoto) || "icon-192.png") + '" alt="" onerror="this.src=\'icon-192.png\'">' +
+        '<div><div class="wname">@' + esc(v.authorName || "user") + '</div>' +
+          '<div class="wsub">' + esc(timeAgo(Number(v.createdAt))) + (dur ? " · " + esc(dur) : "") + '</div></div>' +
+      '</div>' +
+      (v.caption ? '<div class="wcap">' + esc(v.caption) + '</div>' : '') +
+      (v.music ? '<div class="wmusic">♪ ' + esc(v.music) + '</div>' : '') +
+      '<div class="wstats">' +
+        '<span>' + esc(fmtCount(v.views)) + ' views</span>' +
+        '<span>' + esc(fmtCount(v.likes)) + ' likes</span>' +
+        '<span>' + esc(fmtCount(v.commentsCount)) + ' comments</span>' +
+      '</div>' +
+    '</div>' +
+    '<button class="wbtn wbtn-primary" id="wopen">' + (signedIn ? "Watch in Nexa" : "Sign in to Nexa") + '</button>' +
+    (isNativeApp() ? '' : '<div class="whint">Opens the Nexa app if you have it — otherwise continues in your browser.</div>') +
+    (signedIn ? '' : '<a class="wbtn wbtn-ghost" href="/signup.html?next=' + encodeURIComponent("/watch.html?v=" + videoId) + '">New to Nexa? Create an account</a>');
+
+  const play = document.getElementById("wplay");
+  const stage = document.getElementById("wstage");
+  const video = document.getElementById("wvideo");
+  const posterImg = document.getElementById("wposter");
+  play.addEventListener("click", () => {
+    play.style.display = "none";
+    if (posterImg) posterImg.style.display = "none";
+    video.classList.remove("hidden");
+    if (videoUrl) loadVideoInto(stage, videoUrl);
+  });
+
+  document.getElementById("wopen").addEventListener("click", () => {
+    openAppOrFallback(signedIn ? continueUrl() : loginUrl());
+  });
+
+  // Inside the native app there is no hand-off: go straight to the feed.
+  if (isNativeApp()) {
+    setTimeout(() => { window.location.replace(continueUrl()); }, 900);
+  }
+}
+
+async function start(user) {
+  if (!videoId) { renderError("This video link is incomplete."); return; }
+  try {
+    const d = await getDoc(doc(db, "videos", videoId));
+    if (!d.exists()) { renderError("This video is no longer available."); return; }
+    renderCard({ id: d.id, ...d.data() }, !!user);
+  } catch (e) {
+    renderError("Couldn’t load this video. Please try again.");
+  }
+}
+
+onAuthStateChanged(auth, (user) => { start(user); });
+</script>
+</body>
+</html>

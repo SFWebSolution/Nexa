@@ -121,7 +121,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v8-videos';
+const CACHE_NAME = 'nexa-v9-player';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -134,6 +134,7 @@ const ASSETS_TO_CACHE = [
   '/nexa-voice-room.js',
   '/nexa-videos.css',
   '/nexa-videos.js',
+  '/watch.html',
   '/firebase.js',
   '/manifest.json',
   '/icon-192.png',

@@ -458,6 +458,72 @@ console.log("\n8) group/channel instant-open message cache");
   ok("delete purges comments + likes", /purgeSub\(ref, 'comments'\)[\s\S]{0,120}purgeSub\(ref, 'likes'\)/.test(vids));
   ok("delete removes the video doc", /await ref\.delete\(\);/.test(vids));
 
+  // ── Player: no restart, double-tap seek, duration + scrubber ──────────────
+  ok("feed patches cards in place instead of rebuilding (no restart)",
+    /function patchCard\(card, v\)/.test(vids) &&
+    /feed\.querySelectorAll\('\.nv-card'\)\.forEach/.test(vids) &&
+    !/feed\.innerHTML = state\.videos\.map\(cardHtml\)/.test(vids));
+  ok("patchCard never rewrites the <video> element", (() => {
+    const s = vids.indexOf('function patchCard');
+    const body = vids.slice(s, vids.indexOf('\n  function ', s + 10));
+    return s > -1 && body.length > 100 && !/\.nv-video/.test(body);
+  })());
+  ok("patchCard updates like/comment/share counts", /\[data-act="comment"\] \.nv-rail-count/.test(vids));
+  ok("cards show a duration badge", /class="nv-dur"/.test(vids) && /function fmtDur\(ms\)/.test(vids));
+  ok("progress bar is driven from the media clock", /addEventListener\('timeupdate', paint\)/.test(vids));
+  ok("double-tap left/right seeks ±10s (SEEK_STEP)",
+    /const SEEK_STEP = 10;/.test(vids) && /if \(z === 'l'\) seekBy\(card, -SEEK_STEP\);/.test(vids) &&
+    /else if \(z === 'r'\) seekBy\(card, SEEK_STEP\);/.test(vids));
+  ok("double-tap centre still likes", /else likeBurst\(id, card\);/.test(vids));
+  ok("tap zones are left/centre/right thirds", /function tapZone\(card, clientX\)/.test(vids));
+  ok("seek shows a flash pill", /function showSeekPill\(card, delta\)/.test(vids));
+  ok("progress bar is draggable to scrub", /function startScrub\(e\)/.test(vids) && /nv-scrubbing/.test(vids));
+  ok("scrub intercepts the pointerdown before long-press",
+    /closest\('\.nv-progress'\)\) \{ startScrub\(e\); return; \}/.test(vids));
+
+  // ── Accurate counts ───────────────────────────────────────────────────────
+  ok("likes move marker + count together in a transaction",
+    /runTransaction\(tx => tx\.get\(likeRef\)/.test(vids));
+  ok("like is idempotent (checks the marker exists first)",
+    /if \(liked && !has\)/.test(vids) && /else if \(!liked && has\)/.test(vids));
+  ok("share counts only when the share actually completed",
+    /navigator\.share\(\{ title: 'Nexa', text: text, url: url \}\)\.then\(countShare\)\.catch\(\(\) => \{\}\)/.test(vids));
+  ok("share link points at the watch.html landing on the canonical host",
+    /const SHARE_ORIGIN = 'https:\/\/nexa-qydr\.onrender\.com';/.test(vids) &&
+    /function shareUrlFor\(id\) \{ return SHARE_ORIGIN \+ '\/watch\.html\?v=' \+ encodeURIComponent\(id\); \}/.test(vids));
+
+  // ── Composer preview: sound + duration ────────────────────────────────────
+  ok("composer preview is NOT hard-muted", /nv-composer-preview" id="nvComposerPreview" playsinline loop/.test(vids) &&
+    !/id="nvComposerPreview" playsinline muted/.test(vids));
+  ok("composer preview has a mute toggle", /function togglePreviewSound\(\)/.test(vids) &&
+    /window\.nexaVideosTogglePreviewSound = togglePreviewSound;/.test(vids));
+  ok("composer shows the duration + size once loaded", /durBox\.textContent = fmtDur\(durMs\)/.test(vids));
+
+  // ── Deep link: ?video=<id> ────────────────────────────────────────────────
+  ok("dashboard honours the ?video= deep link", /async function checkVideoUrlParam\(\)/.test(appJs) &&
+    /const vid = params\.get\('video'\);/.test(appJs));
+  ok("deep link opens the Videos sub-tab", /switchMomentsSubTab\('videos'\);/.test(appJs) &&
+    /window\.NexaVideos\.openFocus\(vid\)/.test(appJs));
+  ok("NexaVideos exposes openFocus + focus scroll", /openFocus: \(id\) => \{ state\.focusVideoId = id; open\(id\); \}/.test(vids) &&
+    /function focusPendingVideo\(\)/.test(vids));
+  ok("leaving the Moments tab pauses playback (not just unsubscribes)",
+    /feed\.querySelectorAll\('\.nv-video'\)\.forEach\(v => \{ try \{ v\.pause\(\); \}/.test(vids));
+
+  // watch.html landing page.
+  const watch = read("watch.html");
+  ok("watch.html exists and reads ?v=<id>", /params\.get\("v"\)/.test(watch));
+  ok("watch.html previews the video (poster + play)", /class="wstage"/.test(watch) && /id="wplay"/.test(watch));
+  ok("watch.html shows author/caption/duration/stats",
+    /wauthor/.test(watch) && /wcap/.test(watch) && /fmtDur/.test(watch) && /wstats/.test(watch));
+  ok("watch.html downloads the blob before playing", /await fetch\(url, \{ mode: "cors", credentials: "omit" \}\)/.test(watch));
+  ok("watch.html has the Android app hand-off + fallback",
+    /function androidIntentUrl/.test(watch) && /com\.nexa\.messenger/.test(watch) && /browser_fallback_url/.test(watch));
+  ok("watch.html routes signed-out users through login with ?next=",
+    /return "\/login\.html\?next=" \+ encodeURIComponent\(back\)/.test(watch));
+  ok("watch.html routes into the feed via ?video=", /return "\/dashboard\.html\?video=" \+ encodeURIComponent\(videoId\)/.test(watch));
+  ok("watch.html keeps a tight CSP (no frame-src)",
+    /Content-Security-Policy/.test(watch) && /frame-src 'none'/.test(watch));
+
   // My Videos settings sub-page.
   ok("My Videos uses a single-field uid query (no composite index)",
     /collection\('videos'\)\.where\('uid', '==', uid\)/.test(vids));
