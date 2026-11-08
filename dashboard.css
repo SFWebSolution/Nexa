@@ -3577,6 +3577,59 @@ input[type="range"] {
   50% { transform: translateY(-6px); }
 }
 
+/* =====================================================
+   REPORT A PROBLEM — Coming Soon (Settings → Support)
+   Reuses the .askify-coming-* shell so it matches every other
+   "coming soon" surface; these rules only add the extras.
+   ===================================================== */
+.settings-row-pill {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid var(--primary-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.report-coming-modal {
+  max-width: 372px;
+}
+.report-coming-caps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.report-cap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+}
+.report-coming-pill {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid var(--primary-soft);
+  border-radius: 999px;
+  padding: 5px 14px;
+}
+
 /* Community (Groups & Channels) — Coming Soon Modal */
 .community-coming-overlay {
   position: fixed;

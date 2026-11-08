@@ -465,7 +465,6 @@ console.log("\n8) group/channel instant-open message cache");
   ok("admin has the KPI grid", /id="anKpiGrid"/.test(adm));
   ok("admin has the analytics card grid", /id="anRecency"/.test(adm) && /id="anWeekday"/.test(adm) && /id="anMixCanvas"/.test(adm) && /id="anRetention"/.test(adm));
   ok("admin has leaderboards + insights", /id="anTopVideos"/.test(adm) && /id="anTopGroups"/.test(adm) && /id="anInsights"/.test(adm));
-  ok("admin has the engagement grid (backend)", /id="anEngagementGrid"/.test(adm));
 
   // Pure, testable analytics helpers exposed for headless testing.
   ok("admin exposes pure analytics helpers", /window\.NexaAdminAnalytics\._pure = \{/.test(adm));
@@ -495,10 +494,36 @@ console.log("\n8) group/channel instant-open message cache");
   ok("leaderboard captions escaped", /escapeHtml\(\(v\.caption \|\| "Untitled"\)/.test(adm));
   ok("group names escaped", /escapeHtml\(\(g\.name \|\| "Group"\)/.test(adm));
 
-  // Backend endpoint for engagement totals (party-only data).
-  ok("backend exposes GET /api/admin/analytics", /app\.get\("\/api\/admin\/analytics", requireAdminSecret/.test(api));
-  ok("backend analytics scans chats + calls", /collection\("chats"\)/.test(api) && /collection\("calls"\)/.test(api));
-  ok("backend analytics is cached", /ANALYTICS_TTL_MS/.test(api));
+  // No party-only collections read client-side (anon admin can never see them).
+  ok("no client-side chats/calls analytics scan",
+    !/admin\/analytics/.test(adm) && !/id="anEngagementGrid"/.test(adm) && !/fetchBackendStats/.test(adm));
+  ok("backend has no analytics endpoint", !/api\/admin\/analytics/.test(api));
+}
+
+// ── Settings: "Report a problem" (coming soon) ─────────────────────────────
+{
+  const dash = read("dashboard.html");
+  const app = read("app-main.js");
+  const css = read("dashboard.css");
+
+  ok("settings has a Support group", /settings-group-title">\s*<i data-lucide="life-buoy"[\s\S]{0,120}Support<\/div>/.test(dash));
+  ok("settings has the Report a problem row",
+    /id="reportProblemRow"[\s\S]{0,120}openReportComing\(\)/.test(dash) && /Report a problem<\/span>/.test(dash));
+  ok("report row is flagged coming soon", /settings-row-pill">Soon<\/span>/.test(dash));
+  ok("report coming-soon modal exists", /id="reportComingModal"/.test(dash));
+  ok("report modal reuses the shared coming-soon shell",
+    /askify-coming-overlay" id="reportComingModal"/.test(dash) && /askify-coming-modal report-coming-modal/.test(dash));
+  ok("report modal lists what can be reported",
+    /report-cap/.test(dash) && /Bugs &amp; crashes/.test(dash) && /Safety &amp; abuse/.test(dash));
+  ok("report modal close is a lucide icon", /askify-coming-close" onclick="closeReportComing\(\)"><i data-lucide="x"/.test(dash));
+
+  ok("openReportComing defined", /function openReportComing\(\)/.test(app));
+  ok("closeReportComing defined", /function closeReportComing\(\)/.test(app));
+  ok("handleReportComingClick defined", /function handleReportComingClick\(e\)/.test(app));
+  ok("openReportComing toggles the active class", /modal\.classList\.add\("active"\)/.test(app));
+  ok("openReportComing falls back to a toast", /showNotifToast\("Reporting is coming soon!", "info"\)/.test(app));
+
+  ok("report CSS present", /\.report-coming-modal/.test(css) && /\.report-cap\b/.test(css) && /\.settings-row-pill/.test(css));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");

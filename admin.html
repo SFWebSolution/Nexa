@@ -2005,8 +2005,6 @@ tbody tr .actions { cursor: default; }
       </div>
     </div>
 
-    <div class="an-grid" id="anEngagementGrid"></div>
-
     <!-- Search & Filter Controls -->
     <div class="toolbar">
       <input
@@ -3408,15 +3406,14 @@ function log(text, type = "info") {
 }
 /* =====================================================
    NEXA ADMIN — INTELLIGENCE LAYER (2026-11)
-   Range-aware KPIs, activity patterns, content mix, insights,
-   leaderboards, and an optional backend engagement feed.
+   Range-aware KPIs, activity patterns, content mix, insights and
+   leaderboards.
 
-   All client-side reads here are limited to collections the hardened
-   rules expose to ANY signed-in user (users, presence, status, videos,
-   groups, channels) so the anonymously-authenticated admin can read them.
-   `chats`/`calls`/`connections` are party/member-only, so message + call
-   totals come from the Admin SDK backend (GET /api/admin/analytics) and
-   degrade gracefully when that endpoint isn't deployed.
+   All reads here are limited to collections the hardened rules expose to
+   ANY signed-in user (users, presence, status, videos, groups, channels)
+   so the anonymously-authenticated admin can read them. `chats`/`calls`/
+   `connections` are party/member-only and are deliberately NOT read (a
+   client-side scan can never see them, so it would only ever show zero).
    ===================================================== */
 (function () {
   "use strict";
@@ -3425,8 +3422,6 @@ function log(text, type = "info") {
   let anRangeDays = 30;
   let contentStats = { videos: [], stories: [], groups: [], channels: [], loaded: false };
   let contentByUid = {};
-  let backendStats = null;      // { messages, conversations, calls, topVideos, ... } or null
-  let backendTried = false;
   let contentTimer = null;
   const anCharts = {};
   let lastChartKey = "";
@@ -3595,22 +3590,6 @@ function log(text, type = "info") {
     if (window.log) window.log("Content analytics refreshed", "info");
   }
 
-  async function fetchBackendStats() {
-    if (backendTried) return;
-    backendTried = true;
-    try {
-      const r = await adminFetchGet("/api/admin/analytics");
-      if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "?"));
-      backendStats = await r.json();
-    } catch (e) {
-      backendStats = null;
-      const host = $("anEngagementGrid");
-      if (host) host.innerHTML = '<div class="an-card"><div class="an-loading">Engagement totals unavailable — deploy <code>server/admin-api.js</code> (GET /api/admin/analytics) to the backend.</div></div>';
-      return;
-    }
-    renderEngagement();
-  }
-
   // ── renderers ─────────────────────────────────────────────────────────────
   function renderKPIs() {
     const host = $("anKpiGrid");
@@ -3729,22 +3708,6 @@ function log(text, type = "info") {
     }
   }
 
-  function renderEngagement() {
-    const host = $("anEngagementGrid");
-    if (!host) return;
-    if (!backendStats) { host.innerHTML = ""; return; }
-    const b = backendStats;
-    const card = (icon, label, value, sub) =>
-      '<div class="an-card"><div class="an-kpi-top"><span class="an-kpi-label">' + label + '</span><span class="an-kpi-ic">' + icon + "</span></div>" +
-      '<div class="an-kpi-val">' + value + '</div><div class="an-kpi-hint">' + (sub || "") + "</div></div>";
-    host.innerHTML = [
-      card("💬", "Messages Sent", fmt(b.messages), "all-time"),
-      card("🗣️", "Conversations", fmt(b.conversations), "distinct pairs"),
-      card("📞", "Calls", fmt(b.calls), "all-time"),
-      card("📅", "Messages (7d)", fmt(b.messages7d), "last 7 days"),
-    ].join("");
-  }
-
   // ── public API ────────────────────────────────────────────────────────────
   function setRange(days) {
     anRangeDays = days;
@@ -3769,13 +3732,12 @@ function log(text, type = "info") {
     renderCharts();
     renderLeaderboards();
     if (!contentTimer) {
-      contentTimer = setInterval(() => { fetchContentStats(); fetchBackendStats(); }, 120000);
+      contentTimer = setInterval(() => { fetchContentStats(); }, 120000);
     }
     fetchContentStats();
-    fetchBackendStats();
   }
 
-  window.NexaAdminAnalytics = { init: init, refresh: refresh, setRange: setRange, countFor: countFor, fetchContentStats: fetchContentStats, fetchBackendStats: fetchBackendStats };
+  window.NexaAdminAnalytics = { init: init, refresh: refresh, setRange: setRange, countFor: countFor, fetchContentStats: fetchContentStats };
   // also expose the pure helpers for headless testing
   window.NexaAdminAnalytics._pure = { computeKPIs, computeWeekday, computeRecency, computeContentMix, computeRetention, buildInsights, rangeStart, delta };
 })();

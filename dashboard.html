@@ -516,6 +516,19 @@
               </button>
             </div>
 
+            <div class="settings-group">
+              <div class="settings-group-title"><i data-lucide="life-buoy" style="width: 15px; height: 15px;"></i> Support</div>
+              <button class="settings-row" id="reportProblemRow" onclick="openReportComing()">
+                <span class="settings-row-icon"><i data-lucide="flag" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">Report a problem</span>
+                  <span class="settings-row-sub">Tell us about a bug or anything that's wrong</span>
+                </span>
+                <span class="settings-row-pill">Soon</span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
+            </div>
+
           </div>
         </div>
 
@@ -1234,6 +1247,23 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- REPORT A PROBLEM — COMING SOON MODAL -->
+<div class="askify-coming-overlay" id="reportComingModal" onclick="handleReportComingClick(event)">
+  <div class="askify-coming-modal report-coming-modal">
+    <button class="askify-coming-close" onclick="closeReportComing()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    <div class="askify-coming-icon">🛟</div>
+    <div class="askify-coming-title">Coming Soon</div>
+    <div class="askify-coming-desc">Something not working, or just not right? Very soon you'll be able to report any issue straight from here — we'll look into every one.</div>
+    <div class="report-coming-caps">
+      <div class="report-cap"><span>🐞</span> Bugs &amp; crashes</div>
+      <div class="report-cap"><span>🔒</span> Safety &amp; abuse</div>
+      <div class="report-cap"><span>💡</span> Ideas &amp; feedback</div>
+    </div>
+    <div class="report-coming-pill">Coming soon</div>
+    <button class="askify-coming-btn" onclick="closeReportComing()">Got it</button>
   </div>
 </div>
 

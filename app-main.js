@@ -10712,6 +10712,29 @@ function closeAskifyComing() {
   }
 }
 
+/* ── REPORT A PROBLEM (coming soon) ──────────────────────────────────────
+   Entry point in Settings → Support. The composer itself isn't built yet,
+   so this opens the shared "coming soon" card; once the report pipeline
+   ships, swap these three to open the real composer. */
+function openReportComing() {
+  const modal = document.getElementById("reportComingModal");
+  if (modal) {
+    modal.classList.add("active");
+    if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+    return;
+  }
+  if (typeof showNotifToast === "function") showNotifToast("Reporting is coming soon!", "info");
+}
+
+function closeReportComing() {
+  const modal = document.getElementById("reportComingModal");
+  if (modal) modal.classList.remove("active");
+}
+
+function handleReportComingClick(e) {
+  if (e.target === document.getElementById("reportComingModal")) closeReportComing();
+}
+
 function handleAskifyComingClick(e) {
   if (e.target === document.getElementById("askifyComingModal")) {
     closeAskifyComing();

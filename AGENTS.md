@@ -1186,6 +1186,22 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **`setUserLang()` re-renders** the current 1:1 list, group list and channel cache so switching language repaints immediately. Anything calling it must be prepared for `renderMessageList()` to run.
 - Verified: 40/40 Node logic tests (detection, gating, entity decoding, prefs, cache, strip decisions, escaping) + structural checks (no duplicate ids, wiring in all 3 paths, CSS classes, CRLF preserved). Note app-main.js is loaded as a CLASSIC script (`<script defer src>`), so every top-level function declaration (`translateMsg`, `selectLanguage`, `toggleAutoTranslate`, `toggleShowOriginalPref`, `updateLanguageUI`) is a real `window` global — which is what the inline `onclick` attributes in the ctx menu and the Language settings page rely on. Do NOT move the translation module inside the `(function(){...})()` IIFE (lines ~626-633) or those onclicks break.
 
+## Report a problem — Settings → Support (Coming Soon, do NOT wire it live yet)
+- **A "Report a problem" entry lives in a `Support` group at the END of the
+  Settings root list** (`#reportProblemRow`, `openReportComing()`), flagged with
+  a `.settings-row-pill` "Soon" badge. It is a **placeholder** — the owner wants
+  users to be able to report bugs/safety/feedback by typing a message, but it
+  must stay "coming soon" for now.
+- Opening it shows **`#reportComingModal`**, which **reuses the shared
+  `.askify-coming-overlay` / `.askify-coming-modal` shell** (so it matches every
+  other coming-soon surface) plus a few report-specific extras: `.report-cap`
+  rows (Bugs & crashes / Safety & abuse / Ideas & feedback) and a
+  `.report-coming-pill`. JS: `openReportComing` / `closeReportComing` /
+  `handleReportComingClick` (app-main.js, next to the Askify handlers).
+- **When the report pipeline ships, swap `openReportComing()` to open the real
+  composer** — keep the row + Support group, drop the modal. Do NOT make the row
+  a dead `#` link or remove the "Soon" badge until then.
+
 ## Askify AI — REVERTED to "Coming Soon" (do NOT re-add the in-chat version)
 - The in-chat `@askify` assistant was **deliberately reverted**. Askify is a
   placeholder again: `openAI()` shows the **"Coming Soon" modal**
@@ -1545,9 +1561,9 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   selector** (`NexaAdminAnalytics.setRange(days)`) drives the KPI tiles (Total,
   New, Active, Videos, Stories, Banned) with **period-over-period deltas** and
   inline sparklines; the weekday + activity-recency bars, content-mix doughnut,
-  retention panel, Top-videos / Largest-groups leaderboards, insights and the
-  engagement grid are computed from `users` + `presence` + `status` + `videos` +
-  `groups` + `channels`.
+  retention panel, Top-videos / Largest-groups leaderboards, and auto insights
+  are computed from `users` + `presence` + `status` + `videos` + `groups` +
+  `channels`.
 - **`window.NexaAdminAnalytics`** (a self-contained IIFE near the end of
   admin.html) exports `init/refresh/setRange/countFor` and, for headless tests,
   `_pure` (`computeKPIs`, `computeWeekday`, `computeRecency`, `computeContentMix`,
@@ -1557,12 +1573,11 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **The client reads ONLY collections the hardened rules expose to ANY signed-in
   user** (`users`, `presence`, `status`, `videos`, `groups`, `channels`). The
   admin signs in **anonymously**, and `chats`/`calls`/`connections` are
-  party/member-only, so a client-side scan of them ALWAYS returns empty. Message
-  + call totals therefore come from the Admin-SDK endpoint **`GET
-  /api/admin/analytics`** (`server/admin-api.js`, cached `ANALYTICS_TTL_MS` =
-  60s, scan cap 50000) and the section **degrades gracefully to a "deploy
-  server/admin-api.js" notice** when it 404s. Do NOT add a client-side
-  `db.collection("chats")` scan to admin.html — it can never see the data.
+  party/member-only, so a client-side scan of them ALWAYS returns empty. There is
+  deliberately **NO message/call engagement section** — an earlier
+  `GET /api/admin/analytics` backend feed for those totals was **removed at the
+  owner's request**. Do NOT re-add a `db.collection("chats")` scan to admin.html
+  (it can never see the data) or resurrect that endpoint without being asked.
 - **Table:** per-user **Videos / Stories** columns (from the content fetch,
   `NexaAdminAnalytics.countFor(uid)`) + two new filters (**New (7d)**,
   **Never seen**) + sort cases `videos`/`stories`. The users-table empty-state
