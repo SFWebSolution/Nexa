@@ -402,11 +402,14 @@ console.log("\n8) group/channel instant-open message cache");
   const vids = read("nexa-videos.js");
   const html = read("dashboard.html");
 
-  // Upload caps: 20-min hard duration cap, soft (non-blocking) size warning.
+  // Upload caps: 20-min duration AND 100 MB size, both hard client caps.
   ok("video duration cap constant is 20 min", /const MAX_VIDEO_MIN = 20;/.test(vids));
   ok("duration cap derives ms from the minutes constant", /const MAX_VIDEO_MS = MAX_VIDEO_MIN \* 60 \* 1000;/.test(vids));
-  ok("size is a SOFT warn constant, not a hard reject", /const SOFT_SIZE_WARN = 100 \* 1024 \* 1024;/.test(vids));
-  ok("old hard size reject removed", !/Video is too large \(max 100 MB\)/.test(vids));
+  ok("size cap constant is 100 MB", /const MAX_VIDEO_MB = 100;/.test(vids));
+  ok("size cap derives bytes from the MB constant", /const MAX_VIDEO_BYTES = MAX_VIDEO_MB \* 1024 \* 1024;/.test(vids));
+  ok("over-size videos are hard-rejected", /if \(file\.size > MAX_VIDEO_BYTES\) \{/.test(vids));
+  ok("size rejection clears pendingFile + sets pendingTooBig", /state\.pendingFile = null;[\s\S]{0,80}state\.pendingTooBig = true;/.test(vids));
+  ok("post() blocks over-size videos", /if \(state\.pendingTooBig\) \{/.test(vids));
   ok("metadata sets pendingTooLong", /state\.pendingTooLong = durMs > MAX_VIDEO_MS;/.test(vids));
   ok("post() blocks over-long videos", /if \(state\.pendingTooLong\) \{/.test(vids));
   ok("post() uses true byte progress capped at 99 while uploading",
@@ -450,6 +453,52 @@ console.log("\n8) group/channel instant-open message cache");
   eq("nexa-videos.js keeps CRLF", rawVids.includes(Buffer.from("\r\n")), true);
   eq("nexa-videos.js has no lone LF",
     rawVids.toString("utf8").split("\n").length - 1, rawVids.toString("utf8").split("\r\n").length - 1);
+}
+
+// ── Admin: Intelligence dashboard (KPIs, charts, insights) ─────────────────
+{
+  const adm = read("admin.html");
+  const api = read("server/admin-api.js");
+
+  // Range-aware KPIs.
+  ok("admin has a range selector", /class="an-range"/.test(adm) && /NexaAdminAnalytics\.setRange\(30\)/.test(adm));
+  ok("admin has the KPI grid", /id="anKpiGrid"/.test(adm));
+  ok("admin has the analytics card grid", /id="anRecency"/.test(adm) && /id="anWeekday"/.test(adm) && /id="anMixCanvas"/.test(adm) && /id="anRetention"/.test(adm));
+  ok("admin has leaderboards + insights", /id="anTopVideos"/.test(adm) && /id="anTopGroups"/.test(adm) && /id="anInsights"/.test(adm));
+  ok("admin has the engagement grid (backend)", /id="anEngagementGrid"/.test(adm));
+
+  // Pure, testable analytics helpers exposed for headless testing.
+  ok("admin exposes pure analytics helpers", /window\.NexaAdminAnalytics\._pure = \{/.test(adm));
+  ok("computeKPIs present", /function computeKPIs\(/.test(adm));
+  ok("computeRecency present", /function computeRecency\(/.test(adm));
+  ok("computeRetention present", /function computeRetention\(/.test(adm));
+  ok("buildInsights present", /function buildInsights\(/.test(adm));
+
+  // Content analytics use ONLY signed-in-readable collections (the admin is anon).
+  ok("content stats read videos/status/groups/channels",
+    /collection\("videos"\)/.test(adm) && /collection\("status"\)/.test(adm) && /collection\("groups"\)/.test(adm) && /collection\("channels"\)/.test(adm));
+  ok("content stats never read party-only collections directly",
+    !/db\.collection\("chats"\)/.test(adm) && !/db\.collection\("calls"\)/.test(adm) && !/db\.collection\("connections"\)/.test(adm));
+
+  // Table: per-user Videos/Stories columns + new filters + sort.
+  ok("table has Videos + Stories columns", /data-sort="videos"/.test(adm) && /data-sort="stories"/.test(adm));
+  ok("empty-state colspan matches 10 columns", (adm.match(/colspan="10"/g) || []).length === 2);
+  ok("new filters wired (new7d, never)",
+    /data-filter="new7d"/.test(adm) && /data-filter="never"/.test(adm) && /currentFilter === "new7d"/.test(adm) && /currentFilter === "never"/.test(adm));
+  ok("sort handles videos + stories", /case "videos":/.test(adm) && /case "stories":/.test(adm));
+
+  // Lifecycle hooks.
+  ok("analytics init called from initDashboard", /window\.NexaAdminAnalytics\) window\.NexaAdminAnalytics\.init\(\);/.test(adm));
+  ok("analytics refresh called from render", /window\.NexaAdminAnalytics\) window\.NexaAdminAnalytics\.refresh\(\);/.test(adm));
+
+  // XSS: leaderboards/rows escape user text.
+  ok("leaderboard captions escaped", /escapeHtml\(\(v\.caption \|\| "Untitled"\)/.test(adm));
+  ok("group names escaped", /escapeHtml\(\(g\.name \|\| "Group"\)/.test(adm));
+
+  // Backend endpoint for engagement totals (party-only data).
+  ok("backend exposes GET /api/admin/analytics", /app\.get\("\/api\/admin\/analytics", requireAdminSecret/.test(api));
+  ok("backend analytics scans chats + calls", /collection\("chats"\)/.test(api) && /collection\("calls"\)/.test(api));
+  ok("backend analytics is cached", /ANALYTICS_TTL_MS/.test(api));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");

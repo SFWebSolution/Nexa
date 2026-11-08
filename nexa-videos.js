@@ -28,13 +28,14 @@
   const PAGE = 6;          // feed page size (newest N, then older chunks)
   const COMMENTS_PAGE = 60; // comments fetched per video
   const DOUBLE_TAP_MS = 260;
-  // Upload caps. Duration is a hard client cap (raise MAX_VIDEO_MIN and the
-  // hint text together). Size is only a SOFT warning: Cloudinary's plan ceiling
-  // is what actually rejects the file (Free = 100 MB, Plus = 2 GB), so a hard
-  // client block just swapped a clear message for a confusing server failure.
+  // Upload caps. BOTH are hard client caps (raise the constant + the picker
+  // hint together). MAX_VIDEO_MB matches the Cloudinary plan ceiling: Free is
+  // 100 MB/file, Plus is 2 GB, Advanced 4 GB. Anything over the ceiling is
+  // rejected here with a clear message instead of failing mid-upload.
   const MAX_VIDEO_MIN = 20;
   const MAX_VIDEO_MS = MAX_VIDEO_MIN * 60 * 1000;
-  const SOFT_SIZE_WARN = 100 * 1024 * 1024; // Cloudinary Free per-file ceiling
+  const MAX_VIDEO_MB = 100;
+  const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
 
   const state = {
     started: false,
@@ -55,6 +56,7 @@
     lastTapId: null,
     pendingDurationMs: 0,
     pendingTooLong: false,
+    pendingTooBig: false,
     editVideoId: null,
     myVideos: [],
     myUnsub: null
@@ -683,7 +685,7 @@
             '<div class="nv-composer-pick" id="nvComposerPick" onclick="nexaVideosPickFile()">' +
               '<div class="nv-pick-ic"><i data-lucide="video" style="width:40px;height:40px;"></i></div>' +
               '<div class="nv-pick-title">Select a video</div>' +
-              '<div class="nv-pick-sub">From your gallery or camera · up to ' + MAX_VIDEO_MIN + ' min</div>' +
+              '<div class="nv-pick-sub">From your gallery or camera · up to ' + MAX_VIDEO_MIN + ' min · max ' + MAX_VIDEO_MB + ' MB</div>' +
             '</div>' +
             '<video class="nv-composer-preview" id="nvComposerPreview" playsinline muted loop style="display:none;"></video>' +
             '<div class="nv-upload-ring" id="nvUploadRing" style="display:none;">' +
@@ -711,6 +713,7 @@
     state.pendingDuration = 0;
     state.pendingDurationMs = 0;
     state.pendingTooLong = false;
+    state.pendingTooBig = false;
     const prev = el('nvComposerPreview');
     if (prev) { prev.style.display = 'none'; prev.removeAttribute('src'); }
     const pick = el('nvComposerPick');
@@ -740,12 +743,20 @@
     e.target.value = '';
     if (!file) return;
     if (!/^video\//.test(file.type)) { toast('Please choose a video file', 'error'); return; }
-    if (file.size > SOFT_SIZE_WARN) {
+    if (file.size > MAX_VIDEO_BYTES) {
       const mb = Math.round(file.size / (1024 * 1024));
-      toast('Large video (' + mb + ' MB). If the upload fails, Cloudinary’s ' + Math.round(SOFT_SIZE_WARN / (1024 * 1024)) +
-        ' MB per-file limit was hit … trim it and retry.', 'info');
+      toast('Video is ' + mb + ' MB … the max is ' + MAX_VIDEO_MB +
+        ' MB. Please trim it and try again.', 'error');
+      state.pendingFile = null;
+      state.pendingTooBig = true;
+      state.pendingTooLong = false;
+      state.pendingDurationMs = 0;
+      const postBtn = el('nvComposerPost');
+      if (postBtn) postBtn.disabled = true;
+      return;
     }
     state.pendingFile = file;
+    state.pendingTooBig = false;
     state.pendingTooLong = false;
     state.pendingDurationMs = 0;
     const prev = el('nvComposerPreview');
@@ -797,6 +808,10 @@
     if (!state.pendingFile) { toast('Pick a video first', 'error'); pickFile(); return; }
     if (state.pendingTooLong) {
       toast('Video is longer than ' + MAX_VIDEO_MIN + ' min … please trim it.', 'error');
+      return;
+    }
+    if (state.pendingTooBig) {
+      toast('Video is over ' + MAX_VIDEO_MB + ' MB … please trim it.', 'error');
       return;
     }
     const capEl = el('nvComposerCaption');

@@ -1539,6 +1539,39 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   the recipient's highlight and the badge. Don't revert to editing `text` only.
 - Group avatars in the list go through `safeMediaUrl()` (was raw interpolation).
 
+## Admin Intelligence dashboard (admin.html + server/admin-api.js) — do NOT regress
+- **A range-aware analytics layer** sits at the top of the admin dashboard
+  (`#anKpiGrid`, `.an-range`, `.an-grid` cards). The **7d / 30d / 90d range
+  selector** (`NexaAdminAnalytics.setRange(days)`) drives the KPI tiles (Total,
+  New, Active, Videos, Stories, Banned) with **period-over-period deltas** and
+  inline sparklines; the weekday + activity-recency bars, content-mix doughnut,
+  retention panel, Top-videos / Largest-groups leaderboards, insights and the
+  engagement grid are computed from `users` + `presence` + `status` + `videos` +
+  `groups` + `channels`.
+- **`window.NexaAdminAnalytics`** (a self-contained IIFE near the end of
+  admin.html) exports `init/refresh/setRange/countFor` and, for headless tests,
+  `_pure` (`computeKPIs`, `computeWeekday`, `computeRecency`, `computeContentMix`,
+  `computeRetention`, `buildInsights`, `rangeStart`, `delta`). `init()` is called
+  from `initDashboard()`; `refresh()` from `render()`. Content analytics refresh
+  every **120s** (NOT a realtime listener — keeps the read cost bounded).
+- **The client reads ONLY collections the hardened rules expose to ANY signed-in
+  user** (`users`, `presence`, `status`, `videos`, `groups`, `channels`). The
+  admin signs in **anonymously**, and `chats`/`calls`/`connections` are
+  party/member-only, so a client-side scan of them ALWAYS returns empty. Message
+  + call totals therefore come from the Admin-SDK endpoint **`GET
+  /api/admin/analytics`** (`server/admin-api.js`, cached `ANALYTICS_TTL_MS` =
+  60s, scan cap 50000) and the section **degrades gracefully to a "deploy
+  server/admin-api.js" notice** when it 404s. Do NOT add a client-side
+  `db.collection("chats")` scan to admin.html — it can never see the data.
+- **Table:** per-user **Videos / Stories** columns (from the content fetch,
+  `NexaAdminAnalytics.countFor(uid)`) + two new filters (**New (7d)**,
+  **Never seen**) + sort cases `videos`/`stories`. The users-table empty-state
+  and loading-row `colspan` are now **10** (8 cols + 2) — bump BOTH if you add a
+  column.
+- **Leaderboards + per-user rows escape all user text** (`escapeHtml` on video
+  captions, group names). Keep it that way — captions/names are user input.
+- `admin.html` is **CRLF** — after editing run the normalize step.
+
 ## Admin: Top 20 removed, Communities added then REMOVED
 - The **"⭐ Nexa Champions" Top-20** section is GONE from admin.html (UI, CSS,
   `renderChampions`, `reloadWeeklyStats`, `backfillReferrals`, `cachedMsgScores`,
@@ -1689,11 +1722,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   real byte progress) -- CLOUD_NAME `doasf3d1u`, preset `NeuroStack`. The composer
   has its own SVG progress ring (`nvRingFill`, dasharray `2*pi*52`).
   Gallery AND camera capture come for free from `<input type="file" accept="video/*">`.
-  **Size is NOT hard-blocked.** Cloudinary's plan ceiling is the real limit
-  (Free = 100 MB/file, Plus = 2 GB, Advanced = 4 GB), so the client only shows
-  a SOFT `SOFT_SIZE_WARN` (100 MB) info toast above the ceiling and lets the
-  upload proceed -- a hard client block just swapped a clear message for a
-  confusing server failure. Do NOT re-add `if (file.size > MAX) return;`.
+  **Size IS hard-capped at `MAX_VIDEO_MB = 100`** (matches Cloudinary Free's
+  per-file ceiling; raise the constant to 2048 for Plus, 4096 for Advanced).
+  `onFileChosen` rejects an over-size file with an error toast, clears
+  `state.pendingFile`, sets `state.pendingTooBig`, and disables the Post button;
+  `post()` re-checks. A hard client block gives a clear message instead of a
+  confusing server-side failure mid-upload. Do NOT revert it to a soft warning.
   **Duration IS hard-capped at `MAX_VIDEO_MIN = 20` min** (one constant; raise it
   to 25/30 by editing it and the picker hint together). `onloadedmetadata` sets
   `state.pendingTooLong` and disables the Post button when

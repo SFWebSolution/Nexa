@@ -146,5 +146,51 @@ app.post("/api/admin/delete-user", requireAdminSecret, async (req, res) => {
 // a community (an admin is not the owner). Re-add both the section and these
 // endpoints together if that capability is wanted again.
 
+// ── GET /api/admin/analytics ────────────────────────────────────────────────
+// Engagement totals the BROWSER cannot read: the hardened `chats` rule is
+// party-only (from/to == auth.uid) and admin.html signs in ANONYMOUSLY, so a
+// client-side scan of chats/calls always comes back empty. The Admin SDK
+// bypasses security rules, so this endpoint is the only source for message +
+// call totals. Result is cached for ANALYTICS_TTL_MS so repeated dashboard
+// opens / refreshes don't re-scan the whole collection.
+let analyticsCache = { at: 0, data: null };
+const ANALYTICS_TTL_MS = 60000;
+const ANALYTICS_SCAN_CAP = 50000;
+
+app.get("/api/admin/analytics", requireAdminSecret, async (req, res) => {
+  try {
+    if (analyticsCache.data && Date.now() - analyticsCache.at < ANALYTICS_TTL_MS) {
+      return res.json(analyticsCache.data);
+    }
+    const now = Date.now();
+    const weekAgo = now - 7 * 86400000;
+    let messages = 0;
+    let messages7d = 0;
+    let calls = 0;
+    const pairs = new Set();
+
+    const chats = await db.collection("chats").limit(ANALYTICS_SCAN_CAP).get();
+    chats.forEach((doc) => {
+      const d = doc.data() || {};
+      const t = typeof d.createdAt === "number"
+        ? d.createdAt
+        : (d.createdAt && typeof d.createdAt.toMillis === "function" ? d.createdAt.toMillis() : 0);
+      messages++;
+      if (t >= weekAgo) messages7d++;
+      if (d.from && d.to) pairs.add([String(d.from), String(d.to)].sort().join("_"));
+    });
+
+    const callsSnap = await db.collection("calls").limit(ANALYTICS_SCAN_CAP).get().catch(() => null);
+    if (callsSnap) calls = callsSnap.size;
+
+    const data = { messages, messages7d, conversations: pairs.size, calls, scannedAt: now };
+    analyticsCache = { at: now, data };
+    res.json(data);
+  } catch (err) {
+    console.error("analytics error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Nexa admin API listening on :${PORT}`));

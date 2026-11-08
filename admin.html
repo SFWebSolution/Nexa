@@ -1564,6 +1564,255 @@ tbody tr .actions { cursor: default; }
   border-color: var(--primary);
   background: rgba(79,143,255,0.06);
 }
+/* =====================================================
+   NEXA ADMIN — INTELLIGENCE LAYER (2026-11)
+   Range-aware KPIs, analytics cards, charts, insights.
+   Additive only — nothing above this block is altered.
+   ===================================================== */
+
+/* ── Range selector ── */
+.an-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(21,27,39,0.6);
+  border: 1px solid var(--border-md);
+}
+.an-range-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-3);
+  padding: 0 8px 0 10px;
+}
+.an-range-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background var(--tf), color var(--tf);
+}
+.an-range-btn:hover { color: var(--text-0); background: rgba(79,143,255,0.10); }
+.an-range-btn.active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dk));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(43,143,255,0.35);
+}
+
+/* ── KPI strip ── */
+.an-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(clamp(160px, 100%, 230px), 1fr));
+  gap: clamp(12px, 2.4vw, 16px);
+  margin-bottom: clamp(20px, 4vw, 28px);
+}
+.an-kpi {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, rgba(30,41,59,0.72), rgba(15,23,42,0.72));
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  padding: 16px 16px 14px;
+  animation: slideUp 0.5s var(--spring);
+  transition: transform var(--tf), border-color var(--tf), box-shadow var(--tf);
+}
+.an-kpi::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--kpi-accent, var(--primary)), transparent 85%);
+  opacity: 0.9;
+}
+.an-kpi:hover {
+  transform: translateY(-3px);
+  border-color: var(--kpi-accent, var(--primary));
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.an-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.an-kpi-ic {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  font-size: 17px;
+  background: color-mix(in srgb, var(--kpi-accent, var(--primary)) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-accent, var(--primary)) 32%, transparent);
+}
+.an-kpi-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-3);
+}
+.an-kpi-val {
+  font-size: clamp(26px, 5vw, 34px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--text-0);
+  line-height: 1.05;
+}
+.an-kpi-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.an-kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.an-kpi-delta.up   { color: var(--online);  background: var(--online-soft); }
+.an-kpi-delta.down { color: var(--danger);  background: var(--danger-soft); }
+.an-kpi-delta.flat { color: var(--text-3);  background: rgba(148,163,184,0.12); }
+.an-kpi-hint { font-size: 11px; color: var(--text-3); }
+.an-kpi-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+  margin-top: 10px;
+}
+.an-kpi-spark span {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--kpi-accent, var(--primary)) 55%, transparent);
+}
+
+/* ── Analytics card grid ── */
+.an-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: clamp(14px, 2.4vw, 20px);
+  margin-bottom: clamp(20px, 4vw, 32px);
+}
+.an-card {
+  background: rgba(21,27,39,0.55);
+  border: 1px solid var(--border-md);
+  border-radius: 16px;
+  padding: clamp(16px, 3vw, 22px);
+  animation: fadeIn 0.5s ease;
+}
+.an-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.an-card-title { font-size: 15px; font-weight: 700; color: var(--text-0); letter-spacing: -0.2px; }
+.an-card-sub { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.an-card-body { position: relative; }
+.an-canvas-wrap { position: relative; height: 240px; }
+.an-canvas-wrap.short { height: 200px; }
+
+/* ── Bar list (weekday, recency) ── */
+.an-bars { display: flex; flex-direction: column; gap: 10px; }
+.an-bar-row { display: grid; grid-template-columns: 88px 1fr 46px; align-items: center; gap: 10px; }
+.an-bar-label { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.an-bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148,163,184,0.10);
+  overflow: hidden;
+}
+.an-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-lt));
+  transition: width 0.6s var(--ease);
+  min-width: 2px;
+}
+.an-bar-row.hot .an-bar-fill { background: linear-gradient(90deg, var(--online), #34d399); }
+.an-bar-val { font-size: 12.5px; font-weight: 700; color: var(--text-1); text-align: right; }
+
+/* ── Donut + legend ── */
+.an-donut-wrap { position: relative; height: 190px; margin-bottom: 14px; }
+.an-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.an-legend-item { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+.an-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.an-legend-val { color: var(--text-0); font-weight: 700; }
+
+/* ── Insights ── */
+.an-insights { display: flex; flex-direction: column; gap: 10px; }
+.an-insight {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(30,41,59,0.5);
+  border: 1px solid var(--border-dk);
+  border-left-width: 3px;
+}
+.an-insight.good { border-left-color: var(--online); }
+.an-insight.warn { border-left-color: var(--warning); }
+.an-insight.bad  { border-left-color: var(--danger); }
+.an-insight.info { border-left-color: var(--primary); }
+.an-insight-ic { font-size: 18px; line-height: 1.2; flex: none; }
+.an-insight-text { font-size: 13px; color: var(--text-1); line-height: 1.45; }
+.an-insight-text b { color: var(--text-0); }
+
+/* ── Metric row (retention detail) ── */
+.an-metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border-dk);
+  font-size: 13px;
+}
+.an-metric-row:last-child { border-bottom: none; }
+.an-metric-row .k { color: var(--text-2); }
+.an-metric-row .v { color: var(--text-0); font-weight: 700; }
+
+/* ── Table content cells ── */
+.video-cell, .story-cell { font-weight: 700; }
+.video-cell.has { color: var(--primary-lt); }
+.story-cell.has { color: var(--warning); }
+.cell-muted { color: var(--text-3); }
+.mini-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: rgba(148,163,184,0.14);
+  color: var(--text-2);
+}
+.an-loading {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 22px; color: var(--text-3); font-size: 13px;
+}
+.an-loading .dot-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); animation: anPulse 1s infinite ease-in-out; }
+@keyframes anPulse { 0%,100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
+
+@media (max-width: 720px) {
+  .an-bar-row { grid-template-columns: 70px 1fr 40px; }
+  .an-range { width: 100%; justify-content: space-between; }
+  .an-range-btn { flex: 1; padding: 8px 6px; }
+}
   </style>
 </head>
 <body>
@@ -1705,6 +1954,59 @@ tbody tr .actions { cursor: default; }
       </div>
     </div>
 
+    <!-- ══════ INTELLIGENCE — range-aware KPIs, patterns, content, insights ══════ -->
+    <div class="section-header" style="margin-top: 28px;">
+      <div>
+        <h2 class="section-title">🧠 Intelligence</h2>
+        <p class="section-subtitle">A range-aware read on growth, activity, content and retention</p>
+      </div>
+      <div class="an-range" id="anRange">
+        <span class="an-range-label">Range</span>
+        <button class="an-range-btn" data-range="7" onclick="NexaAdminAnalytics.setRange(7)">7d</button>
+        <button class="an-range-btn active" data-range="30" onclick="NexaAdminAnalytics.setRange(30)">30d</button>
+        <button class="an-range-btn" data-range="90" onclick="NexaAdminAnalytics.setRange(90)">90d</button>
+      </div>
+    </div>
+
+    <div class="an-kpi-grid" id="anKpiGrid"></div>
+
+    <div class="an-grid">
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Activity recency</div><div class="an-card-sub">How recently each user was last seen</div></div></div>
+        <div class="an-card-body" id="anRecency"></div>
+      </div>
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Sign-ups by weekday</div><div class="an-card-sub">Last 4 weeks — when people join</div></div></div>
+        <div class="an-card-body" id="anWeekday"></div>
+      </div>
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Content mix</div><div class="an-card-sub">All-time totals by type</div></div></div>
+        <div class="an-donut-wrap"><canvas id="anMixCanvas"></canvas></div>
+        <div class="an-legend" id="anMixLegend"></div>
+      </div>
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Retention</div><div class="an-card-sub">Coming-back behaviour, not just sign-ups</div></div></div>
+        <div class="an-card-body" id="anRetention"></div>
+      </div>
+    </div>
+
+    <div class="an-grid">
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Top videos</div><div class="an-card-sub">Most-viewed posts</div></div></div>
+        <div class="an-card-body" id="anTopVideos"></div>
+      </div>
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Largest groups</div><div class="an-card-sub">By member count</div></div></div>
+        <div class="an-card-body" id="anTopGroups"></div>
+      </div>
+      <div class="an-card">
+        <div class="an-card-head"><div><div class="an-card-title">Insights</div><div class="an-card-sub">What the numbers suggest</div></div></div>
+        <div class="an-card-body an-insights" id="anInsights"></div>
+      </div>
+    </div>
+
+    <div class="an-grid" id="anEngagementGrid"></div>
+
     <!-- Search & Filter Controls -->
     <div class="toolbar">
       <input
@@ -1718,6 +2020,8 @@ tbody tr .actions { cursor: default; }
         <button class="filter-tab-btn" data-filter="active" onclick="setFilter('active')">Active (24h)</button>
         <button class="filter-tab-btn" data-filter="online" onclick="setFilter('online')">Online</button>
         <button class="filter-tab-btn" data-filter="banned" onclick="setFilter('banned')">Banned</button>
+        <button class="filter-tab-btn" data-filter="new7d" onclick="setFilter('new7d')">New (7d)</button>
+        <button class="filter-tab-btn" data-filter="never" onclick="setFilter('never')">Never seen</button>
       </div>
       <button class="export-btn" id="exportCsvBtn" onclick="exportUsersCsv()">⬇️ Export CSV</button>
     </div>
@@ -1743,12 +2047,14 @@ tbody tr .actions { cursor: default; }
               <th class="th-sort" data-sort="status" onclick="sortUsers('status')">Status <span class="th-caret"></span></th>
               <th class="th-sort" data-sort="joined" onclick="sortUsers('joined')">Joined <span class="th-caret"></span></th>
               <th class="th-sort" data-sort="seen" onclick="sortUsers('seen')">Last Seen <span class="th-caret"></span></th>
+              <th class="th-sort" data-sort="videos" onclick="sortUsers('videos')">Videos <span class="th-caret"></span></th>
+              <th class="th-sort" data-sort="stories" onclick="sortUsers('stories')">Stories <span class="th-caret"></span></th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="usersTable">
             <tr>
-              <td colspan="8" style="text-align: center; padding: 40px;">
+              <td colspan="10" style="text-align: center; padding: 40px;">
                 <div class="empty-state">
                   <div class="empty-icon">📂</div>
                   <div class="empty-text">Loading users...</div>
@@ -2027,6 +2333,7 @@ function initDashboard() {
   initWeeklyAutoRefresh();
   listenUsers();
   listenPresence();
+  if (window.NexaAdminAnalytics) window.NexaAdminAnalytics.init();
   // Message/story analytics are computed on demand (60s) instead of streaming
   // every chat + story document in realtime - accurate totals, far fewer reads.
   reloadAnalytics();
@@ -2090,6 +2397,8 @@ function applyFiltersAndRender() {
     if (currentFilter === "active") return userLastSeen(u) >= (now - 86400000);
     if (currentFilter === "online") return checkUserOnline(u);
     if (currentFilter === "banned") return u.banned === true;
+    if (currentFilter === "new7d") return (u.createdAt || 0) >= (now - 7 * 86400000);
+    if (currentFilter === "never") return userLastSeen(u) === 0;
     return true;
   });
 
@@ -2334,6 +2643,7 @@ function render() {
   renderChart();
   renderAnalytics();
   renderDataHealth();
+  if (window.NexaAdminAnalytics) window.NexaAdminAnalytics.refresh();
 }
 
 /* =====================================================
@@ -2616,12 +2926,13 @@ function exportUsersCsv() {
 
   if (!rows.length) { adminToast("No users to export for the current search/filter.", "error"); return; }
 
-  const header = ["Name", "Username", "Email", "Phone", "UID", "Status", "Joined", "Last Seen"];
+  const header = ["Name", "Username", "Email", "Phone", "UID", "Status", "Joined", "Last Seen", "Videos", "Stories"];
   const lines = [header.join(",")];
   rows.forEach(u => {
     const p = presenceData[u.uid] || {};
     const isOnline = checkUserOnline(u);
     const status = u.banned ? "Banned" : isOnline ? (p.status === "away" ? "Away" : "Online") : "Offline";
+    const cc = (window.NexaAdminAnalytics && NexaAdminAnalytics.countFor) ? NexaAdminAnalytics.countFor(u.uid) : { videos: 0, stories: 0 };
     lines.push([
       u.displayName || u.name || "",
       u.username || "",
@@ -2630,7 +2941,9 @@ function exportUsersCsv() {
       u.uid || "",
       status,
       u.createdAt ? new Date(u.createdAt).toISOString() : "",
-      userLastSeen(u) ? new Date(userLastSeen(u)).toISOString() : ""
+      userLastSeen(u) ? new Date(userLastSeen(u)).toISOString() : "",
+      cc.videos || 0,
+      cc.stories || 0
     ].map(csvEscape).join(","));
   });
 
@@ -2730,7 +3043,7 @@ function renderTable(data) {
   if (!data || data.length === 0) {
     table.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align: center; padding: 40px;">
+        <td colspan="10" style="text-align: center; padding: 40px;">
           <div class="empty-state">
             <div class="empty-icon">🔍</div>
             <div class="empty-text">No users found</div>
@@ -2761,6 +3074,7 @@ function renderTable(data) {
     const handleDisplay = u.username ? "@" + u.username : "no @username";
     const photo = safePhoto(u.photo || u.photoUrl);
     const emailDisplay = u.email || "—";
+    const cc = (window.NexaAdminAnalytics && NexaAdminAnalytics.countFor) ? NexaAdminAnalytics.countFor(u.uid) : { videos: 0, stories: 0 };
 
     return `
       <tr onclick="openUserDrawer('${u.uid}')">
@@ -2779,6 +3093,8 @@ function renderTable(data) {
         <td class="cell-status"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
         <td class="cell-joined">${joinedStr}</td>
         <td class="cell-seen"><span style="font-weight:500;color:${isOnline ? 'var(--online)' : 'var(--text-3)'}">${lastSeenStr}</span></td>
+        <td class="cell-videos"><span class="video-cell${cc.videos ? ' has' : ''}">${cc.videos || "—"}</span></td>
+        <td class="cell-stories"><span class="story-cell${cc.stories ? ' has' : ''}">${cc.stories || "—"}</span></td>
         <td class="cell-actions">
           <div class="actions">
             <button class="action-btn warning" onclick="event.stopPropagation();openUserDrawer('${u.uid}')">View</button>
@@ -2816,6 +3132,8 @@ function sortValue(u, key) {
     case "status": return u.banned ? 2 : (checkUserOnline(u) ? 0 : 1);
     case "joined": return u.createdAt || 0;
     case "seen": return userLastSeen(u) || 0;
+    case "videos": return (window.NexaAdminAnalytics && NexaAdminAnalytics.countFor) ? NexaAdminAnalytics.countFor(u.uid).videos : 0;
+    case "stories": return (window.NexaAdminAnalytics && NexaAdminAnalytics.countFor) ? NexaAdminAnalytics.countFor(u.uid).stories : 0;
     default: return 0;
   }
 }
@@ -3088,6 +3406,379 @@ function log(text, type = "info") {
     box.removeChild(box.lastChild);
   }
 }
+/* =====================================================
+   NEXA ADMIN — INTELLIGENCE LAYER (2026-11)
+   Range-aware KPIs, activity patterns, content mix, insights,
+   leaderboards, and an optional backend engagement feed.
+
+   All client-side reads here are limited to collections the hardened
+   rules expose to ANY signed-in user (users, presence, status, videos,
+   groups, channels) so the anonymously-authenticated admin can read them.
+   `chats`/`calls`/`connections` are party/member-only, so message + call
+   totals come from the Admin SDK backend (GET /api/admin/analytics) and
+   degrade gracefully when that endpoint isn't deployed.
+   ===================================================== */
+(function () {
+  "use strict";
+
+  const DAY = 86400000;
+  let anRangeDays = 30;
+  let contentStats = { videos: [], stories: [], groups: [], channels: [], loaded: false };
+  let contentByUid = {};
+  let backendStats = null;      // { messages, conversations, calls, topVideos, ... } or null
+  let backendTried = false;
+  let contentTimer = null;
+  const anCharts = {};
+  let lastChartKey = "";
+
+  const $ = (id) => document.getElementById(id);
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
+  const tsOf = (v) => (typeof window.tsMs === "function" ? window.tsMs(v) : (typeof v === "number" ? v : (v && v.seconds ? v.seconds * 1000 : (v ? new Date(v).getTime() || 0 : 0))));
+
+  // ── date helpers ──────────────────────────────────────────────────────────
+  function rangeStart(days, now) {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() - (days - 1) * DAY;
+  }
+  function inRange(ts, start, now) { const t = tsOf(ts); return t >= start && t <= now; }
+  function pct(part, whole) { return whole > 0 ? Math.round((part / whole) * 100) : 0; }
+  function delta(cur, prev) { if (prev <= 0) return cur > 0 ? 100 : 0; return Math.round(((cur - prev) / prev) * 100); }
+  function fmt(n) { return num(n).toLocaleString(); }
+
+  // ── PURE analytics (unit-testable) ────────────────────────────────────────
+  function computeKPIs(users, presence, content, rangeDays, now) {
+    const start = rangeStart(rangeDays, now);
+    const prevStart = start - rangeDays * DAY;
+    const totalUsers = users.length;
+    const banned = users.filter((u) => u.banned === true).length;
+
+    const newUsers = users.filter((u) => inRange(u.createdAt, start, now)).length;
+    const prevNew = users.filter((u) => { const t = tsOf(u.createdAt); return t >= prevStart && t < start; }).length;
+
+    const active = users.filter((u) => { const t = window.userLastSeen(u); return t >= start && t <= now; }).length;
+    const prevActive = users.filter((u) => { const t = window.userLastSeen(u); return t >= prevStart && t < start; }).length;
+
+    const onlineNow = users.filter((u) => window.checkUserOnline(u)).length;
+
+    const vids = content.videos || [];
+    const sts = content.stories || [];
+    const grps = content.groups || [];
+    const chns = content.channels || [];
+
+    const videos = vids.filter((v) => inRange(v.createdAt, start, now)).length;
+    const prevVideos = vids.filter((v) => { const t = tsOf(v.createdAt); return t >= prevStart && t < start; }).length;
+    const stories = sts.filter((s) => inRange(s.createdAt, start, now)).length;
+    const prevStories = sts.filter((s) => { const t = tsOf(s.createdAt); return t >= prevStart && t < start; }).length;
+    const newGroups = grps.filter((g) => inRange(g.createdAt, start, now)).length;
+    const newChannels = chns.filter((c) => inRange(c.createdAt, start, now)).length;
+
+    return {
+      rangeDays, totalUsers, banned, onlineNow,
+      newUsers, prevNew, newUsersDelta: delta(newUsers, prevNew),
+      active, prevActive, activeDelta: delta(active, prevActive), activePct: pct(active, totalUsers),
+      videos, prevVideos, videosDelta: delta(videos, prevVideos),
+      stories, prevStories, storiesDelta: delta(stories, prevStories),
+      newGroups, newChannels,
+      videosTotal: vids.length, storiesTotal: sts.length,
+      groupsTotal: grps.length, channelsTotal: chns.length,
+      engagementRate: pct(active, totalUsers),
+    };
+  }
+
+  function computeWeekday(users, now) {
+    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    const start = rangeStart(28, now);
+    users.forEach((u) => { const t = tsOf(u.createdAt); if (t >= start && t <= now) counts[new Date(t).getDay()]++; });
+    return { labels, counts };
+  }
+
+  function computeRecency(users, now) {
+    const buckets = [
+      { label: "Today", max: 1 },
+      { label: "1–7 days", max: 7 },
+      { label: "1–4 weeks", max: 28 },
+      { label: "1–3 months", max: 90 },
+      { label: "Older", max: Infinity },
+    ];
+    const counts = buckets.map(() => 0);
+    let never = 0;
+    users.forEach((u) => {
+      const t = window.userLastSeen(u);
+      if (!t) { never++; return; }
+      const ageDays = (now - t) / DAY;
+      for (let i = 0; i < buckets.length; i++) { if (ageDays <= buckets[i].max) { counts[i]++; return; } }
+    });
+    return { labels: buckets.map((b) => b.label), counts, never };
+  }
+
+  function computeContentMix(content) {
+    return [
+      { label: "Videos", value: (content.videos || []).length, color: "#2b8fff" },
+      { label: "Stories", value: (content.stories || []).length, color: "#f59e0b" },
+      { label: "Groups", value: (content.groups || []).length, color: "#10b981" },
+      { label: "Channels", value: (content.channels || []).length, color: "#a78bfa" },
+    ];
+  }
+
+  function computeRetention(users, now) {
+    const weekAgo = now - 7 * DAY;
+    const base = users.filter((u) => { const c = tsOf(u.createdAt); return c && c < weekAgo; });
+    const returned = base.filter((u) => window.userLastSeen(u) >= weekAgo).length;
+    const cohort = users.filter((u) => { const c = tsOf(u.createdAt); return c >= now - 14 * DAY && c < weekAgo; });
+    const cohortRetained = cohort.filter((u) => window.userLastSeen(u) >= weekAgo).length;
+    const dau = users.filter((u) => window.userLastSeen(u) >= now - DAY).length;
+    const mau = users.filter((u) => window.userLastSeen(u) >= now - 30 * DAY).length;
+    return {
+      base: base.length, returned, baseRate: pct(returned, base.length),
+      cohort: cohort.length, cohortRetained, cohortRate: pct(cohortRetained, cohort.length),
+      dau, mau, dauMau: pct(dau, mau),
+    };
+  }
+
+  function buildInsights(kpi, recency, weekday, retention) {
+    const out = [];
+    if (kpi.newUsersDelta >= 20) out.push({ tone: "good", ic: "📈", html: "Sign-ups are up <b>" + kpi.newUsersDelta + "%</b> vs the previous " + kpi.rangeDays + " days." });
+    else if (kpi.newUsersDelta <= -20) out.push({ tone: "bad", ic: "📉", html: "Sign-ups are down <b>" + Math.abs(kpi.newUsersDelta) + "%</b> vs the previous " + kpi.rangeDays + " days." });
+
+    if (kpi.totalUsers > 0) {
+      out.push(kpi.activePct >= 40
+        ? { tone: "good", ic: "🔥", html: "<b>" + kpi.activePct + "%</b> of all users were active in the last " + kpi.rangeDays + " days." }
+        : kpi.activePct >= 15
+          ? { tone: "info", ic: "⚡", html: "<b>" + kpi.activePct + "%</b> of users were active in the last " + kpi.rangeDays + " days." }
+          : { tone: "warn", ic: "😴", html: "Only <b>" + kpi.activePct + "%</b> of users were active recently — re-engagement may help." });
+    }
+
+    if (recency.never > 0) out.push({ tone: "warn", ic: "👻", html: "<b>" + recency.never + "</b> user" + (recency.never === 1 ? "" : "s") + " have never been seen active." });
+
+    if (retention.cohort > 0) {
+      out.push(retention.cohortRate >= 30
+        ? { tone: "good", ic: "💚", html: "<b>" + retention.cohortRate + "%</b> of last week's new users came back this week." }
+        : { tone: "warn", ic: "💔", html: "Only <b>" + retention.cohortRate + "%</b> of last week's new users returned." });
+    }
+
+    const wdMax = Math.max.apply(null, weekday.counts);
+    if (wdMax > 0) {
+      const top = weekday.labels[weekday.counts.indexOf(wdMax)];
+      out.push({ tone: "info", ic: "📅", html: "Most people join on <b>" + top + "</b>." });
+    }
+
+    if (kpi.videosTotal > 0 || kpi.storiesTotal > 0) {
+      out.push({ tone: "info", ic: "🎬", html: "<b>" + fmt(kpi.videosTotal) + "</b> videos and <b>" + fmt(kpi.storiesTotal) + "</b> stories posted all-time." });
+    }
+
+    if (kpi.banned > 0) out.push({ tone: "warn", ic: "🚫", html: "<b>" + kpi.banned + "</b> account" + (kpi.banned === 1 ? "" : "s") + " currently banned." });
+    if (kpi.onlineNow > 0) out.push({ tone: "good", ic: "🟢", html: "<b>" + kpi.onlineNow + "</b> user" + (kpi.onlineNow === 1 ? "" : "s") + " online right now." });
+    return out;
+  }
+
+  // ── content fetch (public, signed-in readable) ────────────────────────────
+  async function fetchContentStats() {
+    try {
+      const [vids, sts, grps, chns] = await Promise.all([
+        db.collection("videos").limit(1000).get().catch(() => null),
+        db.collection("status").limit(2000).get().catch(() => null),
+        db.collection("groups").limit(1000).get().catch(() => null),
+        db.collection("channels").limit(1000).get().catch(() => null),
+      ]);
+      const rows = (snap) => { const a = []; if (snap) snap.forEach((d) => a.push(Object.assign({ id: d.id }, d.data()))); return a; };
+      contentStats = { videos: rows(vids), stories: rows(sts), groups: rows(grps), channels: rows(chns), loaded: true };
+      contentByUid = {};
+      contentStats.videos.forEach((v) => { const e = contentByUid[v.uid] || (contentByUid[v.uid] = { videos: 0, stories: 0 }); e.videos++; });
+      contentStats.stories.forEach((x) => { const e = contentByUid[x.uid] || (contentByUid[x.uid] = { videos: 0, stories: 0 }); e.stories++; });
+    } catch (e) {
+      contentStats = { videos: [], stories: [], groups: [], channels: [], loaded: true };
+    }
+    renderCharts();
+    renderLeaderboards();
+    if (window.log) window.log("Content analytics refreshed", "info");
+  }
+
+  async function fetchBackendStats() {
+    if (backendTried) return;
+    backendTried = true;
+    try {
+      const r = await adminFetchGet("/api/admin/analytics");
+      if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "?"));
+      backendStats = await r.json();
+    } catch (e) {
+      backendStats = null;
+      const host = $("anEngagementGrid");
+      if (host) host.innerHTML = '<div class="an-card"><div class="an-loading">Engagement totals unavailable — deploy <code>server/admin-api.js</code> (GET /api/admin/analytics) to the backend.</div></div>';
+      return;
+    }
+    renderEngagement();
+  }
+
+  // ── renderers ─────────────────────────────────────────────────────────────
+  function renderKPIs() {
+    const host = $("anKpiGrid");
+    if (!host || !users) return;
+    const now = Date.now();
+    const kpi = computeKPIs(users, presenceData || {}, contentStats, anRangeDays, now);
+    const spark = computeWeekday(users, now).counts;
+    const sparkMax = Math.max.apply(null, spark) || 1;
+
+    const tile = (accent, icon, label, value, deltaVal, hint, withSpark) => {
+      const d = deltaVal === null ? "" :
+        '<span class="an-kpi-delta ' + (deltaVal > 0 ? "up" : deltaVal < 0 ? "down" : "flat") + '">' +
+        (deltaVal > 0 ? "▲" : deltaVal < 0 ? "▼" : "•") + " " + Math.abs(deltaVal) + "%</span>";
+      const s = withSpark
+        ? '<div class="an-kpi-spark">' + spark.map((n) => '<span style="height:' + Math.max(6, Math.round((n / sparkMax) * 100)) + '%"></span>').join("") + "</div>"
+        : "";
+      return '<div class="an-kpi" style="--kpi-accent:' + accent + '">' +
+        '<div class="an-kpi-top"><span class="an-kpi-label">' + label + '</span><span class="an-kpi-ic">' + icon + "</span></div>" +
+        '<div class="an-kpi-val">' + value + "</div>" +
+        '<div class="an-kpi-foot">' + d + '<span class="an-kpi-hint">' + hint + "</span></div>" + s +
+        "</div>";
+    };
+
+    host.innerHTML = [
+      tile("#2b8fff", "👥", "Total Users", fmt(kpi.totalUsers), null, kpi.onlineNow + " online now", true),
+      tile("#10b981", "✨", "New Users", fmt(kpi.newUsers), kpi.newUsersDelta, "last " + anRangeDays + "d", false),
+      tile("#f59e0b", "⚡", "Active Users", fmt(kpi.active), kpi.activeDelta, kpi.activePct + "% of all users", false),
+      tile("#a78bfa", "🎬", "Videos Posted", fmt(kpi.videos), kpi.videosDelta, "last " + anRangeDays + "d", false),
+      tile("#3f93f7", "📸", "Stories Posted", fmt(kpi.stories), kpi.storiesDelta, "last " + anRangeDays + "d", false),
+      tile("#ef4444", "🚫", "Banned", fmt(kpi.banned), null, "restricted accounts", false),
+    ].join("");
+
+    renderInsights(kpi, computeRecency(users, now), computeWeekday(users, now), computeRetention(users, now));
+  }
+
+  function barList(host, labels, counts, hotIndex) {
+    if (!host) return;
+    const max = Math.max.apply(null, counts) || 1;
+    host.innerHTML = labels.map((lab, i) => {
+      const w = Math.round((counts[i] / max) * 100);
+      return '<div class="an-bar-row' + (i === hotIndex ? " hot" : "") + '">' +
+        '<span class="an-bar-label">' + lab + "</span>" +
+        '<span class="an-bar-track"><span class="an-bar-fill" style="width:' + w + '%"></span></span>' +
+        '<span class="an-bar-val">' + fmt(counts[i]) + "</span></div>";
+    }).join("");
+  }
+
+  function renderCharts() {
+    if (!users) return;
+    const now = Date.now();
+    const wd = computeWeekday(users, now);
+    const rc = computeRecency(users, now);
+    const wdMax = Math.max.apply(null, wd.counts);
+    barList($("anWeekday"), wd.labels, wd.counts, wd.counts.indexOf(wdMax));
+
+    const rcLabels = rc.labels.concat(rc.never > 0 ? ["Never"] : []);
+    const rcCounts = rc.counts.concat(rc.never > 0 ? [rc.never] : []);
+    barList($("anRecency"), rcLabels, rcCounts, 0);
+
+    // doughnut
+    const mix = computeContentMix(contentStats);
+    const legend = $("anMixLegend");
+    if (legend) legend.innerHTML = mix.map((m) => '<span class="an-legend-item"><span class="an-legend-dot" style="background:' + m.color + '"></span>' + m.label + ' <span class="an-legend-val">' + fmt(m.value) + "</span></span>").join("");
+    const cv = $("anMixCanvas");
+    if (cv && window.Chart) {
+      if (anCharts.mix) anCharts.mix.destroy();
+      anCharts.mix = new Chart(cv, {
+        type: "doughnut",
+        data: { labels: mix.map((m) => m.label), datasets: [{ data: mix.map((m) => m.value), backgroundColor: mix.map((m) => m.color), borderWidth: 0, hoverOffset: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: "64%",
+          plugins: { legend: { display: false }, tooltip: { backgroundColor: "rgba(11,15,23,0.95)", padding: 10 } } },
+      });
+    }
+
+    // retention panel
+    const ret = computeRetention(users, now);
+    const rp = $("anRetention");
+    if (rp) {
+      rp.innerHTML =
+        metricRow("Returning users (7d)", ret.returned + " / " + ret.base, ret.baseRate + "%") +
+        metricRow("New-user retention", ret.cohortRetained + " / " + ret.cohort, ret.cohortRate + "%") +
+        metricRow("DAU / MAU", ret.dau + " / " + ret.mau, ret.dauMau + "%") +
+        metricRow("Engagement rate", ret.dau + " daily", pct(ret.dau, users.length) + "%");
+    }
+  }
+
+  function metricRow(k, v, badge) {
+    return '<div class="an-metric-row"><span class="k">' + k + '</span><span class="v">' + v + ' <span class="mini-badge">' + badge + "</span></span></div>";
+  }
+
+  function renderInsights(kpi, recency, weekday, retention) {
+    const host = $("anInsights");
+    if (!host) return;
+    const list = buildInsights(kpi, recency, weekday, retention);
+    host.innerHTML = list.length
+      ? list.map((i) => '<div class="an-insight ' + i.tone + '"><span class="an-insight-ic">' + i.ic + '</span><span class="an-insight-text">' + i.html + "</span></div>").join("")
+      : '<div class="an-insight info"><span class="an-insight-ic">ℹ️</span><span class="an-insight-text">Not enough data yet — insights appear as users join and post.</span></div>';
+  }
+
+  function renderLeaderboards() {
+    const vhost = $("anTopVideos");
+    if (vhost) {
+      const vids = (contentStats.videos || []).slice().sort((a, b) => num(b.views) - num(a.views)).slice(0, 6);
+      vhost.innerHTML = vids.length ? vids.map((v, i) =>
+        '<div class="an-metric-row"><span class="k">#' + (i + 1) + " " + escapeHtml((v.caption || "Untitled").slice(0, 42)) + "</span>" +
+        '<span class="v">' + fmt(v.views) + ' <span class="mini-badge">views</span></span></div>').join("")
+        : '<div class="an-loading">No videos posted yet.</div>';
+    }
+    const ghost = $("anTopGroups");
+    if (ghost) {
+      const grps = (contentStats.groups || []).slice().sort((a, b) => num(b.membersCount || (b.memberUids || []).length) - num(a.membersCount || (a.memberUids || []).length)).slice(0, 6);
+      ghost.innerHTML = grps.length ? grps.map((g, i) =>
+        '<div class="an-metric-row"><span class="k">#' + (i + 1) + " " + escapeHtml((g.name || "Group").slice(0, 42)) + "</span>" +
+        '<span class="v">' + fmt(num(g.membersCount || (g.memberUids || []).length)) + ' <span class="mini-badge">members</span></span></div>').join("")
+        : '<div class="an-loading">No groups yet.</div>';
+    }
+  }
+
+  function renderEngagement() {
+    const host = $("anEngagementGrid");
+    if (!host) return;
+    if (!backendStats) { host.innerHTML = ""; return; }
+    const b = backendStats;
+    const card = (icon, label, value, sub) =>
+      '<div class="an-card"><div class="an-kpi-top"><span class="an-kpi-label">' + label + '</span><span class="an-kpi-ic">' + icon + "</span></div>" +
+      '<div class="an-kpi-val">' + value + '</div><div class="an-kpi-hint">' + (sub || "") + "</div></div>";
+    host.innerHTML = [
+      card("💬", "Messages Sent", fmt(b.messages), "all-time"),
+      card("🗣️", "Conversations", fmt(b.conversations), "distinct pairs"),
+      card("📞", "Calls", fmt(b.calls), "all-time"),
+      card("📅", "Messages (7d)", fmt(b.messages7d), "last 7 days"),
+    ].join("");
+  }
+
+  // ── public API ────────────────────────────────────────────────────────────
+  function setRange(days) {
+    anRangeDays = days;
+    document.querySelectorAll(".an-range-btn").forEach((b) => b.classList.toggle("active", Number(b.dataset.range) === days));
+    renderKPIs();
+    renderCharts();
+    renderLeaderboards();
+  }
+
+  function countFor(uid) { return contentByUid[uid] || { videos: 0, stories: 0 }; }
+
+  function refresh() {
+    if (!document.getElementById("anKpiGrid")) return;
+    renderKPIs();
+    renderCharts();
+    renderLeaderboards();
+  }
+
+  function init() {
+    if (!document.getElementById("anKpiGrid")) return;
+    renderKPIs();
+    renderCharts();
+    renderLeaderboards();
+    if (!contentTimer) {
+      contentTimer = setInterval(() => { fetchContentStats(); fetchBackendStats(); }, 120000);
+    }
+    fetchContentStats();
+    fetchBackendStats();
+  }
+
+  window.NexaAdminAnalytics = { init: init, refresh: refresh, setRange: setRange, countFor: countFor, fetchContentStats: fetchContentStats, fetchBackendStats: fetchBackendStats };
+  // also expose the pure helpers for headless testing
+  window.NexaAdminAnalytics._pure = { computeKPIs, computeWeekday, computeRecency, computeContentMix, computeRetention, buildInsights, rangeStart, delta };
+})();
 </script>
 
 </body>
