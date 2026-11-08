@@ -6,7 +6,7 @@ const fs = require("fs");
 const vm = require("vm");
 const path = require("path");
 
-const ROOT = "/workspace/project/Nexa";
+const ROOT = require("path").join(__dirname, "..");
 const code = fs.readFileSync(path.join(ROOT, "nexa-videos.js"), "utf8");
 
 let pass = 0, fail = 0;
