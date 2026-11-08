@@ -290,7 +290,8 @@ console.log("\n8) App Links / assetlinks wiring");
   ok("android patch: deep-link handler", /private String deepLinkTarget\(Intent intent\)/.test(patch));
   ok("android patch: keeps nexa:// in the app", /url\.startsWith\("nexa:\/\/"\)/.test(patch));
   ok("android patch: swallows intent:// inside the app", /url\.startsWith\("intent:\/\/"\)/.test(patch));
-  ok("android patch: version bumped to 1.3.0", /versionName "1\.3\.0"/.test(patch));
+  ok("android patch: version bumped to 1.4.0", /versionName "1\.4\.0"/.test(patch));
+  ok("android patch: watch.html app link", /pathPrefix="\/watch\.html"/.test(patch));
 }
 
 console.log("\n9) in-app update gate");
@@ -307,7 +308,7 @@ console.log("\n9) in-app update gate");
   const patch = read("android-deeplink.patch");
   const removedVer = /^-\s*versionName "([\d.]+)"/m.exec(patch);
   const addedVer = /^\+\s*versionName "([\d.]+)"/m.exec(patch);
-  eq("patch bumps the version", (removedVer && removedVer[1]) + "->" + (addedVer && addedVer[1]), "1.2.0->1.3.0");
+  eq("patch bumps the version", (removedVer && removedVer[1]) + "->" + (addedVer && addedVer[1]), "1.2.0->1.4.0");
   eq("NEXA_LATEST_APP_VERSION == published APK version", latest, addedVer && addedVer[1]);
 
   const cmp = extractFn(src, "_cmpVersion") + "\n" + extractFn(src, "_verNum") + "\n_cmpVersion;";

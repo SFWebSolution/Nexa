@@ -1315,12 +1315,13 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   is above what `latest` serves, every native device is permanently "behind" and
   the prompt never clears after updating. If it is below, the dot/modal never fire.
   `tests/invite-links.test.js` section 9 asserts the two stay equal. As of
-  2026-10-17 the 1.3.0 APK (App Link / deep-link, from `android-deeplink.patch`)
-  IS published — pushed to `SFWebSolution/nexa-andriod` main, `Build Android APK`
-  succeeded, `latest` re-uploaded — so `NEXA_LATEST_APP_VERSION` is `1.3.0` on
-  both sides. For the NEXT release: raise the constant in the SAME commit that
-  publishes the new APK (push the patch to `SFWebSolution/nexa-andriod` main; the
-  workflow rebuilds and re-uploads `latest` automatically).
+  2026-11-07 the 1.4.0 APK (App Link / deep-link incl. the shared-video
+  `watch.html` link, from `android-deeplink.patch`) IS published — pushed to
+  `SFWebSolution/nexa-andriod` main, `Build Android APK` succeeded, `latest`
+  re-uploaded — so `NEXA_LATEST_APP_VERSION` is `1.4.0` on both sides. For the
+  NEXT release: raise the constant in the SAME commit that publishes the new APK
+  (push the patch to `SFWebSolution/nexa-andriod` main; the workflow rebuilds and
+  re-uploads `latest` automatically).
 
 ## Sign-in first-load, notification history, calls, in-app update (2026-10)
 - **First load after sign-in must NOT block on FCM.** `auth.onAuthStateChanged`
@@ -1661,14 +1662,15 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `com.nexa.messenger`). Apply with `git apply android-deeplink.patch` from the
   android repo root. It adds: `android:launchMode="singleTask"`, an
   `autoVerify` App Link intent-filter (`https`, host `nexa-qydr.onrender.com`,
-  `pathPrefix="/join.html"`), a `nexa://` custom-scheme intent-filter, and
+  `pathPrefix="/join.html"` AND `pathPrefix="/watch.html"` so a shared video
+  link opens the app too), a `nexa://` custom-scheme intent-filter, and
   `deepLinkTarget()`/`handleDeepLink()` in MainActivity (called from
   `onCreate` — the initial load prefers the invite URL over `APP_URL` — and
   `onNewIntent`). Custom-scheme URLs put the file name in the authority, so
   `deepLinkTarget()` normalises `nexa://join.html?x` → `https://<host>/join.html?x`.
   `shouldOverrideUrlLoading` also keeps `nexa://` inside the app (rewritten to
   its https form) and swallows `intent://` (which only exists to launch us).
-  Version is bumped to 1.3.0 (code 4) so the rebuild is a distinct update.
+  Version is bumped to 1.4.0 (code 5) so the rebuild is a distinct update.
 - **Rebuild/release the APK** for the app to receive App Links. Until then the
   web half still works: Android shows the intent and, without a matching app,
   falls back to the in-browser destination.

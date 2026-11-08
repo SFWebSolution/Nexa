@@ -3452,7 +3452,7 @@ const NEXA_APP_VERSION = '1.0.0';
 // this before the new build is uploaded would prompt forever without ever
 // clearing. (1.3.0 = the join.html App Link / deep-link build, published
 // 2026-10-17.)
-const NEXA_LATEST_APP_VERSION = '1.3.0';
+const NEXA_LATEST_APP_VERSION = '1.4.0';
 
 function _verNum(v) { return String(v || '0').split('.').map(n => parseInt(n, 10) || 0); }
 function _cmpVersion(a, b) {

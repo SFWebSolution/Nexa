@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle b/app/build.gradle
-index b5b8d8f..8864750 100644
+index b5b8d8f..a348f8d 100644
 --- a/app/build.gradle
 +++ b/app/build.gradle
 @@ -18,8 +18,8 @@ android {
@@ -8,13 +8,13 @@ index b5b8d8f..8864750 100644
          targetSdk 34
 -        versionCode 3
 -        versionName "1.2.0"
-+        versionCode 4
-+        versionName "1.3.0"
++        versionCode 5
++        versionName "1.4.0"
      }
  
      // A FIXED signing key committed to the repo. CI builds otherwise use a
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
-index c341ddd..b8b4f4d 100644
+index c341ddd..ba37216 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
 @@ -36,6 +36,7 @@
@@ -25,7 +25,7 @@ index c341ddd..b8b4f4d 100644
              android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
              android:windowSoftInputMode="adjustResize"
              android:theme="@style/Theme.NexaMessenger.NoActionBar">
-@@ -43,6 +44,29 @@
+@@ -43,6 +44,32 @@
                  <action android:name="android.intent.action.MAIN" />
                  <category android:name="android.intent.category.LAUNCHER" />
              </intent-filter>
@@ -62,7 +62,7 @@ diff --git a/app/src/main/java/com/nexa/messenger/MainActivity.java b/app/src/ma
 index dc57c6f..4eb7419 100644
 --- a/app/src/main/java/com/nexa/messenger/MainActivity.java
 +++ b/app/src/main/java/com/nexa/messenger/MainActivity.java
-@@ -61,6 +61,8 @@ import java.util.List;
+@@ -61,6 +88,8 @@ import java.util.List;
  public class MainActivity extends AppCompatActivity {
  
      public static final String APP_URL = "https://nexa-qydr.onrender.com";
@@ -71,7 +71,7 @@ index dc57c6f..4eb7419 100644
      /** True while this activity is visible; the FCM service reads it to avoid double-displaying. */
      public static boolean isForeground = false;
      private static final String BACKEND_URL = "https://nexa-backend-e6pq.onrender.com";
-@@ -91,6 +93,10 @@ public class MainActivity extends AppCompatActivity {
+@@ -91,6 +120,10 @@ public class MainActivity extends AppCompatActivity {
  
          initViews();
          handleNotificationIntent(getIntent());
@@ -82,7 +82,7 @@ index dc57c6f..4eb7419 100644
          // Paint the window background in the LAST-KNOWN theme before the page
          // loads, so a returning dark-theme user sees no light flash (and light
          // stays light). Overridden by setTheme once the page has loaded.
-@@ -100,11 +106,11 @@ public class MainActivity extends AppCompatActivity {
+@@ -100,11 +133,11 @@ public class MainActivity extends AppCompatActivity {
          checkAndRequestAppPermissions();
          initFirebase();
  
@@ -96,7 +96,7 @@ index dc57c6f..4eb7419 100644
          }
      }
  
-@@ -352,6 +358,19 @@ public class MainActivity extends AppCompatActivity {
+@@ -352,6 +385,19 @@ public class MainActivity extends AppCompatActivity {
          public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
              String url = request.getUrl().toString();
              
@@ -116,7 +116,7 @@ index dc57c6f..4eb7419 100644
              // Keep app within Nexa domain
              if (url.startsWith(APP_URL) || url.contains("onrender.com")) {
                  return false;
-@@ -579,6 +598,42 @@ public class MainActivity extends AppCompatActivity {
+@@ -579,6 +625,43 @@ public class MainActivity extends AppCompatActivity {
          return uid;
      }
  
@@ -160,7 +160,7 @@ index dc57c6f..4eb7419 100644
      private void handleNotificationIntent(Intent intent) {
          if (intent == null) return;
          String chatUid = intent.getStringExtra("chatUid");
-@@ -593,6 +648,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -593,6 +676,7 @@ public class MainActivity extends AppCompatActivity {
          setIntent(intent);
          // Bring the pending chat into the already-running web app.
          handleNotificationIntent(intent);
