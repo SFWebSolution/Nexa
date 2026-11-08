@@ -66,7 +66,11 @@ function walk(root, out, parts) {
     walk(c, out, parts);
   }
 }
-function register(n) { if (n instanceof El && n.id) document._byId[n.id] = n; }
+function register(n) {
+  if (!(n instanceof El)) return;
+  if (n.id) document._byId[n.id] = n;
+  n.children.forEach(register);
+}
 
 // selector: only the forms this module uses — compound parts + descendant (space)
 function splitSelector(s) { return String(s).trim().split(/\s+/); }
@@ -245,6 +249,26 @@ setTimeout(() => {
   setTimeout(() => {
     ok("share uses the watch.html landing link", /\/watch\.html\?v=v1$/.test(sharedUrl || ""));
     ok("share link points at the canonical host", /^https:\/\/nexa-qydr\.onrender\.com\//.test(sharedUrl || ""));
+
+    // ── 6. composer preview must not keep playing after leaving ──────────────
+    let revoked = 0;
+    sandbox.URL = { createObjectURL: () => "blob:preview", revokeObjectURL: () => { revoked++; } };
+    // The feed clip is playing behind the composer.
+    video1.paused = false;
+    sandbox.window.nexaVideosOpenComposer();
+    ok("opening the composer pauses the feed clip behind it", video1.paused === true);
+    const fileInput = document.getElementById("nvFileInput");
+    ok("composer built a file input", !!fileInput);
+    fileInput.dispatch("change", { target: { files: [{ type: "video/mp4", size: 1024 * 1024 }], value: "" } });
+    const cprev = document.getElementById("nvComposerPreview");
+    ok("preview <video> is playing after a file is picked", cprev && cprev.paused === false);
+    ok("preview is wired to a revocable object URL", cprev && cprev.src === "blob:preview");
+    // Leaving the composer (Cancel / backdrop / post-success all funnel here):
+    sandbox.window.nexaVideosCloseComposer();
+    ok("closing the composer PAUSES the preview (no lingering audio)", cprev.paused === true);
+    ok("closing the composer revokes the preview object URL", revoked === 1);
+    ok("preview is muted on teardown", cprev.muted === true);
+
     console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
     process.exit(fail ? 1 : 0);
   }, 20);

@@ -1135,7 +1135,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 ## PWA service worker caching (firebase-messaging-sw.js) — do NOT regress
 - The service worker caches `dashboard.html`, `nexa-voice-room.js`/`.css`, `app-main.js` etc. If first-party JS/CSS is served Stale-While-Revalidate, **the first load after every deploy runs the PREVIOUS version** — so a pushed fix silently doesn't apply until a second reload (this is exactly why "the echo is still there" / "the layout is still broken" after a fix was deployed). First-party `.js`/`.css` are now NETWORK-FIRST (falling back to cache only when offline); HTML navigations were already network-first.
-- `CACHE_NAME` must be BUMPED on each release (`nexa-v8-videos` → `nexa-v9-player`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
+- `CACHE_NAME` must be BUMPED on each release (`nexa-v9-player` → `nexa-v10-preview`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
 - When adding a new first-party script/style to the page, add it to `ASSETS_TO_CACHE` too (currently `nexa-voice-room.css` + `nexa-voice-room.js` are listed).
 
 ## Live video layout (nexa-voice-room.css) — do NOT regress
@@ -1143,6 +1143,28 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **`grid-auto-rows: max-content` + `align-content: start` are REQUIRED on `.nexa-vr-grid-video` when it has `max-height` + `overflow-y:auto`.** Without them a height-constrained grid squishes its rows to a fraction of the card height while `aspect-ratio` forces each card tall → **the cards overlap each other** (the "arrangement scattered" bug). Every row must be as tall as its card.
 
 - Firestore needs NO rules change for video — the `voice_rooms` update rule only pins `hostId`, so the `mode` field and participant `isCameraOn` are allowed. `nexa-voice-room.css` holds `.nexa-vr-mode-*`, `.nexa-vr-local-video`, `.nexa-vr-video-card` styles.
+
+## Video composer preview — audio must STOP when the composer closes (do NOT regress)
+- **A hidden `<video>` keeps playing.** The video composer preview
+  (`#nvComposerPreview`, `nexa-videos.js`) is a LOOPING `<video>`; the overlay is
+  dismissed by removing `.active` (CSS `display:none`), and `display:none` does
+  NOT pause media. So closing the composer left the clip's audio playing (and
+  looping) forever — the "I leave and still hear the background of the video"
+  bug. `closeComposer()` now calls `teardownPreview()`: pause, mute, strip `src`,
+  `load()`, and `URL.revokeObjectURL(state.previewObjectUrl)`. `openComposer()`
+  also pauses the feed clip behind the overlay (no two clips at once) and
+  `closeComposer()` calls `resumeActiveCard()` to restart the visible feed clip.
+  A `visibilitychange`(hidden)/`pagehide` listener pauses the preview as a
+  safety net for mobile WebViews that deliver no other event.
+- **Same class of bug in the STORY composer** (`app-main.js`): `setStatusPreview()`
+  replaces `#statusPreview.innerHTML`, which does not stop a running
+  `<video controls>` preview. It now calls `stopPreviewMedia(#statusPreview)`
+  first, and `closeStatusModal()` stops preview media in both `#statusPreview`
+  and `#storyViewerContent`. `stopPreviewMedia(container)` pauses + strips
+  `src` on every `video, audio` inside the container.
+- Regression coverage: `tests/videos-player.test.js` section 6 asserts the
+  preview pauses, the blob URL is revoked and the element is muted on close
+  (mutation-verified: removing the teardown fails 3 checks).
 
 ## Boot progress bar (dashboard.html splash + app-main.js)
 - The splash now carries a real 0→100% bar (`#nexaSplashProgress` / `#nexaSplashBarFill` / `#nexaSplashPct` / `#nexaSplashHold`) driven by `nexaBootStep(name)` in app-main.js. Milestones are WEIGHTED (`NEXA_BOOT_STEPS`: auth 15, profile 10, users 15, listeners 20, chats 20, community 15, paint 5) and idempotent; `nexaBootPaint()` only ever moves the bar FORWARD. `revealNexaApp()` fires exactly when the total hits 100 (the `paint` step) — the app is NOT revealed earlier. Do NOT revert to a fixed-timer bar — 100% must mean "ready".

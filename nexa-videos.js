@@ -52,6 +52,7 @@
     viewed: new Set(),      // video ids whose `views` we already bumped this session
     likedMine: {},          // videoId -> true/false (did *I* like it)
     pendingFile: null,      // File chosen in the composer
+    previewObjectUrl: null, // blob URL backing the composer preview
     pendingDuration: 0,     // seconds (from the preview metadata)
     posting: false,
     commentsUnsub: null,
@@ -974,12 +975,46 @@
     const cap = el('nvComposerCaption'); if (cap) cap.value = '';
     const mus = el('nvComposerMusic'); if (mus) mus.value = '';
     setRing(false, 0, '');
+    // Silence any feed clip behind the overlay so you don't hear two at once.
+    const feed = el('nvFeed');
+    if (feed) feed.querySelectorAll('.nv-video').forEach(v => { try { v.pause(); } catch (e) {} });
     box.classList.add('active');
+  }
+
+  // The composer preview is a LOOPING <video>. Hiding the overlay with
+  // display:none does NOT stop media, so without an explicit teardown the clip
+  // keeps playing (and looping) after the composer is dismissed — the "I still
+  // hear the video after leaving" bug.
+  function pausePreview() {
+    const prev = el('nvComposerPreview');
+    if (prev && !prev.paused) { try { prev.pause(); } catch (e) {} }
+  }
+  function teardownPreview() {
+    const prev = el('nvComposerPreview');
+    if (prev) {
+      try { prev.pause(); } catch (e) {}
+      prev.muted = true;
+      try { prev.removeAttribute('src'); prev.load(); } catch (e) {}
+    }
+    if (state.previewObjectUrl) {
+      try { if (typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(state.previewObjectUrl); } catch (e) {}
+      state.previewObjectUrl = null;
+    }
+  }
+  // Re-start whichever feed clip was on screen before the composer covered it.
+  function resumeActiveCard() {
+    const feed = el('nvFeed');
+    if (!feed || !state.activeId) return;
+    const card = feed.querySelector('.nv-card[data-id="' + sid(state.activeId) + '"]');
+    const video = card && card.querySelector('.nv-video');
+    if (video && video.paused) tryPlay(video);
   }
 
   function closeComposer() {
     const box = el('nvComposer');
     if (box) box.classList.remove('active');
+    teardownPreview();
+    resumeActiveCard();
   }
 
   function composerBackdrop(e) {
@@ -1016,7 +1051,9 @@
     const pick = el('nvComposerPick');
     if (pick) pick.style.display = 'none';
     if (prev) {
-      prev.src = URL.createObjectURL(file);
+      if (state.previewObjectUrl) { try { URL.revokeObjectURL(state.previewObjectUrl); } catch (e) {} }
+      state.previewObjectUrl = URL.createObjectURL(file);
+      prev.src = state.previewObjectUrl;
       prev.style.display = '';
       prev.muted = false; // hear what you are about to post
       prev.load();
@@ -1307,6 +1344,16 @@
     if (window.openMediaViewer) window.openMediaViewer(v.videoUrl, 'video');
     else window.open(safeUrl(v.videoUrl), '_blank');
   }
+
+  // Safety net: if the tab/app is backgrounded while the composer is open,
+  // silence the preview immediately (a mobile WebView may not deliver any other
+  // event until the page is resumed).
+  if (document.addEventListener) {
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') pausePreview();
+    });
+  }
+  if (window.addEventListener) window.addEventListener('pagehide', pausePreview);
 
   // ── public API ───────────────────────────────────────────────────────────
   window.NexaVideos = {

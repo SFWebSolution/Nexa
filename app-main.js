@@ -10295,6 +10295,9 @@ if (typeof window !== "undefined" && !window._nexaStoryResizeBound) {
 
 function closeStatusModal() {
   document.getElementById("statusModalOverlay").classList.remove("active");
+  // Silence the story preview clip (image/video stories both use #statusPreview).
+  stopPreviewMedia(document.getElementById("statusPreview"));
+  stopPreviewMedia(document.getElementById("storyViewerContent"));
   statusFile = null;
   selectedMusicData = null;
   pendingStorySticker = null;
@@ -10343,9 +10346,18 @@ function switchStatusTab(tab) {
 }
 
 // Paint media into the editor canvas, replacing the empty state.
+function stopPreviewMedia(container) {
+  if (!container || !container.querySelectorAll) return;
+  container.querySelectorAll("video, audio").forEach(m => {
+    try { m.pause(); } catch (e) {}
+    try { m.removeAttribute("src"); m.load(); } catch (e) {}
+  });
+}
+
 function setStatusPreview(html) {
   const preview = document.getElementById("statusPreview");
   if (!preview) return;
+  stopPreviewMedia(preview);
   preview.innerHTML = html;
   refreshStickerToolButton();
   renderStickerOnImage();
