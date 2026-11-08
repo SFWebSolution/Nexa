@@ -28,6 +28,13 @@
   const PAGE = 6;          // feed page size (newest N, then older chunks)
   const COMMENTS_PAGE = 60; // comments fetched per video
   const DOUBLE_TAP_MS = 260;
+  // Upload caps. Duration is a hard client cap (raise MAX_VIDEO_MIN and the
+  // hint text together). Size is only a SOFT warning: Cloudinary's plan ceiling
+  // is what actually rejects the file (Free = 100 MB, Plus = 2 GB), so a hard
+  // client block just swapped a clear message for a confusing server failure.
+  const MAX_VIDEO_MIN = 20;
+  const MAX_VIDEO_MS = MAX_VIDEO_MIN * 60 * 1000;
+  const SOFT_SIZE_WARN = 100 * 1024 * 1024; // Cloudinary Free per-file ceiling
 
   const state = {
     started: false,
@@ -45,7 +52,12 @@
     commentsUnsub: null,
     commentsVideoId: null,
     lastTapAt: 0,
-    lastTapId: null
+    lastTapId: null,
+    pendingDurationMs: 0,
+    pendingTooLong: false,
+    editVideoId: null,
+    myVideos: [],
+    myUnsub: null
   };
 
   // ── small helpers ────────────────────────────────────────────────────────
@@ -71,6 +83,17 @@
     if (n >= 1e3) return (n / 1e3).toFixed(n % 1e3 >= 100 ? 1 : 0) + 'K';
     return String(n);
   }
+  // Doc ids go inside inline onclick handlers, so strip anything that could
+  // break out of the quoted attribute.
+  function sid(id) { return String(id == null ? '' : id).replace(/[^A-Za-z0-9_-]/g, ''); }
+
+  function fmtDur(ms) {
+    const total = Math.round((Number(ms) || 0) / 1000);
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return m + ':' + String(sec).padStart(2, '0');
+  }
+
   function timeAgo(ms) {
     if (!ms) return '';
     const s = Math.max(1, Math.floor((Date.now() - ms) / 1000));
@@ -229,6 +252,21 @@
     if (window.lucide) window.lucide.createIcons();
   }
 
+  function metaHtml(v) {
+    return '' +
+      '<div class="nv-meta">' +
+        '<div class="nv-author">' +
+          '<img class="nv-author-pic" src="' + esc(safeUrl(v.authorPhoto || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
+          '<span class="nv-author-name">@' + esc(v.authorName || 'user') + '</span>' +
+          '<span class="nv-dot">·</span>' +
+          '<span class="nv-time">' + esc(timeAgo(Number(v.createdAt))) + '</span>' +
+        '</div>' +
+        (v.caption ? '<div class="nv-caption">' + esc(v.caption) + '</div>' : '') +
+        (v.music ? '<div class="nv-music"><i data-lucide="music" style="width:13px;height:13px;"></i>' +
+          '<span class="nv-music-text">' + esc(v.music) + '</span></div>' : '') +
+      '</div>';
+  }
+
   function cardHtml(v) {
     const thumb = v.thumbUrl || cloudThumb(v.videoUrl);
     const poster = thumb ? ' poster="' + esc(safeUrl(thumb)) + '"' : '';
@@ -243,17 +281,7 @@
           '<i data-lucide="heart" style="width:84px;height:84px;"></i></div>' +
         '<div class="nv-play-hint" aria-hidden="true">' +
           '<i data-lucide="play" style="width:30px;height:30px;"></i></div>' +
-        '<div class="nv-meta">' +
-          '<div class="nv-author">' +
-            '<img class="nv-author-pic" src="' + esc(safeUrl(v.authorPhoto || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
-            '<span class="nv-author-name">@' + esc(v.authorName || 'user') + '</span>' +
-            '<span class="nv-dot">·</span>' +
-            '<span class="nv-time">' + esc(timeAgo(Number(v.createdAt))) + '</span>' +
-          '</div>' +
-          (v.caption ? '<div class="nv-caption">' + esc(v.caption) + '</div>' : '') +
-          (v.music ? '<div class="nv-music"><i data-lucide="music" style="width:13px;height:13px;"></i>' +
-            '<span class="nv-music-text">' + esc(v.music) + '</span></div>' : '') +
-        '</div>' +
+        metaHtml(v) +
         '<div class="nv-rail">' +
           '<button class="nv-rail-btn nv-rail-like' + (liked ? ' liked' : '') + '" data-act="like" data-id="' + esc(v.id) + '" aria-label="Like">' +
             '<i data-lucide="heart" style="width:26px;height:26px;"></i>' +
@@ -266,6 +294,8 @@
             '<span class="nv-rail-count" id="nvShareCount-' + esc(v.id) + '">' + fmtCount(v.shares) + '</span></button>' +
           '<button class="nv-rail-btn" data-act="save" data-id="' + esc(v.id) + '" aria-label="Save">' +
             '<i data-lucide="bookmark" style="width:25px;height:25px;"></i></button>' +
+          (mine ? '<button class="nv-rail-btn" data-act="edit" data-id="' + esc(v.id) + '" aria-label="Edit">' +
+            '<i data-lucide="pencil" style="width:22px;height:22px;"></i></button>' : '') +
           (mine ? '<button class="nv-rail-btn nv-rail-del" data-act="delete" data-id="' + esc(v.id) + '" aria-label="Delete">' +
             '<i data-lucide="trash-2" style="width:22px;height:22px;"></i></button>' : '') +
         '</div>' +
@@ -356,6 +386,7 @@
       else if (act === 'comment') openComments(id);
       else if (act === 'share') shareVideo(id);
       else if (act === 'save') toggleSave(id, btn);
+      else if (act === 'edit') openEditVideo(id);
       else if (act === 'delete') deleteVideo(id);
       return;
     }
@@ -459,20 +490,38 @@
     }
   }
 
-  function deleteVideo(id) {
-    const doIt = () => {
-      window.db.collection('videos').doc(id).delete()
-        .then(() => {
-          state.videos = state.videos.filter(v => v.id !== id);
-          const card = document.querySelector('.nv-card[data-id="' + id + '"]');
-          if (card) card.remove();
-          if (!state.videos.length) renderEmpty('No videos yet. Be the first to post one!');
-          toast('Video deleted', 'success');
-        })
-        .catch(err => { toast('Could not delete video', 'error'); console.warn(err); });
-    };
-    if (window.nexaConfirm) window.nexaConfirm('Delete this video?', doIt, { danger: true, okText: 'Delete' });
-    else if (window.confirm('Delete this video?')) doIt();
+  // Remove a subcollection in <=400-doc batches. Best-effort: the video doc
+  // delete is what matters, and orphaned sub-docs are unreachable once the
+  // parent is gone.
+  async function purgeSub(ref, name) {
+    try {
+      const snap = await ref.collection(name).limit(400).get();
+      if (snap.empty) return;
+      const batch = window.db.batch();
+      snap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (e) { console.warn('purge ' + name + ' failed', e && e.message); }
+  }
+
+  async function deleteVideo(id) {
+    const ok = window.nexaConfirm
+      ? await window.nexaConfirm('Delete this video? This cannot be undone.',
+          { title: 'Delete video?', okLabel: 'Delete', danger: true })
+      : window.confirm('Delete this video?');
+    if (!ok) return;
+    try {
+      const ref = window.db.collection('videos').doc(id);
+      await purgeSub(ref, 'comments');
+      await purgeSub(ref, 'likes');
+      await ref.delete();
+      state.videos = state.videos.filter(v => v.id !== id);
+      state.myVideos = state.myVideos.filter(v => v.id !== id);
+      const card = document.querySelector('.nv-card[data-id="' + id + '"]');
+      if (card) card.remove();
+      if (!state.videos.length) renderEmpty('No videos yet. Be the first to post one!');
+      toast('Video deleted', 'success');
+      if (el('nvMyVideosList')) renderMyVideos();
+    } catch (err) { toast('Could not delete video', 'error'); console.warn(err); }
   }
 
   // ── long-press: playback speed ───────────────────────────────────────────
@@ -634,13 +683,14 @@
             '<div class="nv-composer-pick" id="nvComposerPick" onclick="nexaVideosPickFile()">' +
               '<div class="nv-pick-ic"><i data-lucide="video" style="width:40px;height:40px;"></i></div>' +
               '<div class="nv-pick-title">Select a video</div>' +
-              '<div class="nv-pick-sub">From your gallery or camera · up to 60s</div>' +
+              '<div class="nv-pick-sub">From your gallery or camera · up to ' + MAX_VIDEO_MIN + ' min</div>' +
             '</div>' +
             '<video class="nv-composer-preview" id="nvComposerPreview" playsinline muted loop style="display:none;"></video>' +
             '<div class="nv-upload-ring" id="nvUploadRing" style="display:none;">' +
               '<svg viewBox="0 0 120 120"><circle class="nv-ring-track" cx="60" cy="60" r="52"></circle>' +
               '<circle class="nv-ring-fill" id="nvRingFill" cx="60" cy="60" r="52"></circle></svg>' +
               '<div class="nv-ring-pct" id="nvRingPct">0%</div>' +
+              '<div class="nv-ring-stage" id="nvRingStage"></div>' +
             '</div>' +
           '</div>' +
           '<div class="nv-composer-fields">' +
@@ -659,6 +709,8 @@
     }
     state.pendingFile = null;
     state.pendingDuration = 0;
+    state.pendingDurationMs = 0;
+    state.pendingTooLong = false;
     const prev = el('nvComposerPreview');
     if (prev) { prev.style.display = 'none'; prev.removeAttribute('src'); }
     const pick = el('nvComposerPick');
@@ -688,9 +740,14 @@
     e.target.value = '';
     if (!file) return;
     if (!/^video\//.test(file.type)) { toast('Please choose a video file', 'error'); return; }
-    const MAX = 100 * 1024 * 1024;
-    if (file.size > MAX) { toast('Video is too large (max 100 MB)', 'error'); return; }
+    if (file.size > SOFT_SIZE_WARN) {
+      const mb = Math.round(file.size / (1024 * 1024));
+      toast('Large video (' + mb + ' MB). If the upload fails, Cloudinary’s ' + Math.round(SOFT_SIZE_WARN / (1024 * 1024)) +
+        ' MB per-file limit was hit … trim it and retry.', 'info');
+    }
     state.pendingFile = file;
+    state.pendingTooLong = false;
+    state.pendingDurationMs = 0;
     const prev = el('nvComposerPreview');
     const pick = el('nvComposerPick');
     if (pick) pick.style.display = 'none';
@@ -700,8 +757,18 @@
       prev.load();
       prev.play().catch(() => {});
       prev.onloadedmetadata = () => {
+        const durMs = Math.round((prev.duration || 0) * 1000);
+        state.pendingDurationMs = durMs;
         state.pendingDuration = Math.round(prev.duration || 0);
-        if (state.pendingDuration > 90) toast('Heads up: videos over 60s take longer to upload', 'info');
+        state.pendingTooLong = durMs > MAX_VIDEO_MS;
+        const postBtn = el('nvComposerPost');
+        if (state.pendingTooLong) {
+          toast('Video is ' + fmtDur(durMs) + ' … the max is ' + MAX_VIDEO_MIN +
+            ' min. Please trim it.', 'error');
+          if (postBtn) postBtn.disabled = true;
+        } else if (postBtn && !state.posting) {
+          postBtn.disabled = false;
+        }
       };
     }
   }
@@ -710,19 +777,28 @@
     const ring = el('nvUploadRing');
     const fill = el('nvRingFill');
     const label = el('nvRingPct');
+    const stageEl = el('nvRingStage');
     if (!ring) return;
     ring.style.display = active ? 'flex' : 'none';
     const CIRC = 2 * Math.PI * 52;
+    const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
     if (fill) {
       fill.style.strokeDasharray = String(CIRC);
-      fill.style.strokeDashoffset = String(CIRC * (1 - Math.min(100, Math.max(0, pct)) / 100));
+      fill.style.strokeDashoffset = String(CIRC * (1 - p / 100));
     }
-    if (label) label.textContent = stage || (Math.round(pct) + '%');
+    // The number is ALWAYS the ring centre (it must visibly read to 100%); the
+    // stage is a caption underneath so "Uploading…" no longer hides the %.
+    if (label) label.textContent = p + '%';
+    if (stageEl) stageEl.textContent = stage || '';
   }
 
   function post() {
     if (state.posting) return;
     if (!state.pendingFile) { toast('Pick a video first', 'error'); pickFile(); return; }
+    if (state.pendingTooLong) {
+      toast('Video is longer than ' + MAX_VIDEO_MIN + ' min … please trim it.', 'error');
+      return;
+    }
     const capEl = el('nvComposerCaption');
     const musEl = el('nvComposerMusic');
     const caption = (capEl && capEl.value || '').trim();
@@ -732,9 +808,11 @@
     if (postBtn) { postBtn.disabled = true; postBtn.textContent = 'Posting…'; }
     setRing(true, 0, 'Uploading…');
 
-    window.uploadFile(state.pendingFile, (pct) => { setRing(true, Math.min(90, pct * 0.9), 'Uploading…'); })
+    // Real byte progress 0->99 while uploading (never 100 until the bytes are
+    // actually on the server), then 100 for the "Posting…" write and "Posted!".
+    window.uploadFile(state.pendingFile, (pct) => { setRing(true, Math.min(99, pct), 'Uploading…'); })
       .then(url => {
-        setRing(true, 92, 'Posting…');
+        setRing(true, 100, 'Posting…');
         const thumb = cloudThumb(url);
         return window.db.collection('videos').add({
           uid: myUid(),
@@ -788,11 +866,161 @@
     } catch (e) { console.warn('video push failed', e); }
   }
 
+  // ── edit (caption + music) ──
+  function findVideo(id) {
+    return state.videos.find(x => x.id === id) || state.myVideos.find(x => x.id === id) || null;
+  }
+
+  function openEditVideo(id) {
+    const v = findVideo(id);
+    if (!v) { toast('Video not found', 'error'); return; }
+    let sheet = el('nvEditSheet');
+    if (!sheet) {
+      sheet = document.createElement('div');
+      sheet.id = 'nvEditSheet';
+      sheet.className = 'nv-sheet-overlay';
+      sheet.setAttribute('onclick', 'nexaVideosEditBackdrop(event)');
+      sheet.innerHTML =
+        '<div class="nv-sheet" onclick="event.stopPropagation()">' +
+          '<div class="nv-sheet-grab"></div>' +
+          '<div class="nv-sheet-head"><span>Edit video</span>' +
+            '<button class="nv-sheet-close" onclick="nexaVideosCloseEdit()">' +
+              '<i data-lucide="x" style="width:16px;height:16px;"></i></button></div>' +
+          '<div class="nv-edit-body">' +
+            '<label class="nv-edit-label">Caption</label>' +
+            '<textarea id="nvEditCaption" rows="3" maxlength="300" placeholder="Write a caption…"></textarea>' +
+            '<label class="nv-edit-label">Music</label>' +
+            '<input id="nvEditMusic" type="text" maxlength="80" placeholder="Add music (optional)" autocomplete="off">' +
+            '<div class="nv-edit-note">The clip itself can’t be changed … delete and re-post to swap the video.</div>' +
+            '<button class="nv-edit-save" id="nvEditSave" onclick="nexaVideosSaveEdit()">Save changes</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(sheet);
+      if (window.lucide) window.lucide.createIcons();
+    }
+    state.editVideoId = id;
+    const cap = el('nvEditCaption'); if (cap) cap.value = v.caption || '';
+    const mus = el('nvEditMusic'); if (mus) mus.value = v.music || '';
+    sheet.classList.add('active');
+  }
+
+  function closeEdit() {
+    const sheet = el('nvEditSheet');
+    if (sheet) sheet.classList.remove('active');
+    state.editVideoId = null;
+  }
+
+  function editBackdrop(e) { if (e.target && e.target.id === 'nvEditSheet') closeEdit(); }
+
+  function refreshCardMeta(id) {
+    const v = findVideo(id);
+    const card = document.querySelector('.nv-card[data-id="' + id + '"]');
+    if (!v || !card) return;
+    const meta = card.querySelector('.nv-meta');
+    if (meta) meta.outerHTML = metaHtml(v);
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  async function saveEdit() {
+    const id = state.editVideoId;
+    if (!id) return;
+    const caption = ((el('nvEditCaption') || {}).value || '').trim();
+    const music = ((el('nvEditMusic') || {}).value || '').trim();
+    const btn = el('nvEditSave');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      await window.db.collection('videos').doc(id).update({ caption: caption, music: music });
+      const v = findVideo(id);
+      if (v) { v.caption = caption; v.music = music; }
+      toast('Video updated', 'success');
+      closeEdit();
+      refreshCardMeta(id);
+      if (el('nvMyVideosList')) renderMyVideos();
+    } catch (err) {
+      toast('Could not update video', 'error');
+      console.warn(err);
+    } finally {
+      const b = el('nvEditSave');
+      if (b) { b.disabled = false; b.textContent = 'Save changes'; }
+    }
+  }
+
+  // ── Settings → My Videos (own posts only, NOT stories) ──
+  function renderMyVideos() {
+    const host = el('nvMyVideosList');
+    if (!host) return;
+    if (state.myUnsub) { try { state.myUnsub(); } catch (e) {} state.myUnsub = null; }
+    const uid = myUid();
+    if (!uid) { host.innerHTML = '<div class="nv-mine-empty">Sign in to see your videos.</div>'; return; }
+    host.innerHTML = '<div class="nv-mine-empty">Loading your videos…</div>';
+    // Single-field equality query → auto-indexed, no composite index to deploy.
+    // Ordering is done client-side.
+    state.myUnsub = window.db.collection('videos').where('uid', '==', uid).limit(100)
+      .onSnapshot(snap => {
+        const items = [];
+        snap.forEach(d => items.push(Object.assign({ id: d.id }, d.data())));
+        items.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+        state.myVideos = items;
+        if (!items.length) {
+          host.innerHTML = '<div class="nv-mine-empty">You haven’t posted any videos yet.<br>' +
+            'Open Moments → Videos and tap + to post one.</div>';
+          return;
+        }
+        host.innerHTML = items.map(myVideoRowHtml).join('');
+        if (window.lucide) window.lucide.createIcons();
+      }, err => {
+        console.warn('my videos listener error', err && err.message);
+        host.innerHTML = '<div class="nv-mine-empty">Couldn’t load your videos.</div>';
+        if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
+      });
+  }
+
+  function closeMyVideos() {
+    if (state.myUnsub) { try { state.myUnsub(); } catch (e) {} state.myUnsub = null; }
+  }
+
+  function myVideoRowHtml(v) {
+    const thumb = v.thumbUrl || cloudThumb(v.videoUrl);
+    const id = sid(v.id);
+    return '' +
+      '<div class="nv-mine-row">' +
+        '<div class="nv-mine-thumb" onclick="nexaVideosWatch(\'' + id + '\')">' +
+          '<img src="' + esc(safeUrl(thumb)) + '" alt="" loading="lazy">' +
+          '<span class="nv-mine-play"><i data-lucide="play" style="width:15px;height:15px;"></i></span>' +
+        '</div>' +
+        '<div class="nv-mine-info">' +
+          '<div class="nv-mine-cap">' + (v.caption ? esc(v.caption) : '<span class="nv-mine-muted">No caption</span>') + '</div>' +
+          (v.music ? '<div class="nv-mine-music"><i data-lucide="music" style="width:12px;height:12px;"></i> ' + esc(v.music) + '</div>' : '') +
+          '<div class="nv-mine-stats">' +
+            '<span>' + esc(timeAgo(Number(v.createdAt))) + '</span>' +
+            '<span>·</span><span>' + fmtCount(v.views) + ' views</span>' +
+            '<span>·</span><span>' + fmtCount(v.likes) + ' likes</span>' +
+            '<span>·</span><span>' + fmtCount(v.commentsCount) + ' comments</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="nv-mine-actions">' +
+          '<button class="nv-mine-btn" onclick="nexaVideosEdit(\'' + id + '\')" title="Edit">' +
+            '<i data-lucide="pencil" style="width:16px;height:16px;"></i></button>' +
+          '<button class="nv-mine-btn danger" onclick="nexaVideosDelete(\'' + id + '\')" title="Delete">' +
+            '<i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function watchMyVideo(id) {
+    const v = findVideo(id);
+    if (!v) return;
+    if (window.openMediaViewer) window.openMediaViewer(v.videoUrl, 'video');
+    else window.open(safeUrl(v.videoUrl), '_blank');
+  }
+
   // ── public API ───────────────────────────────────────────────────────────
   window.NexaVideos = {
     open: open,
     close: stop,
-    refresh: () => { state.started = false; if (el('nexaVideosRoot')) { el('nexaVideosRoot').dataset.built = ''; } open(); }
+    refresh: () => { state.started = false; if (el('nexaVideosRoot')) { el('nexaVideosRoot').dataset.built = ''; } open(); },
+    renderMyVideos: renderMyVideos,
+    closeMyVideos: closeMyVideos
   };
   window.nexaVideosOpenComposer = openComposer;
   window.nexaVideosCloseComposer = closeComposer;
@@ -803,4 +1031,10 @@
   window.nexaVideosBackdropClick = backdropClick;
   window.nexaVideosSendComment = sendComment;
   window.nexaVideosDeleteComment = deleteComment;
+  window.nexaVideosEdit = openEditVideo;
+  window.nexaVideosCloseEdit = closeEdit;
+  window.nexaVideosEditBackdrop = editBackdrop;
+  window.nexaVideosSaveEdit = saveEdit;
+  window.nexaVideosWatch = watchMyVideo;
+  window.nexaVideosDelete = deleteVideo;
 })();

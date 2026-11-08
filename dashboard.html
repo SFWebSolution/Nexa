@@ -506,6 +506,14 @@
                 </span>
                 <i data-lucide="chevron-right" class="settings-row-chev"></i>
               </button>
+              <button class="settings-row" id="myVideosRow" onclick="openSettingsSubPage('myvideos')">
+                <span class="settings-row-icon"><i data-lucide="clapperboard" style="width: 17px; height: 17px;"></i></span>
+                <span class="settings-row-text">
+                  <span class="settings-row-title">My Videos</span>
+                  <span class="settings-row-sub">Videos you've posted to Moments</span>
+                </span>
+                <i data-lucide="chevron-right" class="settings-row-chev"></i>
+              </button>
             </div>
 
           </div>
@@ -968,6 +976,18 @@
                 <i data-lucide="chevron-right" class="settings-row-chev"></i>
               </button>
             </div>
+          </div>
+        </div>
+
+        <!-- ── SUB-PAGE: My Videos ────────────────────────────────────── -->
+        <div class="settings-subpage" id="subpageMyVideos" data-subpage="myvideos">
+          <div class="settings-subpage-header">
+            <button class="settings-back-btn" onclick="closeSettingsSubPage()" title="Back" aria-label="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+            <div class="settings-subpage-title">My Videos</div>
+          </div>
+          <div class="settings-subpage-body">
+            <div class="settings-note" style="margin-bottom:12px;">Every video you've posted to Moments. Tap the thumbnail to watch, or edit or delete a post.</div>
+            <div id="nvMyVideosList"></div>
           </div>
         </div>
 

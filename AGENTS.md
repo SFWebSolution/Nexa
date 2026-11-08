@@ -1687,9 +1687,46 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   (local count + liked state flip immediately, rollback on failure).
 - **Upload** reuses the existing Cloudinary `uploadFile(file, onProgress)` (XHR,
   real byte progress) -- CLOUD_NAME `doasf3d1u`, preset `NeuroStack`. The composer
-  has its own SVG progress ring (`nvRingFill`, dasharray `2*pi*52`). Gallery AND
-  camera capture come for free from `<input type="file" accept="video/*">`.
-  Uploaded files are capped at 100 MB client-side.
-- **Do NOT re-add a "Coming Soon" card or the `moments-soon-pill`** to the Videos
-  pane -- that was the pre-activation placeholder. Also do NOT re-add the
+  has its own SVG progress ring (`nvRingFill`, dasharray `2*pi*52`).
+  Gallery AND camera capture come for free from `<input type="file" accept="video/*">`.
+  **Size is NOT hard-blocked.** Cloudinary's plan ceiling is the real limit
+  (Free = 100 MB/file, Plus = 2 GB, Advanced = 4 GB), so the client only shows
+  a SOFT `SOFT_SIZE_WARN` (100 MB) info toast above the ceiling and lets the
+  upload proceed -- a hard client block just swapped a clear message for a
+  confusing server failure. Do NOT re-add `if (file.size > MAX) return;`.
+  **Duration IS hard-capped at `MAX_VIDEO_MIN = 20` min** (one constant; raise it
+  to 25/30 by editing it and the picker hint together). `onloadedmetadata` sets
+  `state.pendingTooLong` and disables the Post button when
+  `duration > MAX_VIDEO_MS`; `post()` re-checks and refuses. Do NOT drop the cap.
+  **The composer ring shows a REAL 0->100%**: `post()` feeds true byte progress
+  from `uploadFile(file, onProgress)` capped at **99** during the upload (100
+  must only ever mean the bytes are actually on the server), then jumps to 100
+  for the `Posting…` write and `Posted!`. The percentage number ALWAYS lives in
+  the ring centre (`nvRingPct`) and the stage text (`Uploading…`/`Posting…`/
+  `Posted!`) is a caption BELOW it (`nvRingStage`) -- do NOT let the stage
+  overwrite the number again (the old `label.textContent = stage || pct` hid the
+  percentage the whole time). Do NOT re-add the `pct * 0.9` / `min(90, …)` fudge
+  or the `setRing(true, 92, …)` step.
+- **Edit + delete (own videos).** Own cards carry `data-act="edit"` /
+  `data-act="delete"` rail buttons. `openEditVideo(id)` opens the `nvEditSheet`
+  (caption + music only -- the clip itself can't be changed; delete and re-post).
+  `saveEdit()` writes `{caption, music}` and repaints the card meta in place
+  (`refreshCardMeta`). `deleteVideo(id)` **awaits the PROMISE** `nexaConfirm(...)`
+  (the old code passed a callback + `{danger, okText}` -- `nexaConfirm(message,
+  opts)` has no callback param, so the confirm never wired and the arg shape was
+  wrong; the correct opts are `{title, okLabel, danger}`) and cascades
+  `purgeSub(ref, 'comments')` + `purgeSub(ref, 'likes')` (<=400-doc batches)
+  before deleting the video doc. Do NOT revert to the callback form.
+- **Settings -> My Videos** (`data-subpage="myvideos"`, `#nvMyVideosList`,
+  `#myVideosRow`): lists ONLY the user's own videos (never stories). It uses a
+  SINGLE-FIELD equality query `videos.where('uid','==',me).limit(100)` and sorts
+  client-side (`items.sort` by `createdAt` desc) -- do NOT add an `orderBy`, that
+  needs a composite index to deploy. `renderMyVideos()` subscribes;
+  `closeMyVideos()` tears the listener down (called from `closeSettingsSubPage()`
+  AND from `switchTab` when leaving the Settings tab). Rows escape the caption
+  (`esc`) and sanitize ids for the inline `onclick` (`sid()`). Opens/edits/deletes
+  via `window.NexaVideos.{renderMyVideos,closeMyVideos}` +
+  `nexaVideos{Edit,SaveEdit,Delete,Watch}` globals.
+- **Do NOT re-add a "Coming Soon" card or the `moments-soon-pill`** to the
+  Videos pane -- that was the pre-activation placeholder. Also do NOT re-add the
   `.moments-coming-soon` / `.moments-cs-*` CSS (removed from dashboard.css).

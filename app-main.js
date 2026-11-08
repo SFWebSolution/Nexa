@@ -2258,6 +2258,10 @@ function switchTab(tabName) {
   // when the Videos sub-tab is opened again.
   if (tabName !== 'stories' && window.NexaVideos) window.NexaVideos.close();
 
+  // Same idea for the Settings -> My Videos sub-page: leaving the Settings tab
+  // must drop its Firestore listener (the sub-page teardown only runs on Back).
+  if (tabName !== 'settings' && window.NexaVideos) window.NexaVideos.closeMyVideos();
+
   // 5. Trigger tab-specific renders
   if (tabName === 'stories') {
     switchMomentsSubTab(activeMomentsSubTab);
@@ -2638,6 +2642,7 @@ function openSettingsSubPage(name) {
   if (name === 'storage') renderStorageUsage();
   if (name === 'about') renderAboutInfo();
   if (name === 'language') updateLanguageUI();
+  if (name === 'myvideos' && window.NexaVideos) window.NexaVideos.renderMyVideos();
 
   const scroller = page.querySelector('.settings-subpage-body');
   if (scroller) scroller.scrollTop = 0;
@@ -2649,6 +2654,8 @@ function closeSettingsSubPage() {
   const root = document.getElementById('settingsRoot');
   if (root) root.classList.remove('hidden');
   settingsActiveSubPage = null;
+  // Drop the My Videos listener so a closed sub-page stops reading Firestore.
+  if (window.NexaVideos) window.NexaVideos.closeMyVideos();
 }
 
 window.openSettingsSubPage = openSettingsSubPage;

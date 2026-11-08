@@ -397,5 +397,60 @@ console.log("\n8) group/channel instant-open message cache");
     /window\._nexaChannelPostsCache = null;\s*\n\s*window\._nexaChannelPostsChannelId = channelId;\s*\n\s*\n\s*const cachedPosts/.test(appJs));
 }
 
+// ── Videos: upload caps, progress ring, edit/delete, My Videos ─────────────
+{
+  const vids = read("nexa-videos.js");
+  const html = read("dashboard.html");
+
+  // Upload caps: 20-min hard duration cap, soft (non-blocking) size warning.
+  ok("video duration cap constant is 20 min", /const MAX_VIDEO_MIN = 20;/.test(vids));
+  ok("duration cap derives ms from the minutes constant", /const MAX_VIDEO_MS = MAX_VIDEO_MIN \* 60 \* 1000;/.test(vids));
+  ok("size is a SOFT warn constant, not a hard reject", /const SOFT_SIZE_WARN = 100 \* 1024 \* 1024;/.test(vids));
+  ok("old hard size reject removed", !/Video is too large \(max 100 MB\)/.test(vids));
+  ok("metadata sets pendingTooLong", /state\.pendingTooLong = durMs > MAX_VIDEO_MS;/.test(vids));
+  ok("post() blocks over-long videos", /if \(state\.pendingTooLong\) \{/.test(vids));
+  ok("post() uses true byte progress capped at 99 while uploading",
+    /setRing\(true, Math\.min\(99, pct\), 'Uploading/.test(vids));
+  ok("post() drives the ring to 100 at the write step", /setRing\(true, 100, 'Posting/.test(vids));
+
+  // Ring centre must ALWAYS show the percentage (the stage is a caption now).
+  ok("ring label shows the percent number", /if \(label\) label\.textContent = p \+ '%';/.test(vids));
+  ok("ring has a stage caption element", /nvRingStage/.test(vids));
+
+  // Edit.
+  ok("edit sheet opens for a video", /function openEditVideo\(id\)/.test(vids));
+  ok("saveEdit writes caption + music", /\.update\(\{ caption: caption, music: music \}\)/.test(vids));
+  ok("edit exports present",
+    /window\.nexaVideosEdit = openEditVideo;/.test(vids) &&
+    /window\.nexaVideosSaveEdit = saveEdit;/.test(vids) &&
+    /window\.nexaVideosDelete = deleteVideo;/.test(vids));
+  ok("own cards get an edit rail button", /data-act="edit"/.test(vids));
+
+  // Delete: promise-based confirm + cascade of the subcollections.
+  ok("delete awaits the promise nexaConfirm (not a callback)", /await window\.nexaConfirm\(/.test(vids));
+  ok("delete purges comments + likes", /purgeSub\(ref, 'comments'\)[\s\S]{0,120}purgeSub\(ref, 'likes'\)/.test(vids));
+  ok("delete removes the video doc", /await ref\.delete\(\);/.test(vids));
+
+  // My Videos settings sub-page.
+  ok("My Videos uses a single-field uid query (no composite index)",
+    /collection\('videos'\)\.where\('uid', '==', uid\)/.test(vids));
+  ok("My Videos sorts client-side, not by an orderBy query", /items\.sort\(\(a, b\) =>/.test(vids));
+  ok("My Videos row escapes the caption", /v\.caption \? esc\(v\.caption\)/.test(vids));
+  ok("inline onclick ids are sanitized", /function sid\(id\)/.test(vids));
+  ok("dashboard has the My Videos settings row", /id="myVideosRow"[^>]*openSettingsSubPage\('myvideos'\)/.test(html));
+  ok("dashboard has the myvideos sub-page", /data-subpage="myvideos"/.test(html) && /id="nvMyVideosList"/.test(html));
+  ok("app-main opens My Videos on the sub-page", /if \(name === 'myvideos' && window\.NexaVideos\) window\.NexaVideos\.renderMyVideos\(\);/.test(appJs));
+  ok("app-main tears the My Videos listener down on close",
+    /window\.NexaVideos\.closeMyVideos\(\)/.test(appJs));
+  ok("leaving the Settings tab drops the My Videos listener",
+    /tabName !== 'settings' && window\.NexaVideos\) window\.NexaVideos\.closeMyVideos\(\);/.test(appJs));
+
+  // CRLF preserved (whole file must not flip to LF).
+  const rawVids = fs.readFileSync(path.join(ROOT, "nexa-videos.js"));
+  eq("nexa-videos.js keeps CRLF", rawVids.includes(Buffer.from("\r\n")), true);
+  eq("nexa-videos.js has no lone LF",
+    rawVids.toString("utf8").split("\n").length - 1, rawVids.toString("utf8").split("\r\n").length - 1);
+}
+
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
 process.exit(fail ? 1 : 0);
