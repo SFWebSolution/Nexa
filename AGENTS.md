@@ -1756,8 +1756,11 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   overwrite the number again (the old `label.textContent = stage || pct` hid the
   percentage the whole time). Do NOT re-add the `pct * 0.9` / `min(90, …)` fudge
   or the `setRing(true, 92, …)` step.
-- **Edit + delete (own videos).** Own cards carry `data-act="edit"` /
-  `data-act="delete"` rail buttons. `openEditVideo(id)` opens the `nvEditSheet`
+- **Edit + delete (own videos) live in Settings -> My Videos, NOT on the feed
+  card.** The card's `.nv-rail` carries ONLY like / comment / share / save. Edit
+  and delete are the per-row `nexaVideosEdit(id)` / `nexaVideosDelete(id)` buttons
+  in the My Videos list (that's the single place to manage your own posts).
+  `openEditVideo(id)` opens the `nvEditSheet`
   (caption + music only -- the clip itself can't be changed; delete and re-post).
   `saveEdit()` writes `{caption, music}` and repaints the card meta in place
   (`refreshCardMeta`). `deleteVideo(id)` **awaits the PROMISE** `nexaConfirm(...)`
@@ -1765,7 +1768,24 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   opts)` has no callback param, so the confirm never wired and the arg shape was
   wrong; the correct opts are `{title, okLabel, danger}`) and cascades
   `purgeSub(ref, 'comments')` + `purgeSub(ref, 'likes')` (<=400-doc batches)
-  before deleting the video doc. Do NOT revert to the callback form.
+  before deleting the video doc. Do NOT revert to the callback form, and do NOT
+  put edit/delete back on the feed rail.
+- **Sound is ON by default with a `.nv-sound` toggle (top-right of the feed).**
+  `state.soundOn` defaults true (`localStorage.nexa_videos_sound`; absent = on)
+  and `tryPlay()` sets `video.muted = !state.soundOn`, so videos play WITH audio
+  when the browser allows it. Browsers block audible autoplay before a user
+  gesture, so `tryPlay`'s `play().catch()` falls back to `muted = true`, flips
+  `state.soundOn = false` and repaints the button (`syncSoundButton()`) -- the
+  user's next tap on it re-enables audio for the whole feed (and it sticks).
+  `nexaVideosToggleSound()` flips + persists. Do NOT go back to hard-coded
+  `video.muted = true` (that was the "we don't hear it at all" bug) and do NOT
+  drop the catch fallback (without it a blocked autoplay would just fail).
+- **The + upload entry is the "+ New Video" button in the Moments header, NOT a
+  feed FAB.** `#momentsNewVideoBtn` sits next to `#momentsNewStoryBtn` in
+  `.tab-pane-header` and `switchMomentsSubTab()` swaps the two
+  (`nb` shown on Stories, `vb` shown on Videos). The old `.nv-fab` (a floating +
+  over the feed) was removed -- it overlapped the rail and was redundant. Do NOT
+  re-add `.nv-fab`.
 - **Settings -> My Videos** (`data-subpage="myvideos"`, `#nvMyVideosList`,
   `#myVideosRow`): lists ONLY the user's own videos (never stories). It uses a
   SINGLE-FIELD equality query `videos.where('uid','==',me).limit(100)` and sorts

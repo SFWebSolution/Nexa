@@ -178,23 +178,23 @@
 .nv-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,0.18); }
 .nv-progress > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #4a94f0, #35c98a); }
 
-/* ── FAB + paging pill ────────────────────────────────────────────────── */
-.nv-fab {
+/* ── Sound toggle + paging pill ───────────────────────────────────────── */
+.nv-sound {
   position: absolute;
-  right: 16px;
-  bottom: 18px;
-  width: 54px; height: 54px;
+  top: 14px;
+  right: 14px;
+  width: 40px; height: 40px;
   border-radius: 50%;
   border: none;
   color: #fff;
-  background: linear-gradient(135deg, #4a94f0 0%, #166fe5 60%, #0b5bd3 100%);
-  box-shadow: 0 10px 26px rgba(22,111,229,0.5);
+  background: rgba(0,0,0,0.42);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
-  z-index: 6;
-  transition: transform 0.16s ease;
+  z-index: 7;
+  transition: transform 0.16s ease, background 0.16s ease;
 }
-.nv-fab:active { transform: scale(0.9); }
+.nv-sound.on { background: rgba(22,111,229,0.85); }
+.nv-sound:active { transform: scale(0.9); }
 .nv-load-older {
   position: absolute;
   bottom: 14px; left: 50%;

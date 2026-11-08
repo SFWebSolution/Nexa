@@ -59,7 +59,8 @@
     pendingTooBig: false,
     editVideoId: null,
     myVideos: [],
-    myUnsub: null
+    myUnsub: null,
+    soundOn: (function () { try { var s = localStorage.getItem('nexa_videos_sound'); return s === null ? true : s === '1'; } catch (e) { return true; } })()
   };
 
   // ── small helpers ────────────────────────────────────────────────────────
@@ -201,8 +202,8 @@
       host.dataset.built = '1';
       host.innerHTML =
         '<div class="nv-feed" id="nvFeed" tabindex="0"></div>' +
-        '<button class="nv-fab" id="nvFab" onclick="nexaVideosOpenComposer()" aria-label="Upload video">' +
-          '<i data-lucide="plus" style="width:24px;height:24px;"></i></button>' +
+        '<button class="nv-sound" id="nvSoundBtn" onclick="nexaVideosToggleSound()" aria-label="Toggle sound">' +
+          '<i data-lucide="volume-x" style="width:20px;height:20px;"></i></button>' +
         '<div class="nv-load-older" id="nvLoadOlder" style="display:none;">Loading…</div>';
       const feed = el('nvFeed');
       feed.addEventListener('click', onFeedClick);
@@ -212,6 +213,7 @@
       feed.addEventListener('scroll', onFeedScroll, { passive: true });
       setupObserver();
       if (window.lucide) window.lucide.createIcons();
+      applySound();
     }
   }
 
@@ -223,6 +225,7 @@
       return;
     }
     feed.innerHTML = state.videos.map(cardHtml).join('');
+    applySound();
     if (window.lucide) window.lucide.createIcons();
     // (Re)attach the observer to the fresh nodes and prime the first card.
     setupObserver();
@@ -238,6 +241,7 @@
     const empty = feed.querySelector('.nv-empty');
     if (empty) empty.remove();
     feed.insertAdjacentHTML('beforeend', list.map(cardHtml).join(''));
+    applySound();
     if (window.lucide) window.lucide.createIcons();
     setupObserver();
   }
@@ -273,7 +277,6 @@
     const thumb = v.thumbUrl || cloudThumb(v.videoUrl);
     const poster = thumb ? ' poster="' + esc(safeUrl(thumb)) + '"' : '';
     const liked = !!state.likedMine[v.id];
-    const mine = v.uid === myUid();
     return '' +
       '<div class="nv-card" data-id="' + esc(v.id) + '" data-uid="' + esc(v.uid || '') + '">' +
         '<video class="nv-video" src="' + esc(safeUrl(v.videoUrl)) + '"' + poster +
@@ -296,10 +299,6 @@
             '<span class="nv-rail-count" id="nvShareCount-' + esc(v.id) + '">' + fmtCount(v.shares) + '</span></button>' +
           '<button class="nv-rail-btn" data-act="save" data-id="' + esc(v.id) + '" aria-label="Save">' +
             '<i data-lucide="bookmark" style="width:25px;height:25px;"></i></button>' +
-          (mine ? '<button class="nv-rail-btn" data-act="edit" data-id="' + esc(v.id) + '" aria-label="Edit">' +
-            '<i data-lucide="pencil" style="width:22px;height:22px;"></i></button>' : '') +
-          (mine ? '<button class="nv-rail-btn nv-rail-del" data-act="delete" data-id="' + esc(v.id) + '" aria-label="Delete">' +
-            '<i data-lucide="trash-2" style="width:22px;height:22px;"></i></button>' : '') +
         '</div>' +
         '<div class="nv-progress"><i id="nvProg-' + esc(v.id) + '"></i></div>' +
       '</div>';
@@ -333,9 +332,49 @@
 
   function tryPlay(video) {
     if (!video) return;
-    video.muted = true;
+    video.muted = !state.soundOn;
     const p = video.play();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) {
+      p.catch(() => {
+        // Audible autoplay blocked (no gesture yet): start muted instead of
+        // failing, and reflect it — the user's next tap turns sound back on.
+        if (!video.muted) {
+          video.muted = true;
+          if (state.soundOn) { state.soundOn = false; syncSoundButton(); }
+          try { video.play().catch(() => {}); } catch (e) {}
+        }
+      });
+    }
+  }
+
+  function syncSoundButton() {
+    const on = !!state.soundOn;
+    const btn = el('nvSoundBtn');
+    if (!btn) return;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-label', on ? 'Mute' : 'Unmute');
+    btn.innerHTML = '<i data-lucide="' + (on ? 'volume-2' : 'volume-x') + '" style="width:20px;height:20px;"></i>';
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  // Sound is ON by default. If the browser blocks audible autoplay before the
+  // first gesture, tryPlay falls back to muted and flips the button; one tap on
+  // it re-enables audio for the whole feed (and it sticks for next time).
+  function applySound() {
+    const on = !!state.soundOn;
+    syncSoundButton();
+    document.querySelectorAll('.nv-video').forEach(v => { v.muted = !on; });
+    if (on) {
+      const feed = el('nvFeed');
+      const cur = feed && feed.querySelector('.nv-card.nv-visible .nv-video');
+      if (cur && cur.paused) tryPlay(cur);
+    }
+  }
+
+  function toggleSound() {
+    state.soundOn = !state.soundOn;
+    try { localStorage.setItem('nexa_videos_sound', state.soundOn ? '1' : '0'); } catch (e) {}
+    applySound();
   }
 
   // Bump a view ONCE per session per video (protects the write quota — scrolling
@@ -978,7 +1017,7 @@
         state.myVideos = items;
         if (!items.length) {
           host.innerHTML = '<div class="nv-mine-empty">You haven’t posted any videos yet.<br>' +
-            'Open Moments → Videos and tap + to post one.</div>';
+            'Open Moments → Videos and tap <strong>+ New Video</strong> to post one.</div>';
           return;
         }
         host.innerHTML = items.map(myVideoRowHtml).join('');
@@ -1037,6 +1076,7 @@
     renderMyVideos: renderMyVideos,
     closeMyVideos: closeMyVideos
   };
+  window.nexaVideosToggleSound = toggleSound;
   window.nexaVideosOpenComposer = openComposer;
   window.nexaVideosCloseComposer = closeComposer;
   window.nexaVideosComposerBackdrop = composerBackdrop;

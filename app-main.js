@@ -2012,11 +2012,13 @@ function switchMomentsSubTab(tab) {
   const sc = document.getElementById('momentsStoriesView');
   const vc = document.getElementById('momentsVideosView');
   const nb = document.getElementById('momentsNewStoryBtn');
+  const vb = document.getElementById('momentsNewVideoBtn');
   if (sv) sv.classList.toggle('active', tab === 'stories');
   if (vv) vv.classList.toggle('active', tab === 'videos');
   if (sc) sc.classList.toggle('active', tab === 'stories');
   if (vc) vc.classList.toggle('active', tab === 'videos');
   if (nb) nb.style.display = tab === 'stories' ? '' : 'none';
+  if (vb) vb.style.display = tab === 'videos' ? '' : 'none';
   if (tab === 'stories') renderStoriesTab();
   if (window.NexaVideos) {
     if (tab === 'videos') window.NexaVideos.open();

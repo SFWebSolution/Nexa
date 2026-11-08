@@ -427,7 +427,31 @@ console.log("\n8) group/channel instant-open message cache");
     /window\.nexaVideosEdit = openEditVideo;/.test(vids) &&
     /window\.nexaVideosSaveEdit = saveEdit;/.test(vids) &&
     /window\.nexaVideosDelete = deleteVideo;/.test(vids));
-  ok("own cards get an edit rail button", /data-act="edit"/.test(vids));
+  ok("edit/delete rail buttons removed from the feed card",
+    !/data-act="edit"/.test(vids) && !/nv-rail-del/.test(vids) &&
+    !/data-act="delete"/.test(vids) && !/const mine = v\.uid === myUid\(\);/.test(vids));
+  ok("edit + delete live in the My Videos settings rows",
+    /nexaVideosEdit\([^)]*\+ id/.test(vids) && /nexaVideosDelete\([^)]*\+ id/.test(vids));
+
+  // Sound: feed starts with audio, with a toggle for browsers that block
+  // audible autoplay before a gesture.
+  ok("feed defaults to sound on", /soundOn: \(function \(\) \{ try \{ var s = localStorage\.getItem\('nexa_videos_sound'\); return s === null \? true : s === '1';/.test(vids));
+  ok("tryPlay honours the sound setting", /video\.muted = !state\.soundOn;/.test(vids));
+  ok("tryPlay falls back to muted when audible autoplay is blocked",
+    /p\.catch\(\(\) => \{[\s\S]{0,300}video\.muted = true;[\s\S]{0,120}state\.soundOn = false;/.test(vids));
+  ok("sound toggle button replaces the + FAB",
+    /class="nv-sound" id="nvSoundBtn"/.test(vids) && !/nv-fab/.test(vids) && !/nvFab/.test(vids));
+  ok("sound toggle is exported + persists the choice",
+    /window\.nexaVideosToggleSound = toggleSound;/.test(vids) &&
+    /localStorage\.setItem\('nexa_videos_sound'/.test(vids));
+  ok("sound button reflects state (volume icons)",
+    /volume-2/.test(vids) && /volume-x/.test(vids));
+
+  // The + upload entry moved out of the feed into the Moments header.
+  ok("dashboard has a + New Video header button",
+    /id="momentsNewVideoBtn"[^>]*nexaVideosOpenComposer\(\)/.test(html));
+  ok("the header button swaps with the Moments sub-tab",
+    /momentsNewVideoBtn[\s\S]{0,420}vb\.style\.display = tab === 'videos' \? '' : 'none';/.test(appJs));
 
   // Delete: promise-based confirm + cascade of the subcollections.
   ok("delete awaits the promise nexaConfirm (not a callback)", /await window\.nexaConfirm\(/.test(vids));
