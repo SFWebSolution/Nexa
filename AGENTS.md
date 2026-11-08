@@ -1607,13 +1607,22 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   capability is ever wanted back.
 
 ## Invite/preview regression suite
-- `node tests/invite-links.test.js` — headless checks (81 at last count). It extracts
+- `node tests/invite-links.test.js` — headless checks (266 at last count). It extracts
   the REAL functions from app-main.js/login.html/signup.html/join.html via brace
   matching and evaluates them in a `vm` context (invite URL builder, snippet helper,
   `?next=` open-redirect guard, the join.html intent://+nexa:// URL builders and the
   `isNativeApp` UA predicate), and asserts the structural invariants (resolvers,
   already-joined messages, every preview path, admin removal, backend endpoints,
-  join.html/deep-link bits). No Firebase needed.
+  join.html/deep-link bits, and the Videos player/share/deep-link invariants:
+  in-place card patching, ±10s seek, scrubber, transactional like, watch.html link).
+  No Firebase needed.
+- `node tests/videos-player.test.js` — loads the REAL `nexa-videos.js` in a `vm` with a
+  compact DOM + Firestore stub and proves the behaviours end to end: a feed snapshot
+  REUSES the card and never recreates the `<video>` (no restart), double-tap
+  right/left seeks ±10s, scrubbing sets `currentTime`, likes run through
+  `runTransaction`, and share uses the `watch.html` canonical link. 14 checks.
+- `node tests/videos-sound.test.js` — same harness style, covers the audible-playback
+  rules (sound default, `tryPlay` muted fallback, `toggleSound` persistence). 9 checks.
 
 
 ## Android App Links / "Open in app" deep link (join.html + APK)

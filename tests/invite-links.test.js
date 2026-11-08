@@ -520,6 +520,8 @@ console.log("\n8) group/channel instant-open message cache");
     /function androidIntentUrl/.test(watch) && /com\.nexa\.messenger/.test(watch) && /browser_fallback_url/.test(watch));
   ok("watch.html routes signed-out users through login with ?next=",
     /return "\/login\.html\?next=" \+ encodeURIComponent\(back\)/.test(watch));
+  ok("watch.html shows a sign-in gate for signed-out visitors",
+    /function renderSignInGate\(\)/.test(watch) && /if \(!user\) \{ renderSignInGate\(\); return; \}/.test(watch));
   ok("watch.html routes into the feed via ?video=", /return "\/dashboard\.html\?video=" \+ encodeURIComponent\(videoId\)/.test(watch));
   ok("watch.html keeps a tight CSP (no frame-src)",
     /Content-Security-Policy/.test(watch) && /frame-src 'none'/.test(watch));

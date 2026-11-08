@@ -220,6 +220,20 @@ function renderError(message) {
     '<a class="wbtn wbtn-ghost" href="/">Go to homepage</a>';
 }
 
+// Signed-out visitors cannot read the video doc (the rules require auth), so
+// the link still works: it routes them through sign-in straight to the clip.
+function renderSignInGate() {
+  body.innerHTML =
+    '<div class="wstatus">🔒 Sign in to Nexa to watch this video.</div>' +
+    '<button class="wbtn wbtn-primary" id="wgate">Sign in and watch</button>' +
+    '<a class="wbtn wbtn-ghost" href="/signup.html?next=' + encodeURIComponent("/watch.html?v=" + videoId) + '">New to Nexa? Create an account</a>' +
+    (isNativeApp() ? '' : '<div class="whint">Opens the Nexa app if you have it — otherwise continues in your browser.</div>');
+  document.getElementById("wgate").addEventListener("click", () => {
+    openAppOrFallback(isNativeApp() ? continueUrl() : loginUrl());
+  });
+  if (isNativeApp()) setTimeout(() => { window.location.replace(continueUrl()); }, 900);
+}
+
 // Blob-cache the clip before playing it so the watch page does not stall on a
 // half-buffered remote URL (same download-first rule as the in-app viewer).
 async function loadVideoInto(stage, url) {
@@ -294,6 +308,8 @@ function renderCard(v, signedIn) {
 
 async function start(user) {
   if (!videoId) { renderError("This video link is incomplete."); return; }
+  // Not signed in → the read would be denied; send them through sign-in instead.
+  if (!user) { renderSignInGate(); return; }
   try {
     const d = await getDoc(doc(db, "videos", videoId));
     if (!d.exists()) { renderError("This video is no longer available."); return; }
