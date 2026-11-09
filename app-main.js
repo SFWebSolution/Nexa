@@ -886,6 +886,9 @@ function notifIconForData(title, data) {
   if (data.isMention || data.mentionAll) return '🔔';
   if (data.isStory) return '📸';
   if (data.isVideoComment) return '💬';
+  if (data.isVideoLike) return '❤️';
+  if (data.isVideoShare) return '🔗';
+  if (data.isFollow) return '➕';
   if (data.isVideo) return '🎬';
   if (data.isGroup) return '👥';
   return notifHistoryIconFor(title);
@@ -1048,17 +1051,21 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
   const isStory = extraData.isStory === true;
   const isVideo = extraData.isVideo === true;
   const isConnect = extraData.isConnect === true;
+  // A new follower / follow request is a social event — same category as
+  // connection requests, so it honours the `connections` toggle.
+  const isFollow = extraData.isFollow === true;
 
   if (isReaction && !notificationSettings.reactions) return;
   if (isGroup && !notificationSettings.groups) return;
   if (isStory && !notificationSettings.stories) return;
   if (isVideo && !notificationSettings.videos) return;
   if (isConnect && !notificationSettings.connections) return;
-  if (!isReaction && !isGroup && !isStory && !isVideo && !isConnect && !notificationSettings.messages) return;
+  if (isFollow && !notificationSettings.connections) return;
+  if (!isReaction && !isGroup && !isStory && !isVideo && !isConnect && !isFollow && !notificationSettings.messages) return;
 
   // Lock-screen privacy: strip the message text from the push body. Connection
   // events carry no message content, so keep their body (it's the whole point).
-  if (hideNotifPreviewOn() && !isConnect && !isVideo) body = 'New message';
+  if (hideNotifPreviewOn() && !isConnect && !isFollow && !isVideo) body = 'New message';
 
   // A single stable id for THIS notification. The receiver's service worker
   // uses it as the notification tag so that if the backend delivers the same
@@ -2273,11 +2280,20 @@ function acceptFollowRequest(followerUid) {
   db.collection('follows').doc(followerUid + '__' + currentUser.uid)
     .update({ status: 'accepted', updatedAt: Date.now() })
     .then(() => {
-      // My followers +1 (denormalised; non-owner write allowed by the rules).
-      return db.collection('users').doc(currentUser.uid)
-        .set({ followCounts: { followers: firebase.firestore.FieldValue.increment(1) } }, { merge: true });
+      // Accepting is the moment the follow becomes real, so BOTH counters move
+      // here: my followers +1 and the requester's following +1.
+      return _nexaBumpFollowCounts(currentUser.uid, followerUid, 1, 1);
     })
-    .then(() => { if (typeof showNotifToast === 'function') showNotifToast('Follow request accepted', 'success'); renderConnectRequests(); })
+    .then(() => {
+      // Tell the requester their request was accepted.
+      try {
+        if (typeof sendPushNotification === 'function') {
+          sendPushNotification(nexaMyPushName(), 'accepted your follow request', followerUid, { isFollow: true, chatUid: currentUser.uid });
+        }
+      } catch (e) { /* non-fatal */ }
+      if (typeof showNotifToast === 'function') showNotifToast('Follow request accepted', 'success');
+      renderConnectRequests();
+    })
     .catch(e => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e); if (typeof showNotifToast === 'function') showNotifToast('Could not accept', 'error'); });
 }
 
@@ -9138,7 +9154,9 @@ function nexaCloudThumb(url) {
 function nexaGridTileHtml(v) {
   const thumb = safeMediaUrl(v.thumbUrl || v.thumbnail || nexaCloudThumb(v.videoUrl) || '') || '';
   const views = formatCount(Number(v.views) || 0);
-  const id = escapeHtml(String(v.id));
+  // The id lands inside single-quoted inline handlers, so strip anything that
+  // could break out of the attribute before interpolating it.
+  const id = String(v.id == null ? '' : v.id).replace(/[^A-Za-z0-9_-]/g, '');
   const mine = currentUser && v.uid === currentUser.uid;
   // Own tiles get edit/delete affordances — video management lives on the
   // profile (the Settings → My Videos sub-page still works as a fallback).
@@ -9176,6 +9194,10 @@ function nexaLoadVideoGrid(uid) {
   if (hit && hit.fresh && Array.isArray(hit.value)) {
     nxProfileVideos = hit.value;
     nexaPaintGrid(hit.value, 'No videos yet.');
+    // The cached grid already knows the real count — show it now instead of
+    // leaving the stat at 0 until the live snapshot lands.
+    const vsCached = document.getElementById('nxStatVideos');
+    if (vsCached) vsCached.textContent = formatCount(hit.value.length);
   } else {
     grid.innerHTML = '<div class="nx-profile-empty">Loading videos…</div>';
   }
@@ -9258,17 +9280,38 @@ async function nexaToggleFollow(otherUid) {
     const docId = myUid + '__' + otherUid;
     const ref = db.collection('follows').doc(docId);
     if (rel.following === 'accepted' || rel.following === 'pending') {
-      // Unfollow / cancel. Also clear any pending request the OTHER person
-      // sent me, so a stale "wants to follow you" row can't linger.
+      // Unfollow / cancel.
       await ref.delete();
-      db.collection('follows').doc(otherUid + '__' + myUid).delete().catch(() => {});
-      await _nexaBumpFollowCounts(otherUid, myUid, -1, -1);
+      // Only clear the OTHER person's doc when it is still an unanswered
+      // REQUEST. Deleting an accepted follow here would silently drop their
+      // follow of me (and their following count) without them asking.
+      const back = (_nexaFollowsBackMap || {})[otherUid];
+      if (back && back.status === 'pending') {
+        db.collection('follows').doc(otherUid + '__' + myUid).delete().catch(() => {});
+      }
+      // Counts only ever move for an ACCEPTED follow, so only an accepted
+      // follow may move them back. A pending request credits nothing (see the
+      // follow branch below), so decrementing a cancellation would drive
+      // `following` negative.
+      if (rel.following === 'accepted') await _nexaBumpFollowCounts(otherUid, myUid, -1, -1);
       if (typeof showNotifToast === 'function') showNotifToast('Unfollowed', 'success');
     } else {
       const target = nxProfileData && nxProfileData.uid === otherUid ? nxProfileData : (allUsersData || []).find(x => x && x.uid === otherUid) || {};
       const autoAccept = target.followPolicy !== 'approve';
       await ref.set({ follower: myUid, following: otherUid, status: autoAccept ? 'accepted' : 'pending', createdAt: Date.now(), updatedAt: Date.now() });
-      await _nexaBumpFollowCounts(otherUid, myUid, 1, autoAccept ? 1 : 0);
+      // A PENDING request is not a follower yet. Crediting the target here AND
+      // again on accept double-counted a protected account's followers and
+      // left the requester's `following` at zero until (never after) accept.
+      if (autoAccept) await _nexaBumpFollowCounts(otherUid, myUid, 1, 1);
+      // Tell the person they gained a follower / got a request. Gated by the
+      // `connections` notification category (social/connection events).
+      try {
+        if (typeof sendPushNotification === 'function') {
+          sendPushNotification(nexaMyPushName(),
+            autoAccept ? 'started following you' : 'wants to follow you',
+            otherUid, { isFollow: true, chatUid: myUid });
+        }
+      } catch (e) { /* non-fatal */ }
       if (typeof showNotifToast === 'function') showNotifToast(autoAccept ? 'Following' : 'Follow request sent', 'success');
     }
   } catch (e) {

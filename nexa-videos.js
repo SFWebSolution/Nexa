@@ -55,6 +55,8 @@
     activeId: null,
     viewed: new Set(),      // video ids whose `views` we already bumped this session
     likedMine: {},          // videoId -> true/false (did *I* like it)
+    sharesExact: {},        // videoId -> exact share count (the badge label is rounded)
+    sharing: {},            // videoId -> a share is in flight (blocks a double tap)
     pendingFile: null,      // File chosen in the composer
     previewObjectUrl: null, // blob URL backing the composer preview
     pendingDuration: 0,     // seconds (from the preview metadata)
@@ -296,7 +298,15 @@
     };
     set('.nv-rail-like .nv-rail-count', fmtCount(v.likes));
     set('[data-act="comment"] .nv-rail-count', fmtCount(v.commentsCount));
-    set('[data-act="share"] .nv-rail-count', fmtCount(v.shares));
+    // Shares: adopt the server number only when it has moved FORWARD. A
+    // snapshot that lands before our increment write commits carries the OLD
+    // value; taking it blindly would wipe the count we just painted and make
+    // the share look like it didn't register.
+    const serverShares = Number(v.shares) || 0;
+    if (state.sharesExact[v.id] === undefined || serverShares > state.sharesExact[v.id]) {
+      state.sharesExact[v.id] = serverShares;
+    }
+    set('[data-act="share"] .nv-rail-count', fmtCount(state.sharesExact[v.id]));
     set('.nv-dur', v.duration ? fmtDur(Number(v.duration) * 1000) : '');
     const likeBtn = card.querySelector('.nv-rail-like');
     if (likeBtn) likeBtn.classList.toggle('liked', !!state.likedMine[v.id]);
@@ -698,6 +708,8 @@
       if (liked && !has) { tx.set(likeRef, { at: Date.now() }); tx.update(vidRef, { likes: fv().increment(1) }); }
       else if (!liked && has) { tx.delete(likeRef); tx.update(vidRef, { likes: fv().increment(-1) }); }
     })).then(() => {
+      // Tell the author (never yourself, never on an unlike).
+      if (liked) notifyVideoAuthor(id, 'liked your video', { isVideoLike: true });
       // Mirror the like onto users/{me}/liked_videos so a profile's "Liked"
       // grid renders from a small per-user subcollection (no collection-group
       // query). Cosmetic cache — a miss just means the grid is stale.
@@ -743,26 +755,90 @@
   // opens the ACTUAL video on another device — not the app's home screen.
   function shareUrlFor(id) { return SHARE_ORIGIN + '/watch.html?v=' + encodeURIComponent(id); }
 
+  // The badge label is ROUNDED ("1.2k"), so re-parsing it to do +1 is lossy —
+  // that is why repeated shares used to appear to do nothing. Keep the exact
+  // number per video: seeded from the server value, then advanced by one.
+  function exactShares(v) {
+    if (!v) return 0;
+    if (state.sharesExact[v.id] === undefined) state.sharesExact[v.id] = Number(v.shares) || 0;
+    return state.sharesExact[v.id];
+  }
+  function paintShares(id) {
+    const c = el('nvShareCount-' + id);
+    if (c) c.textContent = fmtCount(state.sharesExact[id] || 0);
+  }
+
+  // One place that advances the count, repaints and tells the author.
+  function bumpShare(id) {
+    state.sharesExact[id] = exactShares(findVideo(id)) + 1;
+    paintShares(id);
+    window.db.collection('videos').doc(id).update({ shares: fv().increment(1) }).catch(() => {});
+    notifyVideoAuthor(id, 'shared your video', { isVideoShare: true });
+  }
+
+  // Notify the video's author about an interaction — never yourself, and never
+  // when the author is unknown. Best-effort (a push failure must not break the
+  // interaction that triggered it).
+  function notifyVideoAuthor(id, what, flags) {
+    try {
+      const v = findVideo(id);
+      const target = v && v.uid;
+      if (!target || target === myUid() || !window.sendPushNotification) return;
+      window.sendPushNotification(myName(), what, target, Object.assign({ isVideo: true, chatUid: myUid() }, flags || {}));
+    } catch (e) { /* non-fatal */ }
+  }
+
   function shareVideo(id) {
+    // A double tap on the share button must not open two OS sheets or count
+    // twice: ignore any tap while a share for this video is still in flight.
+    if (state.sharing[id]) return;
     const v = state.videos.find(x => x.id === id) || state.myVideos.find(x => x.id === id);
     const url = shareUrlFor(id);
     const text = (v && v.caption) ? v.caption : 'Watch this video on Nexa';
+
     // Count ONLY when a share really completed — cancelling the OS sheet or a
     // failed clipboard write must not inflate the number.
-    const countShare = () => {
-      window.db.collection('videos').doc(id).update({ shares: fv().increment(1) }).catch(() => {});
-      const c = el('nvShareCount-' + id);
-      if (c) c.textContent = fmtCount(parseCount(c.textContent) + 1);
-    };
+    const countShare = () => bumpShare(id);
+    const clearInFlight = () => { state.sharing[id] = false; };
+
     if (navigator.share) {
-      navigator.share({ title: 'Nexa', text: text, url: url }).then(countShare).catch(() => {});
-    } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(text + ' ' + url)
-        .then(() => { toast('Link copied', 'success'); countShare(); })
-        .catch(() => toast('Could not copy the link', 'error'));
+      state.sharing[id] = true;
+      navigator.share({ title: 'Nexa', text: text, url: url })
+        .then(() => { countShare(); toast('Shared', 'success'); })
+        .catch(err => {
+          // A deliberate dismiss is not a failure; anything else means the
+          // share did NOT happen, so fall back to copying instead of dying
+          // silently (the "I tap share and nothing happens" report).
+          if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return;
+          copyShareFallback(id, text + ' ' + url);
+        })
+        .then(clearInFlight, clearInFlight);
     } else {
-      toast('Sharing is not supported on this device', 'error');
+      copyShareFallback(id, text + ' ' + url);
     }
+  }
+
+  function copyShareFallback(id, payload) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payload)
+        .then(() => { toast('Link copied', 'success'); bumpShare(id); })
+        .catch(() => toast('Could not copy the link', 'error'));
+      return;
+    }
+    // Last resort: a hidden textarea + execCommand so desktop browsers without
+    // the async clipboard API still get a usable copy instead of nothing.
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = payload;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      ta.remove();
+      if (ok) { toast('Link copied', 'success'); bumpShare(id); return; }
+    } catch (e) {}
+    toast('Sharing is not supported on this device', 'error');
   }
 
   // Remove a subcollection in <=400-doc batches. Best-effort: the video doc
@@ -1044,13 +1120,11 @@
       if (c) c.textContent = fmtCount(parseCount(c.textContent) + 1);
       // Notify the person you replied to (or the video's author for a top-level
       // comment). Best-effort; the sender-side push costs no Firestore writes.
-      try {
-        const v = findVideo(id);
-        const target = (reply && reply.uid) ? reply.uid : (v && v.uid);
-        if (target && target !== myUid() && window.sendPushNotification) {
-          window.sendPushNotification(myName(), (reply ? 'replied to your comment' : 'commented on your video'), target, { isVideo: true, isVideoComment: true });
-        }
-      } catch (e) { /* non-fatal */ }
+      const v = findVideo(id);
+      const target = (reply && reply.uid) ? reply.uid : (v && v.uid);
+      if (target && target !== myUid() && window.sendPushNotification) {
+        window.sendPushNotification(myName(), (reply ? 'replied to your comment' : 'commented on your video'), target, { isVideo: true, isVideoComment: true, chatUid: myUid() });
+      }
     }).catch(err => { toast('Could not post comment', 'error'); console.warn(err); });
   }
 
@@ -1333,7 +1407,9 @@
       })
       .then(() => {
         setRing(true, 100, 'Posted!');
-        notifyConnections(caption);
+        // No push on publish: posting a video is not an event your connections
+        // need to be interrupted for. They are notified about LIKES, COMMENTS,
+        // SHARES and new FOLLOWERS instead.
         return new Promise(r => setTimeout(r, 320));
       })
       .then(() => {
@@ -1353,20 +1429,6 @@
         const b = el('nvComposerPost');
         if (b) { b.disabled = false; b.textContent = 'Post'; }
       });
-  }
-
-  // Only ACCEPTED connections are notified — everyone else sees the video but
-  // gets no push (the product rule).
-  function notifyConnections(caption) {
-    try {
-      const conns = Object.values(window.nexaMyConnections || {})
-        .filter(c => c && c.status === 'accepted' && c.otherUid)
-        .map(c => c.otherUid);
-      if (!conns.length) return;
-      window.sendPushNotification(myName(), 'posted a new video', null, {
-        isVideo: true, recipientUids: conns, chatUid: myUid()
-      });
-    } catch (e) { console.warn('video push failed', e); }
   }
 
   // ── edit (caption + music) ──

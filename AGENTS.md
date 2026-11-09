@@ -1306,6 +1306,54 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `nexa-videos.css` next to the base comment rules. `openComments(id)` is exported
   as `NexaVideos.openComments` for tests.
 
+## Video share accuracy + interaction notifications (2026-11) — do NOT regress
+- **The share badge label is ROUNDED** (`fmtCount` → "1.2K"), so re-parsing the
+  rendered text to do `+1` was LOSSY: once a video passed 1 000 shares the count
+  pinned at 1 201 forever and every further tap "did nothing" (the user's
+  "I share again and it still reads the same" report). Share counts are now kept
+  EXACTLY per video in `state.sharesExact` (`exactShares(v)` seeds from the
+  server `v.shares`, `bumpShare(id)` advances it, `paintShares(id)` repaints).
+  Never go back to `parseCount(label.textContent) + 1`.
+- **A feed snapshot must never wipe the optimistic count.** `patchCard` adopts
+  the server `shares` only when it has moved FORWARD
+  (`serverShares > state.sharesExact[v.id]`); a snapshot that lands before our
+  increment commits carries the OLD value and would otherwise reset the badge.
+- **A double tap must not double count.** `shareVideo` sets `state.sharing[id]`
+  for the duration of the OS share sheet and returns early on a second tap.
+- **Count ONLY on a completed share.** A dismissed sheet (`AbortError` /
+  `NotAllowedError`) returns without counting; any other `navigator.share`
+  failure falls back to `copyShareFallback` (clipboard, then `execCommand`)
+  rather than dying silently. No Web Share API → straight to the copy fallback,
+  which DOES count once the copy resolves.
+- **Interaction notifications (never a publish push).** Posting a video pushes
+  NOTHING (the `posted a new video` / `notifyConnections` fan-out was removed).
+  `notifyVideoAuthor(id, what, flags)` (nexa-videos.js) pushes to the AUTHOR on
+  a like (`{isVideoLike:true}`) or share (`{isVideoShare:true}`) and never to
+  yourself; comments/replies keep their existing `{isVideoComment:true}` push.
+  A new follow / follow-accept pushes `{isFollow:true}` from
+  `nexaToggleFollow` / `acceptFollowRequest`. `notifIconForData` maps
+  `isVideoLike` → ❤️, `isVideoShare` → 🔗, `isFollow` → ➕ (all checked BEFORE
+  `isVideo`, because like/share push titles are just the sender's NAME).
+  Follows are gated by the `connections` toggle (a social/connection event);
+  likes/shares/comments by the `videos` toggle. Settings copy for both was
+  updated ("Likes, comments and shares on your videos" / "...and new followers").
+
+## Follow-count integrity (nexaToggleFollow) — do NOT regress
+- **A PENDING follow request credits NOTHING.** `nexaToggleFollow` bumps counts
+  only when `autoAccept` (`if (autoAccept) await _nexaBumpFollowCounts(...)`);
+  `acceptFollowRequest` does the single bump on accept for BOTH sides
+  (`_nexaBumpFollowCounts(currentUser.uid, followerUid, 1, 1)`). The old code
+  bumped `(otherUid, myUid, 1, autoAccept ? 1 : 0)` at request time AND again on
+  accept — double-counting a protected account's followers and leaving the
+  requester's `following` at 0 until (never after) accept.
+- **Only an ACCEPTED follow may be decremented.** Unfollow/cancel decrements
+  only `if (rel.following === 'accepted')`; cancelling a pending request must
+  not decrement (nothing was credited) or `following` goes negative.
+- **Unfollow must not silently drop the other person's ACCEPTED follow of me.**
+  The reverse `follows/{other__me}` doc is deleted ONLY when it is still a
+  pending REQUEST (`back.status === 'pending'`); deleting an accepted follow
+  would remove their follow (and their `following` count) without them asking.
+
 ## Video composer preview — audio must STOP when the composer closes (do NOT regress)
 - **A hidden `<video>` keeps playing.** The video composer preview
   (`#nvComposerPreview`, `nexa-videos.js`) is a LOOPING `<video>`; the overlay is
@@ -1808,6 +1856,17 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `runTransaction`, and share uses the `watch.html` canonical link. 14 checks.
 - `node tests/videos-sound.test.js` — same harness style, covers the audible-playback
   rules (sound default, `tryPlay` muted fallback, `toggleSound` persistence). 9 checks.
+- `node tests/videos-share.test.js` — same harness style, covers the share flow
+  end to end: a completed share counts exactly once and advances the badge
+  (including a large count where the rounded label would swallow the `+1`), a
+  cancelled sheet never counts, a double tap opens ONE sheet and counts once, a
+  lagging snapshot cannot reset the count, the clipboard fallback counts, and
+  liking/sharing notifies the author (never yourself). 22 checks.
+- `node tests/invite-links.test.js` additionally asserts the follow-count
+  invariants (pending credits nothing, accept bumps both once, unfollow only
+  decrements an accepted follow and only clears a PENDING reverse request) and
+  the video-notification policy (no publish push; like/share/comment/follow
+  pushes; distinct icons).
 
 
 ## Android App Links / "Open in app" deep link (join.html + APK)

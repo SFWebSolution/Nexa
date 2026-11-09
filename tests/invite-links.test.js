@@ -488,7 +488,18 @@ console.log("\n8) group/channel instant-open message cache");
   ok("like is idempotent (checks the marker exists first)",
     /if \(liked && !has\)/.test(vids) && /else if \(!liked && has\)/.test(vids));
   ok("share counts only when the share actually completed",
-    /navigator\.share\(\{ title: 'Nexa', text: text, url: url \}\)\.then\(countShare\)\.catch\(\(\) => \{\}\)/.test(vids));
+    /navigator\.share\(\{ title: 'Nexa', text: text, url: url \}\)\s*\n\s*\.then\(\(\) => \{ countShare\(\); toast\('Shared', 'success'\); \}\)/.test(vids));
+  ok("a dismissed share sheet is NOT counted",
+    /if \(err && \(err\.name === 'AbortError' \|\| err\.name === 'NotAllowedError'\)\) return;/.test(vids));
+  ok("a double tap cannot count the same share twice",
+    /if \(state\.sharing\[id\]\) return;/.test(vids) && /state\.sharing\[id\] = true;/.test(vids));
+  ok("share count is exact, not re-parsed from the rounded label",
+    /function exactShares\(v\)/.test(vids) && /state\.sharesExact\[v\.id\] === undefined/.test(vids) &&
+    /function bumpShare\(id\) \{\s*\n\s*state\.sharesExact\[id\] = exactShares\(findVideo\(id\)\) \+ 1;/.test(vids));
+  ok("a lagging snapshot cannot wipe the just-painted share count",
+    /serverShares > state\.sharesExact\[v\.id\]/.test(vids));
+  ok("share has a clipboard + execCommand fallback",
+    /function copyShareFallback\(id, payload\)/.test(vids) && /document\.execCommand\('copy'\)/.test(vids));
   ok("share link points at the watch.html landing on the canonical host",
     /const SHARE_ORIGIN = 'https:\/\/nexa-qydr\.onrender\.com';/.test(vids) &&
     /function shareUrlFor\(id\) \{ return SHARE_ORIGIN \+ '\/watch\.html\?v=' \+ encodeURIComponent\(id\); \}/.test(vids));
@@ -765,6 +776,43 @@ console.log("\n8) group/channel instant-open message cache");
   ok("video author is a profile tap target", /nv-author-tap"[^>]*nexaProfileOpen/.test(vids));
   ok("own profile tiles expose edit/delete", /nx-pv-manage/.test(app) && /nexaVideosEdit\(/.test(app) && /nexaVideosDelete\(/.test(app));
   ok("follow requests appear in the Connect requests list", /Follow requests<\/div>/.test(app) && /function acceptFollowRequest\(/.test(app) && /function declineFollowRequest\(/.test(app));
+
+  // ── Follow-count integrity (the double-count + negative-count bugs) ───────
+  // A pending request is not a follower yet: it is counted ONCE, at accept
+  // time, never at request time. Counting it in both places doubled it.
+  ok("a pending follow request does NOT bump the counts",
+    /if \(autoAccept\) await _nexaBumpFollowCounts\(otherUid, myUid, 1, 1\);/.test(app));
+  ok("accepting a request bumps BOTH sides once",
+    /return _nexaBumpFollowCounts\(currentUser\.uid, followerUid, 1, 1\);/.test(app));
+  // Cancelling a pending request must not decrement — nothing was counted.
+  ok("unfollow only decrements an ACCEPTED follow",
+    /if \(rel\.following === 'accepted'\) await _nexaBumpFollowCounts\(otherUid, myUid, -1, -1\);/.test(app));
+  // Unfollowing must not silently drop the other person's ACCEPTED follow of me.
+  ok("unfollow only clears the other side's PENDING request",
+    /if \(back && back\.status === 'pending'\)/.test(app));
+  // Both follow events notify the other party.
+  ok("a new follow notifies the target",
+    /autoAccept \? 'started following you' : 'wants to follow you'/.test(app) && /isFollow: true/.test(app));
+  ok("accepting a follow notifies the requester",
+    /'accepted your follow request', followerUid/.test(app));
+  ok("the follow category is gated by the connections toggle",
+    /if \(isFollow && !notificationSettings\.connections\) return;/.test(app));
+  ok("follow/like/share have distinct notification icons",
+    /if \(data\.isVideoLike\) return/.test(app) && /if \(data\.isVideoShare\) return/.test(app) && /if \(data\.isFollow\) return/.test(app));
+
+  // ── Video notifications: interactions yes, publishing no ─────────────────
+  ok("posting a video pushes NOTHING",
+    !/posted a new video/.test(vids) && !/function notifyConnections/.test(vids));
+  ok("liking a video notifies the author",
+    /notifyVideoAuthor\(id, 'liked your video', \{ isVideoLike: true \}\)/.test(vids));
+  ok("sharing a video notifies the author",
+    /notifyVideoAuthor\(id, 'shared your video', \{ isVideoShare: true \}\)/.test(vids));
+  ok("commenting still notifies the author / parent",
+    /'commented on your video'/.test(vids) && /isVideoComment: true/.test(vids));
+  ok("an interaction never notifies yourself",
+    /if \(!target \|\| target === myUid\(\) \|\| !window\.sendPushNotification\) return;/.test(vids));
+  ok("Settings copy describes interactions, not 'someone posted'",
+    /Likes, comments and shares on your videos/.test(dash) && /new followers/.test(dash));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
