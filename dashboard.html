@@ -127,7 +127,7 @@
     <div class="nexa-splash-inner">
       <div class="nexa-splash-logo">N</div>
       <div class="nexa-splash-name">Nexa</div>
-      <div class="nexa-splash-tag">Messenger</div>
+      <div class="nexa-splash-tag">Chat · Moments · Video · Live</div>
       <div class="nexa-splash-dots"><span></span><span></span><span></span></div>
       <!-- Real boot progress: advances as actual init milestones complete, so
            100% genuinely means "everything is loaded, including the user list".
@@ -227,6 +227,16 @@
       <img src="https://i.imgur.com/HeIi0wU.png" id="myPic" class="my-pic" alt="" style="display:none;">
       <div class="top-info" style="display:none;">
         <div class="top-name" id="myName">Loading…</div>
+      </div>
+      <!-- HEADER ACTIONS — bell (notification history) + your profile -->
+      <div class="nx-head-actions">
+        <button class="nx-head-btn" id="nxBellBtn" onclick="openNotificationHistory()" title="Notifications" aria-label="Notifications">
+          <i data-lucide="bell"></i>
+          <span class="nx-head-badge" id="nxBellBadge" style="display:none;">0</span>
+        </button>
+        <button class="nx-head-btn" id="nxProfileBtn" onclick="openMyProfile()" title="My profile" aria-label="My profile">
+          <i data-lucide="user-round"></i>
+        </button>
       </div>
       <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
       <div class="sidebar-tab-switcher">
@@ -519,13 +529,12 @@
 
             <div class="settings-group">
               <div class="settings-group-title"><i data-lucide="life-buoy" style="width: 15px; height: 15px;"></i> Support</div>
-              <button class="settings-row" id="reportProblemRow" onclick="openReportComing()">
+              <button class="settings-row" id="reportProblemRow" onclick="openReportModal()">
                 <span class="settings-row-icon"><i data-lucide="flag" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
                   <span class="settings-row-title">Report a problem</span>
-                  <span class="settings-row-sub">Tell us about a bug or anything that's wrong</span>
+                  <span class="settings-row-sub">Bugs, safety &amp; abuse, or ideas — we read every one</span>
                 </span>
-                <span class="settings-row-pill">Soon</span>
                 <i data-lucide="chevron-right" class="settings-row-chev"></i>
               </button>
             </div>
@@ -1252,19 +1261,33 @@
 </div>
 
 <!-- REPORT A PROBLEM — COMING SOON MODAL -->
-<div class="askify-coming-overlay" id="reportComingModal" onclick="handleReportComingClick(event)">
+<div class="askify-coming-overlay" id="reportModal" onclick="handleReportModalClick(event)">
   <div class="askify-coming-modal report-coming-modal">
-    <button class="askify-coming-close" onclick="closeReportComing()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    <button class="askify-coming-close" onclick="closeReportModal()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
     <div class="askify-coming-icon">🛟</div>
-    <div class="askify-coming-title">Coming Soon</div>
-    <div class="askify-coming-desc">Something not working, or just not right? Very soon you'll be able to report any issue straight from here — we'll look into every one.</div>
-    <div class="report-coming-caps">
-      <div class="report-cap"><span>🐞</span> Bugs &amp; crashes</div>
-      <div class="report-cap"><span>🔒</span> Safety &amp; abuse</div>
-      <div class="report-cap"><span>💡</span> Ideas &amp; feedback</div>
+    <div class="askify-coming-title">Report a problem</div>
+    <div class="askify-coming-desc">Tell us what's wrong — a bug, abuse, or an idea. Reports go straight to the Nexa team.</div>
+    <div class="report-cats" id="reportCats">
+      <button class="report-cat active" data-cat="bug" onclick="selectReportCat('bug')"><span>🐞</span> Bug</button>
+      <button class="report-cat" data-cat="safety" onclick="selectReportCat('safety')"><span>🔒</span> Safety &amp; abuse</button>
+      <button class="report-cat" data-cat="idea" onclick="selectReportCat('idea')"><span>💡</span> Idea</button>
+      <button class="report-cat" data-cat="other" onclick="selectReportCat('other')"><span>📢</span> Other</button>
     </div>
-    <div class="report-coming-pill">Coming soon</div>
-    <button class="askify-coming-btn" onclick="closeReportComing()">Got it</button>
+    <textarea id="reportText" class="report-text" maxlength="2000" rows="4"
+      oninput="updateReportCounter()"
+      placeholder="Describe what happened, and what you expected…"></textarea>
+    <div class="report-attach-row">
+      <button class="report-attach-btn" id="reportAttachBtn" onclick="document.getElementById('reportFile').click()">
+        <i data-lucide="image-plus" style="width:15px;height:15px;"></i> <span id="reportAttachLabel">Add screenshot</span>
+      </button>
+      <input type="file" id="reportFile" accept="image/*" style="display:none;" onchange="previewReportShot(event)">
+      <span class="report-counter" id="reportCounter">0/2000</span>
+    </div>
+    <div class="report-shot-preview" id="reportShotPreview" style="display:none;">
+      <img id="reportShotImg" alt="screenshot">
+      <button class="report-shot-remove" onclick="clearReportShot()"><i data-lucide="x" style="width:12px;height:12px;"></i></button>
+    </div>
+    <button class="askify-coming-btn" id="reportSubmitBtn" onclick="submitReport()">Send report</button>
   </div>
 </div>
 

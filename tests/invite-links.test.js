@@ -593,30 +593,15 @@ console.log("\n8) group/channel instant-open message cache");
   ok("backend has no analytics endpoint", !/api\/admin\/analytics/.test(api));
 }
 
-// ── Settings: "Report a problem" (coming soon) ─────────────────────────────
+// ── Settings: "Report a problem" (now live → admin) ────────────────────────
 {
   const dash = read("dashboard.html");
-  const app = read("app-main.js");
-  const css = read("dashboard.css");
 
   ok("settings has a Support group", /settings-group-title">\s*<i data-lucide="life-buoy"[\s\S]{0,120}Support<\/div>/.test(dash));
   ok("settings has the Report a problem row",
-    /id="reportProblemRow"[\s\S]{0,120}openReportComing\(\)/.test(dash) && /Report a problem<\/span>/.test(dash));
-  ok("report row is flagged coming soon", /settings-row-pill">Soon<\/span>/.test(dash));
-  ok("report coming-soon modal exists", /id="reportComingModal"/.test(dash));
-  ok("report modal reuses the shared coming-soon shell",
-    /askify-coming-overlay" id="reportComingModal"/.test(dash) && /askify-coming-modal report-coming-modal/.test(dash));
-  ok("report modal lists what can be reported",
-    /report-cap/.test(dash) && /Bugs &amp; crashes/.test(dash) && /Safety &amp; abuse/.test(dash));
-  ok("report modal close is a lucide icon", /askify-coming-close" onclick="closeReportComing\(\)"><i data-lucide="x"/.test(dash));
-
-  ok("openReportComing defined", /function openReportComing\(\)/.test(app));
-  ok("closeReportComing defined", /function closeReportComing\(\)/.test(app));
-  ok("handleReportComingClick defined", /function handleReportComingClick\(e\)/.test(app));
-  ok("openReportComing toggles the active class", /modal\.classList\.add\("active"\)/.test(app));
-  ok("openReportComing falls back to a toast", /showNotifToast\("Reporting is coming soon!", "info"\)/.test(app));
-
-  ok("report CSS present", /\.report-coming-modal/.test(css) && /\.report-cap\b/.test(css) && /\.settings-row-pill/.test(css));
+    /id="reportProblemRow"[\s\S]{0,120}openReportModal\(\)/.test(dash) && /Report a problem<\/span>/.test(dash));
+  ok("report row is NO LONGER flagged coming soon",
+    !/reportProblemRow"[\s\S]{0,400}settings-row-pill">Soon/.test(dash));
 }
 
 // ── Videos: comments (like · reply · notify · delete) ──────────────────────
@@ -649,6 +634,89 @@ console.log("\n8) group/channel instant-open message cache");
     && /allow delete: if isSignedIn\(\)\s*\r?\n\s*&& resource\.data\.uid == request\.auth\.uid;/.test(rules));
   ok("comment_likes delete rule uses resource.data (request.resource is null on delete)",
     !/allow create, delete: if isSignedIn\(\)\s*\r?\n\s*&& request\.resource\.data\.uid/.test(rules));
+}
+
+// ── Header bell + profile button ───────────────────────────────────────────
+{
+  const dash = read("dashboard.html");
+  const css = read("dashboard.css");
+  const app = read("app-main.js");
+
+  ok("sidebar header has an actions row", /class="nx-head-actions"/.test(dash));
+  ok("bell button opens the notification history", /id="nxBellBtn"[^>]*onclick="openNotificationHistory\(\)"/.test(dash));
+  ok("bell has an unread badge element", /id="nxBellBadge"/.test(dash));
+  ok("profile button opens my profile", /id="nxProfileBtn"[^>]*onclick="openMyProfile\(\)"/.test(dash));
+  ok("actions row sits before the tab switcher",
+    dash.indexOf("nx-head-actions") < dash.indexOf("sidebar-tab-switcher"));
+  ok("header action CSS present", /\.nx-head-btn\b/.test(css) && /\.nx-head-badge\b/.test(css) && /\.nx-bell-ring\b/.test(css));
+  ok("updateNotificationHistoryBadge also paints the bell badge", /nxBellBadge/.test(app));
+  ok("recordNotificationHistory rings the bell", /nxRingBell/.test(app));
+  ok("openMyProfile defined", /function openMyProfile\(\)/.test(app));
+}
+
+// ── Reports (Settings → Report a problem → admin dashboard) ─────────────────
+{
+  const dash = read("dashboard.html");
+  const app = read("app-main.js");
+  const rules = read("firestore.rules");
+  const api = read("server/admin-api.js");
+  const admin = read("admin.html");
+  const css = read("dashboard.css");
+
+  ok("report row opens the real composer (no 'Soon' pill)", /id="reportProblemRow" onclick="openReportModal\(\)"/.test(dash) && !/reportProblemRow"[\s\S]{0,300}settings-row-pill">Soon/.test(dash));
+  ok("report composer modal exists", /id="reportModal"/.test(dash));
+  ok("report has category chips", /class="report-cat active" data-cat="bug"/.test(dash) && /selectReportCat\('safety'\)/.test(dash));
+  ok("report has a textarea + counter", /id="reportText"/.test(dash) && /id="reportCounter"/.test(dash));
+  ok("report has an optional screenshot attach", /id="reportFile"/.test(dash) && /previewReportShot\(event\)/.test(dash));
+  ok("coming-soon report modal is gone", !/reportComingModal/.test(dash) && !/openReportComing/.test(app));
+
+  ok("openReportModal/closeReportModal defined", /function openReportModal\(\)/.test(app) && /function closeReportModal\(\)/.test(app));
+  ok("submitReport writes to the reports collection", /db\.collection\("reports"\)\.add\(/.test(app));
+  ok("report carries context (app/platform/tab)", /function reportContext\(\)/.test(app) && /platform:/.test(app));
+  ok("report uploads its screenshot through uploadFile", /uploadFile\(file\.files\[0\]\)/.test(app));
+  ok("report CSS present", /\.report-cats\b/.test(css) && /\.report-text\b/.test(css) && /\.report-shot-preview\b/.test(css));
+
+  ok("rules add the reports collection", /match \/reports\/\{reportId\}/.test(rules));
+  ok("reports are NOT readable from the browser", /match \/reports\/\{reportId\} \{\s*allow read: if false;/.test(rules));
+  ok("reports create is owner-only + validated",
+    /allow create: if isSignedIn\(\)[\s\S]{0,400}request\.resource\.data\.uid == request\.auth\.uid/.test(rules)
+    && /request\.resource\.data\.text\.size\(\) <= 2000/.test(rules));
+  ok("reports update/delete denied", /allow update, delete: if false;/.test(rules));
+
+  ok("backend lists reports (Admin SDK)", /app\.get\("\/api\/admin\/reports", requireAdminSecret/.test(api));
+  ok("backend sets report status", /app\.post\("\/api\/admin\/report-status", requireAdminSecret/.test(api));
+
+  ok("admin has a Reports section", /id="reportList"/.test(admin) && /id="reportOpenCount"/.test(admin));
+  ok("admin loads reports via the backend", /adminFetchGet\("\/api\/admin\/reports/.test(admin));
+  ok("admin can resolve/reopen", /function setReportStatus\(/.test(admin) && /adminFetch\("\/api\/admin\/report-status"/.test(admin));
+  ok("admin init loads reports", /loadReports\('open'\)/.test(admin));
+}
+
+// ── App identity refresh (not "just chatting") ──────────────────────────────
+{
+  const idx = read("index.html");
+  const dash = read("dashboard.html");
+
+  ok("index title leads with more than messaging",
+    /<title>Nexa — Chat, Moments, short videos, profiles/.test(idx));
+  ok("index description mentions videos + profile/follow",
+    /short videos/.test(idx) && /profile you can follow/.test(idx));
+  ok("index keywords cover social + video", /Short Videos/.test(idx) && /Profiles/.test(idx) && /Follow/.test(idx));
+  ok("hero headline is broader than chat", /Chat, share Moments, watch<br>videos/.test(idx));
+  ok("index has a Short videos feature card", /<h3>Short videos<\/h3>/.test(idx));
+  ok("index has a profile & followers feature card", /<h3>Your profile &amp; followers<\/h3>/.test(idx));
+  ok("OG/Twitter titles refreshed", /og:title" content="Nexa — Chat, Moments, Videos/.test(idx) && /twitter:title" content="Nexa — Chat, Moments, Videos/.test(idx));
+  ok("footer no longer says 'messaging' only", /Chat, Moments, videos and live rooms/.test(idx));
+
+  ok("splash tagline broadened", /nexa-splash-tag">Chat · Moments · Video · Live</.test(dash));
+  ok("splash still says Nexa", /nexa-splash-name">Nexa</.test(dash));
+}
+
+// ── Read-quota cache wiring ─────────────────────────────────────────────────
+{
+  const app = read("app-main.js");
+  ok("cache helper is defined", /function nexaCacheFetch\(/.test(app) && /function nexaCacheRead\(/.test(app));
+  ok("cache is cleared on logout", /nexaCacheClearAll\(\);/.test(app));
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");

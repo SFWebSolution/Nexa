@@ -126,6 +126,67 @@ function safeMediaUrl(url) {
   return "";
 }
 
+// ── READ-QUOTA CACHE ────────────────────────────────────────────────────────
+// Firestore reads are the scarce resource on the Spark plan. This is the single
+// "read once, remember locally, re-read only when stale" helper used by the
+// profile / follow / reports surfaces. A cache hit costs ZERO reads.
+//
+//   nexaCacheRead(key, ttlMs)        -> { value, age, fresh } | null
+//   nexaCacheWrite(key, value)       -> stores { v, t: Date.now() }
+//   nexaCacheFetch(key, ttlMs, fn)   -> Promise<value>; runs fn() only when stale
+//   nexaCacheFetchSync(key, ttlMs, fn)-> value; fn() may be sync or return a value
+//
+// Stale reads are ALSO returned immediately (paint fast) — the caller decides
+// whether to refresh. Callers that want strictly-fresh data pass freshOnly.
+const NEXA_CACHE_PREFIX = "nexa_cache_";
+function nexaCacheRead(key, ttlMs) {
+  try {
+    const raw = localStorage.getItem(NEXA_CACHE_PREFIX + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const age = Date.now() - (Number(parsed.t) || 0);
+    const fresh = ttlMs == null ? true : age <= ttlMs;
+    return { value: parsed.v, age: age, fresh: fresh };
+  } catch (e) { return null; }
+}
+function nexaCacheWrite(key, value) {
+  try { localStorage.setItem(NEXA_CACHE_PREFIX + key, JSON.stringify({ v: value, t: Date.now() })); } catch (e) {}
+}
+function nexaCacheClear(key) {
+  try { localStorage.removeItem(NEXA_CACHE_PREFIX + key); } catch (e) {}
+}
+// Fetch-or-cache. Returns the cached value instantly when it is still fresh;
+// otherwise runs fetcher() once, stores the result and returns it.
+function nexaCacheFetch(key, ttlMs, fetcher) {
+  const hit = nexaCacheRead(key, ttlMs);
+  if (hit && hit.fresh) return Promise.resolve(hit.value);
+  return Promise.resolve().then(fetcher).then(function (value) {
+    if (value !== undefined) nexaCacheWrite(key, value);
+    return value;
+  });
+}
+// Synchronous flavour for cheap, non-network derivations.
+function nexaCacheFetchSync(key, ttlMs, producer) {
+  const hit = nexaCacheRead(key, ttlMs);
+  if (hit && hit.fresh) return hit.value;
+  const value = producer();
+  if (value !== undefined) nexaCacheWrite(key, value);
+  return value;
+}
+// Drop every nexa_cache_* entry (used on sign-out so a different account on the
+// same device never sees the previous user's cached profiles/lists).
+function nexaCacheClearAll() {
+  try {
+    const drop = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(NEXA_CACHE_PREFIX) === 0) drop.push(k);
+    }
+    drop.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  } catch (e) {}
+}
+
 function linkify(text) {
   if (!text) return "";
   // Matches, in order: full URLs (http/https), bare www. links, and bare
@@ -847,6 +908,8 @@ function recordNotificationHistory({ icon, title, body, at }) {
     }
     store.updatedAt = Date.now();
     _nhSave(store);
+    if (window.updateNotificationHistoryBadge) window.updateNotificationHistoryBadge();
+    if (window.nxRingBell) window.nxRingBell();
   } catch (e) {
     console.warn('recordNotificationHistory error:', e);
   }
@@ -936,17 +999,37 @@ function relTime(ts) {
 }
 
 // Fill the small "N" count pill next to "Notification History" in the SETTINGS
-// tab. Shows the number of notifications that arrived since lastViewedAt, i.e.
-// the UNREAD count — opening the history (which stamps lastViewedAt) clears it.
+// tab AND the header bell badge. Shows the number of notifications that arrived
+// since lastViewedAt, i.e. the UNREAD count — opening the history (which stamps
+// lastViewedAt) clears both.
 window.updateNotificationHistoryBadge = function () {
-  const el = document.getElementById('notifHistoryCount');
-  if (!el || !currentUser) return;
+  if (!currentUser) return;
   const store = _nhLoad();
   const items = store.items || [];
   const lastViewed = Number(store.lastViewedAt) || 0;
   const unread = items.filter(it => Number(it.at || 0) > lastViewed).length;
-  el.textContent = unread ? String(unread) : '';
-  el.style.display = unread ? '' : 'none';
+
+  const el = document.getElementById('notifHistoryCount');
+  if (el) {
+    el.textContent = unread ? String(unread) : '';
+    el.style.display = unread ? '' : 'none';
+  }
+  const bell = document.getElementById('nxBellBadge');
+  if (bell) {
+    bell.textContent = unread > 99 ? '99+' : String(unread);
+    bell.style.display = unread ? '' : 'none';
+  }
+};
+
+// A tiny "ring" pulse on the header bell when a notification lands. Purely
+// cosmetic and local — no Firestore cost.
+window.nxRingBell = function () {
+  const btn = document.getElementById('nxBellBtn');
+  if (!btn) return;
+  btn.classList.remove('nx-bell-ring');
+  void btn.offsetWidth; // restart the animation
+  btn.classList.add('nx-bell-ring');
+  setTimeout(() => btn.classList.remove('nx-bell-ring'), 1000);
 };
 
 function sendPushNotification(title, body, targetUidOverride = null, extraData = {}) {
@@ -1292,6 +1375,7 @@ async function installPWA() {
 async function handleLogout() {
   if (await nexaConfirm('Are you sure you want to sign out of Nexa on this device?', { title: 'Log Out', okLabel: 'Log Out', danger: true })) {
     try { localStorage.removeItem("nexa_signed_in"); } catch (e) {}
+    nexaCacheClearAll(); // never leak cached profiles/lists to the next account
     auth.signOut();
   }
 }
@@ -8744,6 +8828,8 @@ function openUserProfile() {
   });
 
   updateBlockButtonUI();
+  const actions = document.getElementById('userProfileActions');
+  if (actions) actions.style.display = '';
   document.getElementById('userProfileModal').classList.add('active');
 }
 
@@ -8754,6 +8840,35 @@ function closeUserProfile() {
 function closeUserProfile(event) {
   if (event && event.target !== document.getElementById('userProfileModal')) return;
   document.getElementById('userProfileModal').classList.remove('active');
+}
+
+// Open YOUR OWN profile from the header button. Reads straight from the
+// already-loaded users cache — no Firestore read. Self-view hides the
+// call/message/block actions (you cannot call or message yourself).
+function openMyProfile() {
+  if (!currentUser) return;
+  const mine = (allUsersData || []).find(u => u && u.uid === currentUser.uid) || {};
+  const photo = mine.photo || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
+  document.getElementById('userProfileAvatar').src = safeMediaUrl(photo) || "https://i.imgur.com/HeIi0wU.png";
+  document.getElementById('userProfileName').textContent = mine.displayName || currentUser.displayName || 'You';
+  const profHandle = document.getElementById('userProfileHandle');
+  if (profHandle) {
+    const uh = mine.username || '';
+    profHandle.textContent = uh ? '@' + uh : '';
+  }
+  const statusEl = document.getElementById('userProfileStatus');
+  if (statusEl) statusEl.innerHTML = '<span style="color:var(--online)">● this is you</span>';
+  const bio = mine.bio || mine.about || '';
+  const bioEl = document.getElementById('userProfileBio');
+  if (bio) bioEl.innerHTML = linkify(bio);
+  else bioEl.textContent = 'Hey! I am using Nexa.';
+  const noteEl = document.getElementById('userProfileNote');
+  if (noteEl) noteEl.innerHTML = '';
+  // Self-view: hide the interaction actions.
+  const actions = document.getElementById('userProfileActions');
+  if (actions) actions.style.display = 'none';
+  document.getElementById('userProfileModal').classList.add('active');
+  if (window.lucide) lucide.createIcons();
 }
 
 /* =========================================================================
@@ -10728,27 +10843,147 @@ function closeAskifyComing() {
   }
 }
 
-/* ── REPORT A PROBLEM (coming soon) ──────────────────────────────────────
-   Entry point in Settings → Support. The composer itself isn't built yet,
-   so this opens the shared "coming soon" card; once the report pipeline
-   ships, swap these three to open the real composer. */
-function openReportComing() {
-  const modal = document.getElementById("reportComingModal");
-  if (modal) {
-    modal.classList.add("active");
-    if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
-    return;
-  }
-  if (typeof showNotifToast === "function") showNotifToast("Reporting is coming soon!", "info");
+/* ── REPORT A PROBLEM ────────────────────────────────────────────────────
+   Settings → Support. A real composer that writes to the `reports`
+   collection (rule: create-own-only, and NOBODY can read it from the
+   browser). The admin dashboard reads reports through the backend Admin SDK
+   (GET /api/admin/reports), so reports stay private end-to-end. */
+let reportCategory = "bug";
+let reportShotUrl = "";      // Cloudinary URL of an attached screenshot
+let reportShotObjectUrl = ""; // local blob preview
+
+function openReportModal() {
+  const modal = document.getElementById("reportModal");
+  if (!modal) return;
+  reportCategory = "bug";
+  reportShotUrl = "";
+  reportShotObjectUrl = "";
+  document.querySelectorAll("#reportCats .report-cat").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-cat") === "bug");
+  });
+  const ta = document.getElementById("reportText");
+  if (ta) ta.value = "";
+  const prev = document.getElementById("reportShotPreview");
+  if (prev) prev.style.display = "none";
+  const lbl = document.getElementById("reportAttachLabel");
+  if (lbl) lbl.textContent = "Add screenshot";
+  const file = document.getElementById("reportFile");
+  if (file) file.value = "";
+  updateReportCounter();
+  modal.classList.add("active");
+  if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
 }
 
-function closeReportComing() {
-  const modal = document.getElementById("reportComingModal");
+function closeReportModal() {
+  const modal = document.getElementById("reportModal");
   if (modal) modal.classList.remove("active");
+  if (reportShotObjectUrl) { try { URL.revokeObjectURL(reportShotObjectUrl); } catch (e) {} reportShotObjectUrl = ""; }
 }
 
-function handleReportComingClick(e) {
-  if (e.target === document.getElementById("reportComingModal")) closeReportComing();
+function handleReportModalClick(e) {
+  if (e.target === document.getElementById("reportModal")) closeReportModal();
+}
+
+function selectReportCat(cat) {
+  reportCategory = cat || "other";
+  document.querySelectorAll("#reportCats .report-cat").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-cat") === reportCategory);
+  });
+}
+
+function updateReportCounter() {
+  const ta = document.getElementById("reportText");
+  const c = document.getElementById("reportCounter");
+  if (ta && c) c.textContent = ta.value.length + "/2000";
+}
+
+function previewReportShot(ev) {
+  const file = ev && ev.target && ev.target.files && ev.target.files[0];
+  if (!file) return;
+  if (reportShotObjectUrl) { try { URL.revokeObjectURL(reportShotObjectUrl); } catch (e) {} }
+  reportShotObjectUrl = URL.createObjectURL(file);
+  const img = document.getElementById("reportShotImg");
+  if (img) img.src = reportShotObjectUrl;
+  const prev = document.getElementById("reportShotPreview");
+  if (prev) prev.style.display = "";
+  const lbl = document.getElementById("reportAttachLabel");
+  if (lbl) lbl.textContent = "Change screenshot";
+}
+
+function clearReportShot() {
+  if (reportShotObjectUrl) { try { URL.revokeObjectURL(reportShotObjectUrl); } catch (e) {} reportShotObjectUrl = ""; }
+  reportShotUrl = "";
+  const file = document.getElementById("reportFile");
+  if (file) file.value = "";
+  const prev = document.getElementById("reportShotPreview");
+  if (prev) prev.style.display = "none";
+  const lbl = document.getElementById("reportAttachLabel");
+  if (lbl) lbl.textContent = "Add screenshot";
+}
+
+// Light, non-identifying context so the team can actually reproduce a bug.
+function reportContext() {
+  let tab = "chats";
+  try {
+    const active = document.querySelector(".tab-pane.active");
+    if (active && active.id) tab = active.id.replace("tabPane", "").toLowerCase();
+  } catch (e) {}
+  let ua = "";
+  try { ua = navigator.userAgent || ""; } catch (e) {}
+  return {
+    app: (typeof NEXA_APP_VERSION !== "undefined" ? NEXA_APP_VERSION : ""),
+    platform: (typeof isNexaNativeApp === "function" && isNexaNativeApp()) ? "android-app" : "web",
+    tab: tab,
+    ua: String(ua).slice(0, 200)
+  };
+}
+
+function submitReport() {
+  const ta = document.getElementById("reportText");
+  const btn = document.getElementById("reportSubmitBtn");
+  if (!ta || !currentUser) return;
+  const text = (ta.value || "").trim();
+  if (!text) { if (typeof showNotifToast === "function") showNotifToast("Please describe the problem", "error"); return; }
+  if (text.length > 2000) { if (typeof showNotifToast === "function") showNotifToast("Report is too long (2000 max)", "error"); return; }
+
+  const finish = (mediaUrl) => {
+    const doc = {
+      uid: currentUser.uid,
+      name: (typeof myName === "function" ? myName() : (currentUser.displayName || "")) || "",
+      category: reportCategory,
+      text: text,
+      mediaUrl: mediaUrl || "",
+      context: reportContext(),
+      createdAt: Date.now(),
+      status: "open"
+    };
+    db.collection("reports").add(doc).then(() => {
+      if (typeof showNotifToast === "function") showNotifToast("Thanks! Your report was sent 🙏", "success");
+      closeReportModal();
+    }).catch(err => {
+      console.warn("report submit failed", err);
+      if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
+      if (typeof showNotifToast === "function") showNotifToast("Could not send report — try again", "error");
+    });
+  };
+
+  // Upload the optional screenshot first (progress-aware uploadFile).
+  const file = document.getElementById("reportFile");
+  const hasShot = file && file.files && file.files[0];
+  if (hasShot) {
+    if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+    uploadFile(file.files[0]).then(url => {
+      reportShotUrl = url || "";
+      finish(reportShotUrl);
+    }).catch(() => {
+      if (typeof showNotifToast === "function") showNotifToast("Screenshot upload failed — sending report without it", "error");
+      finish("");
+    }).then(() => {
+      if (btn) { btn.disabled = false; btn.textContent = "Send report"; }
+    });
+  } else {
+    finish("");
+  }
 }
 
 function handleAskifyComingClick(e) {

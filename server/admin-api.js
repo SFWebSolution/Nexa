@@ -139,6 +139,58 @@ app.post("/api/admin/delete-user", requireAdminSecret, async (req, res) => {
   }
 });
 
+// ── GET /api/admin/reports ──────────────────────────────────────────────────
+// Lists user reports (newest first). Reports are unreadable from the browser
+// (the /reports rule denies all reads) so this Admin-SDK route is the ONLY way
+// to see them. Query: ?status=open|resolved|all (default: open) &limit=100
+app.get("/api/admin/reports", requireAdminSecret, async (req, res) => {
+  try {
+    const status = String(req.query.status || "open");
+    const limit = Math.min(300, Math.max(1, parseInt(req.query.limit, 10) || 100));
+    let q = db.collection("reports");
+    if (status === "open" || status === "resolved") q = q.where("status", "==", status);
+    const snap = await q.orderBy("createdAt", "desc").limit(limit).get();
+    const reports = [];
+    snap.forEach(doc => {
+      const d = doc.data() || {};
+      reports.push({
+        id: doc.id,
+        uid: d.uid || null,
+        name: d.name || "",
+        category: d.category || "other",
+        text: d.text || "",
+        mediaUrl: d.mediaUrl || "",
+        context: d.context || null,
+        status: d.status || "open",
+        createdAt: d.createdAt || 0,
+      });
+    });
+    res.json({ success: true, reports });
+  } catch (err) {
+    console.error("reports list error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /api/admin/report-status ───────────────────────────────────────────
+// Body: { id, status: "open"|"resolved" }  — mark a report handled / reopen it.
+app.post("/api/admin/report-status", requireAdminSecret, async (req, res) => {
+  try {
+    const { id, status } = req.body || {};
+    if (!id || typeof id !== "string") {
+      return res.status(400).json({ success: false, error: "id required" });
+    }
+    if (status !== "open" && status !== "resolved") {
+      return res.status(400).json({ success: false, error: "status must be open|resolved" });
+    }
+    await db.collection("reports").doc(id).update({ status, resolvedAt: status === "resolved" ? Date.now() : null });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("report-status error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── GET /api/admin/list-communities ───────────────────────────
 // REMOVED: the admin "Groups & Channels" section was taken out of admin.html,
 // so these two endpoints (list-communities / delete-community) are gone too.

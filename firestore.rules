@@ -175,6 +175,25 @@ service cloud.firestore {
     }
 
     // ── Profile notes ──
+    // Reports — a user files a bug / abuse / idea report; it goes to the admin
+    // dashboard through the backend (Admin SDK), never through a browser read.
+    // READ is deliberately FALSE for everyone (even the reporter): admin.html
+    // signs in ANONYMOUSLY, which is indistinguishable from a normal user, so
+    // any browser-side read rule would expose every report to everyone. The
+    // admin backend reads them with the Admin SDK and its shared secret.
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.category is string
+        && request.resource.data.createdAt is int
+        && request.resource.data.status == 'open';
+      allow update, delete: if false;
+    }
+
     match /profile_notes/{uid} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()

@@ -1144,6 +1144,65 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 - Firestore needs NO rules change for video — the `voice_rooms` update rule only pins `hostId`, so the `mode` field and participant `isCameraOn` are allowed. `nexa-voice-room.css` holds `.nexa-vr-mode-*`, `.nexa-vr-local-video`, `.nexa-vr-video-card` styles.
 
+## Read-quota cache (app-main.js) — the read-once-and-remember layer
+- `nexaCacheRead/Write/Clear/Fetch/FetchSync/ClearAll` (right above `linkify`)
+  is the single localStorage cache used by every new read-heavy surface
+  (profile, follow lists, reports). Key prefix `nexa_cache_`, entry shape
+  `{v, t}`. `nexaCacheFetch(key, ttlMs, fetcher)` returns the cached value
+  INSTANTLY when fresh and only runs `fetcher()` when stale — a cache hit costs
+  ZERO Firestore reads. `nexaCacheClearAll()` runs on logout so a different
+  account on the same device never sees the previous user's cached data; it
+  only ever touches `nexa_cache_*` keys. Use this helper for any new
+  read-once surface instead of opening a listener or a fresh `get()`.
+- Tests: `node tests/cache.test.js` (18 checks — TTL, staleness, corrupt-JSON
+  safety, quota-throw safety, and that a fresh hit does NOT call the fetcher).
+
+## Header bell + my-profile button (dashboard.html `.nx-head-actions`)
+- The sidebar `.top` header has an actions row (`.nx-head-actions`) to the RIGHT
+  of the `.nx-brand` wordmark: a **bell** (`#nxBellBtn`) and a **profile**
+  button (`#nxProfileBtn`). The bell opens the EXISTING
+  `openNotificationHistory()` (localStorage-backed → zero reads/writes); its
+  unread badge `#nxBellBadge` is painted by `updateNotificationHistoryBadge()`
+  (which now fills BOTH the Settings pill and the header badge) and
+  `recordNotificationHistory()` calls `nxRingBell()` for a local ring pulse.
+  The profile button calls `openMyProfile()` (reads the loaded users cache — no
+  Firestore read) and hides the call/message/block action row for self-view;
+  `openUserProfile()` restores that row for other users.
+- `#myPic`/`#myName` stay hidden in the DOM (many code paths read them) — the
+  header buttons are the visible affordances. Do NOT re-add a clickable avatar.
+
+## Reports — Settings → Report a problem → admin dashboard (do NOT regress)
+- The old "Coming Soon" report card is GONE. `#reportProblemRow` now calls
+  `openReportModal()`, opening a real composer (`#reportModal`) with category
+  chips (bug/safety/idea/other), a 2000-char textarea (+ live counter), and an
+  optional screenshot (`uploadFile` → Cloudinary). `submitReport()` writes to
+  the **`reports`** collection with `{uid, name, category, text, mediaUrl,
+  context, createdAt, status:"open"}`; `context` carries app version / platform
+  / active tab / UA (non-identifying) so bugs are reproducible.
+- **`reports` is write-only from the browser**: the rule allows `create` by the
+  owner (uid match + text 1..2000 + category string + `status=='open'`) and
+  `allow read: if false` — nobody (not even the reporter) can read it from the
+  browser, because admin.html signs in ANONYMOUSLY and any browser read rule
+  would expose every report to every user. `update`/`delete` are also false.
+- The admin reads them through the backend Admin SDK:
+  `GET /api/admin/reports?status=open|resolved|all` and
+  `POST /api/admin/report-status {id,status}` (both `X-Admin-Secret`-gated, in
+  `server/admin-api.js`). `admin.html` has a **🚩 Reports** section
+  (`#reportList`, `loadReports`/`renderReports`/`setReportStatus`, an open-count
+  pill, Open/Resolved/All filter, and a "View user" jump to the user search).
+  It degrades visibly when the backend is unreachable. **Deploy
+  `server/admin-api.js` to nexa-backend and `firebase deploy --only firestore`
+  for reports to work end-to-end.**
+
+## App identity — Nexa is a social app, not "just chat" (2026-11)
+- `index.html` title/description/keywords/OG/Twitter/hero/feature-grid/FAQ/footer
+  were broadened from "messenger" to **chat + Moments + short videos + profiles
+  you can follow + live rooms**. Two feature cards were added (Short videos,
+  Your profile & followers). The dashboard splash tagline is now
+  `Chat · Moments · Video · Live` (was `Messenger`). The app NAME stays **Nexa**
+  and internal identifiers / the APK package / `nexa-qydr.onrender.com` are
+  UNCHANGED — only the marketing copy broadened.
+
 ## Video comments — like · reply · notify (do NOT regress)
 - The video comment sheet (`nexa-videos.js`, `#nvCommentsSheet`) is a full
   interaction surface: each comment has **Like** (heart + count), **Reply**, and

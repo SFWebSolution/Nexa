@@ -1813,6 +1813,41 @@ tbody tr .actions { cursor: default; }
   .an-range { width: 100%; justify-content: space-between; }
   .an-range-btn { flex: 1; padding: 8px 6px; }
 }
+  /* ── Reports ── */
+  .report-filter { display: flex; gap: 6px; }
+  .report-count-pill {
+    display: inline-block; margin-left: 8px; vertical-align: middle;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.4px;
+    color: #ffb020; background: rgba(255,176,32,0.14);
+    border: 1px solid rgba(255,176,32,0.35); border-radius: 999px; padding: 3px 10px;
+  }
+  .report-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+  .report-card {
+    background: var(--bg-2, #161b26); border: 1px solid var(--border-md, rgba(255,255,255,0.08));
+    border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .report-card.report-resolved { opacity: 0.62; }
+  .report-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .report-cat-tag {
+    font-size: 11.5px; font-weight: 800; letter-spacing: 0.3px; color: var(--text-0, #fff);
+    background: rgba(79,143,255,0.14); border: 1px solid rgba(79,143,255,0.3);
+    border-radius: 999px; padding: 3px 10px;
+  }
+  .report-time { font-size: 11.5px; font-weight: 600; color: var(--text-3, #8892a6); }
+  .report-body { font-size: 13.5px; line-height: 1.55; color: var(--text-1, #dbe2ee); white-space: pre-wrap; word-break: break-word; }
+  .report-shot-link { display: block; width: 100%; max-width: 320px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-md, rgba(255,255,255,0.08)); }
+  .report-shot-link img { display: block; width: 100%; max-height: 200px; object-fit: cover; }
+  .report-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; font-weight: 600; color: var(--text-3, #8892a6); }
+  .report-uid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .report-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .report-act-btn {
+    font-size: 12px; font-weight: 700; color: var(--text-1, #dbe2ee);
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border-md, rgba(255,255,255,0.08));
+    border-radius: 9px; padding: 7px 13px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .report-act-btn:hover { background: rgba(255,255,255,0.09); }
+  .report-act-resolve { color: #34d399; border-color: rgba(52,211,153,0.35); background: rgba(52,211,153,0.12); }
+  .report-act-resolve:hover { background: rgba(52,211,153,0.2); }
   </style>
 </head>
 <body>
@@ -2088,6 +2123,22 @@ tbody tr .actions { cursor: default; }
       <div class="chart-footnote" id="chartFootnote"></div>
     </div>
 
+    <!-- Reports (from Settings → Report a problem) -->
+    <div class="section-header" style="margin-top: 40px;">
+      <div>
+        <div class="section-title">🚩 Reports <span id="reportOpenCount" class="report-count-pill">0 open</span></div>
+        <div class="section-subtitle">Bug / abuse / idea reports sent by users — private, read via the backend</div>
+      </div>
+      <div class="report-filter" id="reportFilter">
+        <button class="an-range-btn active" data-status="open" onclick="loadReports('open')">Open</button>
+        <button class="an-range-btn" data-status="resolved" onclick="loadReports('resolved')">Resolved</button>
+        <button class="an-range-btn" data-status="all" onclick="loadReports('all')">All</button>
+      </div>
+    </div>
+    <div class="report-list" id="reportList">
+      <div class="empty-state"><div class="empty-icon">🚩</div><div class="empty-text">Loading reports…</div></div>
+    </div>
+
     <!-- Activity Log -->
     <div class="section-header" style="margin-top: 40px;">
       <div>
@@ -2322,6 +2373,122 @@ function initWeeklyAutoRefresh() {
 }
 
 /* =====================================================
+   REPORTS (Settings → Report a problem → admin)
+   Reports are UNREADABLE from the browser (the /reports rule denies all
+   reads), so they are fetched through the backend Admin SDK endpoint.
+   ===================================================== */
+let reportFilterStatus = "open";
+let adminReports = [];
+
+function fmtReportTime(ts) {
+  const n = Number(ts) || 0;
+  if (!n) return "";
+  const diff = Date.now() - n;
+  if (diff < 60000) return "just now";
+  if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
+  if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
+  if (diff < 604800000) return Math.floor(diff / 86400000) + "d ago";
+  return new Date(n).toLocaleDateString();
+}
+
+const REPORT_CAT_META = {
+  bug: { icon: "🐞", label: "Bug" },
+  safety: { icon: "🔒", label: "Safety & abuse" },
+  idea: { icon: "💡", label: "Idea" },
+  other: { icon: "📢", label: "Other" }
+};
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function loadReports(status) {
+  reportFilterStatus = status || reportFilterStatus;
+  document.querySelectorAll("#reportFilter .an-range-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-status") === reportFilterStatus);
+  });
+  const box = document.getElementById("reportList");
+  if (box) box.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">Loading reports…</div></div>';
+  adminFetchGet("/api/admin/reports?status=" + encodeURIComponent(reportFilterStatus))
+    .then(r => r.json())
+    .then(data => {
+      if (!data || !data.success) throw new Error((data && data.error) || "Failed to load");
+      adminReports = data.reports || [];
+      renderReports();
+    })
+    .catch(err => {
+      if (box) box.innerHTML = '<div class="empty-state"><div class="empty-icon">📡</div><div class="empty-text">Reports unavailable — backend not reachable (' + esc(err.message) + ')</div></div>';
+      console.warn("loadReports failed", err);
+    });
+}
+
+function renderReports() {
+  const box = document.getElementById("reportList");
+  const openPill = document.getElementById("reportOpenCount");
+  if (!box) return;
+  const openCount = adminReports.filter(r => (r.status || "open") === "open").length;
+  if (openPill) openPill.textContent = openCount + " open";
+  if (!adminReports.length) {
+    box.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">No ' +
+      (reportFilterStatus === "all" ? "" : reportFilterStatus) + ' reports. Nice.</div></div>';
+    return;
+  }
+  box.innerHTML = adminReports.map(r => {
+    const meta = REPORT_CAT_META[r.category] || REPORT_CAT_META.other;
+    const resolved = (r.status === "resolved");
+    const ctx = r.context || {};
+    const ctxBits = [ctx.app && ("v" + ctx.app), ctx.platform, ctx.tab].filter(Boolean).join(" · ");
+    const shot = r.mediaUrl
+      ? '<a class="report-shot-link" href="' + esc(r.mediaUrl) + '" target="_blank" rel="noopener"><img src="' + esc(r.mediaUrl) + '" alt="screenshot" loading="lazy"></a>'
+      : '';
+    return '<div class="report-card' + (resolved ? ' report-resolved' : '') + '">' +
+      '<div class="report-card-head">' +
+        '<span class="report-cat-tag">' + meta.icon + ' ' + meta.label + '</span>' +
+        '<span class="report-time">' + esc(fmtReportTime(r.createdAt)) + '</span>' +
+      '</div>' +
+      '<div class="report-body">' + esc(r.text) + '</div>' +
+      shot +
+      '<div class="report-meta">' +
+        '<span>👤 ' + esc(r.name || "Unknown") + '</span>' +
+        (r.uid ? '<span class="report-uid" title="' + esc(r.uid) + '">' + esc(String(r.uid).slice(0, 8)) + '…</span>' : '') +
+        (ctxBits ? '<span class="report-ctx">' + esc(ctxBits) + '</span>' : '') +
+      '</div>' +
+      '<div class="report-card-actions">' +
+        (resolved
+          ? '<button class="report-act-btn" onclick="setReportStatus(\'' + esc(r.id) + '\', \'open\')">↩ Reopen</button>'
+          : '<button class="report-act-btn report-act-resolve" onclick="setReportStatus(\'' + esc(r.id) + '\', \'resolved\')">✓ Mark resolved</button>') +
+        (r.uid ? '<button class="report-act-btn" onclick="focusUserFromReport(\'' + esc(r.uid) + '\')">View user</button>' : '') +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+function setReportStatus(id, status) {
+  adminFetch("/api/admin/report-status", { id, status })
+    .then(r => r.json())
+    .then(data => {
+      if (!data || !data.success) throw new Error((data && data.error) || "Failed");
+      const r = adminReports.find(x => x.id === id);
+      if (r) r.status = status;
+      // If we're filtering, drop it out of the current view when it no longer matches.
+      if (reportFilterStatus !== "all" && status !== reportFilterStatus) {
+        adminReports = adminReports.filter(x => x.id !== id);
+      }
+      renderReports();
+      if (typeof log === "function") log((status === "resolved" ? "Resolved" : "Reopened") + " report", "info");
+    })
+    .catch(err => { alert("Could not update report: " + err.message); });
+}
+
+function focusUserFromReport(uid) {
+  const input = document.getElementById("searchInput");
+  if (input) { input.value = uid; applyFiltersAndRender(); }
+  window.scrollTo({ top: document.querySelector(".toolbar").offsetTop - 20, behavior: "smooth" });
+}
+
+/* =====================================================
    INIT DASHBOARD
    ===================================================== */
 function initDashboard() {
@@ -2335,6 +2502,7 @@ function initDashboard() {
   // Message/story analytics are computed on demand (60s) instead of streaming
   // every chat + story document in realtime - accurate totals, far fewer reads.
   reloadAnalytics();
+  loadReports('open');
   document.getElementById("searchInput")?.addEventListener("input", applyFiltersAndRender);
 
   setInterval(() => {
