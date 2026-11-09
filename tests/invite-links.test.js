@@ -545,6 +545,10 @@ console.log("\n8) group/channel instant-open message cache");
   ok("My Videos row escapes the caption", /v\.caption \? esc\(v\.caption\)/.test(vids));
   ok("inline onclick ids are sanitized", /function sid\(id\)/.test(vids));
   ok("dashboard has the My Videos settings row", /id="myVideosRow"[^>]*openSettingsSubPage\('myvideos'\)/.test(html));
+  const dashCss = read("dashboard.css");
+  ok("settings sub-pages carry a heading + subtitle", /class="settings-subpage-titles"/.test(html) && /class="settings-subpage-sub"/.test(html) && (html.match(/class="settings-subpage-sub"/g) || []).length >= 13);
+  ok("settings sub-page body is width-capped on desktop", /\.settings-subpage-body \{[\s\S]{0,220}calc\(\(100% - 720px\) \/ 2\)/.test(dashCss));
+  ok("settings scroll children never flex-shrink", /\.settings-scroll-area > \* \{[^}]*flex-shrink: 0/.test(dashCss));
   ok("dashboard has the myvideos sub-page", /data-subpage="myvideos"/.test(html) && /id="nvMyVideosList"/.test(html));
   ok("app-main opens My Videos on the sub-page", /if \(name === 'myvideos' && window\.NexaVideos\) window\.NexaVideos\.renderMyVideos\(\);/.test(appJs));
   ok("app-main tears the My Videos listener down on close",
@@ -660,6 +664,8 @@ console.log("\n8) group/channel instant-open message cache");
   ok("actions row sits before the tab switcher",
     dash.indexOf("nx-head-actions") < dash.indexOf("sidebar-tab-switcher"));
   ok("header action CSS present", /\.nx-head-btn\b/.test(css) && /\.nx-head-badge\b/.test(css) && /\.nx-bell-ring\b/.test(css));
+  ok("desktop header wraps to two rows (brand not collapsed)", /\.top \{[^}]*flex-wrap: wrap/.test(css) && /\.top \.nx-brand \{[^}]*flex: 1 1 auto/.test(css) && /\.top \.sidebar-tab-switcher \{[^}]*flex: 1 1 100%/.test(css));
+  ok("phone header hides the redundant desktop tab switcher", /@media \(max-width: 768px\)[\s\S]{0,260}\.top \.sidebar-tab-switcher \{\s*display: none !important/.test(css));
   ok("updateNotificationHistoryBadge also paints the bell badge", /nxBellBadge/.test(app));
   ok("recordNotificationHistory rings the bell", /nxRingBell/.test(app));
   ok("openMyProfile defined", /function openMyProfile\(\)/.test(app));
@@ -756,6 +762,9 @@ console.log("\n8) group/channel instant-open message cache");
   ok("follows listener is a single 2-query listener", /function startFollowsListener\(/.test(app) && /where\('follower', '==', myUid\)/.test(app) && /where\('following', '==', myUid\)/.test(app));
   ok("profile video grid is cached + one listener", /function nexaLoadVideoGrid\(/.test(app) && /nexaCacheWrite\(cacheKey/.test(app));
   ok("liked grid reads the mirror (no collection-group)", /function nexaLoadLikedGrid\(/.test(app) && /collection\('liked_videos'\)/.test(app) && !/collectionGroup/.test(app));
+  ok("saved grid reads the mirror (no collection-group)", /function nexaLoadSavedGrid\(/.test(app) && /collection\('saved_videos'\)/.test(app) && !/collectionGroup/.test(app));
+  ok("Saved tab exists + is self-only", /data-tab="saved"/.test(dash) && /id="nxPtabSaved"/.test(dash) && /nxProfileTabName === 'saved' && !isSelf/.test(app));
+  ok("tab count chips exist (videos/liked/saved)", /id="nxPtabCountVideos"/.test(dash) && /id="nxPtabCountLiked"/.test(dash) && /id="nxPtabCountSaved"/.test(dash) && /function nexaSetTabCount\(/.test(app));
   ok("edit profile saves bio/link/cover (merge, owner doc)", /async function saveEditProfile\(/.test(app) && /bio: bio, link: link, coverUrl/.test(app));
   ok("profile deep link handler exists", /async function checkProfileUrlParam\(/.test(app) && /params.get\('profile'\)/.test(app));
   ok("boot starts the follows listener + profile deep link", /startFollowsListener\(\);/.test(app) && /checkProfileUrlParam\(\);/.test(app));
@@ -775,8 +784,10 @@ console.log("\n8) group/channel instant-open message cache");
   ok("users update allows non-owner followCounts credit",
     /affectedKeys\(\)\.hasOnly\(\['followCounts'\]\)/.test(rules));
   ok("users has a liked_videos subcollection rule", /match \/liked_videos\/\{videoId\}/.test(rules) && /allow write: if isOwner\(uid\)/.test(rules));
+  ok("users has a saved_videos subcollection rule", /match \/saved_videos\/\{videoId\}/.test(rules) && /allow write: if isOwner\(uid\)/.test(rules));
 
   ok("video like mirrors into liked_videos", /liked_videos'\).doc\(id\)/.test(vids) && /mirror\.set\(/.test(vids) && /mirror\.delete\(\)/.test(vids));
+  ok("video save mirrors into saved_videos", /saved_videos'\)\.doc\(id\)/.test(vids) && /state\.savedMine\[id\]/.test(vids) && /function ensureSavedState\(/.test(vids));
   ok("video author is a profile tap target", /nv-author-tap"[^>]*nexaProfileOpen/.test(vids));
   ok("own profile tiles expose edit/delete", /nx-pv-manage/.test(app) && /nexaVideosEdit\(/.test(app) && /nexaVideosDelete\(/.test(app));
 

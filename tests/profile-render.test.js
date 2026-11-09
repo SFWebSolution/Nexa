@@ -123,6 +123,7 @@ vm.runInContext(MODULE, sandbox);
 
 const {
   nexaProfileShow, nxProfileTab, nexaGridTileHtml, nexaRelationshipWith,
+  nexaSetTabCount, nexaLoadSavedGrid, nexaLoadMirrorGrid,
 } = sandbox;
 
 let pass = 0, fail = 0;
@@ -159,6 +160,7 @@ ok("overlay opened", el("nxProfilePage").classList.contains("active"));
 ok("follow button offered for a stranger", /nexaToggleFollow\('other'\)/.test(el("nxProfileActions").innerHTML));
 ok("connected peer gets Message, not Connect", /openConnectedChat\('other'\)/.test(el("nxProfileActions").innerHTML) && !/sendConnectRequest\('other'\)/.test(el("nxProfileActions").innerHTML));
 ok("block button present", /nexaProfileBlock\('other'\)/.test(el("nxProfileActions").innerHTML));
+ok("someone else's profile hides the Saved tab", el("nxPtabSaved").style.display === "none");
 
 // ── 2. relationship states drive the follow button ─────────────────────────
 sandbox._nexaFollowsMap = { other: { status: "accepted" } };
@@ -186,6 +188,7 @@ ok("self profile: Edit + Share + Settings actions", /openEditProfile\(\)/.test(e
 ok("self profile: no Follow/Block", !/nexaToggleFollow/.test(el("nxProfileActions").innerHTML) && !/nexaProfileBlock/.test(el("nxProfileActions").innerHTML));
 ok("self profile: status reads 'this is you'", /this is you/.test(el("nxProfileStatus").innerHTML));
 ok("self profile: empty bio gets the default", el("nxProfileBio").textContent === "Hey! I am using Nexa.");
+ok("self profile: Saved tab visible", el("nxPtabSaved").style.display === "");
 
 // ── 4. grid tile rendering ─────────────────────────────────────────────────
 const tile = nexaGridTileHtml({ id: "v1", uid: "other", thumbUrl: "https://x/t.jpg", views: 1500 });
@@ -204,6 +207,16 @@ let threw = false;
 try { nxProfileTab("liked"); nxProfileTab("videos"); } catch (e) { threw = true; console.log("   ", e.message); }
 ok("tab switch is safe (cache cold)", threw === false);
 ok("liked tab marks itself active", el("nxProfileGrid").innerHTML !== undefined);
+// Saved is self-only: the loader is a no-op for someone else's profile.
+let savedRan = false;
+try { nexaLoadSavedGrid("other"); } catch (e) { savedRan = true; }
+ok("Saved loader refuses another user's uid", savedRan === false);
+
+// Tab count chips: a positive number paints, zero clears (chip hides via CSS).
+nexaSetTabCount("liked", 12);
+ok("tab count chip paints a number", el("nxPtabCountLiked").textContent === "12");
+nexaSetTabCount("liked", 0);
+ok("tab count chip clears at zero", el("nxPtabCountLiked").textContent === "");
 
 // ── 6. a profile with no counts does not print 'undefined' ─────────────────
 nexaProfileShow({ uid: "bare", displayName: "Bare" });

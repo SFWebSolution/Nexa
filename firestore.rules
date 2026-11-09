@@ -35,6 +35,14 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow write: if isOwner(uid);
       }
+      // Per-user mirror of the videos this user SAVED (the bookmark action).
+      // Same shape and rules as liked_videos: written by the saver (owner),
+      // readable by anyone signed in so a profile's "Saved" grid renders from
+      // a small per-user subcollection with no collection-group query.
+      match /saved_videos/{videoId} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(uid);
+      }
     }
 
     // ── Follows (asymmetric, low-friction) ──

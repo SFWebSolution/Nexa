@@ -4654,6 +4654,14 @@ body.community-tab-active #headerVideoCallBtn {
   gap: 20px;
   overflow-y: auto;
 }
+/* The scroll area is a COLUMN flex container, so every child is a flex item on
+   the vertical axis and is shrinkable by default. When the category list is
+   taller than the pane the browser squashed the profile card (58px avatar →
+   34px card, avatar overflowing) and the groups. Nothing in this list should
+   ever shrink below its content. */
+.settings-scroll-area > * {
+  flex-shrink: 0;
+}
 .settings-group {
   background: var(--bg-2);
   border: 1px solid var(--border-dk);
@@ -14668,4 +14676,126 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
   border-radius: 12px;
   background: var(--bg-1);
   border: 1px solid var(--border-md);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* SIDEBAR HEADER — TWO ROWS ON DESKTOP (do NOT collapse)                      */
+/* The .top row packed brand + bell/profile + a 6-button tab switcher into one  */
+/* 340px line. Measured at 1440px the row needed ~364px, so .nx-brand (the      */
+/* "Nexa" wordmark) collapsed to 0 width and the row overflowed the sidebar.    */
+/* The tab switcher now owns a full-width SECOND row: row 1 is brand + header   */
+/* actions, row 2 is the switcher. On phones the switcher is redundant (the     */
+/* mobile bottom nav does that job) and the header stays a single row.          */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+.top {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+/* Row 1 left: the brand wordmark, allowed to use the free space. */
+.top .nx-brand {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Row 1 right: bell + my-profile. Never shrinks. */
+.top .nx-head-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+/* Row 2: the desktop tab switcher spans the full sidebar width. */
+.top .sidebar-tab-switcher {
+  flex: 1 1 100%;
+  justify-content: space-between;
+  padding: 4px 6px;
+}
+.top .sidebar-tab-switcher .s-tab-btn {
+  flex: 1 1 0;
+  max-width: 46px;
+}
+
+@media (max-width: 768px) {
+  /* Phones: single row again (the switcher's buttons are already hidden there
+     and the mobile bottom nav handles navigation). */
+  .top {
+    flex-wrap: nowrap;
+    row-gap: 0;
+  }
+  .top .nx-brand {
+    flex: 1 1 auto;
+  }
+  .top .sidebar-tab-switcher {
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* SETTINGS SUB-PAGE HEADING + CONTENT WIDTH (PC)                              */
+/* Two problems on desktop: (1) the sub-page heading was a bare title with no   */
+/* supporting line, so it read as an afterthought next to the big "Settings"    */
+/* root header; (2) the body spanned the whole ~1120px pane, so the Personal    */
+/* Info hero/cards/inputs stretched edge-to-edge and looked broken. The header   */
+/* gains a subtitle, and the body is capped to a comfortable reading column.    */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+.settings-subpage-header {
+  gap: 10px;
+  padding: 13px 16px;
+}
+.settings-subpage-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.settings-subpage-title {
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.2px;
+}
+.settings-subpage-sub {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Cap the body to a comfortable column and centre it, so the content stops
+   sprawling across a wide desktop pane. The scroller stays full-width. */
+.settings-subpage-body {
+  padding-left: max(18px, calc((100% - 720px) / 2));
+  padding-right: max(18px, calc((100% - 720px) / 2));
+}
+@media (max-width: 768px) {
+  /* Keep the 88px bottom clearance for the floating mobile nav. */
+  .settings-subpage-body {
+    padding: 14px 14px 88px;
+  }
+  .settings-subpage-sub { font-size: 11px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* PROFILE TAB COUNT CHIPS (Videos | Liked | Saved)                            */
+/* Small numeric pill after each tab label so the Likes tab reads "Liked 12"    */
+/* and the new Saved tab reads "Saved 3" at a glance. Empty (hidden) at zero.   */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+.nx-ptab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-2);
+  background: var(--bg-2);
+  border: 1px solid var(--border-md);
+}
+.nx-ptab-count:empty { display: none; }
+.nx-ptab.active .nx-ptab-count {
+  color: #fff;
+  background: linear-gradient(135deg, #2b6cff, #7b3ff2);
+  border-color: transparent;
 }

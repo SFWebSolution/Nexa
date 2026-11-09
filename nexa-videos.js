@@ -55,6 +55,7 @@
     activeId: null,
     viewed: new Set(),      // video ids whose `views` we already bumped this session
     likedMine: {},          // videoId -> true/false (did *I* like it)
+    savedMine: {},          // videoId -> true/false (did *I* save it)
     followOverride: {},     // uid -> bool, our own follow action the listener hasn't confirmed yet
     followBusy: {},         // uid -> a follow write is in flight (blocks a double tap)
     sharesExact: {},        // videoId -> exact share count (the badge label is rounded)
@@ -455,7 +456,7 @@
           '<button class="nv-rail-btn" data-act="share" data-id="' + esc(v.id) + '" aria-label="Share">' +
             '<i data-lucide="share-2" style="width:25px;height:25px;"></i>' +
             '<span class="nv-rail-count" id="nvShareCount-' + esc(v.id) + '">' + fmtCount(v.shares) + '</span></button>' +
-          '<button class="nv-rail-btn" data-act="save" data-id="' + esc(v.id) + '" aria-label="Save">' +
+          '<button class="nv-rail-btn nv-rail-save" data-act="save" data-id="' + esc(v.id) + '" aria-label="Save">' +
             '<i data-lucide="bookmark" style="width:25px;height:25px;"></i></button>' +
         '</div>' +
         '<div class="nv-progress"><i id="nvProg-' + esc(v.id) + '"></i></div>' +
@@ -480,6 +481,7 @@
           tryPlay(video);
           bumpView(id, card.getAttribute('data-uid'));
           ensureLikedState(id, card);
+          ensureSavedState(id, card);
         } else {
           card.classList.remove('nv-visible');
           if (video && !video.paused) { try { video.pause(); } catch (e) {} }
@@ -828,9 +830,55 @@
   function toggleSave(id, btn) {
     btn.classList.toggle('saved');
     const saved = btn.classList.contains('saved');
+    if (!myUid()) { toast('Sign in to save videos', 'error'); return; }
+    // Seed the button from the mirror on first sight so a re-opened video shows
+    // the right state (the count below is only the aggregate).
+    state.savedMine[id] = saved;
     window.db.collection('videos').doc(id).update({ saves: fv().increment(saved ? 1 : -1) })
       .catch(() => {});
+    // Mirror the save onto users/{me}/saved_videos so the profile "Saved" grid
+    // renders from a small per-user subcollection (same pattern as liked_videos
+    // — no collection-group query). Cosmetic cache; a miss only means the grid
+    // is stale. Done best-effort so a rule/permission hiccup never blocks the
+    // save itself.
+    try {
+      const mirror = window.db.collection('users').doc(myUid()).collection('saved_videos').doc(id);
+      if (saved) {
+        const v = findVideo(id) || {};
+        mirror.set({
+          videoId: id, uid: v.uid || '', caption: v.caption || '',
+          thumbUrl: v.thumbUrl || '', videoUrl: v.videoUrl || '',
+          at: Date.now(),
+          // Denormalised so the profile grid tiles show counts read-free.
+          views: Number(v.views) || 0, likes: Number(v.likes) || 0
+        }).catch(() => {});
+      } else {
+        mirror.delete().catch(() => {});
+      }
+    } catch (e) {}
     toast(saved ? 'Saved' : 'Removed from saved', 'success');
+  }
+
+  // Resolve the saved state for a card from the per-user mirror, then paint the
+  // bookmark filled/empty. Mirrors ensureLikedState so the state survives a
+  // reload without trusting the aggregate count.
+  function ensureSavedState(id, card) {
+    if (state.savedMine[id] !== undefined) {
+      const b = card && card.querySelector('.nv-rail-save');
+      if (b) b.classList.toggle('saved', !!state.savedMine[id]);
+      return;
+    }
+    state.savedMine[id] = false;
+    if (!myUid()) return;
+    try {
+      window.db.collection('users').doc(myUid()).collection('saved_videos').doc(id).get()
+        .then(d => {
+          state.savedMine[id] = d.exists;
+          const b = card && card.querySelector('.nv-rail-save');
+          if (b) b.classList.toggle('saved', d.exists);
+        })
+        .catch(() => {});
+    } catch (e) {}
   }
 
   // The share link points at the watch.html landing (canonical host) so it

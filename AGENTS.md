@@ -2217,3 +2217,58 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Do NOT re-add a "Coming Soon" card or the `moments-soon-pill`** to the
   Videos pane -- that was the pre-activation placeholder. Also do NOT re-add the
   `.moments-coming-soon` / `.moments-cs-*` CSS (removed from dashboard.css).
+
+## Profile tabs: Videos | Liked | Saved + desktop header + settings sub-page (2026-11)
+- **The full profile page has THREE tabs** (`#nxProfileTabs`): `data-tab="videos"`,
+  `data-tab="liked"`, and the new `data-tab="saved"` (`#nxPtabSaved`). Saved is
+  PERSONAL: `nexaProfileShow()` hides it on someone else's profile
+  (`savedTab.style.display = isSelf ? '' : 'none'`) AND `nxProfileTab('saved')`
+  force-falls back to `'videos'` when `nxProfileUid !== currentUser.uid`. Do NOT
+  expose Saved for other users.
+- **Liked + Saved are the SAME code path.** `nexaLoadMirrorGrid(kind, uid)`
+  reads the per-user mirror subcollection — `users/{uid}/liked_videos` (liked) or
+  `users/{uid}/saved_videos` (saved) — both written by the user themselves, so the
+  grid renders with NO collection-group query. `nexaLoadLikedGrid` /
+  `nexaLoadSavedGrid` are thin wrappers. Each kind owns its OWN listener slot
+  (`nxProfileUnsub` for liked/videos, `nxProfileSavedUnsub` for saved) and
+  `nxProfileTab` tears BOTH down on every switch, because all tabs share
+  `#nxProfileGrid` — without that a videos→saved switch left the videos listener
+  alive behind the Saved grid. Do NOT re-merge the two slots into one.
+- **Tab count chips** (`#nxPtabCountVideos` / `Liked` / `Saved`,
+  `nexaSetTabCount(tab, n)`): a numeric pill after each tab label, hidden at zero
+  (`.nx-ptab-count:empty { display:none }`). The Videos chip comes from the video
+  grid; Liked/Saved are filled by `nexaPreloadMirrorCounts(uid, isSelf)` — two
+  one-shot `limit(25).get()` reads on profile open (NOT listeners; keep them
+  one-shot for the Spark quota). So the Likes tab reads "Liked 12" and shows the
+  liked-videos count at a glance.
+- **The bookmark (`data-act="save"`) now writes a per-user mirror too.**
+  `toggleSave` still bumps the aggregate `videos/{id}.saves`, AND sets/deletes
+  `users/{me}/saved_videos/{videoId}` (`{videoId,uid,caption,thumbUrl,videoUrl,at,
+  views,likes}` — same shape as `liked_videos`). `ensureSavedState(id, card)` (run
+  from the feed's IntersectionObserver next to `ensureLikedState`) resolves the
+  filled/empty bookmark from the mirror via `state.savedMine`, and the rail button
+  carries `.nv-rail-save` so that resolution can find it. `firestore.rules` has the
+  matching `match /saved_videos/{videoId}` block (read: any signed-in user, write:
+  owner) — it must be DEPLOYED. Do NOT trust the aggregate `saves` count for the
+  button state (it is global, not per-user).
+- **Desktop sidebar header is now TWO ROWS** (do NOT collapse it back). The `.top`
+  row packed the brand + bell/profile + a 6-button tab switcher into the 340px
+  sidebar; measured at 1440px it needed ~364px, so `.nx-brand` (the "Nexa"
+  wordmark) collapsed to 0 width and the row overflowed. The appended
+  "SIDEBAR HEADER — TWO ROWS" block in dashboard.css sets `.top{flex-wrap:wrap}`,
+  `.nx-brand{flex:1 1 auto}`, `.nx-head-actions{margin-left:auto}` and
+  `.sidebar-tab-switcher{flex:1 1 100%}` (a full-width second row). On `<=768px`
+  the switcher is hidden (`.top .sidebar-tab-switcher{display:none!important}`) —
+  the mobile bottom nav does that job, and the old empty 8px pill is gone. Do NOT
+  remove the phone hide rule or the empty pill comes back next to the bell.
+- **Settings sub-page heading = title + subtitle.** Every `.settings-subpage-header`
+  wraps `.settings-subpage-title` + `.settings-subpage-sub` in
+  `.settings-subpage-titles` (13 sub-pages). The sub-page body is width-capped on
+  desktop via `padding-left/right: max(18px, calc((100% - 720px) / 2))` so the
+  Personal Info hero/cards stop sprawling edge-to-edge. The `<=768px` override
+  keeps `padding: 14px 14px 88px` for the floating mobile nav clearance.
+- **`.settings-scroll-area > * { flex-shrink: 0 }` is REQUIRED.** That scroller is
+  a COLUMN flex container, so its children were shrinkable; when the category list
+  was taller than the pane the browser squashed `.settings-profile-card` to 34px
+  with the 58px avatar overflowing (the "profile card looks broken in Settings"
+  bug). Nothing in that list may shrink below its content.
