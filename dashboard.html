@@ -1975,6 +1975,71 @@
   </div>
 </div>
 
+<!-- FULL PROFILE PAGE (replaces the old user-profile modal for viewing) -->
+<div class="nx-profile-overlay" id="nxProfilePage" onclick="closeNexaProfile(event)">
+  <div class="nx-profile-card" onclick="event.stopPropagation()">
+    <button class="nx-profile-back" onclick="closeNexaProfile()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px;"></i></button>
+    <div class="nx-profile-scroll" id="nxProfileScroll">
+      <div class="nx-profile-cover" id="nxProfileCover"></div>
+      <div class="nx-profile-head">
+        <div class="nx-profile-avatar-wrap" id="nxProfileAvatarWrap">
+          <img id="nxProfileAvatar" src="https://i.imgur.com/HeIi0wU.png" alt="">
+        </div>
+        <div class="nx-profile-name" id="nxProfileName">—</div>
+        <div class="nx-profile-handle" id="nxProfileHandle"></div>
+        <div class="nx-profile-status" id="nxProfileStatus"></div>
+        <div class="nx-profile-stats" id="nxProfileStats">
+          <button class="nx-stat" onclick="openFollowList('following')"><span class="nx-stat-n" id="nxStatFollowing">0</span><span class="nx-stat-l">Following</span></button>
+          <button class="nx-stat" onclick="openFollowList('followers')"><span class="nx-stat-n" id="nxStatFollowers">0</span><span class="nx-stat-l">Followers</span></button>
+          <button class="nx-stat" onclick="nxProfileTab('videos')"><span class="nx-stat-n" id="nxStatVideos">0</span><span class="nx-stat-l">Videos</span></button>
+        </div>
+        <div class="nx-profile-bio" id="nxProfileBio"></div>
+        <a class="nx-profile-link" id="nxProfileLink" target="_blank" rel="noopener nofollow" style="display:none;"></a>
+        <div class="nx-profile-actions" id="nxProfileActions"></div>
+      </div>
+      <div class="nx-profile-tabs" id="nxProfileTabs">
+        <button class="nx-ptab active" data-tab="videos" onclick="nxProfileTab('videos')"><i data-lucide="grid-3x3" style="width:15px;height:15px;"></i> Videos</button>
+        <button class="nx-ptab" data-tab="liked" onclick="nxProfileTab('liked')"><i data-lucide="heart" style="width:15px;height:15px;"></i> Liked</button>
+      </div>
+      <div class="nx-profile-grid" id="nxProfileGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- FOLLOWERS / FOLLOWING LIST SHEET -->
+<div class="nx-follow-overlay" id="nxFollowSheet" onclick="closeFollowList(event)">
+  <div class="nx-follow-card" onclick="event.stopPropagation()">
+    <div class="nx-follow-head">
+      <div class="nx-follow-title" id="nxFollowTitle">Followers</div>
+      <button class="nx-follow-close" onclick="closeFollowList()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="nx-follow-list" id="nxFollowList"><div class="nx-follow-empty">Loading…</div></div>
+  </div>
+</div>
+
+<!-- EDIT PROFILE MODAL -->
+<div class="nx-edit-overlay" id="nxEditProfileModal" onclick="closeEditProfile(event)">
+  <div class="nx-edit-card" onclick="event.stopPropagation()">
+    <div class="nx-edit-head">
+      <div class="nx-edit-title">Edit profile</div>
+      <button class="nx-edit-close" onclick="closeEditProfile()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="nx-edit-body">
+      <div class="nx-edit-cover-wrap">
+        <div class="nx-edit-cover" id="nxEditCoverPreview"></div>
+        <button class="nx-edit-cover-btn" onclick="document.getElementById('nxEditCoverFile').click()"><i data-lucide="image" style="width:14px;height:14px;"></i> Change cover</button>
+        <input type="file" id="nxEditCoverFile" accept="image/*" style="display:none;" onchange="pickEditCover(event)">
+      </div>
+      <label class="nx-edit-label">Bio</label>
+      <textarea id="nxEditBio" class="nx-edit-input" maxlength="160" rows="3" placeholder="Say something about yourself…"></textarea>
+      <label class="nx-edit-label">Link</label>
+      <input id="nxEditLink" class="nx-edit-input" type="url" maxlength="200" placeholder="https://…">
+      <div class="nx-edit-hint">Shown on your profile. Your @handle is set once in Settings → Personal Info.</div>
+    </div>
+    <button class="nx-edit-save" id="nxEditSaveBtn" onclick="saveEditProfile()">Save</button>
+  </div>
+</div>
+
 <!-- WALLPAPER EDITOR MODAL -->
 <div class="wallpaper-modal-overlay" id="wallpaperModal">
   <div class="wallpaper-modal">

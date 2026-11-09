@@ -656,6 +656,8 @@ auth.onAuthStateChanged(async (user) => {
     startUsersListener();
     startSharedPresenceListener();
     startConnectionsListener();
+    startFollowsListener();
+    checkProfileUrlParam();
     nexaBootStep('listeners');
     await loadInitialChatTimestamps();
     setupHeartbeat();
@@ -2249,7 +2251,41 @@ function renderConnectRequests() {
       return connectRowHtml(u, action);
     }).join('');
   }
+
+  // ── Follow requests (asymmetric, separate from connection requests) ──
+  // These come from the follows listener (pending follows whose target is me).
+  const pendingFollows = Object.values(_nexaFollowsBackMap || {}).filter(f => f && f.status === 'pending');
+  if (pendingFollows.length) {
+    html += '<div class="connect-section-title">Follow requests</div>';
+    html += pendingFollows.map(f => {
+      const u = findUser(f.follower);
+      const action = '<button class="connect-btn connect-btn-accept" onclick="acceptFollowRequest(\'' + f.follower + '\')">Accept</button>' +
+                     '<button class="connect-btn connect-btn-decline" onclick="declineFollowRequest(\'' + f.follower + '\')">Decline</button>';
+      return connectRowHtml(u, action);
+    }).join('');
+  }
   box.innerHTML = html;
+}
+
+// The target of a pending follow accepts (flip status) or declines (delete).
+function acceptFollowRequest(followerUid) {
+  if (!currentUser || !followerUid) return;
+  db.collection('follows').doc(followerUid + '__' + currentUser.uid)
+    .update({ status: 'accepted', updatedAt: Date.now() })
+    .then(() => {
+      // My followers +1 (denormalised; non-owner write allowed by the rules).
+      return db.collection('users').doc(currentUser.uid)
+        .set({ followCounts: { followers: firebase.firestore.FieldValue.increment(1) } }, { merge: true });
+    })
+    .then(() => { if (typeof showNotifToast === 'function') showNotifToast('Follow request accepted', 'success'); renderConnectRequests(); })
+    .catch(e => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e); if (typeof showNotifToast === 'function') showNotifToast('Could not accept', 'error'); });
+}
+
+function declineFollowRequest(followerUid) {
+  if (!currentUser || !followerUid) return;
+  db.collection('follows').doc(followerUid + '__' + currentUser.uid).delete()
+    .then(() => { renderConnectRequests(); })
+    .catch(e => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e); });
 }
 
 // ── Green "update" dot on the Connect tab ───────────────────────────────────
@@ -2269,6 +2305,13 @@ function updateConnectTabDot() {
     // New incoming request, or a request I sent that was accepted.
     if (c.status === 'pending' && c.to === currentUser.uid) { hasUpdate = true; break; }
     if (c.status === 'accepted' && c.from === currentUser.uid) { hasUpdate = true; break; }
+  }
+  // A pending FOLLOW request (asymmetric follows) also lights the Connect dot.
+  if (!hasUpdate) {
+    for (const uid in (_nexaFollowsBackMap || {})) {
+      const f = _nexaFollowsBackMap[uid];
+      if (f && f.status === 'pending' && (f.updatedAt || f.createdAt || 0) > seenAt) { hasUpdate = true; break; }
+    }
   }
   ['connectTabDotDesktop', 'connectTabDotMobile'].forEach(id => {
     const el = document.getElementById(id);
@@ -8778,6 +8821,9 @@ function openCallModal(type) {
 
 function openUserProfile() {
   if (!selectedUser) { nexaAlert("Select a user first"); return; }
+  // The full profile page is now the single profile surface. It reads the
+  // already-loaded users cache, so this is still read-free.
+  if (typeof nexaProfileShow === 'function') { nexaProfileShow(selectedUser); return; }
   const u = selectedUser;
   const photo = u.photo || "https://i.imgur.com/HeIi0wU.png";
 
@@ -8847,6 +8893,7 @@ function closeUserProfile(event) {
 // call/message/block actions (you cannot call or message yourself).
 function openMyProfile() {
   if (!currentUser) return;
+  if (typeof nexaProfileOpen === 'function') { nexaProfileOpen(currentUser.uid); return; }
   const mine = (allUsersData || []).find(u => u && u.uid === currentUser.uid) || {};
   const photo = mine.photo || currentUser.photoURL || "https://i.imgur.com/HeIi0wU.png";
   document.getElementById('userProfileAvatar').src = safeMediaUrl(photo) || "https://i.imgur.com/HeIi0wU.png";
@@ -8870,6 +8917,554 @@ function openMyProfile() {
   document.getElementById('userProfileModal').classList.add('active');
   if (window.lucide) lucide.createIcons();
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FULL PROFILE PAGE  (2026-11)
+   One profile surface for self AND others: cover, avatar, @handle, stats,
+   bio, link, and a Videos | Liked grid. Read-quota conscious:
+     • profile shell → reads the already-loaded users cache (ZERO reads)
+     • stats         → cached counts on users/{uid}.followCounts (ZERO reads)
+     • video grid    → cached in localStorage, live listener only while open
+     • liked grid    → users/{uid}/liked_videos mirror (no collection-group)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const NEXA_PROFILE_TTL_MS = 5 * 60 * 1000;   // grid cache freshness
+const NEXA_VIDEO_GRID_MAX = 60;              // newest N videos shown per grid
+
+let nxProfileUid = null;      // the uid currently displayed
+let nxProfileData = null;     // cached user doc for the open profile
+let nxProfileTabName = 'videos';
+let nxProfileVideos = [];     // videos shown in the grid
+let nxProfileUnsub = null;    // live listener for the OPEN profile's videos
+let nxFollowSheetKind = 'followers';
+let nxFollowSheetUid = null;
+let nxEditCoverUrl = '';
+
+// Resolve a token that may be a uid OR an @username → a user object from the
+// in-memory directory, falling back to a single Firestore query for strangers
+// who aren't in the chat list. Never opens a listener.
+async function nexaResolveUser(token) {
+  token = String(token || '').trim();
+  if (!token) return null;
+  const bare = token.replace(/^@/, '').toLowerCase();
+  const list = allUsersData || [];
+  let u = list.find(x => x && (x.uid === token || (x.username && x.username.toLowerCase() === bare)));
+  if (u) return u;
+  try {
+    // Exact uid doc id first (cheapest, no index needed).
+    const byId = await db.collection('users').doc(token).get();
+    if (byId.exists) return Object.assign({ uid: token }, byId.data());
+    const byName = await db.collection('users').where('username', '==', bare).limit(1).get();
+    if (!byName.empty) {
+      const d = byName.docs[0];
+      return Object.assign({ uid: d.id }, d.data());
+    }
+  } catch (e) {
+    if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e);
+  }
+  return null;
+}
+
+// Public entry: open a profile by uid or @username.
+async function nexaProfileOpen(token) {
+  if (!currentUser) return;
+  const user = await nexaResolveUser(token);
+  if (!user || !user.uid) {
+    if (typeof showNotifToast === 'function') showNotifToast('Could not open that profile', 'error');
+    return;
+  }
+  nexaProfileShow(user);
+}
+
+function nexaProfileShow(user) {
+  nxProfileUid = user.uid;
+  nxProfileData = user;
+  nxProfileTabName = 'videos';
+  nxProfileVideos = [];
+  if (nxProfileUnsub) { try { nxProfileUnsub(); } catch (e) {} nxProfileUnsub = null; }
+
+  const isSelf = (user.uid === currentUser.uid);
+  const photo = safeMediaUrl(user.photo || user.photoUrl || user.photoURL) || 'https://i.imgur.com/HeIi0wU.png';
+
+  const coverEl = document.getElementById('nxProfileCover');
+  if (coverEl) {
+    const cover = safeMediaUrl(user.coverUrl || '');
+    coverEl.style.backgroundImage = cover ? 'url("' + cover + '")' : '';
+  }
+  const avEl = document.getElementById('nxProfileAvatar');
+  if (avEl) avEl.src = photo;
+  const avWrap = document.getElementById('nxProfileAvatarWrap');
+  if (avWrap) avWrap.onclick = () => openProfilePic(photo, 'nxprofile');
+  document.getElementById('nxProfileName').textContent = user.displayName || user.name || 'Nexa user';
+  document.getElementById('nxProfileHandle').textContent = user.username ? '@' + user.username : '';
+
+  // Presence line (from the shared cache — no read).
+  const statusEl = document.getElementById('nxProfileStatus');
+  if (statusEl) {
+    if (isSelf) {
+      statusEl.innerHTML = '<span style="color:var(--online)">● this is you</span>';
+    } else {
+      const p = (userPresenceCache || {})[user.uid];
+      if (p && isUserOnline(p)) {
+        statusEl.innerHTML = '<span style="color:var(--online)">● online</span>';
+      } else {
+        statusEl.textContent = p && p.lastSeen ? 'last seen ' + formatLastSeen(p.lastSeen) : '';
+      }
+    }
+  }
+
+  const bio = user.bio || user.about || '';
+  const bioEl = document.getElementById('nxProfileBio');
+  if (bioEl) { if (bio) bioEl.innerHTML = linkify(bio); else bioEl.textContent = isSelf ? 'Hey! I am using Nexa.' : ''; }
+
+  const linkEl = document.getElementById('nxProfileLink');
+  if (linkEl) {
+    const link = String(user.link || '').trim();
+    if (/^https?:\/\//i.test(link)) {
+      linkEl.href = link;
+      linkEl.textContent = link.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      linkEl.style.display = '';
+    } else {
+      linkEl.style.display = 'none';
+    }
+  }
+
+  // Stats from the cached denormalised counts (no read).
+  const fc = user.followCounts || {};
+  document.getElementById('nxStatFollowing').textContent = formatCount(fc.following || 0);
+  document.getElementById('nxStatFollowers').textContent = formatCount(fc.followers || 0);
+  document.getElementById('nxStatVideos').textContent = formatCount(user.videoCount || 0);
+
+  nexaRenderProfileActions(user, isSelf);
+  nxProfileTab('videos');
+
+  const overlay = document.getElementById('nxProfilePage');
+  if (overlay) overlay.classList.add('active');
+  const scroll = document.getElementById('nxProfileScroll');
+  if (scroll) scroll.scrollTop = 0;
+  if (window.lucide) lucide.createIcons();
+  // Only hit Firestore when we don't already have the counts from the users
+  // listener — the common case (a connection) is a read-free profile open.
+  if (!user.followCounts) _nexaProfileRefreshCounts(user.uid);
+}
+
+// Best-effort: refresh follow/video counts from the user doc so the stats are
+// right even before the first profile ever loaded. One read per profile open
+// (cached for the session by the users listener thereafter).
+async function _nexaProfileRefreshCounts(uid) {
+  try {
+    const d = await db.collection('users').doc(uid).get();
+    if (!d.exists) return;
+    const data = d.data() || {};
+    // Merge back into the directory so subsequent opens are read-free.
+    const inList = (allUsersData || []).find(x => x && x.uid === uid);
+    if (inList) Object.assign(inList, data);
+    if (uid === nxProfileUid && nxProfileData) {
+      Object.assign(nxProfileData, data);
+      const fc = data.followCounts || {};
+      document.getElementById('nxStatFollowing').textContent = formatCount(fc.following || 0);
+      document.getElementById('nxStatFollowers').textContent = formatCount(fc.followers || 0);
+      // (The Videos stat is owned by the grid loader, which knows the real count.)
+      nexaRenderProfileActions(nxProfileData, uid === currentUser.uid);
+    }
+  } catch (e) {
+    if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e);
+  }
+}
+
+function nexaRenderProfileActions(user, isSelf) {
+  const host = document.getElementById('nxProfileActions');
+  if (!host) return;
+  const esc = (s) => escapeHtml(String(s == null ? '' : s));
+  const u = esc(user.uid);
+  if (isSelf) {
+    host.innerHTML =
+      '<button class="nx-pa-btn primary" onclick="openEditProfile()"><i data-lucide="pencil" style="width:15px;height:15px;"></i> Edit profile</button>' +
+      '<button class="nx-pa-btn" onclick="nexaShareProfile(\'' + u + '\')"><i data-lucide="share-2" style="width:15px;height:15px;"></i> Share</button>' +
+      '<button class="nx-pa-btn" onclick="closeNexaProfile();switchTab(\'settings\')"><i data-lucide="settings" style="width:15px;height:15px;"></i> Settings</button>';
+    return;
+  }
+  const rel = nexaRelationshipWith(user.uid);
+  const isBlocked = !!(blockedUsers && blockedUsers[user.uid]);
+  let followBtn;
+  if (rel.following === 'accepted') {
+    followBtn = '<button class="nx-pa-btn following" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="user-check" style="width:15px;height:15px;"></i> Following</button>';
+  } else if (rel.following === 'pending') {
+    followBtn = '<button class="nx-pa-btn following" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="clock" style="width:15px;height:15px;"></i> Requested</button>';
+  } else if (rel.followsMe) {
+    followBtn = '<button class="nx-pa-btn primary" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="user-plus" style="width:15px;height:15px;"></i> Follow back</button>';
+  } else {
+    followBtn = '<button class="nx-pa-btn primary" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="user-plus" style="width:15px;height:15px;"></i> Follow</button>';
+  }
+  const msgBtn = isConnectedTo(user.uid)
+    ? '<button class="nx-pa-btn" onclick="closeNexaProfile();openConnectedChat(\'' + u + '\')"><i data-lucide="message-circle" style="width:15px;height:15px;"></i> Message</button>'
+    : '<button class="nx-pa-btn" onclick="closeNexaProfile();sendConnectRequest(\'' + u + '\')"><i data-lucide="user-plus" style="width:15px;height:15px;"></i> Connect</button>';
+  host.innerHTML = followBtn + msgBtn +
+    '<button class="nx-pa-btn' + (isBlocked ? ' block' : '') + '" onclick="nexaProfileBlock(\'' + u + '\')"><i data-lucide="ban" style="width:15px;height:15px;"></i> ' + (isBlocked ? 'Unblock' : 'Block') + '</button>';
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeNexaProfile(event) {
+  if (event && event.target !== document.getElementById('nxProfilePage')) return;
+  const overlay = document.getElementById('nxProfilePage');
+  if (overlay) overlay.classList.remove('active');
+  if (nxProfileUnsub) { try { nxProfileUnsub(); } catch (e) {} nxProfileUnsub = null; }
+  nxProfileUid = null;
+}
+
+function nxProfileTab(tab) {
+  nxProfileTabName = tab || 'videos';
+  document.querySelectorAll('#nxProfileTabs .nx-ptab').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-tab') === nxProfileTabName);
+  });
+  const grid = document.getElementById('nxProfileGrid');
+  if (!grid) return;
+  if (nxProfileTabName === 'liked') {
+    nexaLoadLikedGrid(nxProfileUid);
+  } else {
+    nexaLoadVideoGrid(nxProfileUid);
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+// A Cloudinary video URL can yield a frame-0 poster without a stored thumb.
+function nexaCloudThumb(url) {
+  if (!url || String(url).indexOf('res.cloudinary.com') === -1) return '';
+  return String(url)
+    .replace('/video/upload/', '/video/upload/so_0,w_540/')
+    .replace(/\.(mp4|webm|mov|m4v|avi|ogv)(\?.*)?$/i, '.jpg$2');
+}
+
+function nexaGridTileHtml(v) {
+  const thumb = safeMediaUrl(v.thumbUrl || v.thumbnail || nexaCloudThumb(v.videoUrl) || '') || '';
+  const views = formatCount(Number(v.views) || 0);
+  const id = escapeHtml(String(v.id));
+  const mine = currentUser && v.uid === currentUser.uid;
+  // Own tiles get edit/delete affordances — video management lives on the
+  // profile (the Settings → My Videos sub-page still works as a fallback).
+  const manage = mine
+    ? '<div class="nx-pv-manage">' +
+        '<button class="nx-pv-mbtn" onclick="event.stopPropagation();nexaVideosEdit(\'' + id + '\')" title="Edit"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>' +
+        '<button class="nx-pv-mbtn danger" onclick="event.stopPropagation();nexaVideosDelete(\'' + id + '\')" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>' +
+      '</div>'
+    : '';
+  return '<div class="nx-pv-tile" onclick="nexaWatchVideo(\'' + id + '\')">' +
+    (thumb
+      ? '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">'
+      : '<div class="nx-pv-fallback"><i data-lucide="video" style="width:22px;height:22px;"></i></div>') +
+    '<span class="nx-pv-views"><i data-lucide="play" style="width:12px;height:12px;"></i> ' + views + '</span>' +
+    manage +
+  '</div>';
+}
+
+function nexaWatchVideo(id) {
+  // Leave the profile first so the video feed isn't buried under the overlay.
+  closeNexaProfile();
+  if (window.NexaVideos && window.NexaVideos.openFocus) { window.NexaVideos.openFocus(id); return; }
+  const v = (nxProfileVideos || []).find(x => x.id === id);
+  if (v && window.openMediaViewer) window.openMediaViewer(v.videoUrl, 'video');
+}
+
+// Videos grid — cache-first paint, then ONE live listener while the profile is
+// open (unsubscribed on close). Falls back to a single 60-doc query when the
+// cache is cold so the first open still works.
+function nexaLoadVideoGrid(uid) {
+  const grid = document.getElementById('nxProfileGrid');
+  if (!grid || !uid) return;
+  const cacheKey = 'video_grid_' + uid;
+  const hit = nexaCacheRead(cacheKey, NEXA_PROFILE_TTL_MS);
+  if (hit && hit.fresh && Array.isArray(hit.value)) {
+    nxProfileVideos = hit.value;
+    nexaPaintGrid(hit.value, 'No videos yet.');
+  } else {
+    grid.innerHTML = '<div class="nx-profile-empty">Loading videos…</div>';
+  }
+  if (nxProfileUnsub) { try { nxProfileUnsub(); } catch (e) {} nxProfileUnsub = null; }
+  nxProfileUnsub = db.collection('videos').where('uid', '==', uid).limit(NEXA_VIDEO_GRID_MAX)
+    .onSnapshot(snap => {
+      const items = [];
+      snap.forEach(d => items.push(Object.assign({ id: d.id }, d.data())));
+      items.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+      nxProfileVideos = items;
+      nexaCacheWrite(cacheKey, items);
+      // The Videos stat is the loaded grid's length — exact and read-free
+      // (there is no denormalised videoCount on users/{uid}).
+      const vs = document.getElementById('nxStatVideos');
+      if (vs) vs.textContent = formatCount(items.length);
+      if (nxProfileTabName === 'videos') nexaPaintGrid(items, 'No videos yet.');
+    }, err => {
+      if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
+      if (!hit || !hit.fresh) grid.innerHTML = '<div class="nx-profile-empty">Could not load videos.</div>';
+    });
+}
+
+// Liked grid — reads the user's liked_videos mirror (no collection-group query).
+function nexaLoadLikedGrid(uid) {
+  const grid = document.getElementById('nxProfileGrid');
+  if (!grid || !uid) return;
+  if (nxProfileUnsub) { try { nxProfileUnsub(); } catch (e) {} nxProfileUnsub = null; }
+  const cacheKey = 'liked_grid_' + uid;
+  const hit = nexaCacheRead(cacheKey, NEXA_PROFILE_TTL_MS);
+  if (hit && hit.fresh && Array.isArray(hit.value)) nexaPaintGrid(hit.value, 'No liked videos yet.');
+  else grid.innerHTML = '<div class="nx-profile-empty">Loading…</div>';
+  nxProfileUnsub = db.collection('users').doc(uid).collection('liked_videos').limit(NEXA_VIDEO_GRID_MAX)
+    .onSnapshot(snap => {
+      const items = [];
+      snap.forEach(d => { const x = d.data() || {}; items.push(Object.assign({ id: x.videoId || d.id }, x)); });
+      items.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
+      nexaCacheWrite(cacheKey, items);
+      if (nxProfileTabName === 'liked') nexaPaintGrid(items, 'No liked videos yet.');
+    }, err => {
+      if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
+      if (!hit || !hit.fresh) grid.innerHTML = '<div class="nx-profile-empty">Could not load liked videos.</div>';
+    });
+}
+
+function nexaPaintGrid(items, emptyText) {
+  const grid = document.getElementById('nxProfileGrid');
+  if (!grid) return;
+  if (!items || !items.length) {
+    grid.innerHTML = '<div class="nx-profile-empty">' + escapeHtml(emptyText || 'Nothing here yet.') + '</div>';
+    return;
+  }
+  grid.innerHTML = items.map(nexaGridTileHtml).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+/* ── Follow system (asymmetric; low-friction) ──────────────────────────────── */
+// A follow is a `follows/{follower__following}` doc. Public accounts
+// (followPolicy !== 'approve') auto-accept; others start pending. Counts are
+// denormalised onto users/{uid}.followCounts in a transaction with the doc.
+
+function nexaRelationshipWith(otherUid) {
+  // Reads ONLY the two in-memory maps the follows listener maintains — no
+  // per-profile read, so the Follow button is instant on open.
+  const rel = { following: null, followsMe: false };
+  const f = (_nexaFollowsMap || {});
+  const out = f[otherUid];   // me → them
+  if (out) rel.following = out.status;
+  const back = (_nexaFollowsBackMap || {})[otherUid]; // them → me
+  if (back && back.status === 'accepted') rel.followsMe = true;
+  return rel;
+}
+
+async function nexaToggleFollow(otherUid) {
+  if (!currentUser || otherUid === currentUser.uid) return;
+  const rel = nexaRelationshipWith(otherUid);
+  const btn = document.getElementById('nxFollowBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const myUid = currentUser.uid;
+    const docId = myUid + '__' + otherUid;
+    const ref = db.collection('follows').doc(docId);
+    if (rel.following === 'accepted' || rel.following === 'pending') {
+      // Unfollow / cancel. Also clear any pending request the OTHER person
+      // sent me, so a stale "wants to follow you" row can't linger.
+      await ref.delete();
+      db.collection('follows').doc(otherUid + '__' + myUid).delete().catch(() => {});
+      await _nexaBumpFollowCounts(otherUid, myUid, -1, -1);
+      if (typeof showNotifToast === 'function') showNotifToast('Unfollowed', 'success');
+    } else {
+      const target = nxProfileData && nxProfileData.uid === otherUid ? nxProfileData : (allUsersData || []).find(x => x && x.uid === otherUid) || {};
+      const autoAccept = target.followPolicy !== 'approve';
+      await ref.set({ follower: myUid, following: otherUid, status: autoAccept ? 'accepted' : 'pending', createdAt: Date.now(), updatedAt: Date.now() });
+      await _nexaBumpFollowCounts(otherUid, myUid, 1, autoAccept ? 1 : 0);
+      if (typeof showNotifToast === 'function') showNotifToast(autoAccept ? 'Following' : 'Follow request sent', 'success');
+    }
+  } catch (e) {
+    console.warn('follow failed', e && e.message);
+    if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e);
+    if (typeof showNotifToast === 'function') showNotifToast('Could not update follow', 'error');
+  }
+  if (btn) btn.disabled = false;
+  if (nxProfileData && nxProfileData.uid === otherUid) nexaRenderProfileActions(nxProfileData, false);
+}
+
+// Update the target's follower count and my following count. followerDelta and
+// followingDelta are applied to DIFFERENT user docs (the target's followers,
+// and MY following). Called with (-1,-1) on unfollow to mirror.
+async function _nexaBumpFollowCounts(otherUid, myUid, followerDelta, followingDelta) {
+  const inc = firebase.firestore.FieldValue.increment;
+  const jobs = [];
+  if (followerDelta) jobs.push(db.collection('users').doc(otherUid).set({ followCounts: { followers: inc(followerDelta) } }, { merge: true }));
+  if (followingDelta) jobs.push(db.collection('users').doc(myUid).set({ followCounts: { following: inc(followingDelta) } }, { merge: true }));
+  await Promise.all(jobs).catch(() => {});
+  // Reflect locally so stats update without a re-read.
+  if (nxProfileData && nxProfileData.uid === otherUid && followerDelta) {
+    nxProfileData.followCounts = nxProfileData.followCounts || {};
+    nxProfileData.followCounts.followers = Math.max(0, (nxProfileData.followCounts.followers || 0) + followerDelta);
+    document.getElementById('nxStatFollowers').textContent = formatCount(nxProfileData.followCounts.followers);
+  }
+}
+
+function nexaShareProfile(uid) {
+  const u = (allUsersData || []).find(x => x && x.uid === uid) || {};
+  const handle = u.username ? '@' + u.username : (u.displayName || 'me');
+  const url = location.origin + '/dashboard.html?profile=' + encodeURIComponent(u.username || uid);
+  const text = handle + ' on Nexa — ' + url;
+  if (navigator.share) {
+    navigator.share({ title: 'Nexa', text: text, url: url }).catch(() => {});
+    return;
+  }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url)
+      .then(() => showNotifToast('Profile link copied', 'success'))
+      .catch(() => showNotifToast('Could not copy link', 'error'));
+    return;
+  }
+  showNotifToast(url, 'info');
+}
+
+function nexaProfileBlock(uid) {
+  const isBlocked = !!(blockedUsers && blockedUsers[uid]);
+  setBlocked(uid, !isBlocked);
+  if (nxProfileData && nxProfileData.uid === uid) nexaRenderProfileActions(nxProfileData, false);
+}
+
+/* ── Followers / Following lists ──────────────────────────────────────────── */
+function openFollowList(kind) {
+  nxFollowSheetKind = kind === 'following' ? 'following' : 'followers';
+  nxFollowSheetUid = nxProfileUid;
+  const title = document.getElementById('nxFollowTitle');
+  if (title) title.textContent = nxFollowSheetKind === 'following' ? 'Following' : 'Followers';
+  const sheet = document.getElementById('nxFollowSheet');
+  if (sheet) sheet.classList.add('active');
+  _nexaRenderFollowList();
+}
+
+function closeFollowList(event) {
+  if (event && event.target !== document.getElementById('nxFollowSheet')) return;
+  const sheet = document.getElementById('nxFollowSheet');
+  if (sheet) sheet.classList.remove('active');
+}
+
+async function _nexaRenderFollowList() {
+  const list = document.getElementById('nxFollowList');
+  if (!list) return;
+  list.innerHTML = '<div class="nx-follow-empty">Loading…</div>';
+  const uid = nxFollowSheetUid;
+  if (!uid) { list.innerHTML = '<div class="nx-follow-empty">Nothing here yet.</div>'; return; }
+  try {
+    const field = nxFollowSheetKind === 'following' ? 'follower' : 'following';
+    const snap = await db.collection('follows').where(field, '==', uid).limit(100).get();
+    const uids = [];
+    snap.forEach(d => {
+      const x = d.data() || {};
+      if (x.status !== 'accepted') return;
+      uids.push(nxFollowSheetKind === 'following' ? x.following : x.follower);
+    });
+    if (!uids.length) { list.innerHTML = '<div class="nx-follow-empty">Nobody here yet.</div>'; return; }
+    list.innerHTML = uids.map(u => {
+      const dir = (allUsersData || []).find(x => x && x.uid === u) || {};
+      const nm = dir.displayName || dir.name || 'Nexa user';
+      const h = dir.username ? '@' + dir.username : '';
+      const photo = safeMediaUrl(dir.photo || dir.photoUrl) || 'https://i.imgur.com/HeIi0wU.png';
+      const isSelf = u === currentUser.uid;
+      const following = nexaRelationshipWith(u).following;
+      const btn = isSelf ? '' : '<button class="nx-follow-btn' + (following ? '' : ' primary') + '" onclick="event.stopPropagation();nexaToggleFollowFromList(\'' + escapeHtml(u) + '\',this)">' + (following === 'accepted' ? 'Following' : (following === 'pending' ? 'Requested' : 'Follow')) + '</button>';
+      return '<div class="nx-follow-row" onclick="closeFollowList();nexaProfileOpen(\'' + escapeHtml(u) + '\')">' +
+        '<img class="nx-follow-av" src="' + escapeHtml(photo) + '" alt="" loading="lazy">' +
+        '<div class="nx-follow-meta"><div class="nx-follow-name">' + escapeHtml(nm) + '</div>' +
+        (h ? '<div class="nx-follow-sub">' + escapeHtml(h) + '</div>' : '') + '</div>' + btn + '</div>';
+    }).join('');
+  } catch (e) {
+    if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e);
+    list.innerHTML = '<div class="nx-follow-empty">Could not load the list.</div>';
+  }
+}
+
+async function nexaToggleFollowFromList(uid, btn) {
+  await nexaToggleFollow(uid);
+  _nexaRenderFollowList();
+}
+
+/* ── Edit profile ─────────────────────────────────────────────────────────── */
+function openEditProfile() {
+  if (!currentUser) return;
+  const mine = (allUsersData || []).find(u => u && u.uid === currentUser.uid) || {};
+  nxEditCoverUrl = mine.coverUrl || '';
+  const bioEl = document.getElementById('nxEditBio');
+  if (bioEl) bioEl.value = mine.bio || mine.about || '';
+  const linkEl = document.getElementById('nxEditLink');
+  if (linkEl) linkEl.value = mine.link || '';
+  const cov = document.getElementById('nxEditCoverPreview');
+  if (cov) cov.style.backgroundImage = nxEditCoverUrl ? 'url("' + safeMediaUrl(nxEditCoverUrl) + '")' : '';
+  const modal = document.getElementById('nxEditProfileModal');
+  if (modal) modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeEditProfile(event) {
+  if (event && event.target !== document.getElementById('nxEditProfileModal')) return;
+  const modal = document.getElementById('nxEditProfileModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function pickEditCover(ev) {
+  const file = ev && ev.target && ev.target.files && ev.target.files[0];
+  if (!file) return;
+  if (typeof uploadFile !== 'function') return;
+  const cov = document.getElementById('nxEditCoverPreview');
+  if (cov) cov.textContent = 'Uploading…';
+  try {
+    const url = await uploadFile(file);
+    nxEditCoverUrl = url || '';
+    if (cov) { cov.textContent = ''; cov.style.backgroundImage = nxEditCoverUrl ? 'url("' + safeMediaUrl(nxEditCoverUrl) + '")' : ''; }
+  } catch (e) {
+    if (cov) cov.textContent = '';
+    if (typeof showNotifToast === 'function') showNotifToast('Cover upload failed', 'error');
+  }
+}
+
+async function saveEditProfile() {
+  if (!currentUser) return;
+  const btn = document.getElementById('nxEditSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const bio = (document.getElementById('nxEditBio').value || '').trim().slice(0, 160);
+  let link = (document.getElementById('nxEditLink').value || '').trim().slice(0, 200);
+  if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
+  if (link && !/^https?:\/\/[^\s]+$/i.test(link)) link = '';
+  try {
+    await db.collection('users').doc(currentUser.uid).set({ bio: bio, link: link, coverUrl: nxEditCoverUrl || '' }, { merge: true });
+    const mine = (allUsersData || []).find(u => u && u.uid === currentUser.uid);
+    if (mine) { mine.bio = bio; mine.link = link; mine.coverUrl = nxEditCoverUrl || ''; }
+    if (nxProfileData && nxProfileData.uid === currentUser.uid) {
+      nxProfileData.bio = bio; nxProfileData.link = link; nxProfileData.coverUrl = nxEditCoverUrl || '';
+      nexaProfileShow(nxProfileData);
+    }
+    closeEditProfile();
+    if (typeof showNotifToast === 'function') showNotifToast('Profile updated', 'success');
+  } catch (e) {
+    if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e);
+    if (typeof showNotifToast === 'function') showNotifToast('Could not save profile', 'error');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+}
+
+/* ── Follows listener (populates the two in-memory maps) ──────────────────── */
+// `var` + guarded reads: these are consulted from render/connect paths that
+// can run during boot, so they must never TDZ-throw.
+var _nexaFollowsMap = {};       // me → other
+var _nexaFollowsBackMap = {};   // other → me
+var _nexaFollowsUnsub = null;
+
+function startFollowsListener() {
+  if (!currentUser || _nexaFollowsUnsub) return;
+  const myUid = currentUser.uid;
+  _nexaFollowsUnsub = db.collection('follows')
+    .where('follower', '==', myUid).limit(300)
+    .onSnapshot(snap => {
+      _nexaFollowsMap = {};
+      snap.forEach(d => { const x = d.data() || {}; _nexaFollowsMap[x.following] = x; });
+    }, err => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err); });
+  db.collection('follows').where('following', '==', myUid).limit(300)
+    .onSnapshot(snap => {
+      _nexaFollowsBackMap = {};
+      snap.forEach(d => { const x = d.data() || {}; _nexaFollowsBackMap[x.follower] = x; });
+      if (typeof updateConnectTabDot === 'function') updateConnectTabDot();
+    }, err => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err); });
+}
+
 
 /* =========================================================================
    STORIES / STATUS
@@ -11173,7 +11768,10 @@ function profilePicGoBack() {
   if (!modal) return;
   const returnTo = modal.dataset.returnTo || "";
   modal.classList.remove('active');
-  if (returnTo === 'profile') {
+  if (returnTo === 'nxprofile') {
+    const pp = document.getElementById('nxProfilePage');
+    if (pp) pp.classList.add('active');
+  } else if (returnTo === 'profile') {
     const profileModal = document.getElementById('userProfileModal');
     if (profileModal) profileModal.classList.add('active');
   } else if (returnTo === 'chatinfo') {
@@ -15839,6 +16437,22 @@ async function checkVideoUrlParam() {
     if (window.NexaVideos.openFocus) window.NexaVideos.openFocus(vid);
     else window.NexaVideos.open(vid);
   }
+}
+
+async function checkProfileUrlParam() {
+  if (!currentUser) return;
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('profile');
+  if (!token) return;
+  try { window.history.replaceState({}, document.title, window.location.pathname); } catch (e) {}
+  // Wait briefly for the users directory so the common case is a read-free
+  // resolve; nexaProfileOpen falls back to a single query for strangers.
+  let tries = 0;
+  while ((!allUsersData || !allUsersData.length) && tries < 10) {
+    await new Promise(r => setTimeout(r, 300));
+    tries++;
+  }
+  nexaProfileOpen(token);
 }
 
 async function checkGroupInviteUrlParam() {

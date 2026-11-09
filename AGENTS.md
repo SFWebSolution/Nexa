@@ -1194,6 +1194,60 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `server/admin-api.js` to nexa-backend and `firebase deploy --only firestore`
   for reports to work end-to-end.**
 
+## Full profile page + follow system (app-main.js, dashboard.html/css)
+- **One profile surface for self AND others**: `#nxProfilePage`
+  (`.nx-profile-overlay`, z-10200) — cover, avatar, `@handle`, Following /
+  Followers / Videos stats, bio, link, a Videos | Liked grid, and action buttons.
+  `nexaProfileOpen(token)` (async, resolves uid OR `@username`) and
+  `nexaProfileShow(user)` are the entry points. The OLD `#userProfileModal` is
+  still in the DOM for legacy callers, but `openUserProfile()` and
+  `openMyProfile()` now DELEGATE to `nexaProfileShow(...)` — do NOT re-add a
+  second profile surface; extend this one.
+- **Read discipline (the whole point):** the shell renders from the already
+  loaded `allUsersData` (ZERO reads); stats come from the denormalised
+  `users/{uid}.followCounts` + `videoCount` (ZERO reads); the Videos grid is
+  cache-first via `nexaCacheRead('video_grid_<uid>')` and only opens ONE
+  `videos.where('uid','==',uid)` listener while the profile is open
+  (unsubscribed in `closeNexaProfile`); the Liked grid reads
+  `users/{uid}/liked_videos` (a per-user mirror — NOT a `collectionGroup`
+  query). `_nexaProfileRefreshCounts()` is a ONE-doc read used only when the
+  directory has no counts yet. Keep it that way.
+- **`@handle` == the existing `username`** (unique, lowercase, one-time change
+  from Settings → Personal Info). Profiles resolve by `username` OR uid
+  (`nexaResolveUser`). Deep link: `dashboard.html?profile=<username|uid>`
+  handled by `checkProfileUrlParam()` at boot; `nexaShareProfile()` builds that
+  URL. Don't add a second handle field.
+- **Follows** live in the `follows` collection, doc id `<follower>__<following>`,
+  `{follower, following, status:'pending'|'accepted', createdAt, updatedAt}`.
+  A follow is asymmetric and low-friction: public accounts (no
+  `followPolicy:'approve'`) auto-accept; others start `pending`. Counts are
+  denormalised onto `users/{uid}.followCounts.{followers,following}` so the
+  profile stats never cost a read — the users `update` rule therefore allows a
+  non-owner to touch ONLY `followCounts` (alongside the existing
+  `referralCount`/`referrals` referral credit). ONE listener pair
+  (`startFollowsListener`: `follower == me` and `following == me`) fills
+  `_nexaFollowsMap` / `_nexaFollowsBackMap`; `nexaRelationshipWith(uid)` reads
+  those maps (no per-profile read). Pending incoming follows surface as a
+  "Follow requests" section in the Connect → Requests list
+  (`acceptFollowRequest` / `declineFollowRequest`) and light the Connect dot.
+- **Video management lives on the profile**: your own tiles carry edit/delete
+  buttons (`.nx-pv-manage`) wired to the existing `nexaVideosEdit` /
+  `nexaVideosDelete`. The Settings → My Videos sub-page is retained as a
+  fallback — do NOT delete it, but it is no longer the primary surface.
+- **Liked mirror:** `doLike()` in `nexa-videos.js` mirrors every like into
+  `users/{me}/liked_videos/{videoId}` (`{videoId, uid, caption, thumbUrl,
+  videoUrl, music, at}`) and deletes it on unlike, so a profile's Liked grid is
+  a tiny subcollection read instead of a collection-group query. Rules:
+  `users/{uid}/liked_videos/{videoId}` read = signed-in, write = owner.
+- The video feed's author row (`.nv-author-tap`) opens `nexaProfileOpen(uid)`.
+- **Rules to DEPLOY** (`firebase deploy --only firestore`): the `follows` block
+  (create self-sourced + validated, update limited to `status`/`updatedAt` by
+  either party, delete by either party) and the `liked_videos` subcollection
+  rule, plus the widened users `update` (`followCounts`). Also bump the SW
+  `CACHE_NAME` (`nexa-v13-profile`).
+- Tests: `tests/profile-follow.test.js` (8 — the `nexaRelationshipWith` branch
+  logic) + profile assertions in `tests/invite-links.test.js`.
+
 ## App identity — Nexa is a social app, not "just chat" (2026-11)
 - `index.html` title/description/keywords/OG/Twitter/hero/feature-grid/FAQ/footer
   were broadened from "messenger" to **chat + Moments + short videos + profiles

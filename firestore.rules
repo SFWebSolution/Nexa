@@ -18,10 +18,43 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid);
+      // Owner edits anything. A non-owner may ONLY credit the invite counters
+      // (new-signup referral) or the follow counters (follows are denormalised
+      // onto users/{uid}.followCounts so the profile stats cost ZERO reads).
       allow update: if isOwner(uid)
         || (isSignedIn() && request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(['referralCount', 'referrals']));
+            .affectedKeys().hasOnly(['referralCount', 'referrals']))
+        || (isSignedIn() && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['followCounts']));
       allow delete: if false;
+
+      // Per-user mirror of the videos this user liked. Written by the liker
+      // (owner), readable by anyone signed in so a profile's "Liked" grid can
+      // be rendered without a costly collection-group query over `likes`.
+      match /liked_videos/{videoId} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(uid);
+      }
+    }
+
+    // ── Follows (asymmetric, low-friction) ──
+    // One doc per (follower → following) pair. Public accounts auto-accept;
+    // protected accounts start `pending` and the target may flip status.
+    match /follows/{followId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.follower == request.auth.uid
+        && request.resource.data.following is string
+        && request.resource.data.following != request.auth.uid
+        && request.resource.data.status in ['pending', 'accepted'];
+      allow update: if isSignedIn()
+        && request.resource.data.follower == resource.data.follower
+        && request.resource.data.following == resource.data.following
+        && (request.auth.uid == resource.data.following || request.auth.uid == resource.data.follower)
+        && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isSignedIn()
+        && (request.auth.uid == resource.data.follower || request.auth.uid == resource.data.following);
     }
 
     // ── Presence ──

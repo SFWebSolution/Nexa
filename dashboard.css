@@ -14356,3 +14356,198 @@ html.nexa-native .story-viewer-main {
   .nav-indicator { transition: opacity 0.2s ease; }
   .mobile-bottom-nav .nav-item.active .nav-icon { transform: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FULL PROFILE PAGE + FOLLOW LISTS + EDIT PROFILE  (2026-11)
+   A WhatsApp/Instagram-style profile: cover, avatar, @handle, stats, bio,
+   link, and a Videos | Liked grid. All additive; the old user-profile modal
+   is retained for legacy callers.
+   ══════════════════════════════════════════════════════════════════════════ */
+.nx-profile-overlay {
+  position: fixed; inset: 0; z-index: 10200;
+  display: none; align-items: flex-start; justify-content: center;
+  background: rgba(4, 7, 12, 0.62);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  padding: 0; overflow: hidden;
+}
+.nx-profile-overlay.active { display: flex; }
+.nx-profile-card {
+  position: relative; width: 100%; max-width: 640px; height: 100dvh;
+  background: var(--bg-0); display: flex; flex-direction: column;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+@media (min-width: 700px) {
+  .nx-profile-card { height: min(92dvh, 900px); margin-top: 4dvh; border-radius: 20px; overflow: hidden; }
+}
+.nx-profile-back {
+  position: absolute; top: 12px; left: 12px; z-index: 6;
+  width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+  display: grid; place-items: center; color: #fff;
+  background: rgba(0, 0, 0, 0.42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.nx-profile-back:hover { background: rgba(0, 0, 0, 0.6); }
+.nx-profile-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.nx-profile-cover {
+  position: relative; height: 132px; width: 100%;
+  background: linear-gradient(135deg, #2b6cff 0%, #7b3ff2 55%, #ff4d8d 100%);
+  background-size: cover; background-position: center;
+}
+.nx-profile-head { padding: 0 18px 6px; text-align: center; }
+.nx-profile-avatar-wrap {
+  width: 92px; height: 92px; margin: -46px auto 8px; border-radius: 50%;
+  padding: 3px; background: var(--bg-0); position: relative; cursor: pointer;
+}
+.nx-profile-avatar-wrap img {
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;
+  background: var(--bg-2);
+}
+.nx-profile-name { font-size: 20px; font-weight: 800; color: var(--text-0); letter-spacing: -0.2px; }
+.nx-profile-handle { font-size: 13px; font-weight: 600; color: var(--primary); margin-top: 2px; }
+.nx-profile-status { font-size: 12px; font-weight: 600; color: var(--text-3); margin-top: 4px; }
+.nx-profile-stats { display: flex; justify-content: center; gap: 6px; margin: 14px 0 6px; }
+.nx-stat {
+  flex: 1; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-md);
+  border-radius: 12px; padding: 8px 6px; cursor: pointer; color: inherit;
+  transition: background 0.15s ease;
+}
+.nx-stat:hover { background: rgba(79, 143, 255, 0.1); }
+.nx-stat-n { font-size: 16px; font-weight: 800; color: var(--text-0); }
+.nx-stat-l { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.4px; }
+.nx-profile-bio { font-size: 13.5px; line-height: 1.5; color: var(--text-1); margin: 10px auto 0; max-width: 460px; white-space: pre-wrap; }
+.nx-profile-link {
+  display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 700;
+  color: var(--primary); text-decoration: none; word-break: break-all;
+}
+.nx-profile-link:hover { text-decoration: underline; }
+.nx-profile-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 14px 0 4px; }
+.nx-pa-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 700; color: var(--text-0);
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-md);
+  border-radius: 999px; padding: 9px 16px; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.nx-pa-btn:active { transform: scale(0.97); }
+.nx-pa-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.nx-pa-btn.primary {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, #2b6cff, #7b3ff2);
+}
+.nx-pa-btn.following { color: var(--text-2); }
+.nx-pa-btn.block { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.35); }
+.nx-profile-tabs {
+  display: flex; gap: 4px; margin: 16px 18px 0; border-bottom: 1px solid var(--border-md);
+}
+.nx-ptab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--text-3);
+  background: none; border: none; cursor: pointer; padding: 11px 6px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.nx-ptab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.nx-profile-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 12px 14px 40px;
+}
+.nx-pv-tile {
+  position: relative; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 8px;
+  background: var(--bg-2); cursor: pointer;
+}
+.nx-pv-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nx-pv-views {
+  position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+.nx-profile-empty { grid-column: 1 / -1; text-align: center; color: var(--text-3); font-size: 13px; padding: 34px 10px; }
+.nx-pv-manage { position: absolute; top: 5px; right: 5px; display: flex; gap: 4px; }
+.nx-pv-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: var(--text-3); background: var(--bg-2); }
+.nx-pv-mbtn {
+  width: 26px; height: 26px; border-radius: 50%; border: none; cursor: pointer;
+  display: grid; place-items: center; color: #fff; background: rgba(0, 0, 0, 0.55);
+}
+.nx-pv-mbtn.danger { color: #ff8f8f; }
+/* The full-pic viewer opens FROM the profile page, so it must sit above it
+   (profile 10200 / follow 10300 / edit 10400). */
+#profilePicModal { z-index: 10500; }
+
+/* Followers / Following sheet */
+.nx-follow-overlay {
+  position: fixed; inset: 0; z-index: 10300; display: none;
+  align-items: flex-end; justify-content: center;
+  background: rgba(4, 7, 12, 0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.nx-follow-overlay.active { display: flex; }
+.nx-follow-card {
+  width: 100%; max-width: 460px; max-height: 76dvh; display: flex; flex-direction: column;
+  background: var(--bg-0); border-radius: 20px 20px 0 0; overflow: hidden;
+  animation: nxSheetUp 0.24s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+@media (min-width: 700px) { .nx-follow-card { border-radius: 20px; margin-bottom: 6dvh; } }
+@keyframes nxSheetUp { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.nx-follow-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-md);
+}
+.nx-follow-title { font-size: 15px; font-weight: 800; color: var(--text-0); }
+.nx-follow-close {
+  width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+  display: grid; place-items: center; color: var(--text-2); background: rgba(255, 255, 255, 0.06);
+}
+.nx-follow-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 8px; }
+.nx-follow-row {
+  display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 12px; cursor: pointer;
+}
+.nx-follow-row:hover { background: rgba(255, 255, 255, 0.05); }
+.nx-follow-av { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: var(--bg-2); flex: 0 0 auto; }
+.nx-follow-meta { flex: 1; min-width: 0; }
+.nx-follow-name { font-size: 14px; font-weight: 700; color: var(--text-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-follow-sub { font-size: 12px; color: var(--text-3); }
+.nx-follow-empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 30px 10px; }
+.nx-follow-btn {
+  font-size: 12px; font-weight: 700; color: var(--text-0);
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-md);
+  border-radius: 999px; padding: 7px 13px; cursor: pointer; flex: 0 0 auto;
+}
+.nx-follow-btn.primary { color: #fff; border-color: transparent; background: linear-gradient(135deg, #2b6cff, #7b3ff2); }
+
+/* Edit profile modal */
+.nx-edit-overlay {
+  position: fixed; inset: 0; z-index: 10400; display: none;
+  align-items: center; justify-content: center; padding: 18px;
+  background: rgba(4, 7, 12, 0.62); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.nx-edit-overlay.active { display: flex; }
+.nx-edit-card {
+  width: 100%; max-width: 420px; max-height: 90dvh; overflow-y: auto;
+  background: var(--bg-0); border: 1px solid var(--border-md); border-radius: 18px;
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.nx-edit-head { display: flex; align-items: center; justify-content: space-between; }
+.nx-edit-title { font-size: 16px; font-weight: 800; color: var(--text-0); }
+.nx-edit-close { width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center; color: var(--text-2); background: rgba(255, 255, 255, 0.06); }
+.nx-edit-body { display: flex; flex-direction: column; gap: 6px; }
+.nx-edit-cover-wrap { position: relative; height: 92px; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #2b6cff, #7b3ff2, #ff4d8d); background-size: cover; background-position: center; }
+.nx-edit-cover { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.nx-edit-cover-btn {
+  position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 700; color: #fff; border: none; cursor: pointer;
+  background: rgba(0, 0, 0, 0.55); border-radius: 999px; padding: 6px 11px;
+}
+.nx-edit-label { font-size: 12px; font-weight: 700; color: var(--text-2); margin-top: 4px; }
+.nx-edit-input {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13.5px;
+  color: var(--text-0); background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-md); border-radius: 10px; padding: 10px 12px;
+  caret-color: var(--primary); resize: vertical;
+}
+.nx-edit-input:focus { outline: none; border-color: var(--primary); }
+.nx-edit-hint { font-size: 11.5px; color: var(--text-3); line-height: 1.4; }
+.nx-edit-save {
+  margin-top: 6px; width: 100%; font-size: 14px; font-weight: 800; color: #fff;
+  border: none; border-radius: 12px; padding: 12px; cursor: pointer;
+  background: linear-gradient(135deg, #2b6cff, #7b3ff2);
+}
+.nx-edit-save:disabled { opacity: 0.6; cursor: default; }
+html.nexa-native .nx-profile-overlay,
+html.nexa-native .nx-follow-overlay,
+html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }

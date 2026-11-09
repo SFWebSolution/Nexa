@@ -15,6 +15,10 @@
  *                                      createdAt (ms int), views, likes,
  *                                      commentsCount, shares, saves, visibility }
  *   videos/{id}/likes/{uid}          { at }
+ *   users/{me}/liked_videos/{vid}    { videoId, uid, caption, thumbUrl,
+ *                                      videoUrl, music, at }  ← mirror written
+ *                                      by doLike so a profile's "Liked" grid
+ *                                      is a cheap per-user read
  *   videos/{id}/comments/{cid}       { uid, name, photo, text, createdAt, likes }
  *
  * Depends on globals exposed by app-main.js: window.db, window.db.fieldValue,
@@ -357,7 +361,7 @@
   function metaHtml(v) {
     return '' +
       '<div class="nv-meta" data-sig="' + esc(metaSig(v)) + '">' +
-        '<div class="nv-author">' +
+        '<div class="nv-author nv-author-tap" onclick="event.stopPropagation();nexaProfileOpen(\'' + esc(v.uid || '') + '\')" title="View profile">' +
           '<img class="nv-author-pic" src="' + esc(safeUrl(v.authorPhoto || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
           '<span class="nv-author-name">@' + esc(v.authorName || 'user') + '</span>' +
           '<span class="nv-dot">·</span>' +
@@ -693,7 +697,24 @@
       const has = d.exists;
       if (liked && !has) { tx.set(likeRef, { at: Date.now() }); tx.update(vidRef, { likes: fv().increment(1) }); }
       else if (!liked && has) { tx.delete(likeRef); tx.update(vidRef, { likes: fv().increment(-1) }); }
-    })).catch(err => {
+    })).then(() => {
+      // Mirror the like onto users/{me}/liked_videos so a profile's "Liked"
+      // grid renders from a small per-user subcollection (no collection-group
+      // query). Cosmetic cache — a miss just means the grid is stale.
+      try {
+        const mirror = window.db.collection('users').doc(myUid()).collection('liked_videos').doc(id);
+        if (liked) {
+          const v = findVideo(id) || {};
+          mirror.set({
+            videoId: id, uid: v.uid || '', caption: v.caption || '',
+            thumbUrl: v.thumbUrl || '', videoUrl: v.videoUrl || '',
+            music: v.music || '', at: Date.now()
+          }).catch(() => {});
+        } else {
+          mirror.delete().catch(() => {});
+        }
+      } catch (e) {}
+    }).catch(err => {
       console.warn('like failed', err && err.message);
       state.likedMine[id] = !liked;
       if (countEl) countEl.textContent = fmtCount(prev);

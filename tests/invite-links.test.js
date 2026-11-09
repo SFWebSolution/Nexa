@@ -719,5 +719,53 @@ console.log("\n8) group/channel instant-open message cache");
   ok("cache is cleared on logout", /nexaCacheClearAll\(\);/.test(app));
 }
 
+// ── Full profile page ──────────────────────────────────────────────────────
+{
+  const dash = read("dashboard.html");
+  const app = read("app-main.js");
+  const css = read("dashboard.css");
+  const rules = read("firestore.rules");
+  const vids = read("nexa-videos.js");
+
+  ok("profile overlay exists", /id="nxProfilePage"/.test(dash) && /class="nx-profile-overlay"/.test(dash));
+  ok("profile has cover + avatar + name + handle", /id="nxProfileCover"/.test(dash) && /id="nxProfileAvatar"/.test(dash) && /id="nxProfileName"/.test(dash) && /id="nxProfileHandle"/.test(dash));
+  ok("profile has stats (following/followers/videos)", /id="nxStatFollowing"/.test(dash) && /id="nxStatFollowers"/.test(dash) && /id="nxStatVideos"/.test(dash));
+  ok("profile has bio + link", /id="nxProfileBio"/.test(dash) && /id="nxProfileLink"/.test(dash));
+  ok("profile has Videos | Liked tabs", /data-tab="videos"/.test(dash) && /data-tab="liked"/.test(dash));
+  ok("follow list sheet exists", /id="nxFollowSheet"/.test(dash) && /id="nxFollowList"/.test(dash));
+  ok("edit profile modal exists", /id="nxEditProfileModal"/.test(dash) && /id="nxEditBio"/.test(dash) && /id="nxEditLink"/.test(dash));
+
+  ok("nexaProfileOpen + nexaProfileShow defined", /async function nexaProfileOpen\(/.test(app) && /function nexaProfileShow\(/.test(app));
+  ok("profile resolves by uid OR @username", /function nexaResolveUser\(/.test(app) && /where\('username', '==', bare\)/.test(app));
+  ok("follow toggle defined", /async function nexaToggleFollow\(/.test(app) && /function nexaRelationshipWith\(/.test(app));
+  ok("follows listener is a single 2-query listener", /function startFollowsListener\(/.test(app) && /where\('follower', '==', myUid\)/.test(app) && /where\('following', '==', myUid\)/.test(app));
+  ok("profile video grid is cached + one listener", /function nexaLoadVideoGrid\(/.test(app) && /nexaCacheWrite\(cacheKey/.test(app));
+  ok("liked grid reads the mirror (no collection-group)", /function nexaLoadLikedGrid\(/.test(app) && /collection\('liked_videos'\)/.test(app) && !/collectionGroup/.test(app));
+  ok("edit profile saves bio/link/cover (merge, owner doc)", /async function saveEditProfile\(/.test(app) && /bio: bio, link: link, coverUrl/.test(app));
+  ok("profile deep link handler exists", /async function checkProfileUrlParam\(/.test(app) && /params.get\('profile'\)/.test(app));
+  ok("boot starts the follows listener + profile deep link", /startFollowsListener\(\);/.test(app) && /checkProfileUrlParam\(\);/.test(app));
+  ok("profile share builds a ?profile= link", /function nexaShareProfile\(/.test(app) && /\?profile=/.test(app));
+
+  ok("old profile modal now delegates to the full page", /function openUserProfile\(\)[\s\S]{0,300}nexaProfileShow\(selectedUser\)/.test(app));
+  ok("header profile button delegates to the full page", /function openMyProfile\(\)[\s\S]{0,200}nexaProfileOpen\(currentUser.uid\)/.test(app));
+  ok("profile pic viewer returns to the full profile", /returnTo === 'nxprofile'/.test(app));
+
+  ok("profile CSS present", /\.nx-profile-overlay\b/.test(css) && /\.nx-profile-grid\b/.test(css) && /\.nx-follow-card\b/.test(css) && /\.nx-edit-card\b/.test(css));
+
+  ok("rules add the follows collection", /match \/follows\/\{followId\}/.test(rules));
+  ok("follows create is self-sourced + validated",
+    /match \/follows\/\{followId\} \{[\s\S]{0,400}request\.resource\.data\.follower == request\.auth\.uid/.test(rules)
+    && /request\.resource\.data\.following != request\.auth\.uid/.test(rules));
+  ok("follows update is limited to status/updatedAt", /affectedKeys\(\)\.hasOnly\(\['status', 'updatedAt'\]\)/.test(rules));
+  ok("users update allows non-owner followCounts credit",
+    /affectedKeys\(\)\.hasOnly\(\['followCounts'\]\)/.test(rules));
+  ok("users has a liked_videos subcollection rule", /match \/liked_videos\/\{videoId\}/.test(rules) && /allow write: if isOwner\(uid\)/.test(rules));
+
+  ok("video like mirrors into liked_videos", /liked_videos'\).doc\(id\)/.test(vids) && /mirror\.set\(/.test(vids) && /mirror\.delete\(\)/.test(vids));
+  ok("video author is a profile tap target", /nv-author-tap"[^>]*nexaProfileOpen/.test(vids));
+  ok("own profile tiles expose edit/delete", /nx-pv-manage/.test(app) && /nexaVideosEdit\(/.test(app) && /nexaVideosDelete\(/.test(app));
+  ok("follow requests appear in the Connect requests list", /Follow requests<\/div>/.test(app) && /function acceptFollowRequest\(/.test(app) && /function declineFollowRequest\(/.test(app));
+}
+
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
 process.exit(fail ? 1 : 0);
