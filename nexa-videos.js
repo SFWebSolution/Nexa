@@ -55,6 +55,8 @@
     activeId: null,
     viewed: new Set(),      // video ids whose `views` we already bumped this session
     likedMine: {},          // videoId -> true/false (did *I* like it)
+    followOverride: {},     // uid -> bool, our own follow action the listener hasn't confirmed yet
+    followBusy: {},         // uid -> a follow write is in flight (blocks a double tap)
     sharesExact: {},        // videoId -> exact share count (the badge label is rounded)
     sharing: {},            // videoId -> a share is in flight (blocks a double tap)
     pendingFile: null,      // File chosen in the composer
@@ -95,6 +97,21 @@
   function esc(v) { return window.escapeHtml ? window.escapeHtml(v) : String(v == null ? '' : v); }
   function safeUrl(u) { return window.safeMediaUrl ? window.safeMediaUrl(u) : u; }
   function el(id) { return document.getElementById(id); }
+  function whoAmI() { return myUid(); }
+  // Follow state for a uid. Prefers our OWN recent action (state.followOverride)
+  // until the follows listener catches up, so the button doesn't flicker back.
+  // The override self-clears the moment the underlying map agrees.
+  function relationshipWith(uid) {
+    const base = (typeof window.nexaRelationshipWith === 'function')
+      ? window.nexaRelationshipWith(uid)
+      : { following: null, followsMe: false };
+    if (Object.prototype.hasOwnProperty.call(state.followOverride, uid)) {
+      const ov = !!state.followOverride[uid];
+      if ((base.following === 'accepted') === ov) delete state.followOverride[uid];
+      else return { following: ov ? 'accepted' : null, followsMe: base.followsMe };
+    }
+    return base;
+  }
   function toast(m, t) { try { window.showNotifToast && window.showNotifToast(m, t || 'info'); } catch (e) {} }
   function fv() { return (window.db && window.db.fieldValue) || null; }
 
@@ -279,6 +296,7 @@
     });
 
     applySound();
+    syncFollowButtons();
     if (window.lucide) window.lucide.createIcons();
     setupObserver();
     if (!feed.querySelector('.nv-card.nv-visible')) {
@@ -290,6 +308,23 @@
 
   // Patch the volatile bits of a card WITHOUT touching its <video>.
   function metaSig(v) { return (v.caption || '') + '|' + (v.music || ''); }
+
+  // Light-touch follow-button sync (no meta rebuild, so the <video> is safe).
+  function syncFollowButtons() {
+    const me = whoAmI();
+    const feed = el('nvFeed');
+    if (!feed) return;
+    feed.querySelectorAll('.nv-card').forEach(card => {
+      const uid = card.getAttribute('data-uid') || '';
+      const btn = card.querySelector('.nv-follow-btn');
+      if (!btn) return;
+      if (!uid || uid === me) { btn.style.display = 'none'; return; }
+      const following = relationshipWith(uid).following === 'accepted';
+      btn.style.display = '';
+      btn.classList.toggle('following', following);
+      if (btn.textContent !== (following ? 'Following' : 'Follow')) btn.textContent = following ? 'Following' : 'Follow';
+    });
+  }
 
   function patchCard(card, v) {
     const set = (sel, text) => {
@@ -368,14 +403,27 @@
     if (window.lucide) window.lucide.createIcons();
   }
 
+  // Follow / Following button for the author row. Hidden on our own videos.
+  function followBtnHtml(v) {
+    const uid = v.uid || '';
+    if (!uid || uid === whoAmI()) return '';
+    const following = relationshipWith(uid).following === 'accepted';
+    return '<button class="nv-follow-btn' + (following ? ' following' : '') +
+      '" data-follow="' + esc(uid) + '" data-act="follow" data-id="' + esc(v.id) + '" aria-label="Follow">' +
+      (following ? 'Following' : 'Follow') + '</button>';
+  }
+
   function metaHtml(v) {
     return '' +
       '<div class="nv-meta" data-sig="' + esc(metaSig(v)) + '">' +
-        '<div class="nv-author nv-author-tap" onclick="event.stopPropagation();nexaProfileOpen(\'' + esc(v.uid || '') + '\')" title="View profile">' +
-          '<img class="nv-author-pic" src="' + esc(safeUrl(v.authorPhoto || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
-          '<span class="nv-author-name">@' + esc(v.authorName || 'user') + '</span>' +
-          '<span class="nv-dot">·</span>' +
-          '<span class="nv-time">' + esc(timeAgo(Number(v.createdAt))) + '</span>' +
+        '<div class="nv-author-row">' +
+          '<div class="nv-author nv-author-tap" onclick="event.stopPropagation();nexaProfileOpen(\'' + esc(v.uid || '') + '\')" title="View profile">' +
+            '<img class="nv-author-pic" src="' + esc(safeUrl(v.authorPhoto || 'https://i.imgur.com/HeIi0wU.png')) + '" alt="">' +
+            '<span class="nv-author-name">@' + esc(v.authorName || 'user') + '</span>' +
+            '<span class="nv-dot">·</span>' +
+            '<span class="nv-time">' + esc(timeAgo(Number(v.createdAt))) + '</span>' +
+          '</div>' +
+          followBtnHtml(v) +
         '</div>' +
         (v.caption ? '<div class="nv-caption">' + esc(v.caption) + '</div>' : '') +
         (v.music ? '<div class="nv-music"><i data-lucide="music" style="width:13px;height:13px;"></i>' +
@@ -618,6 +666,7 @@
       else if (act === 'save') toggleSave(id, btn);
       else if (act === 'edit') openEditVideo(id);
       else if (act === 'delete') deleteVideo(id);
+      else if (act === 'follow') toggleFollow(btn.getAttribute('data-follow'), btn);
       return;
     }
     // Tap the video surface. Single tap = pause/play. Double tap: LEFT third
@@ -720,7 +769,10 @@
           mirror.set({
             videoId: id, uid: v.uid || '', caption: v.caption || '',
             thumbUrl: v.thumbUrl || '', videoUrl: v.videoUrl || '',
-            music: v.music || '', at: Date.now()
+            music: v.music || '', at: Date.now(),
+            // Denormalised so the profile "Liked" grid tiles can show the
+            // view + like counts without a read per tile.
+            views: Number(v.views) || 0, likes: Number(v.likes) || 0
           }).catch(() => {});
         } else {
           mirror.delete().catch(() => {});
@@ -741,6 +793,37 @@
     if (/K$/i.test(s)) return Math.round(parseFloat(s) * 1e3);
     if (/M$/i.test(s)) return Math.round(parseFloat(s) * 1e6);
     return parseInt(s, 10) || 0;
+  }
+
+  // Follow / unfollow straight from the feed. Delegates the write to
+  // nexaToggleFollow (so the counts + notification stay in one place) and paints
+  // the button optimistically so the tap feels instant.
+  function toggleFollow(uid, btn) {
+    if (!uid) return;
+    if (uid === myUid()) return;
+    if (state.followBusy[uid]) return;
+    state.followBusy[uid] = true;
+    const following = relationshipWith(uid).following === 'accepted';
+    const paint = (f) => {
+      if (!btn) return;
+      btn.classList.toggle('following', f);
+      btn.textContent = f ? 'Following' : 'Follow';
+    };
+    paint(!following);
+    const done = () => {
+      // The write succeeded, so the state is now the opposite of before. Record
+      // it as an override (the listener will confirm shortly) and repaint.
+      state.followBusy[uid] = false;
+      state.followOverride[uid] = !following;
+      paint(!following);
+      syncFollowButtons();
+    };
+    const fail = () => { state.followBusy[uid] = false; paint(following); };
+    if (typeof window.nexaToggleFollow === 'function') {
+      Promise.resolve(window.nexaToggleFollow(uid)).then(done, fail);
+    } else {
+      fail();
+    }
   }
 
   function toggleSave(id, btn) {

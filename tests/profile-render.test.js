@@ -194,6 +194,10 @@ ok("tile opens the watcher", /nexaWatchVideo\('v1'\)/.test(tile));
 ok("someone else's tile has NO manage buttons", !/nx-pv-manage/.test(tile));
 const ownTile = nexaGridTileHtml({ id: "v2", uid: "me", thumbUrl: "https://x/t.jpg", views: 3 });
 ok("my own tile exposes edit + delete", /nx-pv-manage/.test(ownTile) && /nexaVideosEdit\('v2'\)/.test(ownTile) && /nexaVideosDelete\('v2'\)/.test(ownTile));
+// Grid tiles carry a like badge (the Liked tab / profile grid reads at a glance).
+const likedTile = nexaGridTileHtml({ id: "v3", uid: "other", thumbUrl: "https://x/t.jpg", views: 10, likes: 2400 });
+ok("tile shows a like count badge", /nx-pv-likes/.test(likedTile) && /2\.4k/.test(likedTile));
+ok("a tile with no likes renders 0, not 'undefined'", /nx-pv-likes[^<]*<[^>]*>[^<]*<\/i>\s*0/.test(nexaGridTileHtml({ id: "v4", uid: "other", views: 0 })));
 
 // ── 5. tab switching does not throw with a cold cache ──────────────────────
 let threw = false;

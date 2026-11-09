@@ -12055,29 +12055,54 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 
 /* ── Header card (avatar + name + handle → Personal Info) ── */
 .settings-profile-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, var(--primary-soft), transparent);
+  padding: 16px 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 160% at 0% 0%, var(--primary-soft), transparent 58%),
+    linear-gradient(135deg, var(--bg-2), var(--bg-1));
   border: 1px solid var(--border-md);
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   cursor: pointer;
-  transition: transform var(--tf), border-color var(--tf);
+  transition: transform var(--tf), border-color var(--tf), box-shadow var(--tf);
+}
+/* Soft brand glow along the top edge */
+.settings-profile-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, #2b6cff, #7b3ff2, #22d3ee);
+  opacity: 0.85;
 }
 
 .settings-profile-card:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: var(--primary);
+  box-shadow: 0 12px 28px rgba(43, 108, 255, 0.16);
 }
 
+.settings-profile-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2b6cff, #7b3ff2);
+  padding: 2.5px;
+}
 .settings-profile-avatar {
-  width: 52px;
-  height: 52px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid var(--primary);
-  flex-shrink: 0;
+  background: var(--bg-2);
+  display: block;
 }
 
 .settings-profile-meta {
@@ -12086,8 +12111,8 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 .settings-profile-name {
-  font-size: 15.5px;
-  font-weight: 720;
+  font-size: 16px;
+  font-weight: 750;
   color: var(--text-0);
   white-space: nowrap;
   overflow: hidden;
@@ -12095,19 +12120,36 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
 }
 
 .settings-profile-handle {
+  margin-top: 2px;
   font-size: 12.5px;
   font-weight: 550;
-  color: var(--text-3);
+  color: var(--primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.settings-profile-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
 .settings-profile-chev {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   color: var(--text-3);
   flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .settings-profile-cta span,
+  .settings-profile-cta { font-size: 0; gap: 0; }
+  .settings-profile-chev { width: 18px; height: 18px; }
 }
 
 /* ── Category rows ── */
@@ -14458,6 +14500,11 @@ html.nexa-native .story-viewer-main {
   position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
+.nx-pv-likes {
+  position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+.nx-pv-likes svg { fill: #ff3b5c; color: #ff3b5c; }
 .nx-profile-empty { grid-column: 1 / -1; text-align: center; color: var(--text-3); font-size: 13px; padding: 34px 10px; }
 .nx-pv-manage { position: absolute; top: 5px; right: 5px; display: flex; gap: 4px; }
 .nx-pv-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: var(--text-3); background: var(--bg-2); }
@@ -14551,3 +14598,57 @@ html.nexa-native .story-viewer-main {
 html.nexa-native .nx-profile-overlay,
 html.nexa-native .nx-follow-overlay,
 html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PROFILE DESIGN POLISH — Settings → Personal Info sub-page.
+   Additive only and scoped to .profile-hero / .profile-card / .profile-info-box,
+   which are used ONLY by that sub-page (nothing else in the app uses them).
+   ══════════════════════════════════════════════════════════════════════════ */
+.profile-hero {
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 140% at 50% 0%, var(--primary-soft), transparent 62%),
+    linear-gradient(160deg, var(--bg-2), var(--bg-1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 26px rgba(0, 0, 0, 0.18);
+}
+.profile-hero-cover {
+  height: 104px;
+  background:
+    radial-gradient(circle at 16% 6%, rgba(109, 40, 217, 0.42), transparent 44%),
+    radial-gradient(circle at 84% 10%, rgba(34, 211, 238, 0.28), transparent 42%),
+    radial-gradient(circle at 50% 120%, rgba(43, 108, 255, 0.30), transparent 60%),
+    linear-gradient(120deg, rgba(79, 143, 255, 0.30), rgba(109, 40, 217, 0.34));
+}
+.profile-hero-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.28));
+}
+.profile-avatar-preview-wrap {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 4px var(--bg-1), 0 0 0 7px rgba(79, 143, 255, 0.26);
+}
+.profile-avatar-hint {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--bg-2);
+  border: 1px solid var(--border-md);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.profile-card {
+  border-radius: 20px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(0, 0, 0, 0.14);
+}
+.profile-field-label {
+  font-weight: 700;
+  color: var(--text-3);
+  letter-spacing: 0.6px;
+}
+.profile-info-box {
+  border-radius: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-md);
+}

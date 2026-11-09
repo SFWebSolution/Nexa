@@ -9115,11 +9115,16 @@ function nexaGridTileHtml(v) {
         '<button class="nx-pv-mbtn danger" onclick="event.stopPropagation();nexaVideosDelete(\'' + id + '\')" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>' +
       '</div>'
     : '';
+  // Likes ride along on the tile so a grid reads at a glance (the Liked tab
+  // especially). The count is denormalised on the video doc; the liked_videos
+  // mirror carries a copy too.
+  const likes = formatCount(Number(v.likes) || 0);
   return '<div class="nx-pv-tile" onclick="nexaWatchVideo(\'' + id + '\')">' +
     (thumb
       ? '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">'
       : '<div class="nx-pv-fallback"><i data-lucide="video" style="width:22px;height:22px;"></i></div>') +
     '<span class="nx-pv-views"><i data-lucide="play" style="width:12px;height:12px;"></i> ' + views + '</span>' +
+    '<span class="nx-pv-likes"><i data-lucide="heart" style="width:11px;height:11px;"></i> ' + likes + '</span>' +
     manage +
   '</div>';
 }

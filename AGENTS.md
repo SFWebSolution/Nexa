@@ -1356,6 +1356,57 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   unfollow — a stale pending doc is harmless because `nexaRelationshipWith`
   only treats `accepted` as a real follow.
 
+## Follow + view profile from the video feed (nexa-videos.js) — do NOT regress
+- **The feed author row now carries a Follow/Following button and a WORKING
+  profile tap.** `metaHtml(v)` wraps the author block in `.nv-author-row` and
+  appends `followBtnHtml(v)`; the author block keeps its
+  `onclick="nexaProfileOpen('<uid>')"` (so a tap opens the full profile page).
+- **`.nv-meta` is `pointer-events:none`, so the author tap used to be DEAD.**
+  Interactivity is re-enabled only on the interactive children
+  (`.nv-author-row`, `.nv-author-tap`, `.nv-follow-btn` all set
+  `pointer-events:auto`); the block itself stays transparent so tap-to-pause and
+  double-tap-to-like still work over the caption. Do NOT set `pointer-events:auto`
+  on `.nv-meta` itself — that would swallow those gestures.
+- **The follow button is a `data-act="follow"` target** so it rides the existing
+  delegated `onFeedClick` (`toggleFollow(uid, btn)`), exactly like like/comment/
+  share/save/edit/delete. It is HIDDEN on your own videos (`followBtnHtml` returns
+  '' when `uid === myUid()`).
+- **The write is delegated to `window.nexaToggleFollow`** (app-main.js) so the
+  follow counts + the `{isFollow:true}` notification stay in ONE place; the feed
+  only paints. `toggleFollow` paints optimistically, guards re-entry with
+  `state.followBusy[uid]` (a double tap fires ONE write), and records the result
+  in `state.followOverride[uid]` so a lagging feed snapshot can't flicker the
+  button back. `relationshipWith(uid)` prefers the override until the underlying
+  `nexaRelationshipWith` map agrees, then self-clears. Do NOT read
+  `nexaRelationshipWith` directly in the feed without the override.
+- **`syncFollowButtons()`** re-syncs every card's button from the follow map on
+  each `renderFeed()` and after a follow write — a light text/class patch that
+  never touches the `<video>`. `app-main.js` must keep exposing
+  `window.nexaToggleFollow` + `window.nexaRelationshipWith` (both are top-level
+  function declarations, so they are already real `window` globals).
+
+## Profile grid tiles show like counts (app-main.js) — do NOT regress
+- **`nexaGridTileHtml(v)` renders BOTH a view badge (`.nx-pv-views`, bottom-left)
+  and a like badge (`.nx-pv-likes`, bottom-right)** so a profile grid — the
+  Liked tab especially — reads at a glance. `formatCount(Number(v.likes) || 0)`
+  keeps a missing count at "0" (never "undefined").
+- **The `liked_videos` mirror carries `views` + `likes`** (written by `doLike` in
+  nexa-videos.js) so the Liked grid can show numbers without a read per tile. The
+  mirror is a cosmetic cache — a stale/absent count just shows 0, it never blocks
+  the grid.
+
+## Settings profile card polish (dashboard.html/css) — do NOT regress
+- The Settings root "profile" header card (`.settings-profile-card`) wraps the
+  avatar in a gradient ring (`.settings-profile-avatar-wrap`) and ends in a
+  "Edit profile" CTA (`.settings-profile-cta`) + chevron. `#settingsProfilePic` /
+  `#settingsProfileName` / `#settingsProfileHandle` ids are UNCHANGED (still read
+  by `renderSettingsProfileCard()`); the CTA text is hidden ≤480px so only the
+  chevron shows on small screens. The card still opens Settings → Personal Info.
+- The Personal Info sub-page got an additive polish block at the end of
+  `dashboard.css` (`.profile-hero`, `.profile-hero-cover`, `.profile-card`,
+  `.profile-info-box`) — those classes are used ONLY by that sub-page, so the
+  overrides are safe. Keep it additive.
+
 ## Video composer preview — audio must STOP when the composer closes (do NOT regress)
 - **A hidden `<video>` keeps playing.** The video composer preview
   (`#nvComposerPreview`, `nexa-videos.js`) is a LOOPING `<video>`; the overlay is
