@@ -1172,6 +1172,21 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   header buttons are the visible affordances. Do NOT re-add a clickable avatar.
 
 ## Reports — Settings → Report a problem → admin dashboard (do NOT regress)
+- **ADMIN INBOX IS "COMING SOON" AGAIN (2026-11).** `admin.html`'s Reports section
+  is a static placeholder (`.report-soon-card` + a "Coming soon" pill, no
+  `#reportList` / `#reportFilter` / `#reportOpenCount`). The JS was REMOVED —
+  `loadReports` / `renderReports` / `setReportStatus` / `focusUserFromReport` /
+  the local `esc()` / `reportFilterStatus` / `adminReports` are all gone, and
+  `initDashboard()` no longer calls `loadReports('open')`. This is why the admin
+  panel no longer shows the "Reports unavailable — backend not reachable" error:
+  it simply doesn't call the backend. **Do NOT re-add the admin inbox or the
+  `adminFetchGet` call until the report pipeline is actually deployed.** The
+  backend endpoints (`GET /api/admin/reports`, `POST /api/admin/report-status` in
+  `server/admin-api.js`) and the `reports` collection/rules are UNCHANGED and
+  stay ready for the future wiring — the `adminFetchGet()` helper is kept too.
+- The user-facing half still ships: `#reportProblemRow` → `openReportModal()` and
+  `submitReport()` writing to the `reports` collection. That part is NOT affected
+  by the admin-side "coming soon" state.
 - The old "Coming Soon" report card is GONE. `#reportProblemRow` now calls
   `openReportModal()`, opening a real composer (`#reportModal`) with category
   chips (bug/safety/idea/other), a 2000-char textarea (+ live counter), and an

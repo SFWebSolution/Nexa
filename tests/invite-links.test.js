@@ -697,10 +697,14 @@ console.log("\n8) group/channel instant-open message cache");
   ok("backend lists reports (Admin SDK)", /app\.get\("\/api\/admin\/reports", requireAdminSecret/.test(api));
   ok("backend sets report status", /app\.post\("\/api\/admin\/report-status", requireAdminSecret/.test(api));
 
-  ok("admin has a Reports section", /id="reportList"/.test(admin) && /id="reportOpenCount"/.test(admin));
-  ok("admin loads reports via the backend", /adminFetchGet\("\/api\/admin\/reports/.test(admin));
-  ok("admin can resolve/reopen", /function setReportStatus\(/.test(admin) && /adminFetch\("\/api\/admin\/report-status"/.test(admin));
-  ok("admin init loads reports", /loadReports\('open'\)/.test(admin));
+  ok("admin has a Reports section", /🚩 Reports/.test(admin));
+  ok("admin Reports section is flagged coming soon",
+    /report-soon-card/.test(admin) && /Reports are coming soon/.test(admin));
+  ok("admin no longer queries the reports backend (coming soon)",
+    !/adminFetchGet\("\/api\/admin\/reports/.test(admin) && !/function loadReports\(/.test(admin) && !/function setReportStatus\(/.test(admin));
+  ok("admin init no longer loads reports", !/loadReports\('open'\)/.test(admin));
+  ok("backend endpoints stay for the future wiring",
+    /app\.get\("\/api\/admin\/reports", requireAdminSecret/.test(api) && /app\.post\("\/api\/admin\/report-status", requireAdminSecret/.test(api));
 }
 
 // ── App identity refresh (not "just chatting") ──────────────────────────────
