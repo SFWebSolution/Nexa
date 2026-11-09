@@ -1304,8 +1304,18 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **Replies thread via `replyTo`** on the comment doc (+ `replyToName` for the
   `@name` tag, `replyToUid` for the notification). The tree is grouped
   CLIENT-SIDE in `buildCommentTree(items)` (no extra collection, no extra read);
-  orphans fall back to top level. `renderComments()` renders each top-level
-  comment followed by its indented `.nv-comment-child` replies.
+  orphans fall back to top level.
+- **Replies are COLLAPSED behind a "View N replies" toggle** so a busy thread
+  doesn't bury the rest of the comments. `renderComments()` emits the parent,
+  then a `.nv-comment-viewreplies` button (`data-thread=<parentId>`,
+  `aria-expanded`) and a `.nv-comment-replies` group wrapping the indented
+  `.nv-comment-child` replies; the group is `display:none` until expanded.
+  `state.expandedThreads` (per-open, in-memory, reset in `loadComments` AND
+  `closeComments`) drives it; `nexaVideosToggleReplies(id)` flips one thread.
+  Tapping **Reply** auto-expands that thread (`replyComment` walks up to the
+  top-level ancestor and marks it expanded) so you see where the reply lands.
+  Replies still carry Like/Reply/Copy/Delete and render nested one level deep —
+  do NOT flatten the toggle back into always-visible replies.
 - **Reply notifications:** a reply pushes to the parent comment's author; a
   top-level comment pushes to the video's author (skip self). Sent
   sender-side via `sendPushNotification` with `{isVideo:true, isVideoComment:true}`
@@ -1321,7 +1331,8 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   update = false. Deleting a comment also best-effort deletes the author's own
   like marker (other likers' markers are harmless orphans, looked up by cid).
 - CSS (`.nv-comment-acts`, `.nv-comment-like.liked` filled heart, `.nv-comment-child`
-  indent, `.nv-comment-replyto`, `.nv-comment-reply-chip`) lives in
+  indent, `.nv-comment-viewreplies` toggle, `.nv-comment-replies` group,
+  `.nv-comment-replyto`, `.nv-comment-reply-chip`) lives in
   `nexa-videos.css` next to the base comment rules. `openComments(id)` is exported
   as `NexaVideos.openComments` for tests.
 

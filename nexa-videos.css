@@ -320,6 +320,22 @@
 /* Replies are indented under their parent comment. */
 .nv-comment-child { margin-left: 40px; }
 .nv-comment-child .nv-comment-pic { width: 26px; height: 26px; }
+/* Collapsible thread: a "View N replies" toggle keeps a busy thread from
+   burying the rest of the comments. A parent comment + its toggle + replies
+   are wrapped in .nv-thread so the list gap sits BETWEEN threads. */
+.nv-thread { display: flex; flex-direction: column; gap: 6px; }
+.nv-comment-viewreplies {
+  display: inline-flex; align-items: center; gap: 6px;
+  align-self: flex-start;
+  margin: 0 0 0 42px;
+  background: transparent; border: none; padding: 2px 0; cursor: pointer;
+  font-size: 12px; font-weight: 700; color: var(--primary, #4a94f0);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+.nv-comment-viewreplies:hover { opacity: 0.85; }
+.nv-comment-viewreplies:active { transform: scale(0.97); }
+.nv-comment-viewreplies-arrow { font-size: 10px; line-height: 1; }
+.nv-comment-replies { display: flex; flex-direction: column; gap: 12px; }
 .nv-comment-replyto { color: var(--primary, #4a94f0); font-weight: 600; }
 /* "Replying to @name" chip above the input. */
 .nv-comment-reply-chip {

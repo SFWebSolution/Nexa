@@ -69,6 +69,7 @@
     likedComments: {},      // commentId -> did *I* like it
     checkedCommentLikes: {}, // commentId -> marker already resolved this open
     commentReplyTo: null,   // { id, name } while composing a reply
+    expandedThreads: {},    // commentId -> true when its replies are shown
     lastTapAt: 0,
     lastTapId: null,
     pendingDurationMs: 0,
@@ -1033,6 +1034,7 @@
     state.commentItems = [];
     state.likedComments = {};
     state.checkedCommentLikes = {};
+    state.expandedThreads = {};
     cancelCommentReply();
     const list = el('nvCommentsList');
     if (list) list.innerHTML = '<div class="nv-comments-empty">Loading…</div>';
@@ -1097,12 +1099,34 @@
     const items = state.commentItems || [];
     if (!items.length) { listEl.innerHTML = '<div class="nv-comments-empty">No comments yet. Say something nice!</div>'; return; }
     const tree = buildCommentTree(items);
-    const html = tree.top.map(c =>
-      commentHtml(c) + (tree.replies[c.id] || []).map(r => commentHtml(r, c)).join('')
-    ).join('');
+    const html = tree.top.map(c => {
+      const reps = tree.replies[c.id] || [];
+      if (!reps.length) return commentHtml(c);
+      // Replies are collapsed behind a "View N replies" toggle so a busy thread
+      // doesn't bury the rest of the comments. Expansion is per-thread and
+      // resets on open (state.expandedThreads).
+      const open = !!state.expandedThreads[c.id];
+      const count = reps.length;
+      const toggle =
+        '<button class="nv-comment-viewreplies" data-thread="' + esc(c.id) + '" onclick="nexaVideosToggleReplies(\'' + esc(c.id) + '\')" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+          '<span class="nv-comment-viewreplies-arrow">' + (open ? '\u25BE' : '\u25B8') + '</span>' +
+          '<span class="nv-comment-viewreplies-label">' + (open ? 'Hide replies' : 'View ' + count + (count === 1 ? ' reply' : ' replies')) + '</span>' +
+        '</button>';
+      const kids = '<div class="nv-comment-replies"' + (open ? '' : ' style="display:none;"') + '>' +
+        reps.map(r => commentHtml(r, c)).join('') + '</div>';
+      return '<div class="nv-thread">' + commentHtml(c) + toggle + kids + '</div>';
+    }).join('');
     listEl.innerHTML = html;
     if (scroll) listEl.scrollTop = listEl.scrollHeight;
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // Expand / collapse a thread's replies (per-thread, in-memory for this open).
+  function toggleReplies(cid) {
+    if (!cid) return;
+    if (state.expandedThreads[cid]) delete state.expandedThreads[cid];
+    else state.expandedThreads[cid] = true;
+    renderComments(false);
   }
 
   function commentLikesText(n) {
@@ -1194,8 +1218,19 @@
   }
 
   function replyComment(cid) {
-    const c = (state.commentItems || []).find(x => x.id === cid);
+    const items = state.commentItems || [];
+    const c = items.find(x => x.id === cid);
     if (!c) return;
+    // Reveal the thread so the user sees where the reply will land (walk up to
+    // the top-level ancestor; the renderer shows one level of replies).
+    const byId = {};
+    items.forEach(x => { byId[x.id] = x; });
+    let root = c, guard = 0;
+    while (root.replyTo && byId[root.replyTo] && guard++ < 20) root = byId[root.replyTo];
+    if (!state.expandedThreads[root.id]) {
+      state.expandedThreads[root.id] = true;
+      renderComments(false);
+    }
     state.commentReplyTo = { id: cid, name: c.name || 'user', uid: c.uid };
     const chip = el('nvCommentReplyChip');
     const txt = el('nvCommentReplyText');
@@ -1265,6 +1300,7 @@
     state.commentItems = [];
     state.likedComments = {};
     state.checkedCommentLikes = {};
+    state.expandedThreads = {};
     cancelCommentReply();
   }
 
@@ -1710,6 +1746,7 @@
   window.nexaVideosDeleteComment = deleteComment;
   window.nexaVideosLikeComment = likeComment;
   window.nexaVideosCopyComment = copyComment;
+  window.nexaVideosToggleReplies = toggleReplies;
   window.nexaVideosReplyComment = replyComment;
   window.nexaVideosCancelCommentReply = cancelCommentReply;
   window.nexaVideosEdit = openEditVideo;

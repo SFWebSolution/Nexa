@@ -276,6 +276,32 @@ setTimeout(() => {
     ok("a reply renders as a child comment", kids.length === 1 && kids[0].getAttribute("data-id") === "c3");
     ok("a reply shows the @parent tag", /@Ada/.test(kids[0].querySelector(".nv-comment-replyto").textContent));
 
+    // ── 5b. replies are collapsed behind a "View N replies" toggle ──────────
+    const listEl = document.getElementById("nvCommentsList");
+    const q = (sel) => listEl.querySelector(sel);
+    ok("a thread shows a View replies toggle", !!q('.nv-comment-viewreplies[data-thread="c1"]'));
+    // A reply was just posted above, which auto-expanded this thread — collapse
+    // it to assert the collapsed (default-looking) state.
+    sandbox.window.nexaVideosToggleReplies("c1");
+    ok("a collapsed thread shows 'View 1 reply'", /View 1 reply/.test(q('.nv-comment-viewreplies[data-thread="c1"]').textContent));
+    ok("a collapsed thread hides its replies", /display:\s*none/.test(q(".nv-comment-replies").getAttribute("style") || ""));
+    ok("a collapsed thread is aria-collapsed", q('.nv-comment-viewreplies[data-thread="c1"]').getAttribute("aria-expanded") === "false");
+    sandbox.window.nexaVideosToggleReplies("c1");
+    ok("tapping View replies reveals the thread",
+      !/display:\s*none/.test(q(".nv-comment-replies").getAttribute("style") || "") &&
+      q('.nv-comment-viewreplies[data-thread="c1"]').getAttribute("aria-expanded") === "true");
+    ok("an expanded thread offers Hide replies", /Hide replies/.test(q('.nv-comment-viewreplies[data-thread="c1"]').textContent));
+    ok("the reply still renders once expanded", !!q('.nv-comment-child[data-id="c3"]'));
+    sandbox.window.nexaVideosToggleReplies("c1");
+    ok("tapping again collapses the thread",
+      /display:\s*none/.test(q(".nv-comment-replies").getAttribute("style") || ""));
+    // Replying auto-expands the thread so you see where the reply lands.
+    sandbox.window.nexaVideosReplyComment("c1");
+    ok("replying auto-expands the parent thread",
+      q('.nv-comment-viewreplies[data-thread="c1"]').getAttribute("aria-expanded") === "true");
+    ok("toggling an unknown thread id is a no-op", (() => { sandbox.window.nexaVideosToggleReplies("nope"); return true; })());
+    sandbox.window.nexaVideosCancelCommentReply();
+
     // ── 6. top-level comment notifies the VIDEO author ──────────────────────
     pushes.length = 0;
     sandbox.window.nexaVideosCancelCommentReply();
