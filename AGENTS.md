@@ -1204,9 +1204,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `openMyProfile()` now DELEGATE to `nexaProfileShow(...)` — do NOT re-add a
   second profile surface; extend this one.
 - **Read discipline (the whole point):** the shell renders from the already
-  loaded `allUsersData` (ZERO reads); stats come from the denormalised
-  `users/{uid}.followCounts` + `videoCount` (ZERO reads); the Videos grid is
-  cache-first via `nexaCacheRead('video_grid_<uid>')` and only opens ONE
+  loaded `allUsersData` (ZERO reads); the Following/Followers stats come from
+  the denormalised `users/{uid}.followCounts` (ZERO reads); the **Videos stat is
+  the LOADED grid's length** — there is no `videoCount` field on `users/{uid}`,
+  and the grid loader (`nexaLoadVideoGrid`) owns that number, so don't write it
+  from the counts-refresh path; the Videos grid is cache-first via
+  `nexaCacheRead('video_grid_<uid>')` and only opens ONE
   `videos.where('uid','==',uid)` listener while the profile is open
   (unsubscribed in `closeNexaProfile`); the Liked grid reads
   `users/{uid}/liked_videos` (a per-user mirror — NOT a `collectionGroup`
@@ -1245,8 +1248,18 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   either party, delete by either party) and the `liked_videos` subcollection
   rule, plus the widened users `update` (`followCounts`). Also bump the SW
   `CACHE_NAME` (`nexa-v13-profile`).
+- A grid tile with no stored thumb falls back to a Cloudinary frame-0 poster
+  (`nexaCloudThumb(v.videoUrl)` — `so_0,w_540` + `.jpg`), and to a
+  `.nx-pv-fallback` video glyph when even that isn't possible.
+- `nexaWatchVideo(id)` CLOSES the profile before opening the feed, so the video
+  player isn't buried under the profile overlay.
 - Tests: `tests/profile-follow.test.js` (8 — the `nexaRelationshipWith` branch
-  logic) + profile assertions in `tests/invite-links.test.js`.
+  logic) and `tests/profile-render.test.js` (27 — extracts the REAL profile
+  module into a `vm` with a DOM stub and asserts what gets painted: name,
+  `@handle`, avatar, cover, bio, link, stats, the action buttons per
+  relationship, self-profile actions, grid tiles, cold-cache tab switching).
+  Both were mutation-checked (they fail when the relationship branch is
+  broken). Plus profile assertions in `tests/invite-links.test.js`.
 
 ## App identity — Nexa is a social app, not "just chat" (2026-11)
 - `index.html` title/description/keywords/OG/Twitter/hero/feature-grid/FAQ/footer
