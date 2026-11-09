@@ -11,12 +11,12 @@
  *
  * Firestore:
  *   videos/{id}                      { uid, authorName, authorPhoto, videoUrl,
- *                                      thumbUrl, caption, music, duration,
+ *                                      thumbUrl, caption, duration,
  *                                      createdAt (ms int), views, likes,
  *                                      commentsCount, shares, saves, visibility }
  *   videos/{id}/likes/{uid}          { at }
  *   users/{me}/liked_videos/{vid}    { videoId, uid, caption, thumbUrl,
- *                                      videoUrl, music, at }  ← mirror written
+ *                                      videoUrl, at }  ← mirror written
  *                                      by doLike so a profile's "Liked" grid
  *                                      is a cheap per-user read
  *   videos/{id}/comments/{cid}       { uid, name, photo, text, createdAt, likes }
@@ -307,7 +307,7 @@
   }
 
   // Patch the volatile bits of a card WITHOUT touching its <video>.
-  function metaSig(v) { return (v.caption || '') + '|' + (v.music || ''); }
+  function metaSig(v) { return (v.caption || ''); }
 
   // Light-touch follow-button sync (no meta rebuild, so the <video> is safe).
   function syncFollowButtons() {
@@ -426,8 +426,6 @@
           followBtnHtml(v) +
         '</div>' +
         (v.caption ? '<div class="nv-caption">' + esc(v.caption) + '</div>' : '') +
-        (v.music ? '<div class="nv-music"><i data-lucide="music" style="width:13px;height:13px;"></i>' +
-          '<span class="nv-music-text">' + esc(v.music) + '</span></div>' : '') +
       '</div>';
   }
 
@@ -769,7 +767,7 @@
           mirror.set({
             videoId: id, uid: v.uid || '', caption: v.caption || '',
             thumbUrl: v.thumbUrl || '', videoUrl: v.videoUrl || '',
-            music: v.music || '', at: Date.now(),
+            at: Date.now(),
             // Denormalised so the profile "Liked" grid tiles can show the
             // view + like counts without a read per tile.
             views: Number(v.views) || 0, likes: Number(v.likes) || 0
@@ -867,7 +865,7 @@
       const v = findVideo(id);
       const target = v && v.uid;
       if (!target || target === myUid() || !window.sendPushNotification) return;
-      window.sendPushNotification(myName(), what, target, Object.assign({ isVideo: true, chatUid: myUid() }, flags || {}));
+      window.sendPushNotification(myName(), what, target, Object.assign({ isVideo: true, chatUid: myUid(), videoId: id }, flags || {}));
     } catch (e) { /* non-fatal */ }
   }
 
@@ -1131,10 +1129,40 @@
             ' onclick="nexaVideosLikeComment(\'' + esc(c.id) + '\')" aria-label="Like comment">' +
             '<i data-lucide="heart" style="width:14px;height:14px;"></i>' + commentLikesText(likes) + '</button>' +
           '<button class="nv-comment-act" onclick="nexaVideosReplyComment(\'' + esc(c.id) + '\')" aria-label="Reply">Reply</button>' +
+          '<button class="nv-comment-act" onclick="nexaVideosCopyComment(\'' + esc(c.id) + '\')" aria-label="Copy">Copy</button>' +
           (mine ? '<button class="nv-comment-act nv-comment-del" onclick="nexaVideosDeleteComment(\'' + esc(c.id) + '\')" aria-label="Delete">Delete</button>' : '') +
         '</div>' +
       '</div>' +
     '</div>';
+  }
+
+  // Copy arbitrary text — the same clipboard + execCommand fallback the share
+  // path uses, so desktop browsers without the async clipboard still work.
+  function copyText(payload, okMsg, errMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payload)
+        .then(() => toast(okMsg || 'Copied', 'success'))
+        .catch(() => toast(errMsg || 'Could not copy', 'error'));
+      return;
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = payload;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      ta.remove();
+      if (ok) { toast(okMsg || 'Copied', 'success'); return; }
+    } catch (e) {}
+    toast(errMsg || 'Copy is not supported on this device', 'error');
+  }
+
+  function copyComment(cid) {
+    const c = (state.commentItems || []).find(x => x.id === cid);
+    if (!c) return;
+    copyText(c.text || '', 'Comment copied', 'Could not copy the comment');
   }
 
   function likeComment(cid) {
@@ -1206,7 +1234,7 @@
       const v = findVideo(id);
       const target = (reply && reply.uid) ? reply.uid : (v && v.uid);
       if (target && target !== myUid() && window.sendPushNotification) {
-        window.sendPushNotification(myName(), (reply ? 'replied to your comment' : 'commented on your video'), target, { isVideo: true, isVideoComment: true, chatUid: myUid() });
+        window.sendPushNotification(myName(), (reply ? 'replied to your comment' : 'commented on your video'), target, { isVideo: true, isVideoComment: true, chatUid: myUid(), videoId: id });
       }
     }).catch(err => { toast('Could not post comment', 'error'); console.warn(err); });
   }
@@ -1278,10 +1306,6 @@
           '</div>' +
           '<div class="nv-composer-fields">' +
             '<textarea id="nvComposerCaption" rows="2" maxlength="300" placeholder="Write a caption…"></textarea>' +
-            '<div class="nv-composer-music">' +
-              '<i data-lucide="music" style="width:15px;height:15px;"></i>' +
-              '<input id="nvComposerMusic" type="text" maxlength="80" placeholder="Add music (optional)" autocomplete="off">' +
-            '</div>' +
           '</div>' +
           '<input type="file" id="nvFileInput" accept="video/*" hidden>' +
         '</div>';
@@ -1302,7 +1326,6 @@
     const pick = el('nvComposerPick');
     if (pick) pick.style.display = '';
     const cap = el('nvComposerCaption'); if (cap) cap.value = '';
-    const mus = el('nvComposerMusic'); if (mus) mus.value = '';
     setRing(false, 0, '');
     // Silence any feed clip behind the overlay so you don't hear two at once.
     const feed = el('nvFeed');
@@ -1460,9 +1483,7 @@
       return;
     }
     const capEl = el('nvComposerCaption');
-    const musEl = el('nvComposerMusic');
     const caption = (capEl && capEl.value || '').trim();
-    const music = (musEl && musEl.value || '').trim();
     state.posting = true;
     const postBtn = el('nvComposerPost');
     if (postBtn) { postBtn.disabled = true; postBtn.textContent = 'Posting…'; }
@@ -1481,7 +1502,6 @@
           videoUrl: url,
           thumbUrl: thumb,
           caption: caption,
-          music: music,
           duration: state.pendingDuration,
           createdAt: Date.now(),
           views: 0, likes: 0, commentsCount: 0, shares: 0, saves: 0,
@@ -1514,7 +1534,7 @@
       });
   }
 
-  // ── edit (caption + music) ──
+  // ── edit (caption) ──
   function findVideo(id) {
     return state.videos.find(x => x.id === id) || state.myVideos.find(x => x.id === id) || null;
   }
@@ -1537,8 +1557,6 @@
           '<div class="nv-edit-body">' +
             '<label class="nv-edit-label">Caption</label>' +
             '<textarea id="nvEditCaption" rows="3" maxlength="300" placeholder="Write a caption…"></textarea>' +
-            '<label class="nv-edit-label">Music</label>' +
-            '<input id="nvEditMusic" type="text" maxlength="80" placeholder="Add music (optional)" autocomplete="off">' +
             '<div class="nv-edit-note">The clip itself can’t be changed … delete and re-post to swap the video.</div>' +
             '<button class="nv-edit-save" id="nvEditSave" onclick="nexaVideosSaveEdit()">Save changes</button>' +
           '</div>' +
@@ -1548,7 +1566,6 @@
     }
     state.editVideoId = id;
     const cap = el('nvEditCaption'); if (cap) cap.value = v.caption || '';
-    const mus = el('nvEditMusic'); if (mus) mus.value = v.music || '';
     sheet.classList.add('active');
   }
 
@@ -1573,13 +1590,12 @@
     const id = state.editVideoId;
     if (!id) return;
     const caption = ((el('nvEditCaption') || {}).value || '').trim();
-    const music = ((el('nvEditMusic') || {}).value || '').trim();
     const btn = el('nvEditSave');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     try {
-      await window.db.collection('videos').doc(id).update({ caption: caption, music: music });
+      await window.db.collection('videos').doc(id).update({ caption: caption });
       const v = findVideo(id);
-      if (v) { v.caption = caption; v.music = music; }
+      if (v) { v.caption = caption; }
       toast('Video updated', 'success');
       closeEdit();
       refreshCardMeta(id);
@@ -1638,7 +1654,6 @@
         '</div>' +
         '<div class="nv-mine-info">' +
           '<div class="nv-mine-cap">' + (v.caption ? esc(v.caption) : '<span class="nv-mine-muted">No caption</span>') + '</div>' +
-          (v.music ? '<div class="nv-mine-music"><i data-lucide="music" style="width:12px;height:12px;"></i> ' + esc(v.music) + '</div>' : '') +
           '<div class="nv-mine-stats">' +
             '<span>' + esc(timeAgo(Number(v.createdAt))) + '</span>' +
             '<span>·</span><span>' + fmtCount(v.views) + ' views</span>' +
@@ -1694,6 +1709,7 @@
   window.nexaVideosSendComment = sendComment;
   window.nexaVideosDeleteComment = deleteComment;
   window.nexaVideosLikeComment = likeComment;
+  window.nexaVideosCopyComment = copyComment;
   window.nexaVideosReplyComment = replyComment;
   window.nexaVideosCancelCommentReply = cancelCommentReply;
   window.nexaVideosEdit = openEditVideo;

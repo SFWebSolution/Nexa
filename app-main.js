@@ -894,19 +894,54 @@ function notifIconForData(title, data) {
   return notifHistoryIconFor(title);
 }
 
-function recordNotificationHistory({ icon, title, body, at }) {
+// Map a push payload to WHERE tapping its history entry should go. Kept in one
+// place so the FCM handler and the in-app message listener agree.
+function notifTargetForData(data) {
+  data = data || {};
+  if (data.isVideo || data.isVideoComment || data.isVideoLike || data.isVideoShare) {
+    const id = data.videoId || data.vid || null;
+    return id ? { type: 'video', id: String(id) } : { type: 'moments' };
+  }
+  if (data.isStory) return { type: 'moments' };
+  if (data.isGroup || data.groupAdded) {
+    const id = data.chatUid || data.groupId || null;
+    return id ? { type: 'group', id: String(id) } : { type: 'community' };
+  }
+  if (data.isConnect) return { type: 'connect' };
+  if (data.isFollow) {
+    return data.chatUid ? { type: 'profile', uid: String(data.chatUid) } : { type: 'connect' };
+  }
+  if (data.chatUid) return { type: 'chat', uid: String(data.chatUid) };
+  return null;
+}
+
+// The URL the SERVICE WORKER opens when the OS notification is tapped. Mirrors
+// notifTargetForData so the system notification and the in-app history land on
+// the same content. Only targets the dashboard can deep-link by URL are
+// expressed here; anything else opens the app root.
+function notifClickAction(data) {
+  const t = notifTargetForData(data);
+  if (t && t.type === 'video') return '/dashboard.html?video=' + encodeURIComponent(t.id);
+  return '/dashboard.html';
+}
+
+function recordNotificationHistory({ icon, title, body, at, target }) {
   try {
     if (!currentUser) return;
     const store = _nhLoad();
     const entry = {
+      id: 'nh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
       icon: icon || notifHistoryIconFor(title),
       title: String(title || 'Notification').slice(0, 120),
       body: String(body || '').slice(0, 240),
-      at: at || Date.now()
+      at: at || Date.now(),
+      target: (target && target.type) ? target : null
     };
     const last = store.items[0];
     if (last && last.title === entry.title && last.body === entry.body) {
       last.at = entry.at;
+      // Keep the newest target so a re-sent notification still deep-links.
+      if (entry.target) last.target = entry.target;
     } else {
       store.items.unshift(entry);
       store.items = store.items.slice(0, NEXA_NOTIF_HISTORY_MAX);
@@ -944,15 +979,21 @@ window.openNotificationHistory = function () {
   if (!items.length) {
     list.innerHTML = nhEmptyStateHtml();
   } else {
-    list.innerHTML = items.map(it => `
-      <div class="nh-item">
+    list.innerHTML = items.map((it, i) => {
+      // A history entry is tappable when it knows where to go — tapping opens
+      // the exact content (video / chat / group / profile / connect).
+      const canGo = !!(it.target && it.target.type);
+      const eid = escapeHtml(String(it.id || ''));
+      return `
+      <div class="nh-item${canGo ? ' nh-item-tappable' : ''}"${canGo ? ` onclick="nexaOpenNotifItem('${eid}', ${i})"` : ''}>
         <div class="nh-item-icon">${escapeHtml(it.icon || '🔔')}</div>
         <div class="nh-item-main">
           <div class="nh-item-title">${escapeHtml(it.title || '')}</div>
           ${it.body ? `<div class="nh-item-body">${escapeHtml(it.body)}</div>` : ''}
         </div>
         <div class="nh-item-time">${relTime(it.at)}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
   // Viewer has seen everything up to now — clear the unread badge.
   store.lastViewedAt = Date.now();
@@ -989,6 +1030,74 @@ window.closeNotificationHistory = function () {
   const modal = document.getElementById('notifHistoryModal');
   if (modal) modal.classList.remove('active');
 };
+
+// Route a notification target to its content. Shared by the in-app history tap
+// and the service-worker "notification clicked while app is open" message.
+window.nexaOpenNotifTarget = function (t) {
+  if (!t || !t.type) return;
+  try {
+    if (t.type === 'video') {
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('stories');
+      if (typeof switchMomentsSubTab === 'function') switchMomentsSubTab('videos');
+      if (window.NexaVideos) {
+        if (window.NexaVideos.openFocus) window.NexaVideos.openFocus(t.id);
+        else window.NexaVideos.open(t.id);
+      }
+    } else if (t.type === 'moments') {
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('stories');
+      if (typeof switchMomentsSubTab === 'function') switchMomentsSubTab('videos');
+    } else if (t.type === 'community') {
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('community');
+    } else if (t.type === 'chat') {
+      const u = (typeof allUsersData !== 'undefined' ? allUsersData : []).find(x => x && x.uid === t.uid);
+      if (!u) { if (typeof showNotifToast === 'function') showNotifToast('That chat isn’t available yet', 'info'); return; }
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('chats');
+      if (typeof selectChat === 'function') selectChat(u, null);
+    } else if (t.type === 'group') {
+      const g = (typeof myGroups !== 'undefined' ? myGroups : []).find(x => x && x.id === t.id);
+      if (!g) { if (typeof showNotifToast === 'function') showNotifToast('That group isn’t available yet', 'info'); return; }
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('community');
+      if (typeof selectGroupChat === 'function') selectGroupChat(g);
+    } else if (t.type === 'profile') {
+      closeNotificationHistory();
+      if (typeof nexaProfileOpen === 'function') nexaProfileOpen(t.uid);
+    } else if (t.type === 'connect') {
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('connect');
+    } else if (t.type === 'settings') {
+      closeNotificationHistory();
+      if (typeof switchTab === 'function') switchTab('settings');
+    }
+  } catch (e) {
+    console.warn('nexaOpenNotifTarget failed', e);
+  }
+};
+
+// Tap a history entry → go to the content it is about. Resolves by the stable
+// entry id first (so a notification arriving while the sheet is open can't shift
+// the target), falling back to the render-time index for legacy entries.
+window.nexaOpenNotifItem = function (id, index) {
+  const items = (_nhLoad().items || []);
+  let it = id ? items.find(x => x && x.id === id) : null;
+  if (!it) it = items[index];
+  if (it && it.target) window.nexaOpenNotifTarget(it.target);
+};
+
+// The service worker focuses an already-open dashboard and posts this message
+// when a system notification is tapped, so the tap still lands on the content
+// (the SW alone can only focus the window, not route it).
+if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+  navigator.serviceWorker.addEventListener('message', (ev) => {
+    const d = ev && ev.data;
+    if (!d || d.type !== 'nexa-open-notif') return;
+    window.nexaOpenNotifTarget(notifTargetForData(d.data || {}));
+  });
+}
 
 function relTime(ts) {
   if (!ts) return '';
@@ -1080,6 +1189,8 @@ function sendPushNotification(title, body, targetUidOverride = null, extraData =
     messageId: notifId,
     ...extraData
   };
+  // Where a tap on the OS notification should land (the SW reads this).
+  if (!data.click_action) data.click_action = notifClickAction(data);
   // The fan-out list is routing info, not notification data.
   delete data.recipientUids;
 
@@ -1231,7 +1342,11 @@ async function initFCM(uid) {
         const body = data.body || 'You have a new message';
 
         // Record into the in-app notification history (self doc, capped).
-        recordNotificationHistory({ icon: notifIconForData(title, data), title, body, at: Number(data.timestamp) || Date.now() });
+        recordNotificationHistory({
+          icon: notifIconForData(title, data), title, body,
+          at: Number(data.timestamp) || Date.now(),
+          target: notifTargetForData(data)
+        });
 
         // Show an in-app toast
         if (typeof showNotifToast === 'function') {
@@ -7884,7 +7999,8 @@ function listenIncoming() {
             icon: notifHistoryIconFor('message'),
             title: name,
             body: preview.slice(0, 120),
-            at: msg.createdAt || Date.now()
+            at: msg.createdAt || Date.now(),
+            target: { type: 'chat', uid: uid }
           });
         }
       }

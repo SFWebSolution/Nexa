@@ -102,6 +102,7 @@ self.addEventListener("notificationclick", (event) => {
   if (event.action === "dismiss" || event.action === "decline") return;
 
   const clickAction = event.notification.data?.click_action || "/dashboard.html";
+  const notifData = event.notification.data || {};
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
@@ -110,6 +111,11 @@ self.addEventListener("notificationclick", (event) => {
           (client.url.includes("dashboard.html") || client.url.endsWith("/")) &&
           "focus" in client
         ) {
+          // Tell the running app WHERE the tap should land (video / chat /
+          // group / profile). The SW can only focus the window; the page
+          // routes via nexaOpenNotifTarget. Best-effort — focusing still wins
+          // if postMessage is unavailable.
+          try { client.postMessage({ type: "nexa-open-notif", data: notifData }); } catch (e) {}
           return client.focus();
         }
       }
@@ -121,7 +127,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v13-profile';
+const CACHE_NAME = 'nexa-v14-notifdl';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

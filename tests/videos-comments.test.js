@@ -167,6 +167,8 @@ const db = {
 
 let videosById = {};
 const store = {};
+let copied = null;
+const toasts = [];
 const sandbox = {
   console, setTimeout, clearTimeout, requestAnimationFrame: (fn) => fn(),
   Math, Date, Number, String, Object, Promise, JSON, Set, Map, Array, parseFloat, parseInt, isNaN, isFinite, encodeURIComponent,
@@ -176,12 +178,13 @@ const sandbox = {
   lucide: { createIcons() {} },
   escapeHtml: (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])),
   safeMediaUrl: (u) => u,
-  showNotifToast: () => {},
+  showNotifToast: (m) => { toasts.push(m); },
   nexaCurrentUser: { uid: "me", displayName: "Me" },
   nexaMyConnections: {},
   sendPushNotification: (...a) => pushes.push(a),
   uploadFile: () => Promise.resolve("https://res.cloudinary.com/x/video/upload/a.mp4"),
   nexaConfirm: () => Promise.resolve(true),
+  navigator: { clipboard: { writeText: (t) => { copied = t; return Promise.resolve(); } } },
 };
 sandbox.window = sandbox;
 vm.createContext(sandbox);
@@ -225,6 +228,18 @@ const c1 = list.querySelector('.nv-comment[data-id="c1"]');
 const c2 = list.querySelector('.nv-comment[data-id="c2"]');
 ok("every comment shows a Like button", !!c1.querySelector(".nv-comment-like") && !!c2.querySelector(".nv-comment-like"));
 ok("every comment shows a Reply button", c1.querySelectorAll(".nv-comment-act").some(b => /Reply/.test(b.textContent)));
+ok("every comment shows a Copy button", c1.querySelectorAll(".nv-comment-act").some(b => /Copy/.test(b.textContent)));
+ok("Copy is offered on my own comment too", c2.querySelectorAll(".nv-comment-act").some(b => /Copy/.test(b.textContent)));
+
+// ── 2b. Copy puts the comment text on the clipboard ─────────────────────────
+copied = null; toasts.length = 0;
+sandbox.window.nexaVideosCopyComment("c1");
+setTimeout(() => {
+  ok("copyComment writes the comment text to the clipboard", copied === "nice one");
+  ok("copyComment confirms with a toast", toasts.some(m => /copied/i.test(m)));
+
+  ok("copyComment on an unknown id is a no-op", (() => { copied = null; sandbox.window.nexaVideosCopyComment("nope"); return copied === null; })());
+}, 10);
 ok("like count renders on the comment", /2/.test(c1.querySelector(".nv-comment-like").textContent));
 ok("Delete shows only on my own comment", !c1.querySelector(".nv-comment-del") && !!c2.querySelector(".nv-comment-del"));
 

@@ -11720,6 +11720,23 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   border-bottom: 1px solid var(--border-sm, rgba(127,127,127,0.12));
 }
 .nh-item:last-child { border-bottom: none; }
+/* A history entry that knows where to go is tappable — tapping opens the
+   content it is about (video / chat / group / profile). */
+.nh-item-tappable {
+  cursor: pointer;
+  border-radius: 12px;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+.nh-item-tappable:hover, .nh-item-tappable:active { background: rgba(127,127,127,0.10); }
+.nh-item-tappable:active { transform: scale(0.995); }
+.nh-item-tappable::after {
+  content: '';
+  width: 7px; height: 7px; flex-shrink: 0; margin: 6px 2px 0 0;
+  border-right: 2px solid var(--text-3, #8892a6);
+  border-bottom: 2px solid var(--text-3, #8892a6);
+  transform: rotate(-45deg);
+  opacity: 0.55;
+}
 .nh-item-icon {
   width: 36px;
   height: 36px;

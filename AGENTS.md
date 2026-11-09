@@ -1287,8 +1287,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 
 ## Video comments — like · reply · notify (do NOT regress)
 - The video comment sheet (`nexa-videos.js`, `#nvCommentsSheet`) is a full
-  interaction surface: each comment has **Like** (heart + count), **Reply**, and
-  **Delete** (own comments only). It used to be text + delete only.
+  interaction surface: each comment has **Like** (heart + count), **Reply**,
+  **Copy**, and **Delete** (own comments only). It used to be text + delete only.
+- **Copy** (`copyComment(cid)` → `copyText()`) puts the comment's text on the
+  clipboard, reusing the SAME `navigator.clipboard` + hidden-textarea
+  `execCommand('copy')` fallback the share path uses (so desktop browsers
+  without the async clipboard still copy). `nexaVideosCopyComment` is the global.
 - **Comment likes** use a per-user marker subcollection
   `videos/{id}/comment_likes/{commentId}_{uid}` (`{uid, cid, at}`) and a
   transaction that flips the marker AND the comment's `likes` count together —
@@ -1320,6 +1324,47 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   indent, `.nv-comment-replyto`, `.nv-comment-reply-chip`) lives in
   `nexa-videos.css` next to the base comment rules. `openComments(id)` is exported
   as `NexaVideos.openComments` for tests.
+
+## Notification history is TAPPABLE -> deep-links to the content (2026-11)
+- Every history entry now carries a `target` (stored per-item in the local
+  `nexa_notif_history_<uid>` blob) and the row opens the EXACT content it is
+  about. `notifTargetForData(data)` maps a push payload to
+  `{type:'video',id}` | `{type:'moments'}` | `{type:'chat',uid}` |
+  `{type:'group',id}` | `{type:'profile',uid}` | `{type:'connect'}`.
+  `recordNotificationHistory({..., target})` persists it; the FCM foreground
+  handler passes `notifTargetForData(data)` and the in-app 1:1 message listener
+  passes `{type:'chat', uid}`.
+- `window.nexaOpenNotifItem(id, index)` is the tap router (rows get
+  `.nh-item-tappable` + `onclick="nexaOpenNotifItem('<id>', <i>)"`; it resolves by
+  the stable entry id FIRST, index only as a legacy fallback, so a notification
+  arriving while the sheet is open can't shift the target). It delegates to
+  `window.nexaOpenNotifTarget(target)`, which is ALSO called from the
+  service-worker `nexa-open-notif` message (the SW focuses the running window and
+  `postMessage`s the payload, so an OS-notification tap routes the already-open
+  app too). Routes: video -> Moments ->
+  Videos -> `NexaVideos.openFocus(id)`; chat -> Chats + `selectChat`; group ->
+  Community + `selectGroupChat`; profile -> `nexaProfileOpen(uid)`; connect ->
+  Connect tab. A missing chat/group toasts and does NOT close the sheet.
+- **Video interaction pushes now carry `videoId`** (`notifyVideoAuthor` and the
+  comment push add `videoId: id`) so the recipient's entry can deep-link back to
+  the clip - without it the target degrades to just opening Moments -> Videos.
+- **The OS notification tap lands on the same content**: `sendPushNotification`
+  stamps `data.click_action = notifClickAction(data)` (`/dashboard.html?video=<id>`
+  for a video event, else `/dashboard.html`), which `firebase-messaging-sw.js`'s
+  `notificationclick` already opens, and `checkVideoUrlParam()` resolves.
+- **Never drop the `target`** - without it the row is a dead end (plain, not
+  tappable). `clearNotificationHistory` still wipes `items`.
+
+## Video "Add music" field REMOVED (2026-11) - do NOT re-add
+- The composer and the edit sheet no longer have an "Add music" input
+  (`#nvComposerMusic` / `#nvEditMusic` are gone), `post()` no longer writes a
+  `music` field, `saveEdit()` writes ONLY `{caption}`, and the feed card / My
+  Videos row / liked-video mirror no longer render or store music. The dead
+  `.nv-music*` / `.nv-composer-music` / `.nv-mine-music` CSS was deleted too.
+  Existing `videos` docs that still carry a `music` string are simply ignored
+  (harmless extra field) - no migration needed. Do NOT re-add the music input
+  unless the owner asks.
+
 
 ## Video share accuracy + interaction notifications (2026-11) — do NOT regress
 - **The share badge label is ROUNDED** (`fmtCount` → "1.2K"), so re-parsing the
@@ -1908,7 +1953,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   capability is ever wanted back.
 
 ## Invite/preview regression suite
-- `node tests/invite-links.test.js` — headless checks (266 at last count). It extracts
+- `node tests/invite-links.test.js` — headless checks (403 at last count). It extracts
   the REAL functions from app-main.js/login.html/signup.html/join.html via brace
   matching and evaluates them in a `vm` context (invite URL builder, snippet helper,
   `?next=` open-redirect guard, the join.html intent://+nexa:// URL builders and the

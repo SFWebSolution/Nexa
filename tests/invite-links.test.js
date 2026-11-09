@@ -423,7 +423,7 @@ console.log("\n8) group/channel instant-open message cache");
 
   // Edit.
   ok("edit sheet opens for a video", /function openEditVideo\(id\)/.test(vids));
-  ok("saveEdit writes caption + music", /\.update\(\{ caption: caption, music: music \}\)/.test(vids));
+  ok("saveEdit writes the caption", /\.update\(\{ caption: caption \}\)/.test(vids));
   ok("edit exports present",
     /window\.nexaVideosEdit = openEditVideo;/.test(vids) &&
     /window\.nexaVideosSaveEdit = saveEdit;/.test(vids) &&
@@ -818,6 +818,149 @@ console.log("\n8) group/channel instant-open message cache");
     /if \(!target \|\| target === myUid\(\) \|\| !window\.sendPushNotification\) return;/.test(vids));
   ok("Settings copy describes interactions, not 'someone posted'",
     /Likes, comments and shares on your videos/.test(dash) && /new followers/.test(dash));
+}
+
+// ── Videos: "Add music" field removed ───────────────────────────────────────
+{
+  const vids = read("nexa-videos.js");
+  const vcss = read("nexa-videos.css");
+  ok("composer has no music input", !/nvComposerMusic/.test(vids) && !/Add music/.test(vids));
+  ok("edit sheet has no music field", !/nvEditMusic/.test(vids));
+  ok("post() does not write a music field", !/music: music/.test(vids) && !/const music =/.test(vids));
+  ok("feed card renders no music line", !/nv-music/.test(vids));
+  ok("My Videos renders no music line", !/nv-mine-music/.test(vids));
+  ok("liked-video mirror drops music", !/music: v\.music/.test(vids));
+  ok("no music source references remain anywhere in the video module",
+    !/\bmusic\b/i.test(vids));
+  ok("dead music CSS removed", !/nv-music|nv-composer-music|nv-mine-music/.test(vcss));
+}
+
+// ── Videos: Copy on comments ────────────────────────────────────────────────
+{
+  const vids = read("nexa-videos.js");
+  ok("every comment offers Copy", /nv-comment-act"[^>]*nexaVideosCopyComment/.test(vids));
+  ok("copyComment copies the comment text",
+    /function copyComment\(cid\)/.test(vids) && /copyText\(c\.text \|\| ''/.test(vids));
+  ok("copyText has a clipboard + execCommand fallback",
+    /function copyText\(payload, okMsg, errMsg\)/.test(vids) &&
+    /document\.execCommand\('copy'\)/.test(vids));
+  ok("copyComment is exported", /window\.nexaVideosCopyComment = copyComment;/.test(vids));
+}
+
+// ── Notification history: tappable → deep link to content ───────────────────
+{
+  const app = read("app-main.js");
+  const css = read("dashboard.css");
+  ok("history entries store a target", /target: \(target && target\.type\) \? target : null/.test(app));
+  ok("push payloads map to a deep-link target",
+    /function notifTargetForData\(data\)/.test(app) &&
+    /isVideoComment \|\| data\.isVideoLike \|\| data\.isVideoShare/.test(app) &&
+    /return id \? \{ type: 'video', id: String\(id\) \} : \{ type: 'moments' \}/.test(app));
+  ok("a video interaction carries videoId so it can deep-link",
+    /videoId: id \}\)/.test(read("nexa-videos.js")) &&
+    /videoId: id \}/.test(read("nexa-videos.js")));
+  ok("FCM + in-app message records pass a target",
+    /target: notifTargetForData\(data\)/.test(app) &&
+    /target: \{ type: 'chat', uid: uid \}/.test(app));
+  ok("history render marks tappable entries (keyed by stable id)",
+    /nh-item-tappable/.test(app) && /onclick="nexaOpenNotifItem\('\$\{eid\}', \$\{i\}\)"/.test(app));
+  ok("history tap resolves by id first, index fallback",
+    /window\.nexaOpenNotifItem = function \(id, index\)/.test(app) &&
+    /items\.find\(x => x && x\.id === id\)/.test(app) &&
+    /if \(!it\) it = items\[index\]/.test(app));
+  ok("tap router opens the content",
+    /window\.nexaOpenNotifItem = function \(id, index\)/.test(app) &&
+    /openFocus\(t\.id\)/.test(app) &&
+    /switchTab\('chats'\)/.test(app) && /selectChat\(u, null\)/.test(app) &&
+    /selectGroupChat\(g\)/.test(app) &&
+    /nexaProfileOpen\(t\.uid\)/.test(app));
+  ok("tappable history rows are styled", /\.nh-item-tappable/.test(css));
+  ok("clear history still resets items", /store\.items = \[\]|items: \[\]/.test(app));
+  ok("a video notification's OS tap deep-links to ?video=<id>",
+    /function notifClickAction\(data\)/.test(app) &&
+    /return '\/dashboard\.html\?video=' \+ encodeURIComponent\(t\.id\)/.test(app));
+  ok("sendPushNotification stamps click_action for the service worker",
+    /if \(!data\.click_action\) data\.click_action = notifClickAction\(data\)/.test(app));
+  ok("service worker cache name was bumped for this release",
+    /const CACHE_NAME = 'nexa-v14-notifdl';/.test(read("firebase-messaging-sw.js")));
+  ok("router is shared (nexaOpenNotifTarget) + history tap delegates to it",
+    /window\.nexaOpenNotifTarget = function \(t\)/.test(app) &&
+    /window\.nexaOpenNotifItem = function \(id, index\) \{[\s\S]{0,200}nexaOpenNotifTarget\(it\.target\)/.test(app));
+  ok("SW posts the tap to the focused app so it can route",
+    /client\.postMessage\(\{ type: "nexa-open-notif", data: notifData \}\)/.test(read("firebase-messaging-sw.js")) &&
+    /nexa-open-notif/.test(app));
+}
+
+// ── Notification-history deep-link router (functional) ─────────────────────
+console.log("\n" + "10) notification-history target mapping + tap router");
+{
+  const app = read("app-main.js");
+  const tfn = run(extractFn(app, "notifTargetForData") + "\n;notifTargetForData;", {});
+  eq("video comment -> video target", JSON.stringify(tfn({ isVideoComment: true, videoId: "v1" })), JSON.stringify({ type: "video", id: "v1" }));
+  eq("video with no id -> moments", JSON.stringify(tfn({ isVideo: true })), JSON.stringify({ type: "moments" }));
+  eq("group -> group target", JSON.stringify(tfn({ isGroup: true, chatUid: "g1" })), JSON.stringify({ type: "group", id: "g1" }));
+  eq("follow -> profile", JSON.stringify(tfn({ isFollow: true, chatUid: "u5" })), JSON.stringify({ type: "profile", uid: "u5" }));
+  eq("plain chat -> chat", JSON.stringify(tfn({ chatUid: "u7" })), JSON.stringify({ type: "chat", uid: "u7" }));
+  eq("connect -> connect", JSON.stringify(tfn({ isConnect: true })), JSON.stringify({ type: "connect" }));
+  eq("unknown -> null", tfn({}), null);
+
+  // Slice both router functions out by brace matching and drive them.
+  const grab = (src, marker) => {
+    const s0 = src.indexOf(marker);
+    if (s0 < 0) throw new Error("missing " + marker);
+    let i = src.indexOf("{", s0), d = 0;
+    for (let j = i; j < src.length; j++) { const c = src[j]; if (c === "{") d++; else if (c === "}") { d--; if (!d) return src.slice(s0, j + 1); } }
+    throw new Error("unbalanced " + marker);
+  };
+  const calls = [];
+  const ITEMS = [
+    { id: "a", target: { type: "video", id: "v1" } },
+    { id: "b", target: { type: "chat", uid: "u1" } },
+    { id: "c", target: { type: "chat", uid: "ghost" } },
+    { id: "d", target: { type: "group", id: "g1" } },
+    { id: "e", target: { type: "profile", uid: "u9" } },
+    { id: "f", target: { type: "connect" } },
+    { id: "g", target: { type: "moments" } },
+    { id: "h", target: { type: "community" } },
+  ];
+  const sb = {
+    window: {},
+    _nhLoad: () => ({ items: ITEMS }),
+    closeNotificationHistory: () => calls.push(["close"]),
+    switchTab: (x) => calls.push(["tab", x]),
+    switchMomentsSubTab: (x) => calls.push(["mSub", x]),
+    allUsersData: [{ uid: "u1" }],
+    myGroups: [{ id: "g1" }],
+    selectChat: (u) => calls.push(["chat", u.uid]),
+    selectGroupChat: (g) => calls.push(["group", g.id]),
+    nexaProfileOpen: (uid) => calls.push(["profile", uid]),
+    showNotifToast: (m) => calls.push(["toast", m]),
+  };
+  sb.window.NexaVideos = { openFocus: (id) => calls.push(["video", id]) };
+  run(grab(app, "window.nexaOpenNotifTarget = function (t)") + "\n" + grab(app, "window.nexaOpenNotifItem = function (id, index)") + "\n", sb);
+  const router = sb.window.nexaOpenNotifItem;
+
+  calls.length = 0; router("a", 0);
+  eq("video entry -> Moments>Videos + openFocus",
+    JSON.stringify(calls), JSON.stringify([["close"], ["tab", "stories"], ["mSub", "videos"], ["video", "v1"]]));
+  calls.length = 0; router("b", 1);
+  eq("chat entry -> Chats + selectChat", JSON.stringify(calls), JSON.stringify([["close"], ["tab", "chats"], ["chat", "u1"]]));
+  calls.length = 0; router("c", 2);
+  eq("missing chat toasts, no navigation", calls.length === 1 && calls[0][0] === "toast", true);
+  calls.length = 0; router("d", 3);
+  eq("group entry -> Community + selectGroupChat", JSON.stringify(calls), JSON.stringify([["close"], ["tab", "community"], ["group", "g1"]]));
+  calls.length = 0; router("e", 4);
+  eq("profile entry -> nexaProfileOpen", JSON.stringify(calls), JSON.stringify([["close"], ["profile", "u9"]]));
+  calls.length = 0; router("f", 5);
+  eq("connect entry -> Connect tab", JSON.stringify(calls), JSON.stringify([["close"], ["tab", "connect"]]));
+  calls.length = 0; router("g", 6);
+  eq("moments entry -> Moments>Videos", JSON.stringify(calls), JSON.stringify([["close"], ["tab", "stories"], ["mSub", "videos"]]));
+  calls.length = 0; router("h", 7);
+  eq("community entry -> Community tab", JSON.stringify(calls), JSON.stringify([["close"], ["tab", "community"]]));
+  calls.length = 0; router("b", 6);
+  eq("id wins over a stale index", JSON.stringify(calls), JSON.stringify([["close"], ["tab", "chats"], ["chat", "u1"]]));
+  calls.length = 0; router("zz", 99);
+  eq("unknown id + out-of-range index is a no-op", calls.length, 0);
 }
 
 console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
