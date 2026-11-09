@@ -56,6 +56,7 @@
     viewed: new Set(),      // video ids whose `views` we already bumped this session
     likedMine: {},          // videoId -> true/false (did *I* like it)
     savedMine: {},          // videoId -> true/false (did *I* save it)
+    sharedMine: {},         // videoId -> true/false (did *I* already share it)
     followOverride: {},     // uid -> bool, our own follow action the listener hasn't confirmed yet
     followBusy: {},         // uid -> a follow write is in flight (blocks a double tap)
     sharesExact: {},        // videoId -> exact share count (the badge label is rounded)
@@ -453,7 +454,7 @@
           '<button class="nv-rail-btn" data-act="comment" data-id="' + esc(v.id) + '" aria-label="Comments">' +
             '<i data-lucide="message-circle" style="width:26px;height:26px;"></i>' +
             '<span class="nv-rail-count" id="nvCommentCount-' + esc(v.id) + '">' + fmtCount(v.commentsCount) + '</span></button>' +
-          '<button class="nv-rail-btn" data-act="share" data-id="' + esc(v.id) + '" aria-label="Share">' +
+          '<button class="nv-rail-btn nv-rail-share" data-act="share" data-id="' + esc(v.id) + '" aria-label="Share">' +
             '<i data-lucide="share-2" style="width:25px;height:25px;"></i>' +
             '<span class="nv-rail-count" id="nvShareCount-' + esc(v.id) + '">' + fmtCount(v.shares) + '</span></button>' +
           '<button class="nv-rail-btn nv-rail-save" data-act="save" data-id="' + esc(v.id) + '" aria-label="Save">' +
@@ -482,6 +483,7 @@
           bumpView(id, card.getAttribute('data-uid'));
           ensureLikedState(id, card);
           ensureSavedState(id, card);
+          ensureSharedState(id, card);
         } else {
           card.classList.remove('nv-visible');
           if (video && !video.paused) { try { video.pause(); } catch (e) {} }
@@ -906,6 +908,46 @@
     notifyVideoAuthor(id, 'shared your video', { isVideoShare: true });
   }
 
+  // A share counts ONCE per user per video (exactly like a like), so tapping
+  // Share again must never inflate the number. The per-user marker
+  // videos/{id}/shares/{uid} is claimed inside a transaction; the aggregate
+  // count + the author notification only happen on the FIRST claim.
+  function claimShare(id) {
+    if (!myUid()) return Promise.resolve(false);
+    const vidRef = window.db.collection('videos').doc(id);
+    const markRef = vidRef.collection('shares').doc(myUid());
+    return window.db.runTransaction(tx => tx.get(markRef).then(d => {
+      if (d.exists) return false;
+      tx.set(markRef, { at: Date.now() });
+      return true;
+    })).then(did => {
+      state.sharedMine[id] = true;
+      paintShareState(id, true);
+      if (did) bumpShare(id);
+      return did;
+    }).catch(() => false);
+  }
+
+  function paintShareState(id, on) {
+    const b = document.querySelector('.nv-rail-share[data-id="' + id + '"]');
+    if (b) b.classList.toggle('shared', !!on);
+  }
+
+  // Resolve whether THIS user has already shared the video (from the per-user
+  // marker) and paint the rail's shared state. Mirrors ensureLikedState.
+  function ensureSharedState(id, card) {
+    if (state.sharedMine[id] !== undefined) {
+      paintShareState(id, !!state.sharedMine[id]);
+      return;
+    }
+    if (!myUid()) return;
+    try {
+      window.db.collection('videos').doc(id).collection('shares').doc(myUid()).get()
+        .then(d => { state.sharedMine[id] = d.exists; paintShareState(id, d.exists); })
+        .catch(() => {});
+    } catch (e) {}
+  }
+
   // Notify the video's author about an interaction — never yourself, and never
   // when the author is unknown. Best-effort (a push failure must not break the
   // interaction that triggered it).
@@ -927,8 +969,9 @@
     const text = (v && v.caption) ? v.caption : 'Watch this video on Nexa';
 
     // Count ONLY when a share really completed — cancelling the OS sheet or a
-    // failed clipboard write must not inflate the number.
-    const countShare = () => bumpShare(id);
+    // failed clipboard write must not inflate the number. claimShare is
+    // idempotent per user, so sharing the same video again never re-counts.
+    const countShare = () => claimShare(id);
     const clearInFlight = () => { state.sharing[id] = false; };
 
     if (navigator.share) {
@@ -951,7 +994,7 @@
   function copyShareFallback(id, payload) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(payload)
-        .then(() => { toast('Link copied', 'success'); bumpShare(id); })
+        .then(() => { toast('Link copied', 'success'); claimShare(id); })
         .catch(() => toast('Could not copy the link', 'error'));
       return;
     }
@@ -966,7 +1009,7 @@
       ta.focus(); ta.select();
       const ok = document.execCommand && document.execCommand('copy');
       ta.remove();
-      if (ok) { toast('Link copied', 'success'); bumpShare(id); return; }
+      if (ok) { toast('Link copied', 'success'); claimShare(id); return; }
     } catch (e) {}
     toast('Sharing is not supported on this device', 'error');
   }
@@ -994,6 +1037,7 @@
       const ref = window.db.collection('videos').doc(id);
       await purgeSub(ref, 'comments');
       await purgeSub(ref, 'likes');
+      await purgeSub(ref, 'shares');
       await ref.delete();
       state.videos = state.videos.filter(v => v.id !== id);
       state.myVideos = state.myVideos.filter(v => v.id !== id);

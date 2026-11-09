@@ -2272,3 +2272,30 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   was taller than the pane the browser squashed `.settings-profile-card` to 34px
   with the 58px avatar overflowing (the "profile card looks broken in Settings"
   bug). Nothing in that list may shrink below its content.
+
+## Video share counts ONCE per user (2026-11) — do NOT regress
+- **A share is a per-user action, exactly like a like.** The FIRST time you
+  share a video the aggregate `videos/{id}.shares` goes up by one and the author
+  is notified; sharing the SAME video again does NOT re-count and does NOT
+  re-notify. The user's rule: "one click on share and that's the final count."
+- **The per-user marker is `videos/{videoId}/shares/{uid}`** (same shape/rules as
+  `/likes`; rule block `match /shares/{uid}` — read any signed-in, create/delete
+  only your own uid, update false — MUST be deployed). `claimShare(id)` claims it
+  inside a `runTransaction` (`tx.get(markRef)` → if absent `tx.set({at})`), and
+  only when the claim SUCCEEDS does it call `bumpShare(id)` (aggregate
+  `increment(1)` + `notifyVideoAuthor`). Do NOT call `bumpShare` directly from the
+  share paths — always go through `claimShare`.
+- **Both count sites route through `claimShare`:** the Web Share API success path
+  in `shareVideo()` and BOTH clipboard paths in `copyShareFallback()`. A cancelled
+  OS sheet still counts nothing (the `.catch` never reaches `claimShare`).
+- **The rail button carries `.nv-rail-share`** and `ensureSharedState(id, card)`
+  (called from the same IntersectionObserver as `ensureLikedState`/
+  `ensureSavedState`) resolves whether YOU already shared it from the marker, then
+  paints `.shared` (green, `#4ade80`). `state.sharedMine` caches it. So a re-opened
+  video shows the share as already-done even though the count is aggregate.
+- `deleteVideo` now also `purgeSub(ref, 'shares')` alongside comments/likes.
+- `tests/videos-share.test.js` asserts the once-per-user behaviour (second share
+  of the same video is a no-op; a FRESH video's double tap counts once; the
+  clipboard fallback counts a fresh video but not a repeat) and the structural
+  invariants (marker rule, `claimShare`, `purgeSub('shares')`). Do NOT revert any
+  of the count assertions to "shares N times".

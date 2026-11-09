@@ -788,6 +788,9 @@ console.log("\n8) group/channel instant-open message cache");
 
   ok("video like mirrors into liked_videos", /liked_videos'\).doc\(id\)/.test(vids) && /mirror\.set\(/.test(vids) && /mirror\.delete\(\)/.test(vids));
   ok("video save mirrors into saved_videos", /saved_videos'\)\.doc\(id\)/.test(vids) && /state\.savedMine\[id\]/.test(vids) && /function ensureSavedState\(/.test(vids));
+  ok("videos has a per-user shares marker rule (once per user)", /match \/shares\/\{uid\}/.test(rules) && /allow create, delete: if isSignedIn\(\) && request\.auth\.uid == uid/.test(rules));
+  ok("a share is claimed once per user before counting", /function claimShare\(id\)/.test(vids) && /collection\('shares'\)\.doc\(myUid\(\)\)/.test(vids) && /if \(did\) bumpShare\(id\)/.test(vids));
+  ok("deleting a video purges the shares subcollection", /purgeSub\(ref, 'shares'\)/.test(vids));
   ok("video author is a profile tap target", /nv-author-tap"[^>]*nexaProfileOpen/.test(vids));
   ok("own profile tiles expose edit/delete", /nx-pv-manage/.test(app) && /nexaVideosEdit\(/.test(app) && /nexaVideosDelete\(/.test(app));
 

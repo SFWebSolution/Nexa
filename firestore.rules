@@ -348,6 +348,15 @@ service cloud.firestore {
         allow update: if false;
       }
 
+      // Per-user share marker — a share counts ONCE per user (like a like),
+      // so tapping Share again must not inflate `videos/{id}.shares`. Same
+      // shape and rules as /likes: the sharer writes only their own marker.
+      match /shares/{uid} {
+        allow read: if isSignedIn();
+        allow create, delete: if isSignedIn() && request.auth.uid == uid;
+        allow update: if false;
+      }
+
       // Comments — anyone signed in may read; the author owns their comment.
       // Anyone may bump `likes` (mirrors the parent video's views/likes rule);
       // everything else is author-only. The affectedKeys().hasOnly guard is what

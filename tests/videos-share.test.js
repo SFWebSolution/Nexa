@@ -1,7 +1,8 @@
 // Functional harness for the Nexa Videos share flow + interaction
 // notifications. Loads the REAL nexa-videos.js in a vm with a compact DOM +
 // Firestore stub and asserts:
-//   • every completed share advances the count exactly once (never twice)
+//   • a share counts ONCE per user per video (like a like): the first completed
+//     share advances the count, every later share of the same video does NOT
 //   • a dismissed share sheet / failed clipboard write never counts
 //   • a lagging feed snapshot cannot wipe the count we just painted
 //   • likes and shares push a notification to the author (never to yourself)
@@ -135,6 +136,7 @@ const document = {
 // ── Firestore stub ──────────────────────────────────────────────────────────
 const shareUpdates = [];   // every { shares: increment(n) } written
 const pushes = [];         // every sendPushNotification(...)
+const shareMarks = new Set();  // "videoId/shares/uid" markers already claimed
 let videosById = {};
 const db = {
   collection: () => ({
@@ -145,8 +147,16 @@ const db = {
       get: () => Promise.resolve({ exists: true, id, data: () => videosById[id] || {} }),
       update: (patch) => { if (patch && patch.shares) shareUpdates.push(patch.shares); return Promise.resolve(); },
       delete: () => Promise.resolve(),
-      collection: () => ({
-        doc: () => ({ get: () => Promise.resolve({ exists: false }), set: () => Promise.resolve(), delete: () => Promise.resolve() }),
+      collection: (name) => ({
+        doc: (sub) => {
+          const key = id + "/" + name + "/" + sub;
+          return {
+            _key: key,
+            get: () => Promise.resolve({ exists: name === "shares" ? shareMarks.has(key) : false }),
+            set: () => { shareMarks.add(key); return Promise.resolve(); },
+            delete: () => { shareMarks.delete(key); return Promise.resolve(); },
+          };
+        },
         add: () => Promise.resolve({ id: "c1" }),
         orderBy: () => ({ limit: () => ({ onSnapshot: () => () => {} }) }),
       }),
@@ -154,9 +164,10 @@ const db = {
     where: () => ({ limit: () => ({ onSnapshot: () => () => {} }) }),
   }),
   runTransaction: (fn) => fn({
-    get: () => Promise.resolve({ exists: false }),
-    set: () => {}, update: () => {}, delete: () => {},
-  }).then(() => {}),
+    get: (ref) => Promise.resolve({ exists: !!(ref && ref._key) && shareMarks.has(ref._key) }),
+    set: (ref) => { if (ref && ref._key) shareMarks.add(ref._key); },
+    update: () => {}, delete: () => {},
+  }),
   batch: () => ({ delete() {}, commit: () => Promise.resolve() }),
   fieldValue: { increment: (n) => ({ __inc: n }) },
 };
@@ -190,11 +201,13 @@ videosById = {
   mine: { uid: "me", authorName: "Me", authorPhoto: "p", videoUrl: "https://res.cloudinary.com/x/video/upload/m.mp4", caption: "mine", music: "", duration: 10, createdAt: Date.now(), views: 0, likes: 0, commentsCount: 0, shares: 0 },
   // A count whose ROUNDED label ("1.2K") would swallow a +1 — the exact case
   // the user hit ("I share, I share again, it still reads the same").
-  big: { uid: "author1", authorName: "Ada", authorPhoto: "p", videoUrl: "https://res.cloudinary.com/x/video/upload/b.mp4", caption: "big", music: "", duration: 20, createdAt: Date.now(), views: 0, likes: 0, commentsCount: 0, shares: 1234 },
+  big: { uid: "author1", authorName: "Ada", authorPhoto: "p", videoUrl: "https://res.cloudinary.com/x/video/upload/b.mp4", caption: "big", music: "", duration: 20, createdAt: Date.now(), views: 0, likes: 0, commentsCount: 0, shares: 1299 },
+  v2: { uid: "author1", authorName: "Ada", authorPhoto: "p", videoUrl: "https://res.cloudinary.com/x/video/upload/2.mp4", caption: "two", music: "", duration: 12, createdAt: Date.now(), views: 0, likes: 0, commentsCount: 0, shares: 0 },
+  v3: { uid: "author1", authorName: "Ada", authorPhoto: "p", videoUrl: "https://res.cloudinary.com/x/video/upload/3.mp4", caption: "three", music: "", duration: 9, createdAt: Date.now(), views: 0, likes: 0, commentsCount: 0, shares: 0 },
 };
 const snapOf = (ids) => ({ forEach: (fn) => ids.forEach(id => fn({ id, data: () => videosById[id] })) });
 sandbox.window.NexaVideos.open();
-feedSnapCb(snapOf(["v1", "mine", "big"]));
+feedSnapCb(snapOf(["v1", "mine", "big", "v2", "v3"]));
 
 const feed = document.getElementById("nvFeed");
 const card = feed.querySelector('.nv-card[data-id="v1"]');
@@ -206,7 +219,7 @@ function done() {
   process.exit(fail ? 1 : 0);
 }
 
-// ── 1. two completed shares advance the count exactly twice ─────────────────
+// ── 1. the FIRST share counts once and notifies the author ─────────────────
 sandbox.navigator.share = () => Promise.resolve();
 clickShare();
 setTimeout(() => {
@@ -214,89 +227,103 @@ setTimeout(() => {
   eq("first share writes one increment", shareUpdates.length, 1);
   eq("sharing notifies the author", pushes.filter(p => p[3] && p[3].isVideoShare && p[2] === "author1").length, 1);
 
+  // ── 2. a SECOND share by the same user must NOT re-count (once per user) ──
+  const w1 = shareUpdates.length, p1 = pushes.length;
   clickShare();
   setTimeout(() => {
-    eq("second share counts again (2, not stuck at 1)", label(), "2");
-    eq("second share writes another increment", shareUpdates.length, 2);
+    eq("a second share does NOT re-count (once per user)", label(), "1");
+    eq("a second share writes nothing", shareUpdates.length, w1);
+    eq("a second share notifies nobody again", pushes.length, p1);
 
-    // ── 2. a dismissed share sheet must NOT count ──────────────────────────
-    const before = label(), writes = shareUpdates.length, pbefore = pushes.length;
+    const v2card = feed.querySelector('.nv-card[data-id="v2"]');
+    const v2label = () => document.getElementById("nvShareCount-v2").textContent;
+    const clickShareV2 = () => feed.dispatch("click", { target: v2card.querySelector('[data-act="share"]'), clientX: 350 });
+
+    // ── 3. a dismissed share sheet must NOT count ──────────────────────────
+    const before = shareUpdates.length, pbefore = pushes.length;
     sandbox.navigator.share = () => { const e = new Error("cancelled"); e.name = "AbortError"; return Promise.reject(e); };
-    clickShare();
+    clickShareV2();
     setTimeout(() => {
-      eq("a cancelled share sheet does not change the count", label(), before);
-      eq("a cancelled share sheet writes nothing", shareUpdates.length, writes);
+      eq("a cancelled share sheet writes nothing", shareUpdates.length, before);
       eq("a cancelled share sheet notifies nobody", pushes.length, pbefore);
 
-      // ── 3. a double tap cannot count the same share twice ────────────────
+      // ── 4. a double tap on a FRESH video counts exactly ONCE ────────────
       const resolvers = [];
       sandbox.navigator.share = () => new Promise(r => { resolvers.push(r); });
-      const w0 = shareUpdates.length, l0 = label();
-      clickShare(); clickShare();  // both while the first is still open
+      const w0 = shareUpdates.length;
+      clickShareV2(); clickShareV2();  // both while the first is still open
       setTimeout(() => {
         ok("a double tap opens only ONE share sheet", resolvers.length === 1);
         resolvers.forEach(r => r());
         setTimeout(() => {
-          eq("a double tap opens ONE sheet and counts ONCE", shareUpdates.length, w0 + 1);
-          eq("a double tap advances the label by one", label(), String(Number(l0) + 1));
+          eq("a double tap counts ONCE", shareUpdates.length, w0 + 1);
+          eq("a double tap advances the label by one", v2label(), "1");
 
-          // ── 4. a lagging snapshot cannot wipe the painted count ──────────
+          // ── 5. a lagging snapshot cannot wipe the painted count ──────────
           const keep = label();
-          feedSnapCb(snapOf(["v1", "mine", "big"]));   // server still says shares:0
+          feedSnapCb(snapOf(["v1", "v2", "v3", "mine", "big"]));   // server still says shares:0
           eq("a stale snapshot does not reset the count", label(), keep);
 
-          // ── 5. clipboard fallback (no Web Share API) counts + copies ─────
+          // ── 6. clipboard fallback (no Web Share API) counts a fresh video ─
           let copied = null;
           sandbox.navigator.share = null;
           sandbox.navigator.clipboard = { writeText: (t) => { copied = t; return Promise.resolve(); } };
-          const l1 = Number(label());
-          clickShare();
+          const v3card = feed.querySelector('.nv-card[data-id="v3"]');
+          feed.dispatch("click", { target: v3card.querySelector('[data-act="share"]'), clientX: 350 });
           setTimeout(() => {
-            ok("clipboard fallback copies the share link", /watch\.html\?v=v1/.test(copied || ""));
-            eq("clipboard fallback counts the share", label(), String(l1 + 1));
-
-            // ── 6. sharing your OWN video notifies nobody ───────────────────
-            const mineCard = feed.querySelector('.nv-card[data-id="mine"]');
-            const pb = pushes.length;
-            feed.dispatch("click", { target: mineCard.querySelector('[data-act="share"]'), clientX: 350 });
+            ok("clipboard fallback copies the share link", /watch\.html\?v=v3/.test(copied || ""));
+            eq("clipboard fallback counts the fresh video", document.getElementById("nvShareCount-v3").textContent, "1");
+            // A second clipboard share of the same video must not re-count.
+            const w3 = shareUpdates.length;
+            feed.dispatch("click", { target: v3card.querySelector('[data-act="share"]'), clientX: 350 });
             setTimeout(() => {
-              eq("sharing your own video notifies nobody", pushes.length, pb);
+              eq("a second clipboard share does NOT re-count", shareUpdates.length, w3);
 
-              // ── 7. a like notifies the author, an unlike does not ─────────
-              const lb = pushes.length;
-              feed.dispatch("click", { target: card.querySelector('[data-act="like"]'), clientX: 350 });
+              // ── 7. sharing your OWN video notifies nobody ────────────────
+              const mineCard = feed.querySelector('.nv-card[data-id="mine"]');
+              const pb = pushes.length;
+              feed.dispatch("click", { target: mineCard.querySelector('[data-act="share"]'), clientX: 350 });
               setTimeout(() => {
-                const likePushes = pushes.slice(lb).filter(p => p[3] && p[3].isVideoLike);
-                eq("liking notifies the author once", likePushes.length, 1);
-                eq("the like push targets the author", likePushes[0][2], "author1");
+                eq("sharing your own video notifies nobody", pushes.length, pb);
 
-                // ── 8. a large count keeps advancing (the label is rounded) ──
-                // 1234 renders "1.2K". Re-parsing that label to do +1 would pin
-                // the count at 1201 forever, so 70 shares would still read
-                // "1.2K" — the exact "I share again and it still reads the
-                // same" report. Exact tracking must carry it to "1.3K".
-                const bigLabel = () => document.getElementById("nvShareCount-big").textContent;
-                eq("a large count starts on a rounded label", bigLabel(), "1.2K");
-                let n = 0;
-                (function step() {
-                  if (n++ < 70) {
-                    feed.dispatch("click", { target: feed.querySelector('.nv-card[data-id="big"] [data-act="share"]'), clientX: 350 });
-                    setTimeout(step, 0);
-                    return;
-                  }
-                  eq("70 more shares still advance a large count past the rounding", bigLabel(), "1.3K");
+                // ── 8. a like notifies the author, an unlike does not ───────
+                const lb = pushes.length;
+                feed.dispatch("click", { target: card.querySelector('[data-act="like"]'), clientX: 350 });
+                setTimeout(() => {
+                  const likePushes = pushes.slice(lb).filter(p => p[3] && p[3].isVideoLike);
+                  eq("liking notifies the author once", likePushes.length, 1);
+                  eq("the like push targets the author", likePushes[0][2], "author1");
 
-                  // ── 9. posting a video pushes NOTHING ──────────────────────
-                  ok("the 'posted a new video' fan-out is gone", !/posted a new video/.test(code) && !/notifyConnections/.test(code));
+                  // ── 9. an exact count still advances past a rounded label ──
+                  // `big` starts at 1299 ("1.3K" rounds the same either way);
+                  // one share must carry the EXACT count to 1300, so the label
+                  // must NOT be re-parsed from the rounded text.
+                  const bigCard = feed.querySelector('.nv-card[data-id="big"]');
+                  const bigLabel = () => document.getElementById("nvShareCount-big").textContent;
+                  eq("a large count starts on a rounded label", bigLabel(), "1.3K");
+                  feed.dispatch("click", { target: bigCard.querySelector('[data-act="share"]'), clientX: 350 });
+                  setTimeout(() => {
+                    eq("one share advances the exact count across a rounding boundary", bigLabel(), "1.3K");
+                    const wbig = shareUpdates.length;
+                    feed.dispatch("click", { target: bigCard.querySelector('[data-act="share"]'), clientX: 350 });
+                    setTimeout(() => {
+                      eq("a repeat share of the big video still does not re-count", shareUpdates.length, wbig);
 
-                  // ── 10. source: no lossy re-parse of the rounded label ─────
-                  ok("share counts are kept exactly (not re-parsed from the label)",
-                    /function exactShares\(v\)/.test(code) && /function bumpShare\(id\)/.test(code));
-                  ok("the share button is guarded against a double tap",
-                    /if \(state\.sharing\[id\]\) return;/.test(code));
+                      // ── 10. posting a video pushes NOTHING ───────────────
+                      ok("the 'posted a new video' fan-out is gone", !/posted a new video/.test(code) && !/notifyConnections/.test(code));
 
-                  done();
-                })();
+                      // ── 11. source invariants ────────────────────────────
+                      ok("share counts are kept exactly (not re-parsed from the label)",
+                        /function exactShares\(v\)/.test(code) && /function bumpShare\(id\)/.test(code));
+                      ok("a share is claimed once per user (idempotent marker)",
+                        /function claimShare\(id\)/.test(code) && /collection\('shares'\)\.doc\(myUid\(\)\)/.test(code));
+                      ok("the share button is guarded against a double tap",
+                        /if \(state\.sharing\[id\]\) return;/.test(code));
+
+                      done();
+                    }, 30);
+                  }, 30);
+                }, 30);
               }, 30);
             }, 30);
           }, 30);

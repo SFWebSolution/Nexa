@@ -124,6 +124,7 @@
 .nv-rail-like.liked svg { fill: #ff3b5c; }
 .nv-rail-btn.saved { color: #ffd166; }
 .nv-rail-btn.saved svg { fill: #ffd166; }
+.nv-rail-share.shared { color: #4ade80; }
 .nv-rail-del { color: #ff8080; }
 
 /* ── Double-tap heart burst ───────────────────────────────────────────── */
