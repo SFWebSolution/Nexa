@@ -2259,49 +2259,7 @@ function renderConnectRequests() {
     }).join('');
   }
 
-  // ── Follow requests (asymmetric, separate from connection requests) ──
-  // These come from the follows listener (pending follows whose target is me).
-  const pendingFollows = Object.values(_nexaFollowsBackMap || {}).filter(f => f && f.status === 'pending');
-  if (pendingFollows.length) {
-    html += '<div class="connect-section-title">Follow requests</div>';
-    html += pendingFollows.map(f => {
-      const u = findUser(f.follower);
-      const action = '<button class="connect-btn connect-btn-accept" onclick="acceptFollowRequest(\'' + f.follower + '\')">Accept</button>' +
-                     '<button class="connect-btn connect-btn-decline" onclick="declineFollowRequest(\'' + f.follower + '\')">Decline</button>';
-      return connectRowHtml(u, action);
-    }).join('');
-  }
   box.innerHTML = html;
-}
-
-// The target of a pending follow accepts (flip status) or declines (delete).
-function acceptFollowRequest(followerUid) {
-  if (!currentUser || !followerUid) return;
-  db.collection('follows').doc(followerUid + '__' + currentUser.uid)
-    .update({ status: 'accepted', updatedAt: Date.now() })
-    .then(() => {
-      // Accepting is the moment the follow becomes real, so BOTH counters move
-      // here: my followers +1 and the requester's following +1.
-      return _nexaBumpFollowCounts(currentUser.uid, followerUid, 1, 1);
-    })
-    .then(() => {
-      // Tell the requester their request was accepted.
-      try {
-        if (typeof sendPushNotification === 'function') {
-          sendPushNotification(nexaMyPushName(), 'accepted your follow request', followerUid, { isFollow: true, chatUid: currentUser.uid });
-        }
-      } catch (e) { /* non-fatal */ }
-      if (typeof showNotifToast === 'function') showNotifToast('Follow request accepted', 'success');
-      renderConnectRequests();
-    })
-    .catch(e => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e); if (typeof showNotifToast === 'function') showNotifToast('Could not accept', 'error'); });
-}
-
-function declineFollowRequest(followerUid) {
-  if (!currentUser || !followerUid) return;
-  db.collection('follows').doc(followerUid + '__' + currentUser.uid).delete()
-    .then(() => { renderConnectRequests(); })
-    .catch(e => { if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(e); });
 }
 
 // ── Green "update" dot on the Connect tab ───────────────────────────────────
@@ -2321,13 +2279,6 @@ function updateConnectTabDot() {
     // New incoming request, or a request I sent that was accepted.
     if (c.status === 'pending' && c.to === currentUser.uid) { hasUpdate = true; break; }
     if (c.status === 'accepted' && c.from === currentUser.uid) { hasUpdate = true; break; }
-  }
-  // A pending FOLLOW request (asymmetric follows) also lights the Connect dot.
-  if (!hasUpdate) {
-    for (const uid in (_nexaFollowsBackMap || {})) {
-      const f = _nexaFollowsBackMap[uid];
-      if (f && f.status === 'pending' && (f.updatedAt || f.createdAt || 0) > seenAt) { hasUpdate = true; break; }
-    }
   }
   ['connectTabDotDesktop', 'connectTabDotMobile'].forEach(id => {
     const el = document.getElementById(id);
@@ -9105,8 +9056,6 @@ function nexaRenderProfileActions(user, isSelf) {
   let followBtn;
   if (rel.following === 'accepted') {
     followBtn = '<button class="nx-pa-btn following" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="user-check" style="width:15px;height:15px;"></i> Following</button>';
-  } else if (rel.following === 'pending') {
-    followBtn = '<button class="nx-pa-btn following" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="clock" style="width:15px;height:15px;"></i> Requested</button>';
   } else if (rel.followsMe) {
     followBtn = '<button class="nx-pa-btn primary" id="nxFollowBtn" onclick="nexaToggleFollow(\'' + u + '\')"><i data-lucide="user-plus" style="width:15px;height:15px;"></i> Follow back</button>';
   } else {
@@ -9254,9 +9203,10 @@ function nexaPaintGrid(items, emptyText) {
 }
 
 /* ── Follow system (asymmetric; low-friction) ──────────────────────────────── */
-// A follow is a `follows/{follower__following}` doc. Public accounts
-// (followPolicy !== 'approve') auto-accept; others start pending. Counts are
-// denormalised onto users/{uid}.followCounts in a transaction with the doc.
+// A follow is a `follows/{follower__following}` doc. Following is INSTANT —
+// there is no approval step, so a new follow is always `status:'accepted'`.
+// Counts are denormalised onto users/{uid}.followCounts in a transaction with
+// the doc.
 
 function nexaRelationshipWith(otherUid) {
   // Reads ONLY the two in-memory maps the follows listener maintains — no
@@ -9279,40 +9229,26 @@ async function nexaToggleFollow(otherUid) {
     const myUid = currentUser.uid;
     const docId = myUid + '__' + otherUid;
     const ref = db.collection('follows').doc(docId);
-    if (rel.following === 'accepted' || rel.following === 'pending') {
-      // Unfollow / cancel.
+    if (rel.following === 'accepted') {
+      // Unfollow. Both counters move back — the follow was accepted, so it was
+      // counted on both sides.
       await ref.delete();
-      // Only clear the OTHER person's doc when it is still an unanswered
-      // REQUEST. Deleting an accepted follow here would silently drop their
-      // follow of me (and their following count) without them asking.
-      const back = (_nexaFollowsBackMap || {})[otherUid];
-      if (back && back.status === 'pending') {
-        db.collection('follows').doc(otherUid + '__' + myUid).delete().catch(() => {});
-      }
-      // Counts only ever move for an ACCEPTED follow, so only an accepted
-      // follow may move them back. A pending request credits nothing (see the
-      // follow branch below), so decrementing a cancellation would drive
-      // `following` negative.
-      if (rel.following === 'accepted') await _nexaBumpFollowCounts(otherUid, myUid, -1, -1);
+      await _nexaBumpFollowCounts(otherUid, myUid, -1, -1);
       if (typeof showNotifToast === 'function') showNotifToast('Unfollowed', 'success');
     } else {
-      const target = nxProfileData && nxProfileData.uid === otherUid ? nxProfileData : (allUsersData || []).find(x => x && x.uid === otherUid) || {};
-      const autoAccept = target.followPolicy !== 'approve';
-      await ref.set({ follower: myUid, following: otherUid, status: autoAccept ? 'accepted' : 'pending', createdAt: Date.now(), updatedAt: Date.now() });
-      // A PENDING request is not a follower yet. Crediting the target here AND
-      // again on accept double-counted a protected account's followers and
-      // left the requester's `following` at zero until (never after) accept.
-      if (autoAccept) await _nexaBumpFollowCounts(otherUid, myUid, 1, 1);
-      // Tell the person they gained a follower / got a request. Gated by the
-      // `connections` notification category (social/connection events).
+      // Following is instant — a new follow is accepted straight away, so the
+      // counts move for both sides in one step. There is no request/approve
+      // step (nothing can set `followPolicy:'approve'`).
+      await ref.set({ follower: myUid, following: otherUid, status: 'accepted', createdAt: Date.now(), updatedAt: Date.now() });
+      await _nexaBumpFollowCounts(otherUid, myUid, 1, 1);
+      // Tell the person they gained a follower. Gated by the `connections`
+      // notification category (social/connection events).
       try {
         if (typeof sendPushNotification === 'function') {
-          sendPushNotification(nexaMyPushName(),
-            autoAccept ? 'started following you' : 'wants to follow you',
-            otherUid, { isFollow: true, chatUid: myUid });
+          sendPushNotification(nexaMyPushName(), 'started following you', otherUid, { isFollow: true, chatUid: myUid });
         }
       } catch (e) { /* non-fatal */ }
-      if (typeof showNotifToast === 'function') showNotifToast(autoAccept ? 'Following' : 'Follow request sent', 'success');
+      if (typeof showNotifToast === 'function') showNotifToast('Following', 'success');
     }
   } catch (e) {
     console.warn('follow failed', e && e.message);
@@ -9404,7 +9340,7 @@ async function _nexaRenderFollowList() {
       const photo = safeMediaUrl(dir.photo || dir.photoUrl) || 'https://i.imgur.com/HeIi0wU.png';
       const isSelf = u === currentUser.uid;
       const following = nexaRelationshipWith(u).following;
-      const btn = isSelf ? '' : '<button class="nx-follow-btn' + (following ? '' : ' primary') + '" onclick="event.stopPropagation();nexaToggleFollowFromList(\'' + escapeHtml(u) + '\',this)">' + (following === 'accepted' ? 'Following' : (following === 'pending' ? 'Requested' : 'Follow')) + '</button>';
+      const btn = isSelf ? '' : '<button class="nx-follow-btn' + (following ? '' : ' primary') + '" onclick="event.stopPropagation();nexaToggleFollowFromList(\'' + escapeHtml(u) + '\',this)">' + (following ? 'Following' : 'Follow') + '</button>';
       return '<div class="nx-follow-row" onclick="closeFollowList();nexaProfileOpen(\'' + escapeHtml(u) + '\')">' +
         '<img class="nx-follow-av" src="' + escapeHtml(photo) + '" alt="" loading="lazy">' +
         '<div class="nx-follow-meta"><div class="nx-follow-name">' + escapeHtml(nm) + '</div>' +

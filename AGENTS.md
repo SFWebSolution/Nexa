@@ -1338,21 +1338,23 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   likes/shares/comments by the `videos` toggle. Settings copy for both was
   updated ("Likes, comments and shares on your videos" / "...and new followers").
 
-## Follow-count integrity (nexaToggleFollow) — do NOT regress
-- **A PENDING follow request credits NOTHING.** `nexaToggleFollow` bumps counts
-  only when `autoAccept` (`if (autoAccept) await _nexaBumpFollowCounts(...)`);
-  `acceptFollowRequest` does the single bump on accept for BOTH sides
-  (`_nexaBumpFollowCounts(currentUser.uid, followerUid, 1, 1)`). The old code
-  bumped `(otherUid, myUid, 1, autoAccept ? 1 : 0)` at request time AND again on
-  accept — double-counting a protected account's followers and leaving the
-  requester's `following` at 0 until (never after) accept.
-- **Only an ACCEPTED follow may be decremented.** Unfollow/cancel decrements
-  only `if (rel.following === 'accepted')`; cancelling a pending request must
-  not decrement (nothing was credited) or `following` goes negative.
-- **Unfollow must not silently drop the other person's ACCEPTED follow of me.**
-  The reverse `follows/{other__me}` doc is deleted ONLY when it is still a
-  pending REQUEST (`back.status === 'pending'`); deleting an accepted follow
-  would remove their follow (and their `following` count) without them asking.
+## Following is INSTANT — there is no follow-request / approval step (do NOT re-add)
+- **Tapping Follow accepts immediately.** `nexaToggleFollow` always writes
+  `status:'accepted'` and bumps BOTH counters in one step
+  (`await _nexaBumpFollowCounts(otherUid, myUid, 1, 1)`); unfollow writes
+  `-1, -1`. There is no pending/approve mode.
+- **The old "request → accept" follow machinery was REMOVED** (the owner asked
+  for it): there is no `acceptFollowRequest` / `declineFollowRequest`, no
+  "Follow requests" section in the Connect tab, no follow-request clause in
+  `updateConnectTabDot`, no `'Requested'` follow button, and no `followPolicy`
+  check. It was dead code — nothing ever wrote `followPolicy:'approve'`, so no
+  account could be in approval mode. Do NOT re-add any of it.
+  (`acceptConnectRequest` / `declineConnectRequest` and the Connect tab's
+  "Requested" button are the SEPARATE connection-request feature and stay.)
+- A legacy `follows` doc that somehow carries `status:'pending'` still renders
+  as a normal "Follow" button and is only cleaned up by the follower's own
+  unfollow — a stale pending doc is harmless because `nexaRelationshipWith`
+  only treats `accepted` as a real follow.
 
 ## Video composer preview — audio must STOP when the composer closes (do NOT regress)
 - **A hidden `<video>` keeps playing.** The video composer preview

@@ -775,26 +775,27 @@ console.log("\n8) group/channel instant-open message cache");
   ok("video like mirrors into liked_videos", /liked_videos'\).doc\(id\)/.test(vids) && /mirror\.set\(/.test(vids) && /mirror\.delete\(\)/.test(vids));
   ok("video author is a profile tap target", /nv-author-tap"[^>]*nexaProfileOpen/.test(vids));
   ok("own profile tiles expose edit/delete", /nx-pv-manage/.test(app) && /nexaVideosEdit\(/.test(app) && /nexaVideosDelete\(/.test(app));
-  ok("follow requests appear in the Connect requests list", /Follow requests<\/div>/.test(app) && /function acceptFollowRequest\(/.test(app) && /function declineFollowRequest\(/.test(app));
 
-  // ── Follow-count integrity (the double-count + negative-count bugs) ───────
-  // A pending request is not a follower yet: it is counted ONCE, at accept
-  // time, never at request time. Counting it in both places doubled it.
-  ok("a pending follow request does NOT bump the counts",
-    /if \(autoAccept\) await _nexaBumpFollowCounts\(otherUid, myUid, 1, 1\);/.test(app));
-  ok("accepting a request bumps BOTH sides once",
-    /return _nexaBumpFollowCounts\(currentUser\.uid, followerUid, 1, 1\);/.test(app));
-  // Cancelling a pending request must not decrement — nothing was counted.
-  ok("unfollow only decrements an ACCEPTED follow",
-    /if \(rel\.following === 'accepted'\) await _nexaBumpFollowCounts\(otherUid, myUid, -1, -1\);/.test(app));
-  // Unfollowing must not silently drop the other person's ACCEPTED follow of me.
-  ok("unfollow only clears the other side's PENDING request",
-    /if \(back && back\.status === 'pending'\)/.test(app));
-  // Both follow events notify the other party.
+  // ── Follow is INSTANT — there is no request/approve step ─────────────────
+  // Following used to have a dead "request → accept" mode that nothing could
+  // enable (no UI ever set `followPolicy:'approve'`). It was removed, so a
+  // follow is always accepted straight away and the accept UI is gone.
+  ok("following is instant (a new follow is accepted, never pending)",
+    /status: 'accepted', createdAt: Date\.now\(\), updatedAt: Date\.now\(\) \}\)/.test(app));
+  ok("no follow-approval / request machinery remains",
+    !/acceptFollowRequest/.test(app) && !/declineFollowRequest/.test(app) &&
+    !/Follow requests<\/div>/.test(app));
+  // (The Connect feature keeps its own "Requested" button — that is a
+  // connection request, not a follow request, so only the FOLLOW branch is
+  // asserted gone here.)
+  ok("no 'Requested' / pending-follow follow button",
+    !/rel\.following === 'pending'/.test(app) && !/'Requested' :/.test(app));
+  ok("follow counts move for BOTH sides in one step",
+    /await _nexaBumpFollowCounts\(otherUid, myUid, 1, 1\);/.test(app));
+  ok("unfollow moves both counts back",
+    /await _nexaBumpFollowCounts\(otherUid, myUid, -1, -1\);/.test(app));
   ok("a new follow notifies the target",
-    /autoAccept \? 'started following you' : 'wants to follow you'/.test(app) && /isFollow: true/.test(app));
-  ok("accepting a follow notifies the requester",
-    /'accepted your follow request', followerUid/.test(app));
+    /'started following you', otherUid, \{ isFollow: true, chatUid: myUid \}/.test(app));
   ok("the follow category is gated by the connections toggle",
     /if \(isFollow && !notificationSettings\.connections\) return;/.test(app));
   ok("follow/like/share have distinct notification icons",

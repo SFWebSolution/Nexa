@@ -173,7 +173,10 @@ ok("they follow me → 'Follow back'", /Follow back/.test(el("nxProfileActions")
 
 sandbox._nexaFollowsMap = { other: { status: "pending" } };
 nexaProfileShow(OTHER);
-ok("pending outgoing → 'Requested'", /Requested/.test(el("nxProfileActions").innerHTML));
+// Following is instant now, so a legacy 'pending' doc still renders the plain
+// Follow button (there is no approval mode to show 'Requested' for).
+ok("a legacy pending follow renders 'Follow' (no approval mode)",
+  /Follow/.test(el("nxProfileActions").innerHTML) && !/Requested/.test(el("nxProfileActions").innerHTML));
 
 // ── 3. my own profile ──────────────────────────────────────────────────────
 sandbox._nexaFollowsMap = {};
