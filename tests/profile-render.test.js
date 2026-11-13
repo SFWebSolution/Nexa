@@ -128,6 +128,7 @@ vm.runInContext(MODULE, sandbox);
 const {
   nexaProfileShow, nxProfileTab, nexaGridTileHtml, nexaRelationshipWith,
   nexaSetTabCount, nexaLoadSavedGrid, nexaLoadMirrorGrid, nexaWatchVideo,
+  nexaPaintMirror, nexaPaintLikedTextList, nexaLikedRowHtml, nexaPaintGrid,
 } = sandbox;
 
 let pass = 0, fail = 0;
@@ -216,6 +217,28 @@ nexaWatchVideo("v9");
 ok("tile click switches to the Moments tab", navCalls.some(c => c[0] === "tab" && c[1] === "stories"));
 ok("tile click opens the Videos sub-tab", navCalls.some(c => c[0] === "sub" && c[1] === "videos"));
 ok("tile click focuses that exact video", navCalls.some(c => c[0] === "focus" && c[1] === "v9"));
+
+// ── 4b. the Liked tab is a TEXT list, not a thumbnail wall ─────────────────
+const likedRow = nexaLikedRowHtml({ id: "v7", caption: "Sunset over the bay" });
+ok("liked row shows the caption text", /<span class="nx-liked-text">Sunset over the bay<\/span>/.test(likedRow));
+ok("liked row opens that video", /nexaWatchVideo\('v7'\)/.test(likedRow));
+ok("liked row has NO thumbnail", !/nx-pv-tile/.test(likedRow) && !/<img/.test(likedRow));
+ok("liked row escapes the caption (source)", /nx-liked-text">' \+ escapeHtml\(text\)/.test(SRC));
+ok("liked row falls back to a label when there is no caption", /nx-liked-text">Video<\/span>/.test(nexaLikedRowHtml({ id: "v9" })));
+
+el("nxProfileGrid").innerHTML = "";
+nexaPaintLikedTextList([{ id: "v7", caption: "One" }, { id: "v8", caption: "Two" }], "none");
+const likedHtml = el("nxProfileGrid").innerHTML;
+ok("liked list renders a text row per item", (likedHtml.match(/nx-liked-row/g) || []).length === 2);
+ok("liked list does NOT render grid tiles", !/nx-pv-tile/.test(likedHtml));
+
+// The router must send the Videos tab to tiles and the Liked tab to text.
+el("nxProfileGrid").innerHTML = "";
+nexaPaintMirror("videos", [{ id: "v1", uid: "other", thumbUrl: "https://x/t.jpg", views: 3, likes: 1 }], "none");
+ok("videos mirror still paints tiles", /nx-pv-tile/.test(el("nxProfileGrid").innerHTML));
+el("nxProfileGrid").innerHTML = "";
+nexaPaintMirror("liked", [{ id: "v1", caption: "hi" }], "none");
+ok("liked mirror paints the text list", /nx-liked-list/.test(el("nxProfileGrid").innerHTML) && !/nx-pv-tile/.test(el("nxProfileGrid").innerHTML));
 
 // ── 5. tab switching does not throw with a cold cache ──────────────────────
 let threw = false;

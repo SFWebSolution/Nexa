@@ -9381,7 +9381,7 @@ function nexaLoadMirrorGrid(kind, uid) {
   const cacheKey = kind + '_grid_' + uid;
   const hit = nexaCacheRead(cacheKey, NEXA_PROFILE_TTL_MS);
   if (hit && hit.fresh && Array.isArray(hit.value)) {
-    if (isActive()) nexaPaintGrid(hit.value, emptyText);
+    if (isActive()) nexaPaintMirror(tab, hit.value, emptyText);
     nexaSetTabCount(tab, hit.value.length);
   } else if (isActive()) {
     grid.innerHTML = '<div class="nx-profile-empty">Loading…</div>';
@@ -9393,7 +9393,7 @@ function nexaLoadMirrorGrid(kind, uid) {
       items.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
       nexaCacheWrite(cacheKey, items);
       nexaSetTabCount(tab, items.length);
-      if (isActive()) nexaPaintGrid(items, emptyText);
+      if (isActive()) nexaPaintMirror(tab, items, emptyText);
     }, err => {
       if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
       if (!hit || !hit.fresh) grid.innerHTML = '<div class="nx-profile-empty">Could not load videos.</div>';
@@ -9409,6 +9409,35 @@ function nexaPaintGrid(items, emptyText) {
   }
   grid.innerHTML = items.map(nexaGridTileHtml).join('');
   if (window.lucide) lucide.createIcons();
+}
+
+function nexaPaintMirror(kind, items, emptyText) {
+  if (kind === 'liked') nexaPaintLikedTextList(items, emptyText);
+  else nexaPaintGrid(items, emptyText);
+}
+
+// The Liked tab lists the liked items as TEXT (the caption), not as video
+// thumbnails — the liked list is a record, not a re-watch wall. Tapping a row
+// still opens that video. Only the liked mirror carries a caption, so videos
+// with no caption fall back to the author name, then a generic label.
+function nexaPaintLikedTextList(items, emptyText) {
+  const grid = document.getElementById('nxProfileGrid');
+  if (!grid) return;
+  if (!items || !items.length) {
+    grid.innerHTML = '<div class="nx-profile-empty">' + escapeHtml(emptyText || 'Nothing here yet.') + '</div>';
+    return;
+  }
+  grid.innerHTML = '<div class="nx-liked-list">' + items.map(nexaLikedRowHtml).join('') + '</div>';
+  if (window.lucide) lucide.createIcons();
+}
+
+function nexaLikedRowHtml(v) {
+  const id = String(v.id == null ? '' : v.id).replace(/[^A-Za-z0-9_-]/g, '');
+  const text = String(v.caption || v.authorName || 'Video').trim() || 'Video';
+  return '<div class="nx-liked-row" onclick="nexaWatchVideo(\'' + id + '\')">' +
+    '<span class="nx-liked-text">' + escapeHtml(text) + '</span>' +
+    '<i data-lucide="chevron-right" class="nx-liked-chev" style="width:16px;height:16px;"></i>' +
+  '</div>';
 }
 
 /* ── Follow system (asymmetric; low-friction) ──────────────────────────────── */

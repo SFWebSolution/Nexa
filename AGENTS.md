@@ -1228,7 +1228,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   `videos.where('uid','==',uid)` listener while the profile is open
   (unsubscribed in `closeNexaProfile`); the Liked grid reads
   `users/{uid}/liked_videos` (a per-user mirror — NOT a `collectionGroup`
-  query). `_nexaProfileRefreshCounts()` is a ONE-doc read used only when the
+  query) and paints a TEXT list (`nexaPaintLikedTextList`), not tiles. `_nexaProfileRefreshCounts()` is a ONE-doc read used only when the
   directory has no counts yet. Keep it that way.
 - **`@handle` == the existing `username`** (unique, lowercase, one-time change
   from Settings → Personal Info). Profiles resolve by `username` OR uid
@@ -1465,8 +1465,16 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   video was removed), so the thumbnail stays clean. `formatCount(Number(v.likes)
   || 0)` keeps a missing count at "0" (never "undefined"). Do NOT re-add the
   `<i data-lucide="heart">` inside `.nx-pv-likes` or its `svg` fill CSS.
+- **The Videos tab renders thumbnail TILES; the Liked tab renders a TEXT list.**
+  The user asked for the liked items to read as text alone, not as a wall of
+  liked-video thumbnails, so `nexaLoadMirrorGrid` paints through
+  `nexaPaintMirror(kind, ...)`: `kind === 'liked'` → `nexaPaintLikedTextList`
+  (`.nx-liked-list` of `.nx-liked-row` rows showing the caption, each row still
+  calling `nexaWatchVideo(id)` to open the video), everything else →
+  `nexaPaintGrid` tiles. Do NOT send the Liked tab back through `nexaPaintGrid`,
+  and do NOT put thumbnails on a liked row.
 - **The `liked_videos` mirror carries `views` + `likes`** (written by `doLike` in
-  nexa-videos.js) so the Liked grid can show numbers without a read per tile. The
+  nexa-videos.js) so the Videos grid can show numbers without a read per tile. The
   mirror is a cosmetic cache — a stale/absent count just shows 0, it never blocks
   the grid.
 

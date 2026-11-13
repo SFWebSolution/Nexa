@@ -766,6 +766,8 @@ console.log("\n8) group/channel instant-open message cache");
   ok("follows listener is a single 2-query listener", /function startFollowsListener\(/.test(app) && /where\('follower', '==', myUid\)/.test(app) && /where\('following', '==', myUid\)/.test(app));
   ok("profile video grid is cached + one listener", /function nexaLoadVideoGrid\(/.test(app) && /nexaCacheWrite\(cacheKey/.test(app));
   ok("liked grid reads the mirror (no collection-group)", /function nexaLoadLikedGrid\(/.test(app) && /collection\('liked_videos'\)/.test(app) && !/collectionGroup/.test(app));
+  ok("liked tab is a TEXT list, not a thumbnail wall", /function nexaPaintLikedTextList\(/.test(app) && /function nexaLikedRowHtml\(/.test(app) && /class="nx-liked-text">' \+ escapeHtml\(text\)/.test(app));
+  ok("mirror paint routes liked->text, videos->tiles", /function nexaPaintMirror\(kind, items, emptyText\) \{\s*if \(kind === 'liked'\) nexaPaintLikedTextList\(items, emptyText\);\s*else nexaPaintGrid\(items, emptyText\)/.test(app));
   ok("saved grid reads the mirror (no collection-group)", /function nexaLoadSavedGrid\(/.test(app) && /collection\('saved_videos'\)/.test(app) && !/collectionGroup/.test(app));
   ok("Saved tab exists + is self-only", /data-tab="saved"/.test(dash) && /id="nxPtabSaved"/.test(dash) && /nxProfileTabName === 'saved' && !isSelf/.test(app));
   ok("tab count chips exist (videos/liked/saved)", /id="nxPtabCountVideos"/.test(dash) && /id="nxPtabCountLiked"/.test(dash) && /id="nxPtabCountSaved"/.test(dash) && /function nexaSetTabCount\(/.test(app));
