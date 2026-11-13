@@ -202,7 +202,7 @@ ok("feed renders one card per video", cards.length === 2);
 const card1 = feed.querySelector('.nv-card[data-id="v1"]');
 const video1 = card1.querySelector(".nv-video");
 video1.duration = 60; video1.currentTime = 0;
-ok("duration badge shows the clip length", card1.querySelector(".nv-dur").textContent === "1:00");
+ok("duration badge shows watched / total (starts at 0:00)", card1.querySelector(".nv-dur").textContent === "0:00 / 1:00");
 
 // ── 1. snapshot patches in place (no restart) ───────────────────────────────
 videosById.v1 = Object.assign({}, videosById.v1, { likes: 9 });

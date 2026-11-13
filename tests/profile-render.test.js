@@ -67,6 +67,9 @@ function chain() {
   return o;
 }
 
+// Records navigation triggered by a tile click (nexaWatchVideo).
+const navCalls = [];
+
 const sandbox = {
   console,
   setTimeout,
@@ -107,7 +110,8 @@ const sandbox = {
   setBlocked: () => {},
   uploadFile: () => Promise.resolve(""),
   updateConnectTabDot: () => {},
-  switchTab: () => {},
+  switchTab: (t) => { navCalls.push(["tab", t]); },
+  switchMomentsSubTab: (t) => { navCalls.push(["sub", t]); },
   openMediaViewer: () => {},
   nexaNoteQuotaError: () => {},
   nexaCacheRead: () => null,
@@ -117,13 +121,13 @@ const sandbox = {
   lucide: { createIcons: () => {} },
 };
 sandbox.window.lucide = sandbox.lucide;
-sandbox.window.NexaVideos = {};
+sandbox.window.NexaVideos = { openFocus: (id) => { navCalls.push(["focus", id]); } };
 vm.createContext(sandbox);
 vm.runInContext(MODULE, sandbox);
 
 const {
   nexaProfileShow, nxProfileTab, nexaGridTileHtml, nexaRelationshipWith,
-  nexaSetTabCount, nexaLoadSavedGrid, nexaLoadMirrorGrid,
+  nexaSetTabCount, nexaLoadSavedGrid, nexaLoadMirrorGrid, nexaWatchVideo,
 } = sandbox;
 
 let pass = 0, fail = 0;
@@ -197,10 +201,21 @@ ok("tile opens the watcher", /nexaWatchVideo\('v1'\)/.test(tile));
 ok("someone else's tile has NO manage buttons", !/nx-pv-manage/.test(tile));
 const ownTile = nexaGridTileHtml({ id: "v2", uid: "me", thumbUrl: "https://x/t.jpg", views: 3 });
 ok("my own tile exposes edit + delete", /nx-pv-manage/.test(ownTile) && /nexaVideosEdit\('v2'\)/.test(ownTile) && /nexaVideosDelete\('v2'\)/.test(ownTile));
-// Grid tiles carry a like badge (the Liked tab / profile grid reads at a glance).
+// The tile keeps the views badge; the like count rides as PLAIN TEXT (no heart
+// icon, no pill) so the thumbnail stays clean.
 const likedTile = nexaGridTileHtml({ id: "v3", uid: "other", thumbUrl: "https://x/t.jpg", views: 10, likes: 2400 });
-ok("tile shows a like count badge", /nx-pv-likes/.test(likedTile) && /2\.4k/.test(likedTile));
-ok("a tile with no likes renders 0, not 'undefined'", /nx-pv-likes[^<]*<[^>]*>[^<]*<\/i>\s*0/.test(nexaGridTileHtml({ id: "v4", uid: "other", views: 0 })));
+ok("tile keeps the views badge", /nx-pv-views/.test(likedTile));
+ok("tile shows the like count as plain text", /<span class="nx-pv-likes">2\.4k<\/span>/.test(likedTile));
+ok("the like badge has NO heart icon", !/nx-pv-likes"><i /.test(likedTile));
+ok("a tile with no likes renders 0, not 'undefined'", /<span class="nx-pv-likes">0<\/span>/.test(nexaGridTileHtml({ id: "v4", uid: "other", views: 0 })));
+
+// Tapping a tile must land on the video in the feed: the feed lives in the
+// Moments > Videos pane, so nexaWatchVideo has to switch there first.
+navCalls.length = 0;
+nexaWatchVideo("v9");
+ok("tile click switches to the Moments tab", navCalls.some(c => c[0] === "tab" && c[1] === "stories"));
+ok("tile click opens the Videos sub-tab", navCalls.some(c => c[0] === "sub" && c[1] === "videos"));
+ok("tile click focuses that exact video", navCalls.some(c => c[0] === "focus" && c[1] === "v9"));
 
 // ── 5. tab switching does not throw with a cold cache ──────────────────────
 let threw = false;

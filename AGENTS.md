@@ -1266,10 +1266,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - A grid tile with no stored thumb falls back to a Cloudinary frame-0 poster
   (`nexaCloudThumb(v.videoUrl)` — `so_0,w_540` + `.jpg`), and to a
   `.nx-pv-fallback` video glyph when even that isn't possible.
-- `nexaWatchVideo(id)` CLOSES the profile before opening the feed, so the video
-  player isn't buried under the profile overlay.
+- `nexaWatchVideo(id)` CLOSES the profile, then switches to the Moments tab and
+  the Videos sub-tab BEFORE `NexaVideos.openFocus(id)` — the feed renders inside
+  the Moments > Videos pane, so without the tab switch `openFocus` painted into a
+  hidden pane and a profile-tile tap looked dead. Keep the tab switch.
 - Tests: `tests/profile-follow.test.js` (8 — the `nexaRelationshipWith` branch
-  logic) and `tests/profile-render.test.js` (27 — extracts the REAL profile
+  logic) and `tests/profile-render.test.js` (39 — extracts the REAL profile
   module into a `vm` with a DOM stub and asserts what gets painted: name,
   `@handle`, avatar, cover, bio, link, stats, the action buttons per
   relationship, self-profile actions, grid tiles, cold-cache tab switching).
@@ -1457,10 +1459,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   function declarations, so they are already real `window` globals).
 
 ## Profile grid tiles show like counts (app-main.js) — do NOT regress
-- **`nexaGridTileHtml(v)` renders BOTH a view badge (`.nx-pv-views`, bottom-left)
-  and a like badge (`.nx-pv-likes`, bottom-right)** so a profile grid — the
-  Liked tab especially — reads at a glance. `formatCount(Number(v.likes) || 0)`
-  keeps a missing count at "0" (never "undefined").
+- **`nexaGridTileHtml(v)` keeps the view badge (`.nx-pv-views`, bottom-left) but
+  renders the like count as PLAIN TEXT (`.nx-pv-likes`, bottom-right) — no heart
+  icon, no pill.** The user asked for the number ALONE (the heart-badge-on-the-
+  video was removed), so the thumbnail stays clean. `formatCount(Number(v.likes)
+  || 0)` keeps a missing count at "0" (never "undefined"). Do NOT re-add the
+  `<i data-lucide="heart">` inside `.nx-pv-likes` or its `svg` fill CSS.
 - **The `liked_videos` mirror carries `views` + `likes`** (written by `doLike` in
   nexa-videos.js) so the Liked grid can show numbers without a read per tile. The
   mirror is a cosmetic cache — a stale/absent count just shows 0, it never blocks
@@ -2180,7 +2184,12 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   (`startScrub()` intercepts `pointerdown` on `.nv-progress` BEFORE the
   long-press speed handler, with a 22px invisible hit area via `.nv-progress::after`
   because the visible track is only 3px). A duration badge (`.nv-dur`) sits
-  top-left. `stop()` also PAUSES every clip, not just unsubscribes.
+  top-left and reads **`watched / total`** (e.g. `0:12 / 0:30`): the card builder
+  seeds it with `0:00 / <total>` and `attachVideoTime`'s `timeupdate` `paint()`
+  updates it from the media clock. Do NOT revert it to the total length alone, and
+  do NOT re-add a `.nv-dur` write to `patchCard` (the live clock owns the badge —
+  a snapshot repaint would reset the watched time to the total). `stop()` also
+  PAUSES every clip, not just unsubscribes.
 - **Counts are accurate:** likes move the per-user marker AND the denormalised
   count TOGETHER in one `runTransaction` (idempotent -- a double-tap can't
   double-count and a failed write rolls the badge back); the share counter
@@ -2299,3 +2308,13 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   clipboard fallback counts a fresh video but not a repeat) and the structural
   invariants (marker rule, `claimShare`, `purgeSub('shares')`). Do NOT revert any
   of the count assertions to "shares N times".
+
+## Video composer caps are HIDDEN but still ENFORCED (nexa-videos.js) — do NOT regress
+- The pick subtitle reads just **"From your gallery or camera"** and the duration
+  box shows only the length (`0:30`) — the "up to 20 min · max 100 MB" and the
+  `· 87 MB` figure were REMOVED from the UI at the user's request.
+- The caps themselves are UNCHANGED and still enforced in `onFileChosen` /
+  `post()` (`MAX_VIDEO_MIN`, `MAX_VIDEO_MB` → `MAX_VIDEO_BYTES`): an over-long or
+  over-size file is refused and cannot be posted. Do NOT delete the constants or
+  the checks when trimming the visible text, and do NOT let the text removal
+  become a silent no-op — the client still blocks the upload.

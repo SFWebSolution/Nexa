@@ -471,6 +471,10 @@ console.log("\n8) group/channel instant-open message cache");
   })());
   ok("patchCard updates like/comment/share counts", /\[data-act="comment"\] \.nv-rail-count/.test(vids));
   ok("cards show a duration badge", /class="nv-dur"/.test(vids) && /function fmtDur\(ms\)/.test(vids));
+  ok("duration badge starts at 0:00 / total", /'0:00 \/ ' \+ fmtDur\(Number\(v\.duration\) \* 1000\)/.test(vids));
+  ok("duration badge tracks watched / total live", /fmtDur\(\(video\.currentTime \|\| 0\) \* 1000\) \+ ' \/ ' \+ fmtDur\(d \* 1000\)/.test(vids));
+  ok("composer pick text no longer names the caps", /nv-pick-sub">From your gallery or camera<\/div>/.test(vids) && !/up to ' \+ MAX_VIDEO_MIN/.test(vids));
+  ok("composer duration box drops the MB figure", /durBox\.textContent = fmtDur\(durMs\);/.test(vids) && !/durBox\.textContent = fmtDur\(durMs\) \+ ' · '/.test(vids));
   ok("progress bar is driven from the media clock", /addEventListener\('timeupdate', paint\)/.test(vids));
   ok("double-tap left/right seeks ±10s (SEEK_STEP)",
     /const SEEK_STEP = 10;/.test(vids) && /if \(z === 'l'\) seekBy\(card, -SEEK_STEP\);/.test(vids) &&

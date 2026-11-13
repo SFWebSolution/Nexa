@@ -9278,16 +9278,16 @@ function nexaGridTileHtml(v) {
         '<button class="nx-pv-mbtn danger" onclick="event.stopPropagation();nexaVideosDelete(\'' + id + '\')" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>' +
       '</div>'
     : '';
-  // Likes ride along on the tile so a grid reads at a glance (the Liked tab
-  // especially). The count is denormalised on the video doc; the liked_videos
-  // mirror carries a copy too.
+  // The like count is denormalised on the video doc (the liked_videos mirror
+  // carries a copy too). It rides the tile as PLAIN TEXT — no heart icon, no
+  // pill — so the thumbnail stays clean; the views badge keeps its icon.
   const likes = formatCount(Number(v.likes) || 0);
   return '<div class="nx-pv-tile" onclick="nexaWatchVideo(\'' + id + '\')">' +
     (thumb
       ? '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">'
       : '<div class="nx-pv-fallback"><i data-lucide="video" style="width:22px;height:22px;"></i></div>') +
     '<span class="nx-pv-views"><i data-lucide="play" style="width:12px;height:12px;"></i> ' + views + '</span>' +
-    '<span class="nx-pv-likes"><i data-lucide="heart" style="width:11px;height:11px;"></i> ' + likes + '</span>' +
+    '<span class="nx-pv-likes">' + likes + '</span>' +
     manage +
   '</div>';
 }
@@ -9295,7 +9295,14 @@ function nexaGridTileHtml(v) {
 function nexaWatchVideo(id) {
   // Leave the profile first so the video feed isn't buried under the overlay.
   closeNexaProfile();
-  if (window.NexaVideos && window.NexaVideos.openFocus) { window.NexaVideos.openFocus(id); return; }
+  if (window.NexaVideos && window.NexaVideos.openFocus) {
+    // The feed renders inside the Moments > Videos pane, so switch there first —
+    // otherwise openFocus paints into a hidden pane and the tap looks dead.
+    switchTab('stories');
+    switchMomentsSubTab('videos');
+    window.NexaVideos.openFocus(id);
+    return;
+  }
   const v = (nxProfileVideos || []).find(x => x.id === id);
   if (v && window.openMediaViewer) window.openMediaViewer(v.videoUrl, 'video');
 }

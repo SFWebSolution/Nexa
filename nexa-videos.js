@@ -345,7 +345,6 @@
       state.sharesExact[v.id] = serverShares;
     }
     set('[data-act="share"] .nv-rail-count', fmtCount(state.sharesExact[v.id]));
-    set('.nv-dur', v.duration ? fmtDur(Number(v.duration) * 1000) : '');
     const likeBtn = card.querySelector('.nv-rail-like');
     if (likeBtn) likeBtn.classList.toggle('liked', !!state.likedMine[v.id]);
     const meta = card.querySelector('.nv-meta');
@@ -445,7 +444,7 @@
           '<i data-lucide="heart" style="width:84px;height:84px;"></i></div>' +
         '<div class="nv-play-hint" aria-hidden="true">' +
           '<i data-lucide="play" style="width:30px;height:30px;"></i></div>' +
-        '<div class="nv-dur">' + (v.duration ? fmtDur(Number(v.duration) * 1000) : '') + '</div>' +
+        '<div class="nv-dur">' + (v.duration ? '0:00 / ' + fmtDur(Number(v.duration) * 1000) : '') + '</div>' +
         metaHtml(v) +
         '<div class="nv-rail">' +
           '<button class="nv-rail-btn nv-rail-like' + (liked ? ' liked' : '') + '" data-act="like" data-id="' + esc(v.id) + '" aria-label="Like">' +
@@ -501,7 +500,8 @@
     const durEl = card.querySelector('.nv-dur');
     const paint = () => {
       const d = video.duration;
-      if (durEl && isFinite(d) && d > 0) durEl.textContent = fmtDur(d * 1000);
+      // "watched / total" so you can see how far in you are, not just the length.
+      if (durEl && isFinite(d) && d > 0) durEl.textContent = fmtDur((video.currentTime || 0) * 1000) + ' / ' + fmtDur(d * 1000);
       if (prog && isFinite(d) && d > 0) {
         prog.style.width = Math.min(100, (video.currentTime / d) * 100) + '%';
       }
@@ -1419,7 +1419,7 @@
             '<div class="nv-composer-pick" id="nvComposerPick" onclick="nexaVideosPickFile()">' +
               '<div class="nv-pick-ic"><i data-lucide="video" style="width:40px;height:40px;"></i></div>' +
               '<div class="nv-pick-title">Select a video</div>' +
-              '<div class="nv-pick-sub">From your gallery or camera · up to ' + MAX_VIDEO_MIN + ' min · max ' + MAX_VIDEO_MB + ' MB</div>' +
+              '<div class="nv-pick-sub">From your gallery or camera</div>' +
             '</div>' +
             '<video class="nv-composer-preview" id="nvComposerPreview" playsinline loop style="display:none;"></video>' +
             '<button class="nv-composer-mute" id="nvComposerMute" onclick="nexaVideosTogglePreviewSound()" aria-label="Toggle preview sound" style="display:none;">' +
@@ -1554,7 +1554,7 @@
         const durBox = el('nvComposerDur');
         if (durBox) {
           durBox.style.display = '';
-          durBox.textContent = fmtDur(durMs) + ' · ' + Math.max(1, Math.round(file.size / (1024 * 1024))) + ' MB';
+          durBox.textContent = fmtDur(durMs);
         }
         const postBtn = el('nvComposerPost');
         if (state.pendingTooLong) {
