@@ -203,13 +203,13 @@ ok("tile opens the watcher", /nexaWatchVideo\('v1'\)/.test(tile));
 ok("someone else's tile has NO manage buttons", !/nx-pv-manage/.test(tile));
 const ownTile = nexaGridTileHtml({ id: "v2", uid: "me", thumbUrl: "https://x/t.jpg", views: 3 });
 ok("my own tile exposes edit + delete", /nx-pv-manage/.test(ownTile) && /nexaVideosEdit\('v2'\)/.test(ownTile) && /nexaVideosDelete\('v2'\)/.test(ownTile));
-// The tile keeps the views badge; the like count rides as PLAIN TEXT (no heart
-// icon, no pill) so the thumbnail stays clean.
+// The tile keeps BOTH the views badge and the like badge (heart icon + count),
+// exactly as before — the Videos tab is unchanged.
 const likedTile = nexaGridTileHtml({ id: "v3", uid: "other", thumbUrl: "https://x/t.jpg", views: 10, likes: 2400 });
 ok("tile keeps the views badge", /nx-pv-views/.test(likedTile));
-ok("tile shows the like count as plain text", /<span class="nx-pv-likes">2\.4k<\/span>/.test(likedTile));
-ok("the like badge has NO heart icon", !/nx-pv-likes"><i /.test(likedTile));
-ok("a tile with no likes renders 0, not 'undefined'", /<span class="nx-pv-likes">0<\/span>/.test(nexaGridTileHtml({ id: "v4", uid: "other", views: 0 })));
+ok("tile shows the like count", /<span class="nx-pv-likes">[\s\S]*2\.4k<\/span>/.test(likedTile));
+ok("the like badge keeps its heart icon", /nx-pv-likes"><i data-lucide="heart"/.test(likedTile));
+ok("a tile with no likes renders 0, not 'undefined'", /<span class="nx-pv-likes">[\s\S]*> 0<\/span>/.test(nexaGridTileHtml({ id: "v4", uid: "other", views: 0 })));
 
 // Tapping a tile must land on the video in the feed: the feed lives in the
 // Moments > Videos pane, so nexaWatchVideo has to switch there first.

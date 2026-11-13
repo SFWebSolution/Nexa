@@ -1461,12 +1461,13 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   function declarations, so they are already real `window` globals).
 
 ## Profile grid tiles show like counts (app-main.js) — do NOT regress
-- **`nexaGridTileHtml(v)` keeps the view badge (`.nx-pv-views`, bottom-left) but
-  renders the like count as PLAIN TEXT (`.nx-pv-likes`, bottom-right) — no heart
-  icon, no pill.** The user asked for the number ALONE (the heart-badge-on-the-
-  video was removed), so the thumbnail stays clean. `formatCount(Number(v.likes)
-  || 0)` keeps a missing count at "0" (never "undefined"). Do NOT re-add the
-  `<i data-lucide="heart">` inside `.nx-pv-likes` or its `svg` fill CSS.
+- **`nexaGridTileHtml(v)` renders BOTH a view badge (`.nx-pv-views`, bottom-left)
+  and a like badge (`.nx-pv-likes`, bottom-right, heart icon + count)** so a
+  profile grid reads at a glance. `formatCount(Number(v.likes) || 0)` keeps a
+  missing count at "0" (never "undefined"). This is the ORIGINAL behaviour and
+  the Videos tab must keep it — an experiment that turned the like badge into
+  plain text (and, before that, removed it) was reverted at the user's request.
+  Keep the `<i data-lucide="heart">` inside `.nx-pv-likes` and its `svg` fill CSS.
 - **The Videos tab renders thumbnail TILES; there is NO Liked tab or liked list
   at all** — the profile only READS a likes total (the `#nxStatLikes` stat, see
   `nexaLoadProfileLikes`). Do NOT re-add a liked-videos grid/list.
