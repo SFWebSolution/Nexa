@@ -16,6 +16,7 @@ const vm = require("vm");
 
 const ROOT = path.resolve(__dirname, "..");
 const SRC = fs.readFileSync(path.join(ROOT, "app-main.js"), "utf8").replace(/\r\n/g, "\n");
+const DASH = fs.readFileSync(path.join(ROOT, "dashboard.html"), "utf8").replace(/\r\n/g, "\n");
 
 // ── extract the module ─────────────────────────────────────────────────────
 const START = SRC.indexOf("const NEXA_PROFILE_TTL_MS");
@@ -128,7 +129,7 @@ vm.runInContext(MODULE, sandbox);
 const {
   nexaProfileShow, nxProfileTab, nexaGridTileHtml, nexaRelationshipWith,
   nexaSetTabCount, nexaLoadSavedGrid, nexaLoadMirrorGrid, nexaWatchVideo,
-  nexaPaintMirror, nexaPaintLikedTextList, nexaLikedRowHtml, nexaPaintGrid,
+  nexaPaintGrid, nexaLoadProfileLikes,
 } = sandbox;
 
 let pass = 0, fail = 0;
@@ -218,48 +219,52 @@ ok("tile click switches to the Moments tab", navCalls.some(c => c[0] === "tab" &
 ok("tile click opens the Videos sub-tab", navCalls.some(c => c[0] === "sub" && c[1] === "videos"));
 ok("tile click focuses that exact video", navCalls.some(c => c[0] === "focus" && c[1] === "v9"));
 
-// ── 4b. the Liked tab is a TEXT list, not a thumbnail wall ─────────────────
-const likedRow = nexaLikedRowHtml({ id: "v7", caption: "Sunset over the bay" });
-ok("liked row shows the caption text", /<span class="nx-liked-text">Sunset over the bay<\/span>/.test(likedRow));
-ok("liked row opens that video", /nexaWatchVideo\('v7'\)/.test(likedRow));
-ok("liked row has NO thumbnail", !/nx-pv-tile/.test(likedRow) && !/<img/.test(likedRow));
-ok("liked row escapes the caption (source)", /nx-liked-text">' \+ escapeHtml\(text\)/.test(SRC));
-ok("liked row falls back to a label when there is no caption", /nx-liked-text">Video<\/span>/.test(nexaLikedRowHtml({ id: "v9" })));
+// ── 4b. the Liked tab is GONE; likes read as a STAT ────────────────────────
+// The user wanted the liked list removed entirely — the profile READS the like
+// count, it never re-lists the liked videos.
+ok("the Liked tab button is gone", !/data-tab="liked"/.test(DASH));
+ok("the liked-grid renderers are gone", !/nexaPaintLikedTextList/.test(SRC) && !/nexaLoadLikedGrid/.test(SRC));
+ok("a Likes stat tile exists in the markup", /id="nxStatLikes"/.test(DASH));
+ok("the Likes stat is fed by ONE read-only videos query",
+  /function nexaLoadProfileLikes\(uid, isSelf\)/.test(SRC) &&
+  /collection\('videos'\)\.where\('uid', '==', uid\)\.limit\(NEXA_VIDEO_GRID_MAX\)\.get\(\)/.test(SRC));
+ok("nexaProfileShow loads the Likes stat", /nexaLoadProfileLikes\(user\.uid, isSelf\)/.test(SRC));
 
-el("nxProfileGrid").innerHTML = "";
-nexaPaintLikedTextList([{ id: "v7", caption: "One" }, { id: "v8", caption: "Two" }], "none");
-const likedHtml = el("nxProfileGrid").innerHTML;
-ok("liked list renders a text row per item", (likedHtml.match(/nx-liked-row/g) || []).length === 2);
-ok("liked list does NOT render grid tiles", !/nx-pv-tile/.test(likedHtml));
+// The stat sums the denormalised per-video like counts — one get, no listener.
+let likesGetCalled = false;
+sandbox.db.collection = () => {
+  const o = {};
+  ["where", "limit", "orderBy", "doc", "collection"].forEach(m => { o[m] = () => o; });
+  o.get = () => { likesGetCalled = true; return Promise.resolve({ forEach(cb) { cb({ data: () => ({ likes: 5 }) }); cb({ data: () => ({ likes: 7 }) }); } }); };
+  o.onSnapshot = () => () => {};
+  return o;
+};
+nexaProfileShow({ uid: "other", displayName: "Other" });
+ok("opening a profile fires exactly one likes query", likesGetCalled === true);
 
-// The router must send the Videos tab to tiles and the Liked tab to text.
-el("nxProfileGrid").innerHTML = "";
-nexaPaintMirror("videos", [{ id: "v1", uid: "other", thumbUrl: "https://x/t.jpg", views: 3, likes: 1 }], "none");
-ok("videos mirror still paints tiles", /nx-pv-tile/.test(el("nxProfileGrid").innerHTML));
-el("nxProfileGrid").innerHTML = "";
-nexaPaintMirror("liked", [{ id: "v1", caption: "hi" }], "none");
-ok("liked mirror paints the text list", /nx-liked-list/.test(el("nxProfileGrid").innerHTML) && !/nx-pv-tile/.test(el("nxProfileGrid").innerHTML));
+setTimeout(() => {
+  ok("Likes stat paints the summed received likes", el("nxStatLikes").textContent === "12");
 
-// ── 5. tab switching does not throw with a cold cache ──────────────────────
-let threw = false;
-try { nxProfileTab("liked"); nxProfileTab("videos"); } catch (e) { threw = true; console.log("   ", e.message); }
-ok("tab switch is safe (cache cold)", threw === false);
-ok("liked tab marks itself active", el("nxProfileGrid").innerHTML !== undefined);
-// Saved is self-only: the loader is a no-op for someone else's profile.
-let savedRan = false;
-try { nexaLoadSavedGrid("other"); } catch (e) { savedRan = true; }
-ok("Saved loader refuses another user's uid", savedRan === false);
+  // ── 5. tab switching does not throw with a cold cache ────────────────────
+  let threw = false;
+  try { nxProfileTab("saved"); nxProfileTab("videos"); } catch (e) { threw = true; console.log("   ", e.message); }
+  ok("tab switch is safe (cache cold)", threw === false);
+  // Saved is self-only: the loader is a no-op for someone else's profile.
+  let savedRan = false;
+  try { nexaLoadSavedGrid("other"); } catch (e) { savedRan = true; }
+  ok("Saved loader refuses another user's uid", savedRan === false);
 
-// Tab count chips: a positive number paints, zero clears (chip hides via CSS).
-nexaSetTabCount("liked", 12);
-ok("tab count chip paints a number", el("nxPtabCountLiked").textContent === "12");
-nexaSetTabCount("liked", 0);
-ok("tab count chip clears at zero", el("nxPtabCountLiked").textContent === "");
+  // Tab count chips: a positive number paints, zero clears (chip hides via CSS).
+  nexaSetTabCount("saved", 12);
+  ok("tab count chip paints a number", el("nxPtabCountSaved").textContent === "12");
+  nexaSetTabCount("saved", 0);
+  ok("tab count chip clears at zero", el("nxPtabCountSaved").textContent === "");
 
-// ── 6. a profile with no counts does not print 'undefined' ─────────────────
-nexaProfileShow({ uid: "bare", displayName: "Bare" });
-ok("missing stats render as 0, never 'undefined'",
-  el("nxStatFollowers").textContent === "0" && el("nxStatFollowing").textContent === "0" && el("nxStatVideos").textContent === "0");
+  // ── 6. a profile with no counts does not print 'undefined' ───────────────
+  nexaProfileShow({ uid: "bare", displayName: "Bare" });
+  ok("missing stats render as 0, never 'undefined'",
+    el("nxStatFollowers").textContent === "0" && el("nxStatFollowing").textContent === "0" && el("nxStatVideos").textContent === "0" && el("nxStatLikes").textContent === "0");
 
-console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
-process.exit(fail ? 1 : 0);
+  console.log("\n" + (fail ? "\u2717 FAILED" : "\u2713 PASSED") + " — " + pass + " passed, " + fail + " failed\n");
+  process.exit(fail ? 1 : 0);
+});

@@ -1994,6 +1994,7 @@
           <button class="nx-stat" onclick="openFollowList('following')"><span class="nx-stat-n" id="nxStatFollowing">0</span><span class="nx-stat-l">Following</span></button>
           <button class="nx-stat" onclick="openFollowList('followers')"><span class="nx-stat-n" id="nxStatFollowers">0</span><span class="nx-stat-l">Followers</span></button>
           <button class="nx-stat" onclick="nxProfileTab('videos')"><span class="nx-stat-n" id="nxStatVideos">0</span><span class="nx-stat-l">Videos</span></button>
+          <button class="nx-stat" onclick="nexaProfileLikesInfo()"><span class="nx-stat-n" id="nxStatLikes">0</span><span class="nx-stat-l">Likes</span></button>
         </div>
         <div class="nx-profile-bio" id="nxProfileBio"></div>
         <a class="nx-profile-link" id="nxProfileLink" target="_blank" rel="noopener nofollow" style="display:none;"></a>
@@ -2001,7 +2002,6 @@
       </div>
       <div class="nx-profile-tabs" id="nxProfileTabs">
         <button class="nx-ptab active" data-tab="videos" onclick="nxProfileTab('videos')"><i data-lucide="grid-3x3" style="width:15px;height:15px;"></i> Videos<span class="nx-ptab-count" id="nxPtabCountVideos"></span></button>
-        <button class="nx-ptab" data-tab="liked" onclick="nxProfileTab('liked')"><i data-lucide="heart" style="width:15px;height:15px;"></i> Liked<span class="nx-ptab-count" id="nxPtabCountLiked"></span></button>
         <button class="nx-ptab" data-tab="saved" id="nxPtabSaved" onclick="nxProfileTab('saved')"><i data-lucide="bookmark" style="width:15px;height:15px;"></i> Saved<span class="nx-ptab-count" id="nxPtabCountSaved"></span></button>
       </div>
       <div class="nx-profile-grid" id="nxProfileGrid"></div>

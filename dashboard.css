@@ -14481,6 +14481,12 @@ html.nexa-native .story-viewer-main {
 .nx-stat:hover { background: rgba(79, 143, 255, 0.1); }
 .nx-stat-n { font-size: 16px; font-weight: 800; color: var(--text-0); }
 .nx-stat-l { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.4px; }
+/* The stats row now holds four tiles (Following / Followers / Videos / Likes).
+   Let them wrap on very narrow screens instead of squashing, and keep each
+   label on one line. */
+.nx-profile-stats { flex-wrap: wrap; }
+.nx-stat { min-width: 70px; }
+.nx-stat-l { white-space: nowrap; }
 .nx-profile-bio { font-size: 13.5px; line-height: 1.5; color: var(--text-1); margin: 10px auto 0; max-width: 460px; white-space: pre-wrap; }
 .nx-profile-link {
   display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 700;
@@ -14531,21 +14537,6 @@ html.nexa-native .story-viewer-main {
 }
 .nx-profile-empty { grid-column: 1 / -1; text-align: center; color: var(--text-3); font-size: 13px; padding: 34px 10px; }
 .nx-pv-manage { position: absolute; top: 5px; right: 5px; display: flex; gap: 4px; }
-/* Liked tab — a TEXT list of liked items (no thumbnails), each row opens the video. */
-.nx-liked-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding: 4px 0 30px; }
-.nx-liked-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 12px 13px; border-radius: 10px; background: var(--bg-2);
-  border: 1px solid var(--border-md); cursor: pointer;
-  transition: transform 0.15s ease, background 0.15s ease;
-}
-.nx-liked-row:active { transform: scale(0.985); }
-.nx-liked-text {
-  font-size: 13.5px; color: var(--text-0); line-height: 1.35; flex: 1; min-width: 0;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  word-break: break-word;
-}
-.nx-liked-chev { color: var(--text-3); flex: 0 0 auto; }
 .nx-pv-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: var(--text-3); background: var(--bg-2); }
 .nx-pv-mbtn {
   width: 26px; height: 26px; border-radius: 50%; border: none; cursor: pointer;

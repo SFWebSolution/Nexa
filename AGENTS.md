@@ -1212,7 +1212,7 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 ## Full profile page + follow system (app-main.js, dashboard.html/css)
 - **One profile surface for self AND others**: `#nxProfilePage`
   (`.nx-profile-overlay`, z-10200) — cover, avatar, `@handle`, Following /
-  Followers / Videos stats, bio, link, a Videos | Liked grid, and action buttons.
+  Followers / Videos / Likes stats, bio, link, a Videos | Saved grid, and action buttons.
   `nexaProfileOpen(token)` (async, resolves uid OR `@username`) and
   `nexaProfileShow(user)` are the entry points. The OLD `#userProfileModal` is
   still in the DOM for legacy callers, but `openUserProfile()` and
@@ -1226,9 +1226,9 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   from the counts-refresh path; the Videos grid is cache-first via
   `nexaCacheRead('video_grid_<uid>')` and only opens ONE
   `videos.where('uid','==',uid)` listener while the profile is open
-  (unsubscribed in `closeNexaProfile`); the Liked grid reads
-  `users/{uid}/liked_videos` (a per-user mirror — NOT a `collectionGroup`
-  query) and paints a TEXT list (`nexaPaintLikedTextList`), not tiles. `_nexaProfileRefreshCounts()` is a ONE-doc read used only when the
+  (unsubscribed in `closeNexaProfile`); there is NO liked-videos grid — the
+  Likes STAT is a single read-only sum over that user's videos
+  (`nexaLoadProfileLikes`). `_nexaProfileRefreshCounts()` is a ONE-doc read used only when the
   directory has no counts yet. Keep it that way.
 - **`@handle` == the existing `username`** (unique, lowercase, one-time change
   from Settings → Personal Info). Profiles resolve by `username` OR uid
@@ -1252,11 +1252,13 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   buttons (`.nx-pv-manage`) wired to the existing `nexaVideosEdit` /
   `nexaVideosDelete`. The Settings → My Videos sub-page is retained as a
   fallback — do NOT delete it, but it is no longer the primary surface.
-- **Liked mirror:** `doLike()` in `nexa-videos.js` mirrors every like into
-  `users/{me}/liked_videos/{videoId}` (`{videoId, uid, caption, thumbUrl,
-  videoUrl, music, at}`) and deletes it on unlike, so a profile's Liked grid is
-  a tiny subcollection read instead of a collection-group query. Rules:
-  `users/{uid}/liked_videos/{videoId}` read = signed-in, write = owner.
+- **Liked mirror (data only, no UI):** `doLike()` in `nexa-videos.js` still
+  mirrors every like into `users/{me}/liked_videos/{videoId}` (`{videoId, uid,
+  caption, thumbUrl, videoUrl, music, at}`) and deletes it on unlike. NOTE: this
+  mirror no longer backs any tab (the Liked tab was removed) — it is kept as a
+  per-user record; the profile's Likes STAT sums the denormalised `likes` on the
+  `videos` docs instead. Rules: `users/{uid}/liked_videos/{videoId}` read =
+  signed-in, write = owner.
 - The video feed's author row (`.nv-author-tap`) opens `nexaProfileOpen(uid)`.
 - **Rules to DEPLOY** (`firebase deploy --only firestore`): the `follows` block
   (create self-sourced + validated, update limited to `status`/`updatedAt` by
@@ -1465,14 +1467,9 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   video was removed), so the thumbnail stays clean. `formatCount(Number(v.likes)
   || 0)` keeps a missing count at "0" (never "undefined"). Do NOT re-add the
   `<i data-lucide="heart">` inside `.nx-pv-likes` or its `svg` fill CSS.
-- **The Videos tab renders thumbnail TILES; the Liked tab renders a TEXT list.**
-  The user asked for the liked items to read as text alone, not as a wall of
-  liked-video thumbnails, so `nexaLoadMirrorGrid` paints through
-  `nexaPaintMirror(kind, ...)`: `kind === 'liked'` → `nexaPaintLikedTextList`
-  (`.nx-liked-list` of `.nx-liked-row` rows showing the caption, each row still
-  calling `nexaWatchVideo(id)` to open the video), everything else →
-  `nexaPaintGrid` tiles. Do NOT send the Liked tab back through `nexaPaintGrid`,
-  and do NOT put thumbnails on a liked row.
+- **The Videos tab renders thumbnail TILES; there is NO Liked tab or liked list
+  at all** — the profile only READS a likes total (the `#nxStatLikes` stat, see
+  `nexaLoadProfileLikes`). Do NOT re-add a liked-videos grid/list.
 - **The `liked_videos` mirror carries `views` + `likes`** (written by `doLike` in
   nexa-videos.js) so the Videos grid can show numbers without a read per tile. The
   mirror is a cosmetic cache — a stale/absent count just shows 0, it never blocks
@@ -2235,29 +2232,39 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   Videos pane -- that was the pre-activation placeholder. Also do NOT re-add the
   `.moments-coming-soon` / `.moments-cs-*` CSS (removed from dashboard.css).
 
-## Profile tabs: Videos | Liked | Saved + desktop header + settings sub-page (2026-11)
-- **The full profile page has THREE tabs** (`#nxProfileTabs`): `data-tab="videos"`,
-  `data-tab="liked"`, and the new `data-tab="saved"` (`#nxPtabSaved`). Saved is
-  PERSONAL: `nexaProfileShow()` hides it on someone else's profile
-  (`savedTab.style.display = isSelf ? '' : 'none'`) AND `nxProfileTab('saved')`
-  force-falls back to `'videos'` when `nxProfileUid !== currentUser.uid`. Do NOT
-  expose Saved for other users.
-- **Liked + Saved are the SAME code path.** `nexaLoadMirrorGrid(kind, uid)`
-  reads the per-user mirror subcollection — `users/{uid}/liked_videos` (liked) or
-  `users/{uid}/saved_videos` (saved) — both written by the user themselves, so the
-  grid renders with NO collection-group query. `nexaLoadLikedGrid` /
-  `nexaLoadSavedGrid` are thin wrappers. Each kind owns its OWN listener slot
-  (`nxProfileUnsub` for liked/videos, `nxProfileSavedUnsub` for saved) and
-  `nxProfileTab` tears BOTH down on every switch, because all tabs share
-  `#nxProfileGrid` — without that a videos→saved switch left the videos listener
-  alive behind the Saved grid. Do NOT re-merge the two slots into one.
-- **Tab count chips** (`#nxPtabCountVideos` / `Liked` / `Saved`,
+## Profile tabs: Videos | Saved + a Likes stat + desktop header (2026-11)
+- **The full profile page has TWO tabs** (`#nxProfileTabs`): `data-tab="videos"`
+  and `data-tab="saved"` (`#nxPtabSaved`). **There is NO Liked tab — do NOT
+  re-add one.** The user explicitly wanted the liked-VIDEOS list gone: the profile
+  should just READ a like count, never re-list the liked videos. (An intermediate
+  "Liked tab as a text list" version was built and then removed for the same
+  reason.)
+- **Likes are shown as a STAT in the stats row**, next to Following / Followers /
+  Videos: `.nx-stat` `#nxStatLikes` (label "Likes"), fed by `nexaLoadProfileLikes(
+  uid, isSelf)` — ONE one-shot read-only `videos.where('uid','==',uid).limit(...)
+  .get()` that SUMS the per-video denormalised `likes`. No listener, no per-video
+  read, and strictly read-only so a visitor's profile never trips a permission
+  deny (the count is the total likes RECEIVED on that user's videos). The value
+  is cached (`profile_likes_<uid>`); `nexaLoadVideoGrid`'s snapshot keeps it in
+  step while the profile is open. Tapping the tile calls `nexaProfileLikesInfo()`
+  (an informational toast — there is nothing to open). Do NOT turn this back into
+  a liked-videos grid/list.
+- **Saved is PERSONAL:** `nexaProfileShow()` hides the Saved tab on someone
+  else's profile (`savedTab.style.display = isSelf ? '' : 'none'`) AND
+  `nxProfileTab('saved')` force-falls back to `'videos'` when `nxProfileUid !==
+  currentUser.uid`. Do NOT expose Saved for other users.
+- **Saved reads the per-user mirror.** `nexaLoadMirrorGrid(kind, uid)` reads
+  `users/{uid}/saved_videos` (written by the user themselves), so the grid renders
+  with NO collection-group query; `nexaLoadSavedGrid` is a thin wrapper. It owns
+  `nxProfileSavedUnsub`, and `nxProfileTab` tears it down on every switch because
+  the tabs share `#nxProfileGrid` — without that a videos→saved switch left the
+  videos listener alive behind the Saved grid.
+- **Tab count chips** (`#nxPtabCountVideos` / `#nxPtabCountSaved`,
   `nexaSetTabCount(tab, n)`): a numeric pill after each tab label, hidden at zero
   (`.nx-ptab-count:empty { display:none }`). The Videos chip comes from the video
-  grid; Liked/Saved are filled by `nexaPreloadMirrorCounts(uid, isSelf)` — two
-  one-shot `limit(25).get()` reads on profile open (NOT listeners; keep them
-  one-shot for the Spark quota). So the Likes tab reads "Liked 12" and shows the
-  liked-videos count at a glance.
+  grid; the Saved chip is filled by `nexaPreloadMirrorCounts(uid, isSelf)` — ONE
+  one-shot `limit(25).get()` on profile open, and only for SELF (NOT a listener;
+  keep it one-shot for the Spark quota).
 - **The bookmark (`data-act="save"`) now writes a per-user mirror too.**
   `toggleSave` still bumps the aggregate `videos/{id}.saves`, AND sets/deletes
   `users/{me}/saved_videos/{videoId}` (`{videoId,uid,caption,thumbUrl,videoUrl,at,

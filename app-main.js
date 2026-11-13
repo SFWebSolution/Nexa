@@ -9020,6 +9020,7 @@ let nxProfileTabName = 'videos';
 let nxProfileVideos = [];     // videos shown in the grid
 let nxProfileUnsub = null;    // live listener for the OPEN profile's videos
 let nxProfileSavedUnsub = null; // live listener for the (self) Saved grid
+let nxProfileLikesReceived = 0; // likes RECEIVED, shown in the stats row
 let nxFollowSheetKind = 'followers';
 let nxFollowSheetUid = null;
 let nxEditCoverUrl = '';
@@ -9065,6 +9066,7 @@ function nexaProfileShow(user) {
   nxProfileData = user;
   nxProfileTabName = 'videos';
   nxProfileVideos = [];
+  nxProfileLikesReceived = 0;
   if (nxProfileUnsub) { try { nxProfileUnsub(); } catch (e) {} nxProfileUnsub = null; }
   if (nxProfileSavedUnsub) { try { nxProfileSavedUnsub(); } catch (e) {} nxProfileSavedUnsub = null; }
 
@@ -9073,9 +9075,8 @@ function nexaProfileShow(user) {
   const savedTab = document.getElementById('nxPtabSaved');
   if (savedTab) savedTab.style.display = isSelf ? '' : 'none';
   // Reset the tab count chips; the video grid repaints the Videos one, and the
-  // Liked/Saved chips are filled by the cheap preload below.
+  // Saved chip is filled by the cheap preload below.
   nexaSetTabCount('videos', 0);
-  nexaSetTabCount('liked', 0);
   nexaSetTabCount('saved', 0);
   const photo = safeMediaUrl(user.photo || user.photoUrl || user.photoURL) || 'https://i.imgur.com/HeIi0wU.png';
 
@@ -9127,11 +9128,14 @@ function nexaProfileShow(user) {
   document.getElementById('nxStatFollowing').textContent = formatCount(fc.following || 0);
   document.getElementById('nxStatFollowers').textContent = formatCount(fc.followers || 0);
   document.getElementById('nxStatVideos').textContent = formatCount(user.videoCount || 0);
+  const likesStatEl = document.getElementById('nxStatLikes');
+  if (likesStatEl) likesStatEl.textContent = formatCount(user.likesReceived || 0);
 
   nexaRenderProfileActions(user, isSelf);
   nxProfileTab('videos');
-  // Cheap count chips for the Liked / Saved tabs (two tiny limit-25 gets, once
-  // per profile open; failures are silent and simply leave the chip empty).
+  // The Likes stat = likes RECEIVED on this user's videos. One-shot, read-only.
+  nexaLoadProfileLikes(user.uid, isSelf);
+  // The Saved tab (self only) gets a cheap count chip from one tiny get.
   nexaPreloadMirrorCounts(user.uid, isSelf);
 
   const overlay = document.getElementById('nxProfilePage');
@@ -9223,9 +9227,7 @@ function nxProfileTab(tab) {
   // listener alive behind the Saved grid).
   if (nxProfileUnsub) { try { nxProfileUnsub(); } catch (e) {} nxProfileUnsub = null; }
   if (nxProfileSavedUnsub) { try { nxProfileSavedUnsub(); } catch (e) {} nxProfileSavedUnsub = null; }
-  if (nxProfileTabName === 'liked') {
-    nexaLoadLikedGrid(nxProfileUid);
-  } else if (nxProfileTabName === 'saved') {
+  if (nxProfileTabName === 'saved') {
     nexaLoadSavedGrid(nxProfileUid);
   } else {
     nexaLoadVideoGrid(nxProfileUid);
@@ -9241,18 +9243,44 @@ function nexaSetTabCount(tab, n) {
   elc.textContent = v > 0 ? formatCount(v) : '';
 }
 
-// Cheap one-shot count chips for the Liked / Saved tabs. Two limit-25 gets on
-// profile open (no listeners); a miss just leaves the chip empty and the grid
+// Cheap one-shot count chip for the (self-only) Saved tab. One limit-25 get on
+// profile open (no listener); a miss just leaves the chip empty and the grid
 // itself, when opened, still loads the real list.
 function nexaPreloadMirrorCounts(uid, isSelf) {
-  if (!uid) return;
-  const probe = (kind, tab) => {
-    db.collection('users').doc(uid).collection(kind).limit(25).get()
-      .then(snap => { if (nxProfileUid === uid) nexaSetTabCount(tab, snap.size || (snap.docs ? snap.docs.length : 0)); })
-      .catch(() => {});
+  if (!uid || !isSelf) return;
+  db.collection('users').doc(uid).collection('saved_videos').limit(25).get()
+    .then(snap => { if (nxProfileUid === uid) nexaSetTabCount('saved', snap.size || (snap.docs ? snap.docs.length : 0)); })
+    .catch(() => {});
+}
+
+// The Likes stat is informational (there is no liked-videos tab to open), so a
+// tap just explains what the number counts.
+function nexaProfileLikesInfo() {
+  if (typeof showNotifToast === 'function') showNotifToast("Total likes received on this profile's videos", 'info');
+}
+
+// The Likes stat = the total likes RECEIVED on this user's videos. Each video
+// carries a denormalised `likes` count, so this is ONE one-shot query over that
+// user's videos — no listener, no per-video read. A visitor's profile is
+// read-only, so an outsider never gets a deny-toast; self can be told.
+function nexaLoadProfileLikes(uid, isSelf) {
+  const likesEl = document.getElementById('nxStatLikes');
+  if (!uid || !likesEl) return;
+  const apply = (total) => {
+    if (nxProfileUid !== uid) return;      // profile switched while loading
+    nxProfileLikesReceived = total;
+    likesEl.textContent = formatCount(total);
   };
-  probe('liked_videos', 'liked');
-  if (isSelf) probe('saved_videos', 'saved');
+  const cached = nexaCacheRead('profile_likes_' + uid, NEXA_PROFILE_TTL_MS);
+  if (cached && cached.fresh) apply(Number(cached.value) || 0);
+  db.collection('videos').where('uid', '==', uid).limit(NEXA_VIDEO_GRID_MAX).get()
+    .then(snap => {
+      let total = 0;
+      snap.forEach(d => { total += Number((d.data() || {}).likes) || 0; });
+      nexaCacheWrite('profile_likes_' + uid, total);
+      apply(total);
+    })
+    .catch(err => { if (isSelf && window.nexaNoteQuotaError) window.nexaNoteQuotaError(err); });
 }
 
 // A Cloudinary video URL can yield a frame-0 poster without a stored thumb.
@@ -9339,16 +9367,18 @@ function nexaLoadVideoGrid(uid) {
       const vs = document.getElementById('nxStatVideos');
       if (vs) vs.textContent = formatCount(items.length);
       nexaSetTabCount('videos', items.length);
+      // Keep the Likes stat honest when a like lands while the profile is open
+      // (the count is denormalised on the video doc, so the snapshot carries it).
+      let likesTotal = 0;
+      items.forEach(it => { likesTotal += Number(it.likes) || 0; });
+      const lk = document.getElementById('nxStatLikes');
+      if (lk) lk.textContent = formatCount(likesTotal);
+      nxProfileLikesReceived = likesTotal;
       if (nxProfileTabName === 'videos') nexaPaintGrid(items, 'No videos yet.');
     }, err => {
       if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
       if (!hit || !hit.fresh) grid.innerHTML = '<div class="nx-profile-empty">Could not load videos.</div>';
     });
-}
-
-// Liked grid — reads the user's liked_videos mirror (no collection-group query).
-function nexaLoadLikedGrid(uid) {
-  nexaLoadMirrorGrid('liked', uid);
 }
 
 // Saved grid — the SELF-only mirror of the videos this user bookmarked.
@@ -9381,7 +9411,7 @@ function nexaLoadMirrorGrid(kind, uid) {
   const cacheKey = kind + '_grid_' + uid;
   const hit = nexaCacheRead(cacheKey, NEXA_PROFILE_TTL_MS);
   if (hit && hit.fresh && Array.isArray(hit.value)) {
-    if (isActive()) nexaPaintMirror(tab, hit.value, emptyText);
+    if (isActive()) nexaPaintGrid(hit.value, emptyText);
     nexaSetTabCount(tab, hit.value.length);
   } else if (isActive()) {
     grid.innerHTML = '<div class="nx-profile-empty">Loading…</div>';
@@ -9393,7 +9423,7 @@ function nexaLoadMirrorGrid(kind, uid) {
       items.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
       nexaCacheWrite(cacheKey, items);
       nexaSetTabCount(tab, items.length);
-      if (isActive()) nexaPaintMirror(tab, items, emptyText);
+      if (isActive()) nexaPaintGrid(items, emptyText);
     }, err => {
       if (window.nexaNoteQuotaError) window.nexaNoteQuotaError(err);
       if (!hit || !hit.fresh) grid.innerHTML = '<div class="nx-profile-empty">Could not load videos.</div>';
@@ -9409,35 +9439,6 @@ function nexaPaintGrid(items, emptyText) {
   }
   grid.innerHTML = items.map(nexaGridTileHtml).join('');
   if (window.lucide) lucide.createIcons();
-}
-
-function nexaPaintMirror(kind, items, emptyText) {
-  if (kind === 'liked') nexaPaintLikedTextList(items, emptyText);
-  else nexaPaintGrid(items, emptyText);
-}
-
-// The Liked tab lists the liked items as TEXT (the caption), not as video
-// thumbnails — the liked list is a record, not a re-watch wall. Tapping a row
-// still opens that video. Only the liked mirror carries a caption, so videos
-// with no caption fall back to the author name, then a generic label.
-function nexaPaintLikedTextList(items, emptyText) {
-  const grid = document.getElementById('nxProfileGrid');
-  if (!grid) return;
-  if (!items || !items.length) {
-    grid.innerHTML = '<div class="nx-profile-empty">' + escapeHtml(emptyText || 'Nothing here yet.') + '</div>';
-    return;
-  }
-  grid.innerHTML = '<div class="nx-liked-list">' + items.map(nexaLikedRowHtml).join('') + '</div>';
-  if (window.lucide) lucide.createIcons();
-}
-
-function nexaLikedRowHtml(v) {
-  const id = String(v.id == null ? '' : v.id).replace(/[^A-Za-z0-9_-]/g, '');
-  const text = String(v.caption || v.authorName || 'Video').trim() || 'Video';
-  return '<div class="nx-liked-row" onclick="nexaWatchVideo(\'' + id + '\')">' +
-    '<span class="nx-liked-text">' + escapeHtml(text) + '</span>' +
-    '<i data-lucide="chevron-right" class="nx-liked-chev" style="width:16px;height:16px;"></i>' +
-  '</div>';
 }
 
 /* ── Follow system (asymmetric; low-friction) ──────────────────────────────── */

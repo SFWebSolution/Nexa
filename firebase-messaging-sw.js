@@ -127,7 +127,7 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ─── Service Worker Cache & Lifecycle ───
-const CACHE_NAME = 'nexa-v14-notifdl';
+const CACHE_NAME = 'nexa-v15-profilelikes';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

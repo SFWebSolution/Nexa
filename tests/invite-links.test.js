@@ -756,7 +756,7 @@ console.log("\n8) group/channel instant-open message cache");
   ok("profile has cover + avatar + name + handle", /id="nxProfileCover"/.test(dash) && /id="nxProfileAvatar"/.test(dash) && /id="nxProfileName"/.test(dash) && /id="nxProfileHandle"/.test(dash));
   ok("profile has stats (following/followers/videos)", /id="nxStatFollowing"/.test(dash) && /id="nxStatFollowers"/.test(dash) && /id="nxStatVideos"/.test(dash));
   ok("profile has bio + link", /id="nxProfileBio"/.test(dash) && /id="nxProfileLink"/.test(dash));
-  ok("profile has Videos | Liked tabs", /data-tab="videos"/.test(dash) && /data-tab="liked"/.test(dash));
+  ok("profile has a Videos tab (Liked removed)", /data-tab="videos"/.test(dash) && !/data-tab="liked"/.test(dash));
   ok("follow list sheet exists", /id="nxFollowSheet"/.test(dash) && /id="nxFollowList"/.test(dash));
   ok("edit profile modal exists", /id="nxEditProfileModal"/.test(dash) && /id="nxEditBio"/.test(dash) && /id="nxEditLink"/.test(dash));
 
@@ -765,12 +765,11 @@ console.log("\n8) group/channel instant-open message cache");
   ok("follow toggle defined", /async function nexaToggleFollow\(/.test(app) && /function nexaRelationshipWith\(/.test(app));
   ok("follows listener is a single 2-query listener", /function startFollowsListener\(/.test(app) && /where\('follower', '==', myUid\)/.test(app) && /where\('following', '==', myUid\)/.test(app));
   ok("profile video grid is cached + one listener", /function nexaLoadVideoGrid\(/.test(app) && /nexaCacheWrite\(cacheKey/.test(app));
-  ok("liked grid reads the mirror (no collection-group)", /function nexaLoadLikedGrid\(/.test(app) && /collection\('liked_videos'\)/.test(app) && !/collectionGroup/.test(app));
-  ok("liked tab is a TEXT list, not a thumbnail wall", /function nexaPaintLikedTextList\(/.test(app) && /function nexaLikedRowHtml\(/.test(app) && /class="nx-liked-text">' \+ escapeHtml\(text\)/.test(app));
-  ok("mirror paint routes liked->text, videos->tiles", /function nexaPaintMirror\(kind, items, emptyText\) \{\s*if \(kind === 'liked'\) nexaPaintLikedTextList\(items, emptyText\);\s*else nexaPaintGrid\(items, emptyText\)/.test(app));
+  ok("the Liked tab + its grid are REMOVED", !/data-tab="liked"/.test(dash) && !/nexaLoadLikedGrid\(/.test(app) && !/nexaPaintLikedTextList\(/.test(app));
+  ok("likes read as a read-only STAT (one videos query, no listener)", /function nexaLoadProfileLikes\(uid, isSelf\)/.test(app) && /collection\('videos'\)\.where\('uid', '==', uid\)\.limit\(NEXA_VIDEO_GRID_MAX\)\.get\(\)/.test(app) && /id="nxStatLikes"/.test(dash));
   ok("saved grid reads the mirror (no collection-group)", /function nexaLoadSavedGrid\(/.test(app) && /collection\('saved_videos'\)/.test(app) && !/collectionGroup/.test(app));
   ok("Saved tab exists + is self-only", /data-tab="saved"/.test(dash) && /id="nxPtabSaved"/.test(dash) && /nxProfileTabName === 'saved' && !isSelf/.test(app));
-  ok("tab count chips exist (videos/liked/saved)", /id="nxPtabCountVideos"/.test(dash) && /id="nxPtabCountLiked"/.test(dash) && /id="nxPtabCountSaved"/.test(dash) && /function nexaSetTabCount\(/.test(app));
+  ok("tab count chips exist (videos/saved)", /id="nxPtabCountVideos"/.test(dash) && /id="nxPtabCountSaved"/.test(dash) && /function nexaSetTabCount\(/.test(app));
   ok("edit profile saves bio/link/cover (merge, owner doc)", /async function saveEditProfile\(/.test(app) && /bio: bio, link: link, coverUrl/.test(app));
   ok("profile deep link handler exists", /async function checkProfileUrlParam\(/.test(app) && /params.get\('profile'\)/.test(app));
   ok("boot starts the follows listener + profile deep link", /startFollowsListener\(\);/.test(app) && /checkProfileUrlParam\(\);/.test(app));
@@ -902,7 +901,7 @@ console.log("\n8) group/channel instant-open message cache");
   ok("sendPushNotification stamps click_action for the service worker",
     /if \(!data\.click_action\) data\.click_action = notifClickAction\(data\)/.test(app));
   ok("service worker cache name was bumped for this release",
-    /const CACHE_NAME = 'nexa-v14-notifdl';/.test(read("firebase-messaging-sw.js")));
+    /const CACHE_NAME = 'nexa-v15-profilelikes';/.test(read("firebase-messaging-sw.js")));
   ok("router is shared (nexaOpenNotifTarget) + history tap delegates to it",
     /window\.nexaOpenNotifTarget = function \(t\)/.test(app) &&
     /window\.nexaOpenNotifItem = function \(id, index\) \{[\s\S]{0,200}nexaOpenNotifTarget\(it\.target\)/.test(app));
