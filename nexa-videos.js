@@ -444,6 +444,12 @@
           '<i data-lucide="heart" style="width:84px;height:84px;"></i></div>' +
         '<div class="nv-play-hint" aria-hidden="true">' +
           '<i data-lucide="play" style="width:30px;height:30px;"></i></div>' +
+        '<div class="nv-loading" aria-hidden="true"><span class="nv-spinner"></span></div>' +
+        '<div class="nv-error" role="alert">' +
+          '<i data-lucide="wifi-off" style="width:30px;height:30px;"></i>' +
+          '<span class="nv-error-msg">Couldn\'t play this video</span>' +
+          '<button class="nv-error-retry" type="button" data-act="retry" data-id="' + esc(v.id) + '">Retry</button>' +
+        '</div>' +
         '<div class="nv-dur">' + (v.duration ? '0:00 / ' + fmtDur(Number(v.duration) * 1000) : '') + '</div>' +
         metaHtml(v) +
         '<div class="nv-rail">' +
@@ -459,6 +465,7 @@
           '<button class="nv-rail-btn nv-rail-save" data-act="save" data-id="' + esc(v.id) + '" aria-label="Save">' +
             '<i data-lucide="bookmark" style="width:25px;height:25px;"></i></button>' +
         '</div>' +
+        '<div class="nv-scrub-tip" aria-hidden="true">0:00</div>' +
         '<div class="nv-progress"><i id="nvProg-' + esc(v.id) + '"></i></div>' +
       '</div>';
   }
@@ -509,7 +516,64 @@
     video.addEventListener('timeupdate', paint);
     video.addEventListener('loadedmetadata', paint);
     video.addEventListener('durationchange', paint);
+    attachPlaybackState(card, video);
     paint();
+  }
+
+  // Buffering spinner + error recovery. The spinner shows while the media is
+  // fetching (waiting/stalled/seeking) and hides the moment it can play again.
+  // An `error` swaps in the retry overlay; `recoverVideo` nudges a stalled
+  // stream ONCE (reload preserving position) before surfacing that overlay.
+  function setLoading(card, on) {
+    if (!card) return;
+    card.classList.toggle('nv-buffering', !!on);
+  }
+  function attachPlaybackState(card, video) {
+    if (!video || video._nvPlayback) return;
+    video._nvPlayback = true;
+    let errTimer = null, stallTimer = null;
+    const clearStall = () => { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } };
+    // A stream that buffers forever never fires `error`, so arm a watchdog: if
+    // it is still starved after 12s, reload ONCE preserving the position; a
+    // second stall surfaces the retry overlay instead of spinning forever.
+    const armStall = () => {
+      if (stallTimer) return;
+      stallTimer = setTimeout(() => {
+        stallTimer = null;
+        if (video.paused || video.readyState >= 3) return;
+        if (card._nvRecovered) { card.classList.add('nv-error-show'); return; }
+        card._nvRecovered = true;
+        recoverVideo(card, video);
+      }, 12000);
+    };
+    const show = () => { setLoading(card, true); armStall(); };
+    const hide = () => { setLoading(card, false); clearStall(); card._nvRecovered = false; };
+    ['loadstart', 'waiting', 'stalled', 'seeking'].forEach(ev => video.addEventListener(ev, show));
+    ['playing', 'canplay', 'canplaythrough', 'seeked', 'pause'].forEach(ev => video.addEventListener(ev, hide));
+    video.addEventListener('timeupdate', () => { if (!video.paused) clearStall(); });
+    video.addEventListener('error', () => { clearStall(); errTimer = setTimeout(() => card.classList.add('nv-error-show'), 400); });
+  }
+  function recoverVideo(card, video) {
+    if (!video) return;
+    const t = video.currentTime || 0;
+    card.classList.remove('nv-error-show');
+    setLoading(card, true);
+    try { video.load(); } catch (e) {}
+    const onMeta = () => {
+      video.removeEventListener('loadedmetadata', onMeta);
+      if (t > 0) { try { video.currentTime = t; } catch (e) {} }
+      tryPlay(video);
+    };
+    video.addEventListener('loadedmetadata', onMeta);
+    // If the reload itself errors, the error handler raises the overlay again.
+    try { if (video.readyState >= 1 && t > 0) video.currentTime = t; } catch (e) {}
+  }
+  function retryVideo(card) {
+    const video = card && card.querySelector('.nv-video');
+    if (!video) return;
+    card.classList.remove('nv-error-show');
+    try { video.src = video.src; } catch (e) {}
+    recoverVideo(card, video);
   }
 
   // Double-tap on the left/right third: jump SEEK_STEP seconds back/forward.
@@ -547,22 +611,33 @@
     const video = card.querySelector('.nv-video');
     if (!video || !isFinite(video.duration) || video.duration <= 0) return false;
     clearLongPress();
+    card._nvScrubMoved = true;   // suppress the click that follows this drag
     try { e.preventDefault(); } catch (err) {}
     card.classList.add('nv-scrubbing');
     const rect = bar.getBoundingClientRect();
     const prog = bar.querySelector('i');
-    const apply = (clientX) => {
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1)));
-      try { video.currentTime = ratio * video.duration; } catch (err) {}
-      if (prog) prog.style.width = (ratio * 100) + '%';
+    const tip = card.querySelector('.nv-scrub-tip');
+    const ratioAt = (clientX) => Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1)));
+    let ratio = ratioAt(e.clientX);
+    // Preview the scrub (bar + time tooltip) while dragging; commit the seek on
+    // the way in and once more on release. Seeking only on release is what makes
+    // it feel like YouTube — hammering currentTime mid-drag stalls the stream.
+    const preview = (r) => {
+      if (prog) prog.style.width = (r * 100) + '%';
+      if (tip) { tip.textContent = fmtDur(r * video.duration * 1000); tip.style.left = (r * 100) + '%'; }
     };
-    apply(e.clientX);
-    const move = ev => apply(ev.clientX);
+    const commit = (r) => { try { video.currentTime = r * video.duration; } catch (err) {} };
+    preview(ratio);
+    commit(ratio);
+    const move = ev => { ratio = ratioAt(ev.clientX); preview(ratio); };
     const up = () => {
       card.classList.remove('nv-scrubbing');
+      commit(ratio);
+      if (prog) prog.style.width = (ratio * 100) + '%';
       document.removeEventListener('pointermove', move);
       document.removeEventListener('pointerup', up);
       document.removeEventListener('pointercancel', up);
+      setTimeout(() => { card._nvScrubMoved = false; }, 0);
     };
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
@@ -663,6 +738,7 @@
       e.stopPropagation();
       const act = btn.getAttribute('data-act');
       const id = btn.getAttribute('data-id');
+      if (act === 'retry') { retryVideo(cardAt(btn)); return; }
       if (act === 'like') toggleLike(id, btn);
       else if (act === 'comment') openComments(id);
       else if (act === 'share') shareVideo(id);
@@ -676,6 +752,7 @@
     // seeks back 10s, RIGHT third seeks forward 10s, CENTRE likes (the habit).
     const card = cardAt(e.target);
     if (!card) return;
+    if (card._nvScrubMoved) return;   // a scrub drag, not a play/pause tap
     const id = card.getAttribute('data-id');
     const now = Date.now();
     const zone = tapZone(card, e.clientX);

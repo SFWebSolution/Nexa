@@ -1476,6 +1476,35 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   mirror is a cosmetic cache — a stale/absent count just shows 0, it never blocks
   the grid.
 
+## Video feed playback: draggable progress + buffering/error recovery (nexa-videos.js) — do NOT regress
+- **The bottom progress bar (`.nv-progress`) is a real YouTube-style scrubber.**
+  `startScrub(e)` (fired from `onFeedPointerDown` when the pointerdown is inside
+  `.nv-progress`) shows a time tooltip (`.nv-scrub-tip`, positioned by the drag
+  ratio), fattens the track (`nv-scrubbing`), and — the important part — **only
+  COMMITS the seek on release**, not on every `pointermove`. It seeks once on
+  grab and once on release and merely PREVIEWS (bar width + tooltip) in between;
+  hammering `video.currentTime` mid-drag stalls a network stream. The invisible
+  hit area (`.nv-progress::after`) stays so the 3px track is grabbable.
+- **A scrub drag must not be read as a tap.** `startScrub` sets
+  `card._nvScrubMoved = true` (cleared on the next tick), and `onFeedClick` bails
+  on `if (card._nvScrubMoved) return;` — otherwise releasing a scrub also
+  toggled play/pause (the drag ended in a `click`).
+- **Buffering spinner:** `attachPlaybackState(card, video)` (called from
+  `attachVideoTime`) toggles `card.classList('nv-buffering')` — a centered
+  `.nv-loading > .nv-spinner` ring — on `loadstart`/`waiting`/`stalled`/`seeking`
+  and off on `playing`/`canplay`/`canplaythrough`/`seeked`/`pause`. The spinner
+  is `pointer-events:none` so taps still reach the video.
+- **Error + stall recovery:** a media `error` raises the `.nv-error` overlay
+  (`.nv-error-show`) with a **Retry** button (`data-act="retry"` → `retryVideo`)
+  after a short delay. A stream that buffers forever never fires `error`, so
+  `armStall()` is a 12s watchdog: it reloads ONCE via `recoverVideo(card, video)`
+  (preserving `currentTime` and resuming on `loadedmetadata`), and a SECOND
+  stall raises the overlay instead of spinning forever. `recoverVideo` is also
+  what Retry calls. Do NOT remove the watchdog — without it a starved stream
+  shows an endless spinner with no way out.
+- **These run only on the Videos feed cards** (`nexa-videos.js`); the profile
+  grid tiles are thumbnails and are unaffected.
+
 ## Settings profile card polish (dashboard.html/css) — do NOT regress
 - The Settings root "profile" header card (`.settings-profile-card`) wraps the
   avatar in a gradient ring (`.settings-profile-avatar-wrap`) and ends in a

@@ -485,6 +485,15 @@ console.log("\n8) group/channel instant-open message cache");
   ok("progress bar is draggable to scrub", /function startScrub\(e\)/.test(vids) && /nv-scrubbing/.test(vids));
   ok("scrub intercepts the pointerdown before long-press",
     /closest\('\.nv-progress'\)\) \{ startScrub\(e\); return; \}/.test(vids));
+  ok("scrub previews while dragging and commits the seek on release",
+    /const preview = \(r\) =>/.test(vids) && /commit\(ratio\)/.test(vids) && /const up = \(\) => \{/.test(vids));
+  ok("a scrub drag suppresses the follow-up play/pause tap",
+    /card\._nvScrubMoved = true/.test(vids) && /if \(card\._nvScrubMoved\) return;/.test(vids));
+  ok("scrub shows a time tooltip", /nv-scrub-tip/.test(vids));
+  ok("a buffering spinner overlay exists", /class="nv-loading"/.test(vids) && /nv-spinner/.test(vids));
+  ok("a load error shows a Retry overlay", /class="nv-error"/.test(vids) && /data-act="retry"/.test(vids) && /function retryVideo\(card\)/.test(vids));
+  ok("stall watchdog recovers once before surfacing the error", /function recoverVideo\(card, video\)/.test(vids) && /armStall/.test(vids));
+  ok("spinner + retry styling exists", /\.nv-spinner/.test(read("nexa-videos.css")) && /\.nv-error-show/.test(read("nexa-videos.css")));
 
   // ── Accurate counts ───────────────────────────────────────────────────────
   ok("likes move marker + count together in a transaction",
@@ -901,7 +910,7 @@ console.log("\n8) group/channel instant-open message cache");
   ok("sendPushNotification stamps click_action for the service worker",
     /if \(!data\.click_action\) data\.click_action = notifClickAction\(data\)/.test(app));
   ok("service worker cache name was bumped for this release",
-    /const CACHE_NAME = 'nexa-v15-profilelikes';/.test(read("firebase-messaging-sw.js")));
+    /const CACHE_NAME = 'nexa-v16-video-buffering';/.test(read("firebase-messaging-sw.js")));
   ok("router is shared (nexaOpenNotifTarget) + history tap delegates to it",
     /window\.nexaOpenNotifTarget = function \(t\)/.test(app) &&
     /window\.nexaOpenNotifItem = function \(id, index\) \{[\s\S]{0,200}nexaOpenNotifTarget\(it\.target\)/.test(app));

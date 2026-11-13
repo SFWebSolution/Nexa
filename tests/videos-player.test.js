@@ -124,7 +124,9 @@ const document = {
   querySelector: (s) => document.body.querySelector(s),
   querySelectorAll: (s) => document.body.querySelectorAll(s),
   body: new El("body"),
-  addEventListener() {}, removeEventListener() {},
+  _listeners: {},
+  addEventListener(t, fn) { (this._listeners[t] = this._listeners[t] || []).push(fn); },
+  removeEventListener(t, fn) { if (this._listeners[t]) this._listeners[t] = this._listeners[t].filter(f => f !== fn); },
   visibilityState: "visible",
 };
 
@@ -163,10 +165,11 @@ const db = {
 
 let videosById = {};
 const store = {};
+const __obs = [];
 const sandbox = {
-  console, setTimeout, clearTimeout, requestAnimationFrame: (fn) => fn(),
+  console, setTimeout, clearTimeout, requestAnimationFrame: (fn) => fn(), __obs,
   Math, Date, Number, String, Object, Promise, JSON, Set, Map, Array, parseFloat, parseInt, isNaN, isFinite, encodeURIComponent,
-  IntersectionObserver: function () { this.observe = () => {}; this.disconnect = () => {}; },
+  IntersectionObserver: function (cb) { this.observe = () => {}; this.disconnect = () => {}; __obs.push({ cb, el: this }); },
   document, localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
   db,
   lucide: { createIcons() {} },
@@ -228,9 +231,54 @@ bar._rect = { left: 0, top: 0, width: 360, height: 22 };
 feed.dispatch("pointerdown", { target: bar, clientX: 180 });
 ok("scrub sets currentTime to the dragged ratio", Math.round(video1.currentTime) === 30);
 ok("card flags scrubbing for the fat track", card1b._classes.has("nv-scrubbing"));
-document._listeners = document._listeners || {};
 // release
 (document._listeners.pointerup || []).forEach(fn => fn());
+ok("scrub clears the scrubbing flag on release", !card1b._classes.has("nv-scrubbing"));
+
+// Dragging previews the bar + tooltip WITHOUT hammering currentTime mid-drag;
+// the seek is committed on release (YouTube behaviour). A follow-up tap must
+// NOT toggle play/pause — the drag is not a tap.
+const before = video1.currentTime;
+video1.paused = true;
+feed.dispatch("pointerdown", { target: bar, clientX: 0 });
+ok("grab seeks to the grabbed spot", video1.currentTime === 0);
+(document._listeners.pointermove || []).forEach(fn => fn({ clientX: 360 }));
+ok("dragging previews the bar to the drag point", bar.querySelector("i").style.width === "100%");
+ok("drag does NOT seek mid-drag (only on release)", video1.currentTime === 0);
+ok("a time tooltip tracks the drag", card1b.querySelector(".nv-scrub-tip").textContent === "1:00");
+(document._listeners.pointerup || []).forEach(fn => fn());
+ok("release commits the seek", Math.round(video1.currentTime) === 60);
+feed.dispatch("click", { target: video1, clientX: 360 });
+ok("the tap after a scrub does not toggle play/pause", video1.paused === true && video1._played >= 0);
+
+// ── 3b. buffering spinner + error/retry (drive the real media events) ──────
+// Intersecting the card runs the observer's attach path (attachVideoTime ->
+// attachPlaybackState), which wires the spinner/error listeners onto the <video>.
+const card2 = feed.querySelector('.nv-card[data-id="v2"]');
+const lastObs = __obs[__obs.length - 1];
+lastObs.cb([{ target: card2, isIntersecting: true, intersectionRatio: 1 }]);
+const vEl = card2.querySelector(".nv-video");
+ok("card ships a buffering spinner element", !!card2.querySelector(".nv-loading .nv-spinner"));
+ok("card ships an error overlay with a Retry button", !!card2.querySelector(".nv-error .nv-error-retry[data-act='retry']"));
+ok("playback-state wiring listens for error", /addEventListener\('error'/.test(code));
+vEl.dispatch("waiting");
+ok("waiting shows the buffering spinner", card2._classes.has("nv-buffering"));
+vEl.dispatch("playing");
+ok("playing hides the buffering spinner", !card2._classes.has("nv-buffering"));
+vEl.dispatch("stalled");
+ok("stalled re-shows the spinner", card2._classes.has("nv-buffering"));
+vEl.dispatch("canplay");
+ok("canplay hides the spinner again", !card2._classes.has("nv-buffering"));
+
+// Retry: clears the overlay, reloads the media, and resumes at the same spot.
+card2.classList.add("nv-error-show");
+let loadCalls = 0; vEl.load = () => { loadCalls++; };
+vEl.currentTime = 12; vEl.readyState = 0;
+feed.dispatch("click", { target: card2.querySelector(".nv-error-retry"), clientX: 5 });
+ok("Retry clears the error overlay", !card2._classes.has("nv-error-show"));
+ok("Retry reloads the media", loadCalls === 1);
+vEl.dispatch("loadedmetadata");
+ok("Retry resumes from the same position", vEl.currentTime === 12);
 
 // ── 4. transactional like ───────────────────────────────────────────────────
 txCalls.length = 0;
