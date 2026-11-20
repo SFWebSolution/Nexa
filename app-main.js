@@ -11882,7 +11882,14 @@ let reportCategory = "bug";
 let reportShotUrl = "";      // Cloudinary URL of an attached screenshot
 let reportShotObjectUrl = ""; // local blob preview
 
+// Reporting is temporarily parked behind a Coming Soon card. The composer below
+// is fully wired and stays dormant; flip this to false to re-enable it (the
+// dashboard.html reportComingSoonModal and the tests' openReportModal contract
+// stay valid either way).
+const REPORT_COMING_SOON = true;
+
 function openReportModal() {
+  if (REPORT_COMING_SOON) { openReportComingSoon(); return; }
   const modal = document.getElementById("reportModal");
   if (!modal) return;
   reportCategory = "bug";
@@ -11902,6 +11909,22 @@ function openReportModal() {
   updateReportCounter();
   modal.classList.add("active");
   if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+}
+
+function openReportComingSoon() {
+  const m = document.getElementById("reportComingSoonModal");
+  if (!m) return;
+  m.classList.add("active");
+  if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+}
+
+function closeReportComingSoon() {
+  const m = document.getElementById("reportComingSoonModal");
+  if (m) m.classList.remove("active");
+}
+
+function handleReportComingSoonClick(e) {
+  if (e.target === document.getElementById("reportComingSoonModal")) closeReportComingSoon();
 }
 
 function closeReportModal() {

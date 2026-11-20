@@ -535,7 +535,7 @@
                 <span class="settings-row-icon"><i data-lucide="flag" style="width: 17px; height: 17px;"></i></span>
                 <span class="settings-row-text">
                   <span class="settings-row-title">Report a problem</span>
-                  <span class="settings-row-sub">Bugs, safety &amp; abuse, or ideas — we read every one</span>
+                  <span class="settings-row-sub">Bugs, safety &amp; abuse, or ideas — coming soon</span>
                 </span>
                 <i data-lucide="chevron-right" class="settings-row-chev"></i>
               </button>
@@ -1290,6 +1290,19 @@
       <button class="report-shot-remove" onclick="clearReportShot()"><i data-lucide="x" style="width:12px;height:12px;"></i></button>
     </div>
     <button class="askify-coming-btn" id="reportSubmitBtn" onclick="submitReport()">Send report</button>
+  </div>
+</div>
+
+<!-- REPORT A PROBLEM — COMING SOON (shown by openReportModal; the live composer
+     above is kept dormant so this can be re-enabled by flipping REPORT_COMING_SOON
+     to false in app-main.js) -->
+<div class="askify-coming-overlay" id="reportComingSoonModal" onclick="handleReportComingSoonClick(event)">
+  <div class="askify-coming-modal">
+    <button class="askify-coming-close" onclick="closeReportComingSoon()"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+    <div class="askify-coming-icon">🛟</div>
+    <div class="askify-coming-title">Coming Soon</div>
+    <div class="askify-coming-desc">Reporting is being set up. Soon you'll be able to send bugs, safety concerns and ideas straight to the Nexa team — stay tuned!</div>
+    <button class="askify-coming-btn" onclick="closeReportComingSoon()">Got it</button>
   </div>
 </div>
 

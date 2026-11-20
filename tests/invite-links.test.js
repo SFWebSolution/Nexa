@@ -621,15 +621,15 @@ console.log("\n8) group/channel instant-open message cache");
   ok("backend has no analytics endpoint", !/api\/admin\/analytics/.test(api));
 }
 
-// ── Settings: "Report a problem" (now live → admin) ────────────────────────
+// ── Settings: "Report a problem" (coming soon, composer retained) ─────────
 {
   const dash = read("dashboard.html");
 
   ok("settings has a Support group", /settings-group-title">\s*<i data-lucide="life-buoy"[\s\S]{0,120}Support<\/div>/.test(dash));
   ok("settings has the Report a problem row",
     /id="reportProblemRow"[\s\S]{0,120}openReportModal\(\)/.test(dash) && /Report a problem<\/span>/.test(dash));
-  ok("report row is NO LONGER flagged coming soon",
-    !/reportProblemRow"[\s\S]{0,400}settings-row-pill">Soon/.test(dash));
+  ok("report row subtitle tells the user it is coming soon",
+    /Report a problem<\/span>[\s\S]{0,200}coming soon/.test(dash));
 }
 
 // ── Videos: comments (like · reply · notify · delete) ──────────────────────
@@ -684,7 +684,7 @@ console.log("\n8) group/channel instant-open message cache");
   ok("openMyProfile defined", /function openMyProfile\(\)/.test(app));
 }
 
-// ── Reports (Settings → Report a problem → admin dashboard) ─────────────────
+// ── Reports (Settings → Report a problem → parked behind Coming Soon) ───────
 {
   const dash = read("dashboard.html");
   const app = read("app-main.js");
@@ -693,12 +693,18 @@ console.log("\n8) group/channel instant-open message cache");
   const admin = read("admin.html");
   const css = read("dashboard.css");
 
-  ok("report row opens the real composer (no 'Soon' pill)", /id="reportProblemRow" onclick="openReportModal\(\)"/.test(dash) && !/reportProblemRow"[\s\S]{0,300}settings-row-pill">Soon/.test(dash));
+  ok("report row opens openReportModal (the gated entry point)", /id="reportProblemRow" onclick="openReportModal\(\)"/.test(dash));
   ok("report composer modal exists", /id="reportModal"/.test(dash));
   ok("report has category chips", /class="report-cat active" data-cat="bug"/.test(dash) && /selectReportCat\('safety'\)/.test(dash));
   ok("report has a textarea + counter", /id="reportText"/.test(dash) && /id="reportCounter"/.test(dash));
   ok("report has an optional screenshot attach", /id="reportFile"/.test(dash) && /previewReportShot\(event\)/.test(dash));
-  ok("coming-soon report modal is gone", !/reportComingModal/.test(dash) && !/openReportComing/.test(app));
+  ok("report is gated behind a Coming Soon card",
+    /const REPORT_COMING_SOON = true;/.test(app) && /id="reportComingSoonModal"/.test(dash));
+  ok("openReportModal defers to the coming-soon card while gated",
+    /function openReportModal\(\) \{\s*if \(REPORT_COMING_SOON\) \{ openReportComingSoon\(\); return; \}/.test(app));
+  ok("coming-soon helpers are defined",
+    /function openReportComingSoon\(\)/.test(app) && /function closeReportComingSoon\(\)/.test(app)
+    && /function handleReportComingSoonClick\(e\)/.test(app));
 
   ok("openReportModal/closeReportModal defined", /function openReportModal\(\)/.test(app) && /function closeReportModal\(\)/.test(app));
   ok("submitReport writes to the reports collection", /db\.collection\("reports"\)\.add\(/.test(app));
