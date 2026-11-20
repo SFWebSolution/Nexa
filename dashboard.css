@@ -59,7 +59,7 @@ html, body {
   --text-0: #0d1830;
   --text-1: #1d2b45;
   --text-2: #45536b;
-  --text-3: #6d7c94;
+  --text-3: #616e83;
 
   /* ╔─ BORDER & DIVIDER ─╗ */
   --border-dk: rgba(13, 24, 48, 0.08);
@@ -2786,7 +2786,7 @@ input[type="range"] {
 .ai-header {
   height: 66px;
   min-height: 66px;
-  background: rgba(10, 15, 22, 0.5);
+  background: var(--bg-1);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-dk);
   display: flex;
@@ -3135,7 +3135,7 @@ input[type="range"] {
   gap: 11px;
   padding: 12px 12px;
   margin-bottom: 8px;
-  background: rgba(22, 32, 46, 0.5);
+  background: var(--bg-2);
   border: 1px solid var(--border-md);
   border-radius: var(--radius-xs);
   cursor: pointer;
@@ -3349,7 +3349,7 @@ input[type="range"] {
   font-size: var(--fs-sm);
   color: var(--text-1);
   cursor: pointer;
-  transition: all var(--tf);
+  transition: background-color var(--tf), color var(--tf);
   border-bottom: 1px solid var(--border-dk);
   display: flex;
   align-items: center;
@@ -8156,7 +8156,7 @@ a:focus-visible, [tabindex]:focus-visible {
   --text-0: #0f1b2d;
   --text-1: #1f2d44;
   --text-2: #46566e;
-  --text-3: #6b7a92;
+  --text-3: #616e83;
   --border-dk: rgba(15, 27, 45, 0.08);
   --border-md: rgba(15, 27, 45, 0.12);
   --border-lt: rgba(15, 27, 45, 0.18);
@@ -11521,7 +11521,7 @@ html, body, .app, .sidebar, .chat-header, .input-area, .messages, .bubble, .user
   --text-0: #0d1830;
   --text-1: #1d2b45;
   --text-2: #45536b;
-  --text-3: #6d7c94;
+  --text-3: #616e83;
   --border-dk: rgba(13, 24, 48, 0.08);
   --border-md: rgba(13, 24, 48, 0.14);
   --border-lt: rgba(13, 24, 48, 0.20);
