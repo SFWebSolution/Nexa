@@ -14965,3 +14965,75 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
   --border-width: 1px;
   --focus-ring: 0 0 0 3px var(--primary-glow);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOUCH TARGETS — 44px hit area, unchanged visuals
+   ───────────────────────────────────────────────────────────────────────────
+   Icon buttons are deliberately drawn small (32-40px) so the chrome stays
+   calm, but a 33px target is hard to hit on a phone and fails WCAG 2.5.8
+   (24px minimum) and Apple's 44pt guidance.
+
+   Rather than enlarging the buttons — which would inflate the header, the
+   composer and every card — each one gets an invisible ::after that extends
+   its hit area to at least 44x44. The painted button is untouched, so
+   screenshots are identical; only the tappable region grows.
+
+   Requires position:relative (added where the base rule lacks it) and no
+   `overflow:hidden` on the button itself.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:where(
+  .hdr-btn, .nx-head-btn, .iact-btn, .info-close, .info-back, .ai-back-btn,
+  .comments-drawer-close, .comments-send-btn, .welcome-back-close,
+  .app-update-close, .wallpaper-modal-close, .status-modal-close,
+  .notif-close, .delete-chat-close, .mc-icon-btn-back, .profile-pic-back,
+  .user-profile-back, .askify-coming-close, .story-close, .modal-close,
+  .chat-back-btn, .wp-modal-btn, .wp-upload-btn, .wp-btn-sm, .wp-scope-tab
+) {
+  position: relative;
+}
+
+:where(
+  .hdr-btn, .nx-head-btn, .iact-btn, .info-close, .info-back, .ai-back-btn,
+  .comments-drawer-close, .comments-send-btn, .welcome-back-close,
+  .app-update-close, .wallpaper-modal-close, .status-modal-close,
+  .notif-close, .delete-chat-close, .mc-icon-btn-back, .profile-pic-back,
+  .user-profile-back, .askify-coming-close, .story-close, .modal-close,
+  .chat-back-btn, .wp-modal-btn, .wp-upload-btn, .wp-btn-sm, .wp-scope-tab
+)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+  /* Purely a hit area: never paints, never intercepts its own hover state. */
+  background: transparent;
+  pointer-events: auto;
+}
+
+/* Full-width rows only miss the target on one axis, so a vertical-only
+   pseudo-element fixes them without touching layout (min-height would
+   inflate the chat header). */
+.start-voice-chat-btn,
+.chat-peer {
+  position: relative;
+}
+.start-voice-chat-btn::after,
+.chat-peer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: max(100%, 44px);
+  transform: translateY(-50%);
+  background: transparent;
+  pointer-events: auto;
+}
+
+/* scroll-down-btn is 40x40 with a 92px inset; give it the full 44. */
+.scroll-down-btn {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+}
