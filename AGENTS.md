@@ -2363,3 +2363,44 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   over-size file is refused and cannot be posted. Do NOT delete the constants or
   the checks when trimming the visible text, and do NOT let the text removal
   become a silent no-op — the client still blocks the upload.
+
+## Accessibility: text contrast + transition hygiene (do NOT regress)
+- **`--text-3` is the muted caption token and must clear WCAG AA (4.5:1) on every
+  light surface.** It was `#6d7c94` (3.73:1 on `--bg-0`, 4.23:1 on white, 3.97:1
+  on `--bg-2`) — failing everywhere, which is what made Chat Info section titles,
+  "No media yet", wallpaper subs and the Disappearing Messages copy read washed
+  out. It is now `#616e83` (4.56/5.16/4.85:1). THREE light-theme definitions
+  must stay in sync: the base `:root` block, `:root[data-theme="light"]`
+  "DAYLIGHT", and the "THEME HARMONY" block — `#6b7a92` was a fourth near-duplicate.
+  Dark theme `--text-3: #7c8db5` is deliberately NOT touched. If you retune the
+  light palette, re-check `--text-3` against `--bg-0/1/2`; the other three text
+  tokens have large margins (6.85:1+).
+- **Surfaces holding themed text must use theme tokens, not hardcoded dark
+  rgba.** `.info-action` (`rgba(22,32,46,.5)`) and `.ai-header` (`rgba(10,15,22,.5)`)
+  were dark glass under dark navy text in the LIGHT theme — same bug family as
+  the old Edit-modal "black box". They now use `var(--bg-2)` / `var(--bg-1)` so
+  they match their parent panels (`.info-panel` gradient, `.ai-panel` `--bg-1`)
+  in both themes. When adding a panel/sheet under normal body text, tokenize its
+  background.
+- **`transition: all` is fine EXCEPT where the state rule moves a layout
+  property.** 97 occurrences remain in dashboard.css and they animate only
+  colour/transform/box-shadow, which costs nothing measurable (benchmarked: no
+  difference from explicit lists). The one real defect was `.ctx-item`, whose
+  `:hover` moved `padding-left` 16->19px, so `all` animated layout on every menu
+  hover; it is now `transition: background-color, color` and the 3px nudge is
+  instant. If you add a `:hover`/`:active` rule changing padding/margin/width/
+  height/top/left/gap on an element with `transition: all`, either list the real
+  properties or drop the layout nudge.
+- **How to audit this reliably:** a naive single-level selector regex silently misses
+  every rule nested in `@media`/`@supports` (it found 98 rules where the file has
+  2269) and reports a false all-clear. Use a nesting-aware brace scanner, and
+  prove the audit is non-vacuous by re-introducing the bug on a temp copy and
+  confirming it gets flagged.
+- **How to verify contrast:** computed-style `color`/`background-color` is NOT
+  reliable here — `color(srgb 1 1 1 / .85)` and translucent `rgba()` get
+  mis-parsed, and a panel that is merely off-screen samples as page background.
+  Sample real pixels instead: screenshot once normally, once with
+  `*{color:transparent!important}`, then compare the darkest differing pixel
+  against the modal background inside each text box. Open the panel first
+  (`.info-panel` needs `active`, not `open`) and remove `.nexa-splash`, which
+  otherwise covers the whole page.
