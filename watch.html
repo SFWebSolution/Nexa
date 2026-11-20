@@ -17,6 +17,13 @@
          the product sets type the same way. */
       --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
       --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+      /* Radius scale — steps taken from the values already in use, so
+         normalising onto it never moves a corner by more than 2px.
+         Micro-radii (<=6px) and device silhouettes (>=30px, e.g. the hero
+         phone frame) are deliberate and stay literal. */
+      --r-xs: 8px; --r-sm: 12px; --r-md: 16px;
+      --r-lg: 20px; --r-xl: 24px; --r-2xl: 28px; --r-full: 999px;
+
 
       --nx-primary: #0b57d0;
       --nx-primary-lt: #1d6bf3;
@@ -40,18 +47,18 @@
     }
     .wcard {
       width: 100%; max-width: 440px; background: var(--nx-surface);
-      border: 1px solid var(--nx-border); border-radius: 24px;
+      border: 1px solid var(--nx-border); border-radius: var(--r-xl);
       box-shadow: 0 24px 60px -20px rgba(8, 18, 38, .28), 0 2px 8px rgba(8, 18, 38, .05);
       padding: 22px 22px 22px; text-align: center;
       animation: wrise .5s cubic-bezier(.22,1,.36,1) both;
     }
     @keyframes wrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
     .wbrand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 16px; }
-    .wbrand img { width: 30px; height: 30px; border-radius: 9px; }
+    .wbrand img { width: 30px; height: 30px; border-radius: var(--r-xs); }
     .wbrand span { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: -.2px; }
     .wstage {
       position: relative; width: 100%; aspect-ratio: 9/16; max-height: 60vh;
-      border-radius: 18px; overflow: hidden; background: #05070c;
+      border-radius: var(--r-lg); overflow: hidden; background: #05070c;
       border: 1px solid var(--nx-border); box-shadow: 0 12px 30px -14px rgba(8,18,38,.4);
       margin: 0 auto 16px;
     }
@@ -80,14 +87,14 @@
     .wbtn {
       display: flex; align-items: center; justify-content: center; gap: 9px;
       width: 100%; border: none; cursor: pointer; font-family: inherit;
-      font-size: var(--fs-lg); font-weight: 700; padding: 15px 18px; border-radius: 14px;
+      font-size: var(--fs-lg); font-weight: 700; padding: 15px 18px; border-radius: var(--r-md);
       transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
       text-decoration: none;
     }
     .wbtn:active { transform: scale(.98); }
     .wbtn-primary { background: linear-gradient(135deg, var(--nx-primary-lt), var(--nx-primary)); color: #fff; box-shadow: 0 12px 26px -12px rgba(11,87,208,.75); margin-bottom: 11px; }
     .wbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: var(--fs-md); padding: 11px; }
-    .wstatus { font-size: var(--fs-md); font-weight: 600; padding: 11px 14px; border-radius: 13px; margin-bottom: 14px; line-height: 1.4; }
+    .wstatus { font-size: var(--fs-md); font-weight: 600; padding: 11px 14px; border-radius: var(--r-sm); margin-bottom: 14px; line-height: 1.4; }
     .wstatus.err { background: #fdeaea; color: #a12626; }
     .wspinner {
       width: 42px; height: 42px; border-radius: 50%;

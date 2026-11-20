@@ -17,6 +17,13 @@
          the product sets type the same way. */
       --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
       --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+      /* Radius scale — steps taken from the values already in use, so
+         normalising onto it never moves a corner by more than 2px.
+         Micro-radii (<=6px) and device silhouettes (>=30px, e.g. the hero
+         phone frame) are deliberate and stay literal. */
+      --r-xs: 8px; --r-sm: 12px; --r-md: 16px;
+      --r-lg: 20px; --r-xl: 24px; --r-2xl: 28px; --r-full: 999px;
+
 
       --nx-primary: #0b57d0;
       --nx-primary-lt: #1d6bf3;
@@ -40,17 +47,17 @@
     }
     .jcard {
       width: 100%; max-width: 420px; background: var(--nx-surface);
-      border: 1px solid var(--nx-border); border-radius: 24px;
+      border: 1px solid var(--nx-border); border-radius: var(--r-xl);
       box-shadow: 0 24px 60px -20px rgba(8, 18, 38, .28), 0 2px 8px rgba(8, 18, 38, .05);
       padding: 30px 26px 26px; text-align: center;
       animation: jrise .5s cubic-bezier(.22,1,.36,1) both;
     }
     @keyframes jrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
     .jbrand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 20px; }
-    .jbrand img { width: 30px; height: 30px; border-radius: 9px; }
+    .jbrand img { width: 30px; height: 30px; border-radius: var(--r-xs); }
     .jbrand span { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: -.2px; }
     .javatar {
-      width: 92px; height: 92px; border-radius: 26px; object-fit: cover;
+      width: 92px; height: 92px; border-radius: var(--r-2xl); object-fit: cover;
       margin: 0 auto 16px; display: block; background: #eef2f8;
       border: 1px solid var(--nx-border); box-shadow: 0 10px 26px -12px rgba(8,18,38,.35);
     }
@@ -58,13 +65,13 @@
       display: inline-flex; align-items: center; gap: 6px;
       font-size: var(--fs-xs); font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
       color: var(--nx-primary); background: rgba(11,87,208,.09);
-      padding: 5px 11px; border-radius: 999px; margin-bottom: 12px;
+      padding: 5px 11px; border-radius: var(--r-full); margin-bottom: 12px;
     }
     .jname { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; line-height: 1.25; letter-spacing: -.4px; margin-bottom: 7px; }
     .jsub { font-size: var(--fs-md); color: var(--nx-text-dim); line-height: 1.5; margin-bottom: 22px; }
     .jstatus {
       display: flex; align-items: center; justify-content: center; gap: 7px;
-      font-size: var(--fs-md); font-weight: 600; padding: 11px 14px; border-radius: 13px;
+      font-size: var(--fs-md); font-weight: 600; padding: 11px 14px; border-radius: var(--r-sm);
       margin-bottom: 18px; line-height: 1.4;
     }
     .jstatus.ok { background: #e8f6ec; color: #10693a; }
@@ -73,7 +80,7 @@
     .jbtn {
       display: flex; align-items: center; justify-content: center; gap: 9px;
       width: 100%; border: none; cursor: pointer; font-family: inherit;
-      font-size: var(--fs-lg); font-weight: 700; padding: 15px 18px; border-radius: 14px;
+      font-size: var(--fs-lg); font-weight: 700; padding: 15px 18px; border-radius: var(--r-md);
       transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
     }
     .jbtn:active { transform: scale(.98); }

@@ -17,6 +17,13 @@
          the product sets type the same way. */
       --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
       --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+      /* Radius scale — steps taken from the values already in use, so
+         normalising onto it never moves a corner by more than 2px.
+         Micro-radii (<=6px) and device silhouettes (>=30px, e.g. the hero
+         phone frame) are deliberate and stay literal. */
+      --r-xs: 8px; --r-sm: 12px; --r-md: 16px;
+      --r-lg: 20px; --r-xl: 24px; --r-2xl: 28px; --r-full: 999px;
+
 
       --nx-primary: #0b57d0;
       --nx-primary-dk: #0842a0;
@@ -112,7 +119,7 @@
       width: 100%;
       max-width: 450px;
       background: var(--nx-surface);
-      border-radius: 24px;
+      border-radius: var(--r-xl);
       padding: 36px 36px;
       border: 1px solid rgba(11, 87, 208, 0.14);
       box-shadow:
@@ -145,7 +152,7 @@
       justify-content: center;
       width: 66px;
       height: 66px;
-      border-radius: 18px;
+      border-radius: var(--r-lg);
       background: #ffffff;
       padding: 4px;
       margin-bottom: 12px;
@@ -160,7 +167,7 @@
     .brand-logo-wrap img {
       width: 100%;
       height: 100%;
-      border-radius: 14px;
+      border-radius: var(--r-md);
       object-fit: cover;
       display: block;
     }
@@ -190,7 +197,7 @@
       font-size: var(--fs-sm);
       font-weight: 600;
       padding: 6px 14px;
-      border-radius: 99px;
+      border-radius: var(--r-full);
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -244,7 +251,7 @@
       color: var(--nx-text-1);
       background: #f8fafd;
       border: 1.5px solid var(--nx-border);
-      border-radius: 13px;
+      border-radius: var(--r-sm);
       outline: none;
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
@@ -275,7 +282,7 @@
       cursor: pointer;
       width: 32px;
       height: 32px;
-      border-radius: 8px;
+      border-radius: var(--r-xs);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -301,7 +308,7 @@
       width: 100%;
       height: 48px;
       border: none;
-      border-radius: 14px;
+      border-radius: var(--r-md);
       background: linear-gradient(135deg, var(--nx-primary) 0%, var(--nx-primary-lt) 100%);
       color: #ffffff;
       font-family: var(--font-display);
@@ -360,7 +367,7 @@
       font-size: var(--fs-md);
       font-weight: 600;
       text-align: center;
-      border-radius: 12px;
+      border-radius: var(--r-sm);
       padding: 0;
       min-height: 0;
       transition: all 0.25s ease;
@@ -383,7 +390,7 @@
     @media (max-width: 480px) {
       .auth-card {
         padding: 28px 20px;
-        border-radius: 20px;
+        border-radius: var(--r-lg);
       }
       .brand-title {
         font-size: var(--fs-xl);
@@ -407,7 +414,7 @@
     }
 
     .auth-card {
-      border-radius: 28px;
+      border-radius: var(--r-2xl);
       backdrop-filter: blur(20px) saturate(140%);
       -webkit-backdrop-filter: blur(20px) saturate(140%);
       background: rgba(255, 255, 255, 0.92);
@@ -441,7 +448,7 @@
     .brand-logo-wrap {
       width: 70px;
       height: 70px;
-      border-radius: 20px;
+      border-radius: var(--r-lg);
       margin-bottom: 14px;
       box-shadow:
         inset 0 0 0 1px rgba(255, 255, 255, 0.9),
@@ -449,7 +456,7 @@
         0 4px 10px rgba(11, 87, 208, 0.12);
     }
     .brand-logo-wrap img {
-      border-radius: 16px;
+      border-radius: var(--r-md);
     }
 
     .brand-title {
@@ -467,7 +474,7 @@
 
     .input-field-wrap input {
       height: 50px;
-      border-radius: 15px;
+      border-radius: var(--r-md);
       background: color-mix(in srgb, #f8fafd 92%, transparent);
       border-color: color-mix(in srgb, var(--nx-border) 85%, #ffffff);
     }
@@ -484,7 +491,7 @@
 
     .btn-submit {
       height: 52px;
-      border-radius: 16px;
+      border-radius: var(--r-md);
       position: relative;
       overflow: hidden;
       background:
