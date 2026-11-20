@@ -301,15 +301,33 @@ console.log("\n9) in-app update gate");
   ok("NEXA_LATEST_APP_VERSION declared", !!latestM);
   const latest = latestM ? latestM[1] : "0.0.0";
 
-  // `android-deeplink.patch` is the recipe for the currently-published APK, so
-  // its target ("+") versionName must equal the web constant. If a future patch
-  // bumps the APK version, publish the build first and raise the constant in the
-  // same commit — otherwise this fails.
-  const patch = read("android-deeplink.patch");
-  const removedVer = /^-\s*versionName "([\d.]+)"/m.exec(patch);
-  const addedVer = /^\+\s*versionName "([\d.]+)"/m.exec(patch);
-  eq("patch bumps the version", (removedVer && removedVer[1]) + "->" + (addedVer && addedVer[1]), "1.2.0->1.4.0");
+  // The android patches are the recipe for the currently-published APK, applied
+  // in order. The NEWEST patch's target ("+") versionName must equal the web
+  // constant. If a future patch bumps the APK version, publish the build first
+  // and raise the constant in the same commit — otherwise this fails.
+  const patchOrder = ["android-deeplink.patch", "android-download.patch"];
+  let removedVer = null;
+  let addedVer = null;
+  for (const name of patchOrder) {
+    const body = read(name);
+    const r = /^-\s*versionName "([\d.]+)"/m.exec(body);
+    const a = /^\+\s*versionName "([\d.]+)"/m.exec(body);
+    if (r) removedVer = r;
+    if (a) addedVer = a;
+  }
+  eq("newest patch bumps the version", (removedVer && removedVer[1]) + "->" + (addedVer && addedVer[1]), "1.4.0->1.5.0");
   eq("NEXA_LATEST_APP_VERSION == published APK version", latest, addedVer && addedVer[1]);
+
+  // The download patch must keep the native bridge + in-app download routing
+  // that the web layer calls into; losing either silently breaks saving media.
+  const dlPatch = read("android-download.patch");
+  ok("bridge exposes downloadFile", /public void downloadFile\(String url, String filename\)/.test(dlPatch));
+  // Patch lines carry a "+" diff marker, so allow it between the annotation
+  // and the method signature.
+  ok("bridge method is @JavascriptInterface", /@JavascriptInterface[^\n]*\n\+\s*public void downloadFile/.test(dlPatch));
+  ok("external assets download in-app", /looksLikeDownloadable\(url\) && enqueueDownload\(url, null\)/.test(dlPatch));
+  ok("shared enqueueDownload helper exists", /private boolean enqueueDownload\(String url, String filename\)/.test(dlPatch));
+  ok("DownloadListener reuses the helper", /if \(!enqueueDownload\(url, fileName\)\)/.test(dlPatch));
 
   const cmp = extractFn(src, "_cmpVersion") + "\n" + extractFn(src, "_verNum") + "\n_cmpVersion;";
   const f = run(cmp, {});

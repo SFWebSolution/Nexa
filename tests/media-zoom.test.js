@@ -34,7 +34,7 @@ const MODULE = SRC.slice(START, END) + `
   get mediaZoom() { return mediaZoom; },
   NEXA_ZOOM_MIN, NEXA_ZOOM_MAX,
   attachMediaZoom, resetMediaZoom, setMediaZoom, applyMediaZoom, clampMediaPan,
-  nexaMediaFilename, nexaDownloadMedia,
+  nexaMediaFilename, nexaDownloadMedia, nexaNativeDownload,
 };`;
 
 // ── DOM stub ───────────────────────────────────────────────────────────────
@@ -86,6 +86,9 @@ const sandbox = {
   showNotifToast: (m, t) => toasts.push([m, t]),
   fetchMediaBlobUrl: async (u) => "blob:https://nexa.test/" + Math.random().toString(36).slice(2),
   lucide: { createIcons() {} },
+  // Web context: the native download bridge must stay dormant here, so the
+  // assertions below keep exercising the real <a download> save path.
+  isNexaNativeApp: () => false,
 };
 sandbox.window = sandbox;
 vm.createContext(sandbox);
@@ -164,6 +167,27 @@ console.log("\n7. in-app download");
   const a2 = created.find(c => c.tagName === "A");
   ok("falls back to the direct URL when the fetch fails", !!a2 && a2.href === "https://other.example/a.pdf");
   ok("still names the file correctly", a2.download === "doc.pdf");
+
+  // Inside the APK the save goes through the native bridge: a blob: URL is
+  // unusable there (no Blob store for DownloadManager), so the https URL must
+  // be handed to Java and NO <a download> may fire.
+  const bridgeCalls = [];
+  sandbox.isNexaNativeApp = () => true;
+  sandbox.window.NexaAndroid = { downloadFile: (u, f) => bridgeCalls.push([u, f]) };
+  created.length = 0;
+  toasts.length = 0;
+  await sandbox.__zoom.nexaDownloadMedia("https://res.cloudinary.com/x/a.jpg", "photo.jpg", null);
+  ok("native: hands the https URL to the bridge", bridgeCalls.length === 1 && bridgeCalls[0][0] === "https://res.cloudinary.com/x/a.jpg");
+  ok("native: passes the filename through", bridgeCalls[0] && bridgeCalls[0][1] === "photo.jpg");
+  ok("native: does not fire an <a download>", created.filter(c => c.tagName === "A").length === 0);
+  ok("native: confirms the download to the user", toasts.some(t => /Downloading/.test(t[0])));
+  ok("native: a blob: URL is never handed to the bridge", sandbox.__zoom.nexaNativeDownload("blob:https://x/1", "a.jpg") === false);
+  // An older shell without the bridge must fall back to the in-page save.
+  sandbox.window.NexaAndroid = {};
+  created.length = 0;
+  await sandbox.__zoom.nexaDownloadMedia("https://res.cloudinary.com/x/a.jpg", "photo.jpg", null);
+  ok("native without the bridge: falls back to <a download>", created.filter(c => c.tagName === "A").length === 1);
+  sandbox.isNexaNativeApp = () => false;
 
   // Filenames derived from the URL when none is supplied.
   ok("derives an extension from the URL", sandbox.__zoom.nexaMediaFilename("https://x/y/clip.mp4", "video", {}) === "video.mp4");

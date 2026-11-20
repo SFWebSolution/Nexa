@@ -1,0 +1,145 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index a348f8d..0b2ec91 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -18,8 +18,8 @@ android {
+         applicationId "com.nexa.messenger"
+         minSdk 23
+         targetSdk 34
+-        versionCode 5
+-        versionName "1.4.0"
++        versionCode 6
++        versionName "1.5.0"
+     }
+ 
+     // A FIXED signing key committed to the repo. CI builds otherwise use a
+diff --git a/app/src/main/java/com/nexa/messenger/MainActivity.java b/app/src/main/java/com/nexa/messenger/MainActivity.java
+index 4eb7419..aa07d16 100644
+--- a/app/src/main/java/com/nexa/messenger/MainActivity.java
++++ b/app/src/main/java/com/nexa/messenger/MainActivity.java
+@@ -200,28 +200,12 @@ public class MainActivity extends AppCompatActivity {
+         webView.setDownloadListener(new DownloadListener() {
+             @Override
+             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+-                try {
+-                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+-                    request.setMimeType(mimetype);
+-                    String cookies = CookieManager.getInstance().getCookie(url);
+-                    request.addRequestHeader("cookie", cookies);
+-                    request.addRequestHeader("User-Agent", userAgent);
+-                    request.setDescription("Downloading file from Nexa...");
+-                    String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+-                    request.setTitle(fileName);
+-                    request.allowScanningByMediaScanner();
+-                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+-                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+-
+-                    DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+-                    if (dm != null) {
+-                        dm.enqueue(request);
+-                        Toast.makeText(MainActivity.this, "Downloading " + fileName, Toast.LENGTH_SHORT).show();
+-                    }
+-                } catch (Exception e) {
+-                    Intent intent = new Intent(Intent.ACTION_VIEW);
+-                    intent.setData(Uri.parse(url));
+-                    startActivity(intent);
++                String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
++                // Shared helper: same DownloadManager job the media viewer uses.
++                if (!enqueueDownload(url, fileName)) {
++                    try {
++                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
++                    } catch (Exception ignored) {}
+                 }
+             }
+         });
+@@ -385,7 +369,14 @@ public class MainActivity extends AppCompatActivity {
+                 } catch (Exception ignored) {}
+             }
+ 
+-            // Open external websites in browser
++            // Media/files from Cloudinary and friends: download them IN the app
++            // rather than handing the user off to a browser. Only actual
++            // assets qualify — a plain web page (a shared link) must still open
++            // in the browser, so the check is an extension allowlist, not "any
++            // external URL".
++            if (looksLikeDownloadable(url) && enqueueDownload(url, null)) {
++                return true;
++            }
+             try {
+                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                 startActivity(intent);
+@@ -440,6 +431,74 @@ public class MainActivity extends AppCompatActivity {
+         public void installUpdate() {
+             runOnUiThread(() -> downloadAndInstallUpdate());
+         }
++
++        // Media save from the media viewer. The web layer cannot use a blob: URL
++        // here (the WebView has no Blob store for DownloadManager to read, so
++        // <a download> silently no-ops), so it hands us the https URL and we run
++        // a real DownloadManager job. The user stays in the app; the file lands
++        // in Downloads with a completion notification.
++        @JavascriptInterface
++        public void downloadFile(String url, String filename) {
++            runOnUiThread(() -> enqueueDownload(url, filename));
++        }
++    }
++
++    /**
++     * True when the URL points at a media/document asset rather than a page.
++     * Cloudinary asset URLs keep their extension before any query string
++     * (?v=123), so the query is stripped first. Used to decide between
++     * downloading in-app and opening a link in the browser.
++     */
++    private boolean looksLikeDownloadable(String url) {
++        if (url == null) return false;
++        String path = url;
++        int q = path.indexOf('?');
++        if (q >= 0) path = path.substring(0, q);
++        int hash = path.indexOf('#');
++        if (hash >= 0) path = path.substring(0, hash);
++        String lower = path.toLowerCase(java.util.Locale.US);
++        String[] exts = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic",
++                ".mp4", ".webm", ".mov", ".m4v", ".mkv", ".3gp",
++                ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".amr",
++                ".pdf", ".zip", ".apk", ".doc", ".docx", ".xls", ".xlsx",
++                ".ppt", ".pptx", ".txt", ".csv", ".vcf"};
++        for (String ext : exts) {
++            if (lower.endsWith(ext)) return true;
++        }
++        return false;
++    }
++
++    /**
++     * Enqueues a DownloadManager job for {@code url}. Returns true when the job
++     * was accepted. Never throws: callers fall back to the browser on failure.
++     */
++    private boolean enqueueDownload(String url, String filename) {
++        if (url == null || url.trim().isEmpty()) return false;
++        // Only real network URLs — blob:/data: have no fetchable source here.
++        if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
++        try {
++            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
++            String cookies = CookieManager.getInstance().getCookie(url);
++            if (cookies != null) request.addRequestHeader("cookie", cookies);
++            request.addRequestHeader("User-Agent", webView != null
++                    ? webView.getSettings().getUserAgentString() : "NexaMessenger");
++            request.setDescription("Downloading file from Nexa...");
++            String name = (filename == null || filename.trim().isEmpty())
++                    ? URLUtil.guessFileName(url, null, null) : filename.trim();
++            request.setTitle(name);
++            request.allowScanningByMediaScanner();
++            request.setNotificationVisibility(
++                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
++            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
++
++            DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
++            if (dm == null) return false;
++            dm.enqueue(request);
++            Toast.makeText(MainActivity.this, "Downloading " + name, Toast.LENGTH_SHORT).show();
++            return true;
++        } catch (Exception e) {
++            return false;
++        }
+     }
+ 
+     /** Downloads the latest APK to cache and launches the system installer. */

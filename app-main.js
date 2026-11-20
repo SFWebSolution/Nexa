@@ -3663,7 +3663,7 @@ const NEXA_APP_VERSION = '1.0.0';
 // this before the new build is uploaded would prompt forever without ever
 // clearing. (1.3.0 = the join.html App Link / deep-link build, published
 // 2026-10-17.)
-const NEXA_LATEST_APP_VERSION = '1.4.0';
+const NEXA_LATEST_APP_VERSION = '1.5.0';
 
 function _verNum(v) { return String(v || '0').split('.').map(n => parseInt(n, 10) || 0); }
 function _cmpVersion(a, b) {
@@ -7447,10 +7447,34 @@ function nexaMediaFilename(url, kind, opts) {
   return base + "." + ext;
 }
 
+// Inside the APK a blob: URL is unusable — the WebView has no Blob store for
+// DownloadManager to read, so `<a download>` silently does nothing. Hand the
+// https URL to the native shell, which enqueues a real DownloadManager job
+// (progress notification + a file in the Downloads folder) and never leaves
+// the app. Returns false on the web, or when an older shell lacks the bridge,
+// so the caller can fall back to the in-page save.
+function nexaNativeDownload(url, filename) {
+  if (!isNexaNativeApp()) return false;
+  if (!/^https?:/i.test(url || "")) return false;
+  try {
+    if (!window.NexaAndroid || typeof window.NexaAndroid.downloadFile !== "function") return false;
+    window.NexaAndroid.downloadFile(url, filename || "nexa-media");
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Save media IN PLACE: fetch the bytes, hand them to a temporary <a download>,
 // and clean up. Nothing navigates, no tab opens, the chat stays where it was.
 async function nexaDownloadMedia(url, filename, btn) {
   if (!url) return;
+  // Native shell first: it downloads to the device for real and keeps the user
+  // in the app. Must run BEFORE any await so the call stays inside the tap.
+  if (nexaNativeDownload(url, filename)) {
+    if (typeof showNotifToast === "function") showNotifToast("⬇ Downloading — check your notifications", "success");
+    return;
+  }
   const original = btn ? btn.innerHTML : null;
   if (btn) {
     btn.classList.add("is-busy");
