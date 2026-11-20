@@ -1939,7 +1939,7 @@
   <div class="media-viewer-head">
     <button class="media-viewer-back" onclick="closeMediaViewer()" title="Back"><i data-lucide="arrow-left" style="width:20px;height:20px;"></i></button>
     <span class="media-viewer-title" id="mediaViewerTitle"></span>
-    <a class="media-viewer-download" id="mediaViewerDownload" href="" target="_blank" rel="noopener noreferrer" download title="Download"><i data-lucide="download" style="width:20px;height:20px;"></i></a>
+    <button class="media-viewer-download" id="mediaViewerDownload" type="button" title="Save to device" aria-label="Save to device" onclick="nexaDownloadMedia(this.dataset.mediaUrl, this.dataset.mediaName, this)"><i data-lucide="download" style="width:20px;height:20px;"></i></button>
   </div>
   <div class="media-viewer-body" id="mediaViewerBody" onclick="event.stopPropagation()"></div>
 </div>

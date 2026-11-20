@@ -14805,3 +14805,72 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
   background: linear-gradient(135deg, #2b6cff, #7b3ff2);
   border-color: transparent;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MEDIA VIEWER — ZOOM + IN-APP DOWNLOAD
+   The viewer image is transform-scaled by app-main.js (attachMediaZoom); the
+   overlay no longer closes on a tap once the photo is zoomed, so panning
+   cannot dismiss it by accident.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.media-viewer-body { position: relative; overflow: hidden; touch-action: none; }
+.media-viewer-body img {
+  transition: transform 0.18s ease-out;
+  transform-origin: center center;
+  cursor: zoom-in;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.media-viewer-body.is-zoomed img { transition: none; }
+.media-viewer-body.is-zoomed { cursor: grab; }
+/* While zoomed, the photo owns the gesture — don't let the overlay tap-close. */
+.media-viewer-overlay.is-zoomed { cursor: grab; }
+.media-viewer-zoom-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  white-space: nowrap;
+}
+.media-viewer-body:not(.is-zoomed) .media-viewer-zoom-hint { opacity: 1; }
+/* The download control is a <button> now (was an <a>): reset UA styling. */
+.media-viewer-download { padding: 0; font: inherit; -webkit-appearance: none; appearance: none; }
+.media-viewer-download.is-busy { pointer-events: none; opacity: 0.75; }
+.media-viewer-dl-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  animation: media-viewer-spin 0.7s linear infinite;
+  display: block;
+}
+/* In-viewer "Save file" action for document attachments. */
+.media-viewer-save-btn {
+  margin-top: 4px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: none;
+  background: var(--cyan, #22d3ee);
+  color: #04121a;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.media-viewer-save-btn:hover { filter: brightness(1.06); }
+.media-viewer-save-btn.is-busy { opacity: 0.7; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .media-viewer-body img { transition: none; }
+  .media-viewer-dl-spinner { animation-duration: 1.6s; }
+}

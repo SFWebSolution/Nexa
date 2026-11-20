@@ -65,6 +65,7 @@ function openProfilePic(src) {
 }
 function closeProfilePicModal() {
   document.getElementById('profilePicModal').classList.remove('active');
+  resetMediaZoom();
 }
 
 console.log('🚀 Nexa Messenger Starting...');
@@ -7202,10 +7203,14 @@ async function fetchMediaBlobUrl(url, opts) {
 let mediaViewerToken = 0;
 
 function closeMediaViewer(ev) {
+  // A zoomed-in photo swallows the first tap: reset the zoom rather than
+  // closing, so a stray tap while panning doesn't lose your place.
+  if (mediaZoom.scale > 1.01) { setMediaZoom(NEXA_ZOOM_MIN); return; }
   if (ev && ev.target !== ev.currentTarget) return;
   const modal = document.getElementById("mediaViewerModal");
   const body = document.getElementById("mediaViewerBody");
   mediaViewerToken++;
+  resetMediaZoom();
   if (modal) modal.classList.remove("active");
   if (body) body.innerHTML = "";
 }
@@ -7222,11 +7227,14 @@ async function openMediaViewer(url, kind, opts) {
 
   const isAudioFile = opts.isAudioFile || false;
   if (titleEl) titleEl.textContent = opts.title || (kind === "image" ? "Photo" : kind === "video" ? "Video" : "File");
-  // For non-downloadable kinds (view-once) the download button is hidden.
+  // The download control SAVES the file in place. It is a <button>, not an
+  // <a href>, because a plain link (or a target=_blank one) hands the URL to
+  // the OS/browser, which either opens a new tab or navigates away from the
+  // chat. nexaDownloadMedia() fetches the bytes and triggers a local save.
   if (dl) {
     dl.style.display = opts.downloadable === false ? "none" : "flex";
-    dl.href = url;
-    dl.setAttribute("download", opts.filename || "");
+    dl.dataset.mediaUrl = url || "";
+    dl.dataset.mediaName = opts.filename || nexaMediaFilename(url, kind, opts);
   }
 
   const myToken = ++mediaViewerToken;
@@ -7252,6 +7260,11 @@ async function openMediaViewer(url, kind, opts) {
     img.alt = "media";
     img.draggable = false;
     body.appendChild(img);
+    const hint = document.createElement("div");
+    hint.className = "media-viewer-zoom-hint";
+    hint.textContent = "Pinch or double-tap to zoom";
+    body.appendChild(hint);
+    attachMediaZoom(img, body);
   } else if (kind === "video") {
     const vid = document.createElement("video");
     vid.src = blobUrl;
@@ -7266,7 +7279,212 @@ async function openMediaViewer(url, kind, opts) {
     aud.autoplay = true;
     body.appendChild(aud);
   } else {
-    body.innerHTML = '<div class="media-viewer-file"><div style="font-size:48px;">📄</div><div style="margin-top:8px;">' + escapeHtml(opts.title || "File") + '</div><a class="media-viewer-error-link" href="' + blobUrl + '" download="' + escapeHtml(opts.filename || "") + '">Save file</a></div>';
+    const fname = opts.filename || nexaMediaFilename(url, "file", opts);
+    body.innerHTML = '<div class="media-viewer-file"><div style="font-size:48px;">📄</div><div style="margin-top:8px;">' + escapeHtml(opts.title || "File") + '</div>' +
+      '<button type="button" class="media-viewer-save-btn" id="mediaViewerSaveBtn">Save file</button></div>';
+    const saveBtn = document.getElementById("mediaViewerSaveBtn");
+    if (saveBtn) saveBtn.addEventListener("click", () => nexaDownloadMedia(url, fname, saveBtn));
+  }
+}
+
+/* =========================================================================
+   MEDIA VIEWER — ZOOM + IN-APP DOWNLOAD
+   =========================================================================
+   Two long-standing complaints:
+     1. A photo in the viewer could not be zoomed at all.
+     2. Tapping download navigated AWAY from the chat (a link with target
+        _blank hands the URL to the browser/OS instead of saving it).
+
+   Both are solved here without changing any call site: the viewer body gets
+   pinch / double-tap / wheel / drag-to-pan zoom, and the download control
+   becomes a <button> that fetches the bytes and saves them locally.
+   ========================================================================= */
+
+const NEXA_ZOOM_MIN = 1;
+const NEXA_ZOOM_MAX = 5;
+
+// Live transform state for the currently open photo.
+let mediaZoom = { scale: 1, x: 0, y: 0, el: null, host: null };
+
+function applyMediaZoom() {
+  const { el, scale, x, y } = mediaZoom;
+  if (!el) return;
+  el.style.transform = "translate3d(" + x + "px," + y + "px,0) scale(" + scale + ")";
+  el.style.cursor = scale > 1.01 ? "grab" : "zoom-in";
+  const host = mediaZoom.host;
+  if (host) host.classList.toggle("is-zoomed", scale > 1.01);
+}
+
+function resetMediaZoom() {
+  mediaZoom = { scale: 1, x: 0, y: 0, el: null, host: null };
+}
+
+// Keep the image from being panned so far that it leaves the screen.
+function clampMediaPan() {
+  const { el, host, scale } = mediaZoom;
+  if (!el || !host) return;
+  const maxX = Math.max(0, (el.offsetWidth * scale - host.clientWidth) / 2);
+  const maxY = Math.max(0, (el.offsetHeight * scale - host.clientHeight) / 2);
+  mediaZoom.x = Math.max(-maxX, Math.min(maxX, mediaZoom.x));
+  mediaZoom.y = Math.max(-maxY, Math.min(maxY, mediaZoom.y));
+}
+
+function setMediaZoom(scale, cx, cy) {
+  const { host } = mediaZoom;
+  const next = Math.max(NEXA_ZOOM_MIN, Math.min(NEXA_ZOOM_MAX, scale));
+  // Zoom toward the pinch/click point so the content under the fingers stays put.
+  if (host && cx != null && cy != null && next !== mediaZoom.scale) {
+    const rect = host.getBoundingClientRect();
+    const px = cx - rect.left - rect.width / 2;
+    const py = cy - rect.top - rect.height / 2;
+    const ratio = next / mediaZoom.scale;
+    mediaZoom.x = px - (px - mediaZoom.x) * ratio;
+    mediaZoom.y = py - (py - mediaZoom.y) * ratio;
+  }
+  mediaZoom.scale = next;
+  if (next <= NEXA_ZOOM_MIN + 0.001) { mediaZoom.x = 0; mediaZoom.y = 0; }
+  clampMediaPan();
+  applyMediaZoom();
+}
+
+function attachMediaZoom(img, host) {
+  if (!img || !host) return;
+  mediaZoom = { scale: 1, x: 0, y: 0, el: img, host };
+  img.style.touchAction = "none";
+  img.style.transformOrigin = "center center";
+  img.style.willChange = "transform";
+  applyMediaZoom();
+
+  let lastTap = 0;
+  let pinchStart = 0;
+  let pinchScale = 1;
+  let panning = false;
+  let startX = 0, startY = 0, originX = 0, originY = 0;
+
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+  img.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    panning = mediaZoom.scale > 1.01;
+    startX = e.clientX; startY = e.clientY;
+    originX = mediaZoom.x; originY = mediaZoom.y;
+    if (panning) {
+      img.style.cursor = "grabbing";
+      try { img.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  });
+
+  img.addEventListener("pointermove", (e) => {
+    if (!panning) return;
+    mediaZoom.x = originX + (e.clientX - startX);
+    mediaZoom.y = originY + (e.clientY - startY);
+    clampMediaPan();
+    applyMediaZoom();
+  });
+
+  const endPan = (e) => {
+    if (panning) {
+      panning = false;
+      img.style.cursor = mediaZoom.scale > 1.01 ? "grab" : "zoom-in";
+      try { img.releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+  };
+  img.addEventListener("pointerup", endPan);
+  img.addEventListener("pointercancel", endPan);
+
+  // Double-tap / double-click: toggle between fit and 2.5x at the tap point.
+  img.addEventListener("click", (e) => {
+    const now = Date.now();
+    if (now - lastTap < 320) {
+      lastTap = 0;
+      if (mediaZoom.scale > 1.01) setMediaZoom(NEXA_ZOOM_MIN);
+      else setMediaZoom(2.5, e.clientX, e.clientY);
+      return;
+    }
+    lastTap = now;
+  });
+
+  // Two-finger pinch (pointer events, so it works in the WebView too).
+  const pointers = new Map();
+  img.addEventListener("pointerdown", (e) => { pointers.set(e.pointerId, e); });
+  img.addEventListener("pointermove", (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, e);
+    if (pointers.size !== 2) return;
+    const [a, b] = [...pointers.values()];
+    const d = dist(a, b);
+    if (!pinchStart) { pinchStart = d; pinchScale = mediaZoom.scale; return; }
+    panning = false;
+    setMediaZoom(pinchScale * (d / pinchStart), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+  });
+  const dropPointer = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchStart = 0;
+  };
+  img.addEventListener("pointerup", dropPointer);
+  img.addEventListener("pointercancel", dropPointer);
+  img.addEventListener("pointerleave", dropPointer);
+
+  // Desktop wheel zoom (ctrl+wheel and plain wheel both work while open).
+  host.addEventListener("wheel", (e) => {
+    if (!mediaZoom.el) return;
+    e.preventDefault();
+    setMediaZoom(mediaZoom.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY);
+  }, { passive: false });
+}
+
+// Derive a sensible filename so a saved file is not called "blob".
+function nexaMediaFilename(url, kind, opts) {
+  const raw = (opts && opts.filename) || "";
+  if (raw && /\.[a-z0-9]{2,5}$/i.test(raw)) return raw;
+  let ext = kind === "video" ? "mp4" : kind === "image" ? "jpg" : "bin";
+  try {
+    const path = new URL(url, location.href).pathname;
+    const m = path.match(/\.([a-z0-9]{2,5})$/i);
+    if (m) ext = m[1].toLowerCase();
+  } catch (e) {}
+  const base = (raw || kind || "nexa-media").replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[^\w.-]+/g, "_").slice(0, 60) || "nexa-media";
+  return base + "." + ext;
+}
+
+// Save media IN PLACE: fetch the bytes, hand them to a temporary <a download>,
+// and clean up. Nothing navigates, no tab opens, the chat stays where it was.
+async function nexaDownloadMedia(url, filename, btn) {
+  if (!url) return;
+  const original = btn ? btn.innerHTML : null;
+  if (btn) {
+    btn.classList.add("is-busy");
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = '<span class="media-viewer-dl-spinner"></span>';
+  }
+  try {
+    let blobUrl = null;
+    let cached = false;
+    try {
+      blobUrl = await fetchMediaBlobUrl(url);
+      cached = true;
+    } catch (e) {
+      // CORS or offline: fall back to the direct URL, still without navigating.
+      blobUrl = url;
+    }
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename || "nexa-media";
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (cached && typeof showNotifToast === "function") showNotifToast("✓ Saved to your device", "success");
+  } catch (err) {
+    if (typeof showNotifToast === "function") showNotifToast("Couldn't save that file — try again", "error");
+  } finally {
+    if (btn) {
+      btn.classList.remove("is-busy");
+      btn.removeAttribute("aria-busy");
+      if (original != null) btn.innerHTML = original;
+      if (typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+    }
   }
 }
 
@@ -11965,6 +12183,9 @@ function openProfilePic(src, returnTo) {
   const modal = document.getElementById('profilePicModal');
   const img = document.getElementById('modalProfileImg');
   if (!modal || !img) return;
+  // Same pinch / double-tap zoom as the chat media viewer.
+  const host = modal.querySelector('.profile-pic-viewer');
+  if (host) { mediaZoom = { scale: 1, x: 0, y: 0, el: img, host }; attachMediaZoom(img, host); }
   img.src = src || "https://i.imgur.com/HeIi0wU.png";
   // Track where to return to ('profile' = the contact profile modal).
   modal.dataset.returnTo = returnTo || "";
