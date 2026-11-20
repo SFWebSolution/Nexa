@@ -2803,7 +2803,7 @@ input[type="range"] {
   height: 40px;
   border: 1px solid var(--border-md);
   border-radius: var(--radius-xs);
-  background: rgba(22, 32, 46, 0.5);
+  background: var(--bg-2);
   color: var(--text-2);
   cursor: pointer;
   font-size: var(--fs-lg);
@@ -2995,7 +2995,7 @@ input[type="range"] {
   height: 36px;
   border: 1px solid var(--border-md);
   border-radius: var(--radius-xs);
-  background: rgba(22, 32, 46, 0.5);
+  background: var(--bg-2);
   color: var(--text-2);
   cursor: pointer;
   font-size: var(--fs-xl);
@@ -3205,7 +3205,7 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(10, 15, 22, 0.5);
+  background: var(--bg-1);
 }
 
 .modal-hdr input {
@@ -3228,7 +3228,7 @@ input[type="range"] {
   height: 36px;
   border: 1px solid var(--border-md);
   border-radius: var(--radius-xs);
-  background: rgba(22, 32, 46, 0.5);
+  background: var(--bg-2);
   color: var(--text-2);
   cursor: pointer;
   font-size: var(--fs-md);
@@ -15036,4 +15036,32 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
 .scroll-down-btn {
   min-width: var(--tap-min);
   min-height: var(--tap-min);
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   PERMANENTLY-DARK SURFACES KEEP THEIR OWN TEXT SCALE
+
+   These containers are dark in BOTH themes — #statusModalBox is #05070c,
+   .status-modal/.profile-setup-overlay/.ai-loading are near-black rgba — so
+   they were inheriting the LIGHT theme's --text-* tokens (--text-0 #0d1830,
+   --text-1 #1d2b45) and painting dark navy on near-black: 1.4:1 for the story
+   composer chrome, 2.2-3.0:1 for its inputs and buttons. Unreadable.
+
+   Pinning the dark scale here is a no-op under [data-theme="nexa"] (same
+   values) and restores 5.3-15.8:1 in the light theme. Add any future
+   always-dark container to this list rather than hardcoding colours in it.
+
+   The `color` line is required, not decorative: colour is INHERITED, so an
+   ancestor already resolved the light --text-0 to #0d1830 and the descendants
+   inherit that resolved value. Re-declaring --text-* alone does nothing to an
+   inherited colour; `color: var(--text-0)` forces it to re-resolve here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+#statusModalBox,
+.status-modal,
+.profile-setup-overlay,
+.ai-loading {
+  --text-0: #ffffff;
+  --text-1: #eef4ff;
+  --text-2: #aebfe0;
+  --text-3: #7c8db5;
+  color: var(--text-0);
 }
