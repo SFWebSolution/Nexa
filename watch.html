@@ -13,6 +13,11 @@
 
   <style>
     :root {
+      /* Shared type scale — same 8 steps as dashboard.css so every page of
+         the product sets type the same way. */
+      --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
+      --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+
       --nx-primary: #0b57d0;
       --nx-primary-lt: #1d6bf3;
       --nx-bg: #f4f6fa;
@@ -43,7 +48,7 @@
     @keyframes wrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
     .wbrand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 16px; }
     .wbrand img { width: 30px; height: 30px; border-radius: 9px; }
-    .wbrand span { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -.2px; }
+    .wbrand span { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: -.2px; }
     .wstage {
       position: relative; width: 100%; aspect-ratio: 9/16; max-height: 60vh;
       border-radius: 18px; overflow: hidden; background: #05070c;
@@ -68,21 +73,21 @@
     .wmeta { text-align: left; margin-bottom: 16px; }
     .wauthor { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .wauthor img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #eef2f8; border: 1px solid var(--nx-border); }
-    .wname { font-weight: 700; font-size: 15px; }
-    .wsub { font-size: 12.5px; color: var(--nx-text-muted); }
-    .wcap { font-size: 14.5px; line-height: 1.5; color: var(--nx-text-0); margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; }
-    .wstats { display: flex; gap: 14px; font-size: 12.5px; color: var(--nx-text-muted); font-weight: 600; margin-top: 8px; }
+    .wname { font-weight: 700; font-size: var(--fs-md); }
+    .wsub { font-size: var(--fs-sm); color: var(--nx-text-muted); }
+    .wcap { font-size: var(--fs-md); line-height: 1.5; color: var(--nx-text-0); margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; }
+    .wstats { display: flex; gap: 14px; font-size: var(--fs-sm); color: var(--nx-text-muted); font-weight: 600; margin-top: 8px; }
     .wbtn {
       display: flex; align-items: center; justify-content: center; gap: 9px;
       width: 100%; border: none; cursor: pointer; font-family: inherit;
-      font-size: 15.5px; font-weight: 700; padding: 15px 18px; border-radius: 14px;
+      font-size: var(--fs-lg); font-weight: 700; padding: 15px 18px; border-radius: 14px;
       transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
       text-decoration: none;
     }
     .wbtn:active { transform: scale(.98); }
     .wbtn-primary { background: linear-gradient(135deg, var(--nx-primary-lt), var(--nx-primary)); color: #fff; box-shadow: 0 12px 26px -12px rgba(11,87,208,.75); margin-bottom: 11px; }
-    .wbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: 13.5px; padding: 11px; }
-    .wstatus { font-size: 13.5px; font-weight: 600; padding: 11px 14px; border-radius: 13px; margin-bottom: 14px; line-height: 1.4; }
+    .wbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: var(--fs-md); padding: 11px; }
+    .wstatus { font-size: var(--fs-md); font-weight: 600; padding: 11px 14px; border-radius: 13px; margin-bottom: 14px; line-height: 1.4; }
     .wstatus.err { background: #fdeaea; color: #a12626; }
     .wspinner {
       width: 42px; height: 42px; border-radius: 50%;
@@ -90,9 +95,9 @@
       margin: 14px auto 18px; animation: wspin .8s linear infinite;
     }
     @keyframes wspin { to { transform: rotate(360deg); } }
-    .wloading { font-size: 14px; color: var(--nx-text-dim); }
-    .whint { font-size: 12px; color: var(--nx-text-muted); margin-top: 6px; line-height: 1.5; }
-    .wfoot { font-size: 11.5px; color: var(--nx-text-muted); margin-top: 18px; line-height: 1.5; }
+    .wloading { font-size: var(--fs-md); color: var(--nx-text-dim); }
+    .whint { font-size: var(--fs-xs); color: var(--nx-text-muted); margin-top: 6px; line-height: 1.5; }
+    .wfoot { font-size: var(--fs-xs); color: var(--nx-text-muted); margin-top: 18px; line-height: 1.5; }
     .wfoot a { color: var(--nx-text-dim); }
     .hidden { display: none !important; }
   </style>

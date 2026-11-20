@@ -13,6 +13,11 @@
 
   <style>
     :root {
+      /* Shared type scale — same 8 steps as dashboard.css so every page of
+         the product sets type the same way. */
+      --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
+      --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+
       --nx-primary: #0b57d0;
       --nx-primary-dk: #0842a0;
       --nx-primary-lt: #1d6bf3;
@@ -162,7 +167,7 @@
 
     .brand-title {
       font-family: var(--font-display);
-      font-size: 25px;
+      font-size: var(--fs-2xl);
       font-weight: 800;
       color: var(--nx-text-0);
       letter-spacing: -0.02em;
@@ -170,7 +175,7 @@
     }
 
     .brand-sub {
-      font-size: 13.5px;
+      font-size: var(--fs-md);
       color: var(--nx-text-dim);
       font-weight: 500;
       line-height: 1.45;
@@ -182,7 +187,7 @@
       background: rgba(11, 87, 208, 0.08);
       border: 1px solid rgba(11, 87, 208, 0.20);
       color: var(--nx-primary);
-      font-size: 12.5px;
+      font-size: var(--fs-sm);
       font-weight: 600;
       padding: 6px 14px;
       border-radius: 99px;
@@ -202,7 +207,7 @@
 
     .input-label {
       display: block;
-      font-size: 11.5px;
+      font-size: var(--fs-xs);
       font-weight: 700;
       color: var(--nx-text-dim);
       text-transform: uppercase;
@@ -233,7 +238,7 @@
       width: 100%;
       height: 46px;
       padding: 0 15px 0 44px;
-      font-size: 14px;
+      font-size: var(--fs-md);
       font-family: inherit;
       font-weight: 500;
       color: var(--nx-text-1);
@@ -300,7 +305,7 @@
       background: linear-gradient(135deg, var(--nx-primary) 0%, var(--nx-primary-lt) 100%);
       color: #ffffff;
       font-family: var(--font-display);
-      font-size: 15px;
+      font-size: var(--fs-md);
       font-weight: 700;
       letter-spacing: 0.3px;
       cursor: pointer;
@@ -333,7 +338,7 @@
     .auth-footer {
       text-align: center;
       margin-top: 20px;
-      font-size: 13.5px;
+      font-size: var(--fs-md);
       color: var(--nx-text-dim);
       font-weight: 500;
     }
@@ -352,7 +357,7 @@
     /* Message / Feedback Pill */
     .msg {
       margin-top: 16px;
-      font-size: 13.5px;
+      font-size: var(--fs-md);
       font-weight: 600;
       text-align: center;
       border-radius: 12px;
@@ -381,7 +386,7 @@
         border-radius: 20px;
       }
       .brand-title {
-        font-size: 23px;
+        font-size: var(--fs-xl);
       }
     }
 
@@ -473,7 +478,7 @@
     }
 
     .input-label {
-      font-size: 11px;
+      font-size: var(--fs-2xs);
       letter-spacing: 1px;
     }
 
@@ -531,7 +536,7 @@
       align-items: center;
       justify-content: center;
       gap: 9px;
-      font-size: 12px;
+      font-size: var(--fs-xs);
       color: var(--nx-text-3, #64748b);
     }
     .auth-legal a {

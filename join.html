@@ -13,6 +13,11 @@
 
   <style>
     :root {
+      /* Shared type scale — same 8 steps as dashboard.css so every page of
+         the product sets type the same way. */
+      --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
+      --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+
       --nx-primary: #0b57d0;
       --nx-primary-lt: #1d6bf3;
       --nx-bg: #f4f6fa;
@@ -43,7 +48,7 @@
     @keyframes jrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
     .jbrand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 20px; }
     .jbrand img { width: 30px; height: 30px; border-radius: 9px; }
-    .jbrand span { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -.2px; }
+    .jbrand span { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: -.2px; }
     .javatar {
       width: 92px; height: 92px; border-radius: 26px; object-fit: cover;
       margin: 0 auto 16px; display: block; background: #eef2f8;
@@ -51,15 +56,15 @@
     }
     .jkind {
       display: inline-flex; align-items: center; gap: 6px;
-      font-size: 12px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+      font-size: var(--fs-xs); font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
       color: var(--nx-primary); background: rgba(11,87,208,.09);
       padding: 5px 11px; border-radius: 999px; margin-bottom: 12px;
     }
-    .jname { font-family: var(--font-display); font-size: 23px; font-weight: 700; line-height: 1.25; letter-spacing: -.4px; margin-bottom: 7px; }
-    .jsub { font-size: 14px; color: var(--nx-text-dim); line-height: 1.5; margin-bottom: 22px; }
+    .jname { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; line-height: 1.25; letter-spacing: -.4px; margin-bottom: 7px; }
+    .jsub { font-size: var(--fs-md); color: var(--nx-text-dim); line-height: 1.5; margin-bottom: 22px; }
     .jstatus {
       display: flex; align-items: center; justify-content: center; gap: 7px;
-      font-size: 13.5px; font-weight: 600; padding: 11px 14px; border-radius: 13px;
+      font-size: var(--fs-md); font-weight: 600; padding: 11px 14px; border-radius: 13px;
       margin-bottom: 18px; line-height: 1.4;
     }
     .jstatus.ok { background: #e8f6ec; color: #10693a; }
@@ -68,13 +73,13 @@
     .jbtn {
       display: flex; align-items: center; justify-content: center; gap: 9px;
       width: 100%; border: none; cursor: pointer; font-family: inherit;
-      font-size: 15.5px; font-weight: 700; padding: 15px 18px; border-radius: 14px;
+      font-size: var(--fs-lg); font-weight: 700; padding: 15px 18px; border-radius: 14px;
       transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
     }
     .jbtn:active { transform: scale(.98); }
     .jbtn-primary { background: linear-gradient(135deg, var(--nx-primary-lt), var(--nx-primary)); color: #fff; box-shadow: 0 12px 26px -12px rgba(11,87,208,.75); margin-bottom: 11px; }
     .jbtn-secondary { background: #eef2f8; color: var(--nx-text-0); margin-bottom: 11px; }
-    .jbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: 13.5px; padding: 11px; }
+    .jbtn-ghost { background: transparent; color: var(--nx-text-dim); font-size: var(--fs-md); padding: 11px; }
     .jbtn[disabled] { opacity: .55; cursor: default; }
     .jspinner {
       width: 42px; height: 42px; border-radius: 50%;
@@ -82,9 +87,9 @@
       margin: 14px auto 18px; animation: jspin .8s linear infinite;
     }
     @keyframes jspin { to { transform: rotate(360deg); } }
-    .jloading { font-size: 14px; color: var(--nx-text-dim); }
-    .jhint { font-size: 12px; color: var(--nx-text-muted); margin-top: 6px; line-height: 1.5; }
-    .jfoot { font-size: 11.5px; color: var(--nx-text-muted); margin-top: 20px; line-height: 1.5; }
+    .jloading { font-size: var(--fs-md); color: var(--nx-text-dim); }
+    .jhint { font-size: var(--fs-xs); color: var(--nx-text-muted); margin-top: 6px; line-height: 1.5; }
+    .jfoot { font-size: var(--fs-xs); color: var(--nx-text-muted); margin-top: 20px; line-height: 1.5; }
     .jfoot a { color: var(--nx-text-dim); }
     .hidden { display: none !important; }
   </style>
@@ -260,7 +265,7 @@ function renderCard(entity, kind, isMember, signedIn) {
     '<img class="javatar" src="' + esc(avatar) + '" alt="" onerror="this.src=\'icon-192.png\'">' +
     '<div class="jkind">' + icon + " " + esc(label) + ' invite</div>' +
     '<div class="jname">' + esc(name) + '</div>' +
-    '<div class="jsub">' + esc(desc) + '<br><span style="color:var(--nx-text-muted);font-size:12.5px;">' + esc(count) + '</span></div>' +
+    '<div class="jsub">' + esc(desc) + '<br><span style="color:var(--nx-text-muted);font-size: var(--fs-sm);">' + esc(count) + '</span></div>' +
     statusHtml +
     '<button class="jbtn jbtn-primary" id="primaryBtn">' + esc(primaryLabel) + '</button>' +
     (inApp ? '' : '<div class="jhint">Opens the Nexa app if you have it — otherwise continues in your browser.</div>') +
