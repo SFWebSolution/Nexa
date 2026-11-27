@@ -241,7 +241,6 @@
       <!-- QUICK TAB SWITCHER FOR DESKTOP & SIDEBAR -->
       <div class="sidebar-tab-switcher">
         <button class="s-tab-btn active" id="sTabChats" onclick="switchTab('chats')" title="Chats"><i data-lucide="message-square"></i></button>
-        <button class="s-tab-btn start-voice-chat-btn" title="Start a Voice room" style="color: #25d366;"><i data-lucide="radio"></i></button>
         <button class="s-tab-btn" id="sTabStories" onclick="switchTab('stories')" title="Moments"><i data-lucide="circle-dot"></i><span class="story-tab-dot" id="storyTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabConnect" onclick="switchTab('connect')" title="Connect"><i data-lucide="user-plus"></i><span class="connect-tab-dot" id="connectTabDotDesktop" style="display:none;"></span></button>
         <button class="s-tab-btn" id="sTabCommunity" onclick="switchTab('community')" title="Community"><i data-lucide="users"></i><span class="comm-tab-dot" id="commTabDotDesktop" style="display:none;"></span></button>
@@ -253,18 +252,17 @@
     <div class="tab-panes-container">
       <!-- 1. CHATS TAB -->
       <div class="tab-pane active" id="tabPaneChats">
-        <div class="voice-chat-start-strip" style="padding: 10px 14px 2px 14px; display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-size: 12px; font-weight: 700; color: var(--text-3, #8b949e); text-transform: uppercase; letter-spacing: 0.5px;">Voice Rooms</span>
-          <button class="start-voice-chat-btn" style="background: rgba(37, 211, 102, 0.12); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.4); font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; transition: all 0.2s ease;">
-            <i data-lucide="radio" style="width: 14px; height: 14px;"></i> Start a Voice room
-          </button>
-        </div>
         <div class="search-wrap">
           <input type="text" id="userSearch" placeholder="🔍  Search users…" onkeyup="searchUsers()">
         </div>
         <div class="users" id="users">
           <div class="no-users">Loading users…</div>
         </div>
+        <!-- ROUND LIVE-ROOM LAUNCHER — pinned bottom-right of the chat list,
+             WhatsApp-style (same round footprint as the voice-note mic). -->
+        <button class="live-fab start-voice-chat-btn" id="liveFabBtn" title="Start a Live room" aria-label="Start a Live room">
+          <i data-lucide="radio"></i>
+        </button>
         <script>
         // WhatsApp-style instant first paint: render the cached chat list
         // immediately, BEFORE the heavy CDN scripts (Firebase/PeerJS/lucide)

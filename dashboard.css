@@ -1331,11 +1331,14 @@ select:focus-visible {
 .msg {
   max-width: min(62%, 520px);
   position: relative;
-  /* Skip rendering/painting off-screen message bubbles. Keeps long chats
-     smooth (no jank) like WhatsApp. Intrinsic size is an estimate so the
-     scrollbar stays stable as messages virtualize in/out of view. */
-  content-visibility: auto;
-  contain-intrinsic-size: 64px;
+  /* NO content-visibility here, deliberately. It only pays off when off-screen
+     nodes are numerous and uniformly sized. Message bubbles are neither: a
+     chat holds at most a few hundred (12 + 25-message pages), and heights vary
+     from a one-line text bubble to a tall photo/video/voice card. With an
+     estimated intrinsic size the browser paints a wrong height first and snaps
+     to the real one on scroll — which is exactly the "messages scatter / jump
+     while scrolling" bug. The chat list (.user-item) keeps it: rows are a
+     uniform 76px, so its estimate is accurate. */
 }
 
 .msg.msg-new {
@@ -11404,7 +11407,6 @@ svg.lucide {
   transition: transform 350ms var(--spring-tactile);
 }
 
-.voice-chat-start-strip button:hover i,
 .start-voice-chat-btn:hover i {
   animation: voiceRadioPulse 1.2s infinite ease-in-out;
 }
@@ -11412,6 +11414,63 @@ svg.lucide {
 @keyframes voiceRadioPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.22); color: #25d366; }
+}
+
+/* ── LIVE ROOM LAUNCHER (round FAB, bottom-right of the chat list) ──
+   Round like the voice-note mic. Floats above the scrolling list, so .users
+   reserves space below its last row (see the rule below) to keep the button
+   from covering a contact. */
+.live-fab {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+  color: #fff;
+  cursor: pointer;
+  z-index: 25;
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.42);
+  transition: transform var(--tf) var(--ease), box-shadow var(--tf) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.live-fab:hover {
+  transform: scale(1.07);
+  box-shadow: 0 8px 26px rgba(37, 211, 102, 0.55);
+}
+
+.live-fab:active {
+  transform: scale(0.94);
+}
+
+.live-fab i {
+  width: 24px;
+  height: 24px;
+}
+
+/* The chat list scrolls underneath the FAB — keep the last contact reachable. */
+.tab-pane #users {
+  padding-bottom: 84px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-fab,
+  .live-fab:hover,
+  .live-fab:active {
+    transform: none;
+  }
+  .start-voice-chat-btn:hover i {
+    animation: none;
+  }
 }
 
 /* ── O. FLOATING SCROLL TO BOTTOM BUTTON ── */

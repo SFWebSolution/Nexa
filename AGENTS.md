@@ -229,6 +229,11 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - Remote deletes of messages that only live in `_olderMsgs` are NOT live-propagated (ghost until chat re-open) — accepted tradeoff to keep the listener windowed.
 - **Older-page cursor MUST be `startAfter(oldestA)`, NOT `endBefore`** (the "show older messages stopped working" bug). The page query is `orderBy("createdAt","desc").startAfter(msgPaging.oldestA).limit(25)`. Firestore cursor semantics are relative to the QUERY ordering: on a DESC query `endBefore(X)` returns docs that sort BEFORE X = **NEWER** messages, i.e. exactly the ones already in the live window — every older-page fetch got deduped to nothing, `oldestA` never advanced, and history falsely appeared exhausted. `startAfter` returns docs AFTER the cursor in DESC order = genuinely older. The seam-heal query IS correctly an ASC query (`orderBy("createdAt","asc").startAfter(range.after).endBefore(range.before)` — after=older ts, before=newer ts) — do NOT "fix" the seam query to match.
 - `autoSaveMedia` caches the parsed `nexa_autosaved_media` localStorage map in memory (`_autoSavedMediaCache`) instead of re-parsing per media message per render; the map is capped at 500 entries.
+- **Scroll position on scroll-up is restored by ELEMENT ANCHOR, not pixel math.** `captureScrollAnchor(box)` (next to `msgPaging`) records the top-most visible `.msg[data-msg-id]` plus its offset from the container top; `restoreScrollAnchor(box, anchor)` re-aligns that same bubble on the next `requestAnimationFrame`. The old `box.scrollTop = box.scrollHeight - prevHeight + prevTop` drifted because a bubble's height after the load differs from before it (text wraps differently, photos/videos/voice cards decode and size late) — that drift is the "messages scatter / jump while scrolling" report. Don't reintroduce height arithmetic.
+- `restoreScrollAnchor` temporarily sets `box.style.scrollBehavior = "auto"` and restores it. `.messages` is `scroll-behavior:smooth`, so without this the restore itself animates and history visibly slides under the reader.
+- **`.msg` has NO `content-visibility`.** It was `content-visibility:auto` with `contain-intrinsic-size:64px`, which makes the browser paint an estimated height first and snap to the real one on scroll — a second, independent source of the same jumping (a flat 64px badly under-estimates media bubbles). The optimization only pays off for many uniformly-sized off-screen nodes; a chat holds a few hundred at most and heights vary wildly. `.user-item` KEEPS `content-visibility:auto` (uniform 76px rows) — that one is accurate and worth it. If you ever want it back on `.msg`, the estimate must be per-message-kind, not a constant.
+- **No entrance animation while paging history.** `renderMessageList` only adds `.msg-new` (and the date-separator variant) when `!_loadingOlderRender`. Animating 25 prepended bubbles at once was the visible shake.
+- Tests: `node tests/scroll-anchor.test.js` (13 checks — capture/restore geometry against a coherent fake DOM where scrolling moves content and not the container, smooth-scroll suppression, missing-anchor tolerance, immunity to wrong height estimates, plus the structural invariants above).
 
 ## Instant-open cache for groups + channels (`COMM_MSG_CACHE_MAX`)
 - Groups and channels used to paint a "Loading…" placeholder on every open and only show content after the first Firestore snapshot. They now share the 1:1 chat's instant-open trick: `saveCommMsgCache(kind, id, msgs)` / `loadCommMsgCache(kind, id)` / `clearCommMsgCache(kind, id)` in `app-main.js` persist the newest **24** messages to `localStorage` under `nexa_comm_msgs_<uid>_<kind>_<id>` (kind = `"group"` | `"channel"`). System notices (`isSystem`) are never cached (they're re-derived from the live doc).
@@ -1119,30 +1124,70 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - `isConnection(uid)` (nexa-voice-room.js) prefers `window.isConnectedTo` and falls back to the cached `nexa_connections_<uid>` localStorage map, so gating works even if `app-main.js` hasn't finished loading.
 - **Starting your own room is NOT gated** (it's your room); only inviting/joining is. There is no "Start a room" entry in the Connect tab by design.
 
-## Live rooms — voice/video mode + camera (do NOT regress)
-- A Live room is started in one of two modes, chosen via the **mode chooser popup** (`#nexaVrModeModal`) that appears EVERY time a `.start-voice-chat-btn` is tapped (the click handler calls `openModeChooser()`, NOT `startRoom()` directly). Voice = mic only, cap **10**; Video = camera + mic, cap **6**.
-- `roomMode` ('voice' | 'video') is chosen at creation by the host and stored on the room doc as `mode`; joiners inherit it (`joinRoom` reads `roomData.mode`). There is no mid-room upgrade/downgrade. `isVideoRoom()` / `capForMode()` / `modeLabel()` are the helpers; `maxParticipants` is set from the cap on start/join.
-- **Bandwidth, not code, is the video limit:** it is a P2P mesh, so each peer uploads its camera to every other peer (N−1 streams). 6 is the deliberate sweet spot (~1.6 Mbps up); do NOT raise the video cap without accounting for that.
-- `initMicrophone()` captures `video: wantVideo ? {width:1280,height:720,frameRate:24,facingMode:'user'} : false` and **falls back to audio-only** (with a toast) if the camera is blocked/unavailable. Audio still runs through the same Web Audio DSP chain.
-- `attachCallHandlers`'s `stream` handler calls BOTH `playRemoteAudioStream` (hidden `<audio>`) and `playRemoteVideoStream` (video tile). Remote streams are cached in `remoteStreams` keyed by **stable uid, NOT peerId** and **re-applied after every `updateUI()`** via `reapplyRemoteVideos()`. Two reasons: (1) `updateUI` rebuilds the grid's innerHTML, which recreates the `<video>` elements and drops their `srcObject`; (2) a peer can reconnect with a fallback id (`unavailable-id`), so a peerId-keyed tile would never receive the stream — **that is the "host can't see the joiners" bug** (the joiner, whose peerId is the stable one, sees the host fine). `playRemoteVideoStream` resolves peerId→uid via `peerIdToUid`, then a participant peerId scan, then falls back to the raw peerId; the participants `onSnapshot` migrates a stream parked under a raw peerId onto the uid once the mapping lands and re-attaches.
-- **Video layout is a uniform tile wall, self included** (`renderVideoUI()`): the avatar stage (`#nexaVrStage`) is HIDDEN in video mode and the grid renders one `.nexa-vr-video-card` per participant — your own tile FIRST (id `nexaVrSelfVideo`, muted + mirrored, name "You"), then everyone else (`nexaVrRemoteVideo_<uid>`). Tiles are the same size, so it looks clean whether you're alone or with 5 others. There is NO separate stage self-view element (the old `#nexaVrLocalVideo` is gone — do not re-add it). A camera-off participant falls back to their avatar (`isCameraOn` synced to Firestore + carried in the participant map). The camera toggle (`#nexaVrCamBtn`, video rooms only) flips `isCameraOn` and disables the video track.
-- `nexa-voice-room.css`: `.nexa-vr-grid-video` is `repeat(auto-fit, minmax(150px,1fr))` with 3/4 tiles; the ≤600px media query drops it to a **single column, 4/5 tiles, `max-height:58vh` scroll**, and shrinks the footer buttons to 44px so the tiles get the room on small phones (this is the "video looks bad on small phones" fix). Voice mode keeps the old auto-fill 130px grid + stage.
-
-- `leaveRoom()` / `leaveRoomFromHostClose()` also remove `video[id^="nexaVrRemoteVideo_"]`, clear `remoteStreams`, and reset `roomMode`/`isCameraOn`/`maxParticipants` back to voice defaults.
-- **Echo in Live rooms (both voice and video) — two independent causes, both fixed, do NOT regress:**
-  1. **Remote video tiles MUST stay `muted`.** Remote audio is played ONLY through the hidden `audio[id^="audio_"]` element. If a remote `<video>` is left unmuted it also plays that stream's audio, so video rooms hear everything twice (sounds like echo). `videoTileHtml` hardcodes `muted` on every tile (self is muted too) and `playRemoteVideoStream` re-asserts `v.muted = true` defensively.
-  2. **`initMicrophone()` must pass the Chromium `goog*` AEC flags**, not just the bare `echoCancellation:true`. The bare flag alone does not reliably engage Chromium's hardware echo canceller, so speaker output leaks back into the mic and callers hear themselves. The `audioConstraints` object now includes `googEchoCancellation`, `googEchoCancellation2`, `googNoiseSuppression`, `googAutoGainControl`, `googHighpassFilter` (same set as `NEXA_AUDIO_CONSTRAINTS` in app-main.js).
+## Echo in Live rooms — do NOT regress
+- **`initMicrophone()` must pass the Chromium `goog*` AEC flags**, not just the
+  bare `echoCancellation:true`. The bare flag alone does not reliably engage
+  Chromium's hardware echo canceller, so speaker output leaks back into the mic
+  and callers hear themselves. The `audioConstraints` object includes
+  `googEchoCancellation`, `googEchoCancellation2`, `googNoiseSuppression`,
+  `googAutoGainControl`, `googHighpassFilter` (same set as
+  `NEXA_AUDIO_CONSTRAINTS` in app-main.js). Keep them on every audio capture.
+- Remote audio plays ONLY through the hidden `audio[id^="audio_"]` element.
+  Live rooms are voice-only now, so there is no second playback path — but if a
+  `<video>` is ever added back it MUST be `muted`, or that stream's audio plays
+  twice and sounds like echo.
 
 ## PWA service worker caching (firebase-messaging-sw.js) — do NOT regress
 - The service worker caches `dashboard.html`, `nexa-voice-room.js`/`.css`, `app-main.js` etc. If first-party JS/CSS is served Stale-While-Revalidate, **the first load after every deploy runs the PREVIOUS version** — so a pushed fix silently doesn't apply until a second reload (this is exactly why "the echo is still there" / "the layout is still broken" after a fix was deployed). First-party `.js`/`.css` are now NETWORK-FIRST (falling back to cache only when offline); HTML navigations were already network-first.
 - `CACHE_NAME` must be BUMPED on each release (`nexa-v10-preview` → `nexa-v11-comments`): `activate` deletes every cache whose name differs, so bumping purges the stale copy on existing devices. Do NOT leave the cache name unchanged across releases.
 - When adding a new first-party script/style to the page, add it to `ASSETS_TO_CACHE` too (currently `nexa-voice-room.css` + `nexa-voice-room.js` are listed).
 
-## Live video layout (nexa-voice-room.css) — do NOT regress
-- Phones (≤600px) render the video grid as **2 columns** (`repeat(2,1fr)`, cards `aspect-ratio:3/4`, `gap:8px`) so several faces show at once instead of one giant tile with a long scroll. Landscape phones use `repeat(2,1fr)` with `16/10` cards.
-- **`grid-auto-rows: max-content` + `align-content: start` are REQUIRED on `.nexa-vr-grid-video` when it has `max-height` + `overflow-y:auto`.** Without them a height-constrained grid squishes its rows to a fraction of the card height while `aspect-ratio` forces each card tall → **the cards overlap each other** (the "arrangement scattered" bug). Every row must be as tall as its card.
+## Live rooms are VOICE-ONLY (video was removed — do NOT re-add it)
+- The video half of Live was **deleted outright**, not just hidden. Gone from
+  `nexa-voice-room.js`: `roomMode` / `isCameraOn` / `remoteStreams` /
+  `maxParticipantsVoice` / `maxParticipantsVideo`, `isVideoRoom()`,
+  `capForMode()`, `modeLabel()`, `toggleCamera()`, `chooseMode()`,
+  `closeModeChooser()`, `renderVideoUI()`, `videoTileHtml()`,
+  `playRemoteVideoStream()`, `reapplyRemoteVideos()`, `attachLocalSelfVideo()`,
+  and the `nexaVrCamBtn` / `nexaVrModeModal` markup + listeners. Gone from
+  `nexa-voice-room.css`: every `.nexa-vr-mode-*`, `.nexa-vr-grid-video`,
+  `.nexa-vr-video-card`, `.nexa-vr-card-video*` rule and the video-only phone
+  media queries. Capacity is a flat `this.maxParticipants = 10`.
+- `initMicrophone()` captures `video: false` — never request a camera. Do not
+  reintroduce a `wantVideo` branch or the camera-failure audio fallback.
+- `startRoom(roomTitle)` no longer takes a `mode` arg and the room doc no longer
+  writes `mode`. `joinRoom()` deliberately **ignores a legacy `mode:'video'`**
+  on an old room doc and joins as audio, so rooms created before the removal
+  still work. Keep that tolerance.
+- `openModeChooser()` is kept as the single entry point the delegated
+  `.start-voice-chat-btn` handler calls; it now just calls `startRoom()` (and
+  expands the overlay if a room is already active). The name is vestigial —
+  renaming it means updating the click handler too.
+- Tests: `node tests/live-room-voice-only.test.js` (17 checks — no leftover
+  video symbols/ids/CSS, `video:false`, 10-peer cap, direct start, legacy-room
+  tolerance, FAB markup/placement/CSS, and per-file CRLF integrity).
 
-- Firestore needs NO rules change for video — the `voice_rooms` update rule only pins `hostId`, so the `mode` field and participant `isCameraOn` are allowed. `nexa-voice-room.css` holds `.nexa-vr-mode-*`, `.nexa-vr-local-video`, `.nexa-vr-video-card` styles.
+## Round Live-room launcher (`.live-fab`, dashboard.html + dashboard.css)
+- ONE round floating button (`#liveFabBtn`, `.live-fab.start-voice-chat-btn`)
+  pinned bottom-right of the chat list — the WhatsApp FAB pattern. It replaced
+  BOTH the `.s-tab-btn` radio button in the sidebar tab strip and the
+  `voice-chat-start-strip` text pill, which are gone; do not bring either back.
+- It lives **inside `#tabPaneChats`**, after `#users`, so it disappears with the
+  pane on every other tab. Don't hoist it to `.sidebar` level — that shows it on
+  Stories/Connect/Community/Settings too.
+- `position:absolute; right:18px; bottom:18px; 52px square; border-radius:50%`.
+  Its containing block is `.tab-panes-container` (the nearest positioned
+  ancestor) — `border-radius:50%` on the 52px square is what makes it round.
+- **There is deliberately NO `@media (max-width:768px)` `bottom` override.** On
+  mobile `.sidebar` already reserves the 62px `.mobile-bottom-nav` via its own
+  `padding-bottom:62px`, so the pane already ends above the nav. Adding a second
+  offset double-counts it and floats the button ~94px up (measured in a real
+  browser at 390×844). If the mobile offset is ever needed, remove the sidebar
+  padding first.
+- `.tab-pane #users { padding-bottom: 84px }` keeps the last contact scrollable
+  clear of the FAB. Verified pinned (constant `fabTop`) through both list
+  scrolling and pane scrolling, and non-overlapping with contact rows.
+- FAB hover/active motion is behind a `prefers-reduced-motion` guard.
 
 ## Read-quota cache (app-main.js) — the read-once-and-remember layer
 - `nexaCacheRead/Write/Clear/Fetch/FetchSync/ClearAll` (right above `linkify`)

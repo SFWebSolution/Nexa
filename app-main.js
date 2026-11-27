@@ -4624,6 +4624,45 @@ let msgPaging = {
   seamA: [], seamB: [], // timestamp gaps left by bulk window slides
   loading: false
 };
+// ── Scroll anchoring ──────────────────────────────────────────────────────
+// Prepending a page of history changes the container's scrollHeight, and the
+// real height of every bubble is not known up front (text wraps differently,
+// photos/videos/voice cards decode and size late). Restoring by
+// "newHeight - oldHeight + oldTop" therefore drifts whenever a measured height
+// differs from the one taken before the load — that drift is the "messages
+// scatter / jump while scrolling" bug. Instead we pin the top-most visible
+// bubble and re-align that SAME bubble after the render.
+function captureScrollAnchor(box) {
+  if (!box) return null;
+  const boxTop = box.getBoundingClientRect().top;
+  const nodes = box.querySelectorAll(".msg[data-msg-id]");
+  for (const el of nodes) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > boxTop + 1) {
+      return { id: el.dataset.msgId, offset: r.top - boxTop };
+    }
+  }
+  return null;
+}
+
+function restoreScrollAnchor(box, anchor) {
+  if (!box) return;
+  // The container is scroll-behavior:smooth, which would animate this restore
+  // and make history visibly slide under the reader. Jump instead.
+  const prevBehavior = box.style.scrollBehavior;
+  box.style.scrollBehavior = "auto";
+  if (!anchor) {
+    box.scrollTop = 0;
+  } else {
+    const el = box.querySelector(`.msg[data-msg-id="${CSS.escape(anchor.id)}"]`);
+    if (el) {
+      const delta = el.getBoundingClientRect().top - box.getBoundingClientRect().top - anchor.offset;
+      if (delta) box.scrollTop += delta;
+    }
+  }
+  box.style.scrollBehavior = prevBehavior;
+}
+
 let _loadingOlderRender = false; // renderMessageList must not auto-scroll on older loads
 
 function resetMsgPaging() {
@@ -4985,8 +5024,7 @@ async function loadOlderMessages() {
   if (spinner) spinner.style.display = "flex";
 
   const box = document.getElementById("messages");
-  const prevHeight = box ? box.scrollHeight : 0;
-  const prevTop = box ? box.scrollTop : 0;
+  const anchor = captureScrollAnchor(box);
 
   try {
     const me = currentUser.uid;
@@ -5062,18 +5100,16 @@ async function loadOlderMessages() {
       }
     });
 
-    // Render with scroll preserved so the view stays on the same message
-    // instead of jumping to the bottom or top.
+    // Keep the reader's place: re-align the bubble that was at the top of the
+    // viewport before the older page was inserted. Doing this on the next frame
+    // (after layout) means late-loading media and real bubble heights can't
+    // shift the view.
     _loadingOlderRender = true;
     renderMessageList();
-    if (box) {
-      requestAnimationFrame(() => {
-        box.scrollTop = box.scrollHeight - prevHeight + prevTop;
-        _loadingOlderRender = false;
-      });
-    } else {
+    requestAnimationFrame(() => {
+      restoreScrollAnchor(box, anchor);
       _loadingOlderRender = false;
-    }
+    });
   } catch (err) {
     console.warn("loadOlderMessages error:", err);
     _loadingOlderRender = false;
@@ -5466,8 +5502,10 @@ function renderMessageList() {
         const span = document.createElement("span");
         span.textContent = fmtDateSep(msg.createdAt);
         sep.appendChild(span);
-        sep.classList.add("msg-new");
-        setTimeout(() => { if (sep) sep.classList.remove("msg-new"); }, 200);
+        if (!_loadingOlderRender) {
+          sep.classList.add("msg-new");
+          setTimeout(() => { if (sep) sep.classList.remove("msg-new"); }, 200);
+        }
       }
       place(sep);
     }
@@ -5479,8 +5517,12 @@ function renderMessageList() {
 
     if (!msgEl) {
       msgEl = buildMessage(msg.id, msg, fromMe);
-      msgEl.classList.add("msg-new");
-      setTimeout(() => { if (msgEl) msgEl.classList.remove("msg-new"); }, 200);
+      // No entrance animation while paging in history — animating every
+      // prepended bubble at once is the visible shake.
+      if (!_loadingOlderRender) {
+        msgEl.classList.add("msg-new");
+        setTimeout(() => { if (msgEl) msgEl.classList.remove("msg-new"); }, 200);
+      }
     } else {
       // In-place tick update without DOM re-attachment or shaking
       const tick = fromMe && msg.read ? "✓✓" : fromMe ? "✓" : "";
