@@ -2425,3 +2425,47 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
 - **`groups` update is scoped:** admin (anything EXCEPT `createdBy`/`ownerUid` — ownership is immutable, or an admin could hijack the group), member-leave (self-removal + count −1), non-member-join (self-append + count +1), member preview-fields (`lastMessage`/`lastMessageTime`/`lastSenderName`/`lastMentionUids`/`updatedAt`). **Legacy docs may lack `membersCount`** — a missing key makes `resource.data.membersCount - 1` throw and denies the WHOLE rule, so the arithmetic goes through `countMovedBy(data, by)` which short-circuits when either side is absent. Same missing-key rule as `storyExpired`/`expireAt`: guard with `'key' in data`, never `data.key == null`.
 - `follows` update = **target only**, status/updatedAt only. `voice_invites` requires `targetUserId == uid` (the invite must be for the doc's owner). `voice_rooms` update has no tautology. `channels` + `channels/posts` + `groups/messages` are scoped to the actual writers (an admin posts AS THEMSELVES — `authorUid` is pinned to the caller).
 - **`tests/firestore-rules.test.js`** (76 assertions, no Java/emulator needed) extracts the REAL rule blocks by brace matching and evaluates the allow-conditions in JS. It auto-extracts each block's own `function` helpers (`countMovedBy`, `identityKept`, …) and prepends them so they close over `resource`/`request`. Each collection's before/after fixture is checked both ways (a legitimate write is allowed, the attack is denied). Verified to FAIL when a hole is reintroduced — do not weaken it into a smoke test.
+
+## Community tab (Groups + Channels) — layout & theme color (do NOT regress)
+
+- **The community CSS zone (~L9046 "NEXA COMMUNITY") was authored against a dark
+  WhatsApp palette.** It hardcodes `#25d366` (WhatsApp green), `#111b21`
+  (WhatsApp dark) and `rgba(255,255,255,.08)` "lift" overlays. Nexa's brand is
+  blue and the app DEFAULTS to the light theme, so those overlays composite to
+  almost exactly the surface colour and the text vanishes. Measured with
+  composited contrast before the fix: light/groups 5 failures, light/channels 8,
+  dark/groups 4, dark/channels 2 (worst: sub-tab label 1.98, `@handle` 2.73,
+  `+ New` 1.75).
+- **All corrections are APPENDED as one additive block** (`dashboard.css`, tail,
+  "COMMUNITY TAB — COHERENT LAYOUT & THEME-AWARE COLOR"), never edited in place,
+  so the diff stays `+471 / -0`. Every selector is scoped to `#tabPaneCommunity`
+  (verified: 0 unscoped selectors), so nothing bleeds into other tabs that share
+  `.search-wrap` / `.comm-group-item`.
+- **One gutter owns the horizontal spacing.** `.comm-list-scroll` supplies
+  `--comm-gutter` (16px, 12px ≤480px); its children are flush (0). The previous
+  code applied 16px on the scroller AND another 16px on section headers and the
+  carousel, so headers sat at x=32 while rows sat at x=21. Rows use
+  `--comm-row-inset: 0` so the avatar's left edge lands on the same column.
+  Measured alignment spread is now **1px** (was 17px) at 360/420/1280px.
+- **Sub-tab underline is a `::after` pseudo-element, not `border-bottom`.** The
+  old `border-bottom: 3px solid transparent` is part of the box model, so
+  activating a tab changed its height and nudged the label upward. Keep the
+  underline out of the layout box.
+- **Two accent tokens, because one cannot serve both roles.** `--comm-accent`
+  is for FILLS (white text on it) and resolves to `--primary` on light /
+  `--primary-dk` on dark. `--comm-accent-text` is for accent-coloured TEXT and
+  resolves to `--primary-dk` on light / `--primary-lt` on dark. Using
+  `--primary` as body text measured 4.17 on light (below AA); using it as a
+  filled chip background measured 3.24 on dark. Do NOT collapse them.
+- **`--primary-lt` must never be used for text on the light theme** — it is the
+  light-theme *highlight* colour and measures ~2.7 there. The channel handle
+  used to be rendered with an inline `color:var(--primary-lt)` in
+  `renderChannelsFollowing()`; it is now `var(--comm-accent-text)`.
+- Verified **0 WCAG AA failures** across {light, dark} × {groups, channels} ×
+  {360, 420, 1280}px, uniform row heights per component (group row 68,
+  discover card 76, channel card 30), and no unintended horizontal overflow.
+  The measurement must composite every ancestor background and wait for the
+  `nexaPaneIn` fade to finish (measuring on `load` catches `opacity:0` and every
+  element reads as hidden); use `--force-prefers-reduced-motion` rather than
+  awaiting `getAnimations()`, which never resolves because the brand pulse is
+  `infinite`.

@@ -14051,7 +14051,7 @@ function renderChannelsFollowing() {
             <div class="comm-group-time">${escapeHtml(c.category || 'General')}</div>
           </div>
           <div class="comm-group-preview-row">
-            <div class="comm-group-preview" style="color:var(--primary-lt);font-weight:600;">${escapeHtml(c.handle || '')}</div>
+            <div class="comm-group-preview" style="color:var(--comm-accent-text);font-weight:600;">${escapeHtml(c.handle || '')}</div>
             <div class="comm-group-members-badge">${subs} subscribers</div>
           </div>
         </div>

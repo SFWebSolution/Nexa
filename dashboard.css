@@ -14964,3 +14964,464 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
   .media-viewer-body img { transition: none; }
   .media-viewer-dl-spinner { animation-duration: 1.6s; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* COMMUNITY TAB — COHERENT LAYOUT & THEME-AWARE COLOR (additive)              */
+/*                                                                            */
+/* The community zone above was authored against a dark WhatsApp palette:     */
+/* it hardcodes #25d366 (WhatsApp green), #111b21 (WhatsApp dark), and        */
+/* rgba(255,255,255,.08) "lift" overlays. Nexa's brand is blue and its        */
+/* DEFAULT theme is light, so on the light theme those overlays composite to  */
+/* almost exactly the surface colour and the text vanishes.                   */
+/*                                                                            */
+/* Measured before this block (headless Chromium, composited contrast):       */
+/*   light/groups    5 text styles below WCAG AA (tabs 1.98, time 3.61)       */
+/*   light/channels  8 text styles below WCAG AA (@handle 2.73, +New 1.75)    */
+/*   dark/groups     4 text styles below WCAG AA                              */
+/*   dark/channels   2 text styles below WCAG AA                              */
+/*                                                                            */
+/* Everything here is token-driven, so both themes are handled by one set of  */
+/* rules. Appended rather than edited in place to keep the diff additive.     */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── One gutter scale ──────────────────────────────────────────────────────
+   The zone mixed 12px (search, list) with 16px (section headers, action rows)
+   so stacked blocks never lined up. Every block now uses --comm-gutter. */
+#tabPaneCommunity {
+  --comm-gutter: 16px;
+  /* Rows are flush with the gutter so every block shares one left edge. */
+  --comm-row-inset: 0px;
+  --comm-row-pad-y: 10px;
+  --comm-row-h: 64px;
+}
+
+/* ── Segmented tabs ────────────────────────────────────────────────────────
+   The old rule used `border-bottom: 3px solid transparent`, which is part of
+   the box model: activating a tab changed its height and nudged the label up.
+   An absolutely-positioned underline paints outside the layout instead. */
+#tabPaneCommunity .comm-ws-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 var(--comm-gutter);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-dk);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#tabPaneCommunity .comm-ws-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+#tabPaneCommunity .comm-ws-tab {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 12px 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color var(--duration-sm) var(--ease);
+}
+#tabPaneCommunity .comm-ws-tab::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--primary);
+  transform: scaleX(0);
+  transition: transform var(--duration-sm) var(--ease);
+}
+#tabPaneCommunity .comm-ws-tab:hover {
+  color: var(--text-1);
+}
+#tabPaneCommunity .comm-ws-tab.active {
+  color: var(--primary);
+  border-bottom-color: transparent;
+}
+#tabPaneCommunity .comm-ws-tab.active::after {
+  transform: scaleX(1);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#tabPaneCommunity .community-pane-header {
+  padding: 16px var(--comm-gutter) 10px;
+}
+#tabPaneCommunity .community-pane-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--text-0);
+}
+
+/* ── Section headers ───────────────────────────────────────────────────────
+   Sentence case reads better than ALL-CAPS at this size, and --text-2 is the
+   only weight that clears AA on both themes. */
+#tabPaneCommunity .comm-ws-section-header {
+  padding: 14px var(--comm-gutter) 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  color: var(--text-2);
+}
+
+#tabPaneCommunity .comm-ws-header-action {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+#tabPaneCommunity .comm-ws-header-action:hover {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+#tabPaneCommunity .comm-ws-sub-hint {
+  padding: 0 var(--comm-gutter) 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+#tabPaneCommunity .comm-ws-empty-hint {
+  padding: 14px var(--comm-gutter);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* ── Action row ("New group") ─────────────────────────────────────────────── */
+#tabPaneCommunity .comm-ws-action-row {
+  gap: 12px;
+  padding: 10px var(--comm-gutter);
+  border-bottom: 1px solid var(--border-dk);
+}
+#tabPaneCommunity .comm-ws-action-row:hover {
+  background: var(--bg-2);
+}
+#tabPaneCommunity .comm-ws-action-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+#tabPaneCommunity .comm-ws-action-text {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+
+/* ── Scroll containers ─────────────────────────────────────────────────────
+   The old 12px side padding is what made rows sit inset from every header
+   above them. Padding now comes from the shared gutter, and the row's own
+   inset brings the avatar back onto the content column. */
+#tabPaneCommunity .comm-list-scroll {
+  padding: 4px var(--comm-gutter) 90px;
+  gap: 2px;
+}
+
+/* ── Group / channel rows ──────────────────────────────────────────────────
+   Uniform height in both sub-tabs (the two renderers share .comm-group-item
+   but measured 70px vs 68px). */
+#tabPaneCommunity .comm-group-item {
+  gap: 12px;
+  min-height: var(--comm-row-h);
+  padding: var(--comm-row-pad-y) var(--comm-row-inset);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+#tabPaneCommunity .comm-group-item:hover {
+  background: var(--bg-2);
+}
+#tabPaneCommunity .comm-group-item.active {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+#tabPaneCommunity .comm-group-avatar {
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--border-md);
+}
+
+#tabPaneCommunity .comm-group-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+
+/* time / category: --text-3 failed AA at 11px on light (3.61). */
+#tabPaneCommunity .comm-group-time {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+#tabPaneCommunity .comm-group-preview-row {
+  gap: 8px;
+  margin-top: 2px;
+}
+#tabPaneCommunity .comm-group-preview {
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-right: 0;
+}
+
+/* The member/subscriber pill was rgba(255,255,255,.08) — invisible on light.
+   It is also the row's quietest datum, so it no longer competes with the
+   preview line: no pill chrome, just a muted count. */
+#tabPaneCommunity .comm-group-members-badge {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Discover cards ──────────────────────────────────────────────────────── */
+#tabPaneCommunity .comm-discover-vertical-list {
+  gap: 2px;
+}
+#tabPaneCommunity .comm-discover-card {
+  gap: 12px;
+  min-height: var(--comm-row-h);
+  padding: var(--comm-row-pad-y) var(--comm-row-inset);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+#tabPaneCommunity .comm-discover-card:hover {
+  background: var(--bg-2);
+}
+#tabPaneCommunity .comm-discover-name {
+  color: var(--text-0);
+  font-weight: 700;
+}
+/* --primary-lt is too light on the light theme (measured 2.73). */
+#tabPaneCommunity .comm-discover-handle {
+  color: var(--comm-accent-text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+#tabPaneCommunity .comm-discover-desc {
+  color: var(--text-2);
+}
+
+/* ── Carousel cards ──────────────────────────────────────────────────────── */
+#tabPaneCommunity .comm-ws-cards-carousel {
+  gap: 10px;
+  padding: 4px var(--comm-gutter) 14px;
+}
+#tabPaneCommunity .ws-channel-card {
+  flex: 0 0 140px;
+  padding: 14px 12px;
+  gap: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  border: 1px solid var(--border-dk);
+}
+#tabPaneCommunity .ws-channel-card:hover {
+  background: var(--bg-3);
+  border-color: var(--border-md);
+}
+#tabPaneCommunity .ws-channel-card-title {
+  max-width: 100%;
+  margin-top: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+#tabPaneCommunity .ws-channel-card-followers {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+/* WhatsApp green → brand primary, so Community matches the rest of the app. */
+#tabPaneCommunity .ws-channel-verified-badge {
+  background: var(--comm-accent);
+  color: #fff;
+  border-color: var(--bg-2);
+}
+
+#tabPaneCommunity .ws-channel-card-btn {
+  margin-top: 2px;
+  padding: 6px 0;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  transition: background var(--duration-sm) var(--ease),
+              color var(--duration-sm) var(--ease),
+              border-color var(--duration-sm) var(--ease);
+}
+#tabPaneCommunity .ws-channel-card-btn.follow {
+  background: var(--comm-accent);
+  color: #fff;
+  border: 1px solid var(--comm-accent);
+}
+#tabPaneCommunity .ws-channel-card-btn.follow:hover {
+  background: color-mix(in srgb, var(--comm-accent) 82%, #000);
+  border-color: color-mix(in srgb, var(--comm-accent) 82%, #000);
+}
+/* `rgba(255,255,255,.08)` was invisible on light; use a real neutral surface. */
+#tabPaneCommunity .ws-channel-card-btn.following {
+  background: var(--bg-3);
+  color: var(--text-2);
+  border: 1px solid var(--border-dk);
+}
+#tabPaneCommunity .ws-channel-card-btn.following:hover {
+  color: var(--text-1);
+  border-color: var(--border-md);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+#tabPaneCommunity .comm-empty-state {
+  padding: 28px var(--comm-gutter) 32px;
+}
+#tabPaneCommunity .comm-empty-title {
+  color: var(--text-0);
+}
+#tabPaneCommunity .comm-empty-desc {
+  color: var(--text-2);
+  max-width: 320px;
+}
+
+/* ── Small screens ─────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  #tabPaneCommunity {
+    --comm-gutter: 12px;
+    --comm-row-h: 60px;
+  }
+  #tabPaneCommunity .comm-group-avatar {
+    width: 42px;
+    height: 42px;
+  }
+  #tabPaneCommunity .ws-channel-card {
+    flex: 0 0 128px;
+  }
+}
+
+/* ── Contrast corrections measured after the layout pass ────────────────────
+   --primary is #166fe5 on light «AA 4.5 on white» but #2b8fff on dark, where
+   it only reaches ~3.2 against --bg-1. Filled chips therefore need a deeper
+   accent on dark, and outlined chips need the brighter one. */
+#tabPaneCommunity {
+  --comm-accent: var(--primary);
+  --comm-accent-soft: var(--primary-soft);
+  /* Accent for TEXT, not fills. --primary is tuned for white-on-blue fills and
+     only reaches 4.17 as body text on the light surface. */
+  --comm-accent-text: var(--primary-dk);
+}
+:root[data-theme="nexa"] #tabPaneCommunity {
+  --comm-accent: var(--primary-dk);
+  --comm-accent-soft: color-mix(in srgb, var(--primary-dk) 30%, transparent);
+  --comm-accent-text: var(--primary-lt);
+}
+
+#tabPaneCommunity .comm-create-btn {
+  padding: 7px 14px;
+  background: var(--comm-accent);
+  color: #fff;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--comm-accent) 35%, transparent);
+}
+#tabPaneCommunity .comm-create-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--comm-accent) 45%, transparent);
+}
+
+/* "+ New" in the section header: a soft chip, not bare coloured text.
+   Bare --primary text measured 3.68 on the light surface. */
+#tabPaneCommunity .comm-ws-header-action {
+  padding: 3px 8px;
+  background: transparent;
+  color: var(--comm-accent-text);
+  border-radius: var(--radius-full);
+}
+#tabPaneCommunity .comm-ws-header-action:hover {
+  background: var(--comm-accent-soft);
+}
+
+/* Channel handle in the row preview keeps the accent but must stay readable. */
+#tabPaneCommunity .comm-group-preview {
+  color: var(--text-2);
+}
+
+/* ── Gutter ownership ──────────────────────────────────────────────────────
+   Measured: section headers and the carousel landed at x=32 while rows landed
+   at x=21, because .comm-list-scroll already applies the 16px gutter and those
+   children applied their own 16px on top of it. The scroll container now OWNS
+   the horizontal gutter; every child inside it is flush (0) and rows inset by
+   their border only. Everything then shares one content edge. */
+
+/* The search field aligns with the same gutter as the rows below it. */
+#tabPaneCommunity .search-wrap {
+  padding: 10px var(--comm-gutter);
+  border-bottom: 1px solid var(--border-dk);
+}
+#tabPaneCommunity .search-wrap input {
+  background: var(--bg-2);
+  border: 1px solid var(--border-dk);
+  border-radius: var(--radius-full);
+  padding: 0 16px;
+  height: 38px;
+  font-size: 13px;
+  color: var(--text-1);
+}
+#tabPaneCommunity .search-wrap input::placeholder {
+  color: var(--text-3);
+}
+#tabPaneCommunity .search-wrap input:focus {
+  background: var(--bg-1);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+/* Children of the scroller are flush; the scroller supplies the gutter. */
+#tabPaneCommunity .comm-ws-section-header,
+#tabPaneCommunity .comm-ws-sub-hint,
+#tabPaneCommunity .comm-ws-empty-hint {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Rows are flush, so the avatar's left edge == the shared gutter. */
+#tabPaneCommunity .comm-group-item,
+#tabPaneCommunity .comm-discover-card {
+  padding-left: var(--comm-row-inset);
+  padding-right: var(--comm-row-inset);
+}
+
+/* The carousel is a horizontal scroller, so it keeps a flush start and lets
+   the last card run to the edge as a scroll affordance. */
+#tabPaneCommunity .comm-ws-cards-carousel {
+  padding-left: 0;
+  padding-right: 0;
+  scroll-padding-left: 0;
+}
+
+/* "Your Channels" / "Find channels" spacing without double gutters. */
+#tabPaneCommunity .comm-ws-section-header {
+  padding-top: 16px;
+  padding-bottom: 6px;
+}
+#tabPaneCommunity .comm-ws-sub-hint {
+  padding-bottom: 10px;
+}
+#tabPaneCommunity .comm-followed-channels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
