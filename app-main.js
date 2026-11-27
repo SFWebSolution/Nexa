@@ -127,6 +127,29 @@ function safeMediaUrl(url) {
   return "";
 }
 
+// Escape a value for use INSIDE a JS string that itself lives inside an HTML
+// attribute (onclick="fn('${...}')"). escapeHtml() is NOT enough there: the
+// browser decodes &#39; back to a quote BEFORE the JS parser runs, so a value
+// like  x');fetch('//evil')//  executes. Backslash-escaped quotes survive HTML
+// decoding intact, so this is the only correct escaper for that position.
+function jsStr(v) {
+  const s = String(v == null ? "" : v)
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/</g, "\\x3c")
+    .replace(/>/g, "\\x3e");
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+// Firestore doc ids and message ids are [A-Za-z0-9_-]; strip anything else
+// before interpolating one into an inline handler. Same rule the reply-quote
+// jump-to-original already used.
+function safeId(v) {
+  return String(v == null ? "" : v).replace(/[^A-Za-z0-9_-]/g, "");
+}
+
 // ── READ-QUOTA CACHE ────────────────────────────────────────────────────────
 // Firestore reads are the scarce resource on the Spark plan. This is the single
 // "read once, remember locally, re-read only when stale" helper used by the
@@ -5784,7 +5807,7 @@ function buildStoryReplyPreview(msg) {
   }
 
   return `
-    <div class="whatsapp-story-reply-card" onclick="openStoryViewer('${msg.storyReplyUid}', '${msg.storyReplyId}')">
+    <div class="whatsapp-story-reply-card" onclick="openStoryViewer('${safeId(msg.storyReplyUid)}', '${safeId(msg.storyReplyId)}')">
       <div class="story-reply-info-col">
         <div class="story-reply-author"><i data-lucide="corner-up-left" style="width: 12px; height: 12px; vertical-align: -1px; display: inline-flex;"></i> ${authorName}</div>
         <div class="story-reply-subtext">${previewSubtext}</div>
@@ -5796,6 +5819,7 @@ function buildStoryReplyPreview(msg) {
 
 function buildReactionsHTML(id, reactions) {
   if (!reactions || !Object.keys(reactions).length) return "";
+  id = safeId(id);
   let html = '<div class="msg-reactions">';
   for (const [emoji, users] of Object.entries(reactions)) {
     if (!Array.isArray(users) || !users.length) continue;
@@ -5809,7 +5833,7 @@ function buildReactionsHTML(id, reactions) {
 
     html += `<div class="reaction${mine ? ' me-reacted' : ''}" 
                    title="${escapeHtml(reactorNames)}" 
-                   onclick="event.stopPropagation(); toggleReact('${id}', '${emoji}')">
+                   onclick="event.stopPropagation(); toggleReact('${id}', '${jsStr(emoji)}')">
                 <span class="reaction-emoji">${emoji}</span>
                 <span class="reaction-count">${users.length}</span>
               </div>`;
@@ -5885,7 +5909,7 @@ function buildMessage(id, msg, fromMe) {
     const rText = replied ? (replied.text || (replied.image ? "(Photo)" : replied.video ? "(Video)" : replied.audio ? "(Voice note)" : "(message)")) : (msg.replyToText || "(message)");
     const rFrom = replied ? replied.from : (msg.replyToFrom || null);
     const rAuthor = rFrom === currentUser.uid ? "You" : escapeHtml(selectedUser?.displayName || "User");
-    const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
+    const replyTarget = msg.replyTo ? safeId(msg.replyTo) : "";
     inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
@@ -5942,7 +5966,7 @@ function buildMessage(id, msg, fromMe) {
       const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
       inner += imgUrl ? `<div class="media-container">
         <img src="${imgUrl}"
-             onclick="viewImg('${imgUrl}')"
+             onclick="viewImg('${jsStr(imgUrl)}')"
              loading="lazy"
              alt="shared image"
              draggable="false">
@@ -5952,7 +5976,7 @@ function buildMessage(id, msg, fromMe) {
     if (msg.video) {
       const vidUrl = safeMediaUrl(msg.video);
       const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
-      inner += vidUrl ? `<div class="media-container media-video-poster" onclick="viewVideo('${vidUrl}')">
+      inner += vidUrl ? `<div class="media-container media-video-poster" onclick="viewVideo('${jsStr(vidUrl)}')">
         <video preload="metadata" disablepictureinpicture muted playsinline>
           <source src="${vidUrl}" type="video/mp4">
         </video>
@@ -6207,6 +6231,9 @@ function saveEditMessage() {
 }
 
 function showCtxMenu(e, id, msg) {
+  // The id is interpolated into a dozen inline handlers below; a crafted doc id
+  // must not be able to break out of them.
+  id = safeId(id);
   const menu = document.getElementById("ctxMenu");
   const fromMe = (msg.from || msg.senderUid) === currentUser.uid;
   const isGroup = currentChatMode === 'group';
@@ -7626,22 +7653,54 @@ function closeChatInfo() {
 function loadMediaGrid() {
   const grid = document.getElementById("mediaGrid");
   grid.innerHTML = "";
-  // View-once media is ephemeral by design — never list it in shared media.
-  const media = allMessages.filter(m => (m.image || m.video) && !m.isViewOnce);
-  if (!media.length) {
+  // View-once media is ephemeral by design — it must NEVER be listed in shared
+  // media, or the whole point of "view once" is defeated by a permanent grid
+  // thumbnail. Filtered once here for images, videos AND files so no future
+  // branch can leak it.
+  const media = allMessages.filter(m => !m.isViewOnce);
+  const photos = media.filter(m => m.image);
+  const videos = media.filter(m => m.video);
+  const files = media.filter(m => m.fileUrl && !m.image && !m.video);
+
+  if (!photos.length && !videos.length && !files.length) {
     grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-3); padding: 18px; font-size: 13px;">No media shared</div>';
     return;
   }
-  media.forEach(m => {
+
+  photos.forEach(m => {
     const el = document.createElement("div");
     el.className = "media-thumb";
-    if (m.image) {
-      el.innerHTML = `<img src="${safeMediaUrl(m.image)}" alt="media">`;
-      el.addEventListener("click", () => viewImg(m.image));
-    } else if (m.video) {
-      el.innerHTML = `<video src="${safeMediaUrl(m.video)}" style="width: 100%; height: 100%; object-fit: cover;" preload="metadata" muted></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>`;
-      el.addEventListener("click", () => viewVideo(m.video));
-    }
+    el.innerHTML = `<img src="${safeMediaUrl(m.image)}" alt="media">`;
+    el.addEventListener("click", () => viewImg(m.image));
+    grid.appendChild(el);
+  });
+
+  videos.forEach(m => {
+    const el = document.createElement("div");
+    el.className = "media-thumb";
+    el.innerHTML = `<video src="${safeMediaUrl(m.video)}" style="width: 100%; height: 100%; object-fit: cover;" preload="metadata" muted></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>`;
+    el.addEventListener("click", () => viewVideo(m.video));
+    grid.appendChild(el);
+  });
+
+  // Documents get a file card instead of a thumbnail (there is nothing to
+  // preview). Opens through the same download-first viewer as an in-chat
+  // attachment.
+  files.forEach(m => {
+    const el = document.createElement("div");
+    el.className = "media-thumb media-file-thumb";
+    const name = m.fileName || "Document";
+    const isAudioFile = /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(name);
+    el.innerHTML = `<div class="media-file-card">
+        <span class="media-file-icon">${fileIconFor(name)}</span>
+        <span class="media-file-name">${escapeHtml(name)}</span>
+      </div>`;
+    el.title = name;
+    el.addEventListener("click", () => openMediaViewer(m.fileUrl, "file", {
+      title: name,
+      filename: name,
+      isAudioFile
+    }));
     grid.appendChild(el);
   });
 }
@@ -10589,7 +10648,7 @@ function renderStorySlide(idx) {
       <div class="addyours-sticker-body">
         <div class="addyours-sticker-label">Add Yours</div>
         <div class="addyours-sticker-prompt">${escapeHtml(story.promptText || "")}</div>
-        <div class="addyours-sticker-viewall" onclick="event.stopPropagation(); openPromptResponsesModal('${escapeHtml(story.promptId)}');">View all responses</div>
+        <div class="addyours-sticker-viewall" onclick="event.stopPropagation(); openPromptResponsesModal('${jsStr(story.promptId)}');">View all responses</div>
       </div>`;
     sticker.onclick = (ev) => { ev.stopPropagation(); openAddYoursComposer(story.promptId, story.promptText || story.text || ""); };
     storyFrame.appendChild(sticker);
@@ -11370,7 +11429,7 @@ function openPromptResponsesModal(promptId) {
         </div>
         ${mediaHtml}
         ${s.text && s.type !== "text" ? `<div class="prompt-response-caption">${linkify(s.text)}</div>` : ""}
-        <button class="prompt-response-viewbtn" onclick="closePromptResponsesModal(); openStoryViewer('${s.uid}', '${s.id}')">View story</button>
+        <button class="prompt-response-viewbtn" onclick="closePromptResponsesModal(); openStoryViewer('${safeId(s.uid)}', '${safeId(s.id)}')">View story</button>
       `;
       list.appendChild(card);
     });
@@ -13026,7 +13085,7 @@ function buildGroupMessage(id, msg, fromMe) {
     const rTextRaw = typeof msg.replyToText === "string" ? msg.replyToText : "(message)";
     const rText = typeof renderMentionText === 'function' ? renderMentionText(linkify(rTextRaw), msg.replyToMentions) : linkify(rTextRaw);
     const replyTarget = msg.replyTo ? String(msg.replyTo).replace(/[^A-Za-z0-9_-]/g, "") : "";
-    inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToGroupMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${rText}</div></div>`;
+    inner += `<div class="reply-quote reply-quote-clickable" data-reply-to="${replyTarget}" onclick="scrollToGroupMsg('${replyTarget}')"><div class="reply-quote-author"><i data-lucide="corner-up-left" style="width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px;"></i>${rAuthor}</div><div class="reply-quote-text">${linkify(typeof rText === "string" ? rText : "(message)")}</div></div>`;
   }
 
   // 2b. Forwarded label
@@ -13058,7 +13117,7 @@ function buildGroupMessage(id, msg, fromMe) {
     const imgUrl = safeMediaUrl(msg.image);
     const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
     if (imgUrl) {
-      inner += `<div class="media-container"><img src="${imgUrl}" onclick="viewImg('${imgUrl}')" loading="lazy" alt="shared image" draggable="false"></div>${cap}`;
+      inner += `<div class="media-container"><img src="${imgUrl}" onclick="viewImg('${jsStr(imgUrl)}')" loading="lazy" alt="shared image" draggable="false"></div>${cap}`;
     }
   }
 
@@ -13067,7 +13126,7 @@ function buildGroupMessage(id, msg, fromMe) {
     const vidUrl = safeMediaUrl(msg.video);
     const cap = msg.caption ? `<div class="media-caption below">${escapeHtml(msg.caption)}</div>` : "";
     if (vidUrl) {
-      inner += `<div class="media-container media-video-poster" onclick="viewVideo('${vidUrl}')"><video preload="metadata" disablepictureinpicture muted playsinline><source src="${vidUrl}" type="video/mp4"></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>${cap}`;
+      inner += `<div class="media-container media-video-poster" onclick="viewVideo('${jsStr(vidUrl)}')"><video preload="metadata" disablepictureinpicture muted playsinline><source src="${vidUrl}" type="video/mp4"></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>${cap}`;
     }
   }
 
@@ -14597,9 +14656,9 @@ function renderChannelPostsList(posts) {
     if (post.type === 'poll' && post.pollOptions) {
       mediaHtml = buildPollHTML(post.id, post);
     } else if (post.image) {
-      mediaHtml = `<div class="channel-post-media" onclick="viewImg('${safeMediaUrl(post.image)}')"><img src="${safeMediaUrl(post.image)}" loading="lazy"></div>`;
+      mediaHtml = `<div class="channel-post-media" onclick="viewImg('${jsStr(safeMediaUrl(post.image))}')"><img src="${safeMediaUrl(post.image)}" loading="lazy"></div>`;
     } else if (post.video) {
-      mediaHtml = `<div class="channel-post-media media-video-poster" onclick="viewVideo('${safeMediaUrl(post.video)}')"><video src="${safeMediaUrl(post.video)}" preload="metadata" muted playsinline></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>`;
+      mediaHtml = `<div class="channel-post-media media-video-poster" onclick="viewVideo('${jsStr(safeMediaUrl(post.video))}')"><video src="${safeMediaUrl(post.video)}" preload="metadata" muted playsinline></video><div class="media-play-overlay"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>`;
     } else if (post.audio) {
       // Use the SAME modern voice-note player as 1:1 and group chats (glassy
       // waveform pill with gradient play button + speed control) instead of a
@@ -15171,7 +15230,7 @@ function renderChannelComments(comments) {
     let deleteBtn = '';
     if (canDelete) {
       deleteBtn = `
-        <button class="comm-icon-btn-xs" style="opacity: 0.6;" onclick="deleteChannelComment('${c.id}')" title="Delete comment">
+        <button class="comm-icon-btn-xs" style="opacity: 0.6;" onclick="deleteChannelComment('${safeId(c.id)}')" title="Delete comment">
           <i data-lucide="trash" style="width: 12px; height: 12px; color: var(--danger);"></i>
         </button>
       `;
@@ -15179,10 +15238,10 @@ function renderChannelComments(comments) {
 
     let replyBtn = '';
     if (isAdmin) {
-      const safeAuthor = (c.authorName || 'User').replace(/'/g, "\\'");
-      const rawText = (c.text || '').replace(/\r?\n/g, ' ').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      const safeAuthor = jsStr(c.authorName || 'User');
+      const rawText = jsStr((c.text || '').replace(/\r?\n/g, ' '));
       replyBtn = `
-        <button class="comm-icon-btn-xs" style="color: var(--primary);" onclick="prepareChannelCommentReply('${c.id}', '${safeAuthor}', '${rawText}', '${c.authorUid}')" title="Reply to Channel (WhatsApp style)">
+        <button class="comm-icon-btn-xs" style="color: var(--primary);" onclick="prepareChannelCommentReply('${safeId(c.id)}', '${safeAuthor}', '${rawText}', '${safeId(c.authorUid)}')" title="Reply to Channel (WhatsApp style)">
           <i data-lucide="corner-up-left" style="width: 13px; height: 13px;"></i>
           <span style="font-size: 11px; margin-left: 3px; font-weight: 600;">Reply to Channel</span>
         </button>
@@ -15844,13 +15903,13 @@ async function loadGroupSharedMedia() {
     grid.innerHTML = mediaList.slice(0, 8).map(m => {
       if (m.image) {
         return `
-          <div class="comm-media-thumb" onclick="viewImg('${safeMediaUrl(m.image)}')">
+          <div class="comm-media-thumb" onclick="viewImg('${jsStr(safeMediaUrl(m.image))}')">
             <img src="${safeMediaUrl(m.image)}" loading="lazy">
           </div>
         `;
       } else if (m.video) {
         return `
-          <div class="comm-media-thumb" onclick="viewVideo('${safeMediaUrl(m.video)}')">
+          <div class="comm-media-thumb" onclick="viewVideo('${jsStr(safeMediaUrl(m.video))}')">
             <video src="${safeMediaUrl(m.video)}" preload="metadata" muted></video>
             <div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
           </div>
@@ -15893,13 +15952,13 @@ async function loadChannelSharedMedia() {
     grid.innerHTML = mediaList.slice(0, 8).map(m => {
       if (m.image) {
         return `
-          <div class="comm-media-thumb" onclick="viewImg('${safeMediaUrl(m.image)}')">
+          <div class="comm-media-thumb" onclick="viewImg('${jsStr(safeMediaUrl(m.image))}')">
             <img src="${safeMediaUrl(m.image)}" loading="lazy">
           </div>
         `;
       } else if (m.video) {
         return `
-          <div class="comm-media-thumb" onclick="viewVideo('${safeMediaUrl(m.video)}')">
+          <div class="comm-media-thumb" onclick="viewVideo('${jsStr(safeMediaUrl(m.video))}')">
             <video src="${safeMediaUrl(m.video)}" preload="metadata" muted></video>
             <div class="media-play-overlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
           </div>
@@ -16577,7 +16636,7 @@ function showMentionsPopup(query) {
     const name = uData.displayName || uData.name || 'Member';
     const photo = uData.photo || 'https://i.imgur.com/HeIi0wU.png';
     return `
-      <div class="mention-row" onclick="insertMention('${escapeHtml(name)}', '${m.uid}')">
+      <div class="mention-row" onclick="insertMention('${jsStr(name)}', '${safeId(m.uid)}')">
         <img src="${escapeHtml(photo)}" class="mention-row-av" onerror="this.src='https://i.imgur.com/HeIi0wU.png'">
         <div class="mention-row-name">${escapeHtml(name)}</div>
       </div>

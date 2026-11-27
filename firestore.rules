@@ -18,14 +18,66 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid);
-      // Owner edits anything. A non-owner may ONLY credit the invite counters
-      // (new-signup referral) or the follow counters (follows are denormalised
-      // onto users/{uid}.followCounts so the profile stats cost ZERO reads).
+      // Owner edits anything. A non-owner has exactly two narrow exceptions, and
+      // each is bound to a SANE DELTA — field-name-only checks let a caller set
+      // arbitrary values (followCounts.followers: 999999, referralCount: 1e9) on
+      // anybody's profile.
+      //
+      // 1. A new signup credits their inviter (the referral flow in signup.html).
+      //    `referredUsers` grows by exactly the caller, and referralCount moves
+      //    by exactly +1.
       allow update: if isOwner(uid)
-        || (isSignedIn() && request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(['referralCount', 'referrals']))
-        || (isSignedIn() && request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(['followCounts']));
+        // 1a. Referral credit on an inviter whose doc has no referredUsers yet.
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['referralCount', 'referredUsers', 'referralBonusPoints'])
+            && request.resource.data.referralCount == resource.data.referralCount + 1
+            && request.resource.data.referredUsers.size() == 1
+            && !('referredUsers' in resource.data))
+        // 1b. Same, once the inviter already has a referredUsers list: it may
+        //     only grow by exactly one entry.
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['referralCount', 'referredUsers', 'referralBonusPoints'])
+            && request.resource.data.referralCount == resource.data.referralCount + 1
+            && 'referredUsers' in resource.data
+            && request.resource.data.referredUsers.size() == resource.data.referredUsers.size() + 1)
+        // 2a. First follow-counter write on a doc that has no followCounts yet.
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['followCounts'])
+            && !('followCounts' in resource.data)
+            && request.resource.data.followCounts.keys().hasOnly(['followers', 'following'])
+            && (!('followers' in request.resource.data.followCounts)
+                || (request.resource.data.followCounts.followers is int
+                    && request.resource.data.followCounts.followers >= 0
+                    && request.resource.data.followCounts.followers <= 1))
+            && (!('following' in request.resource.data.followCounts)
+                || !('following' in resource.data.followCounts)
+                || request.resource.data.followCounts.following
+                   == resource.data.followCounts.following
+                || uid == request.auth.uid))
+        // 2b. Follow counters are denormalised onto the target's profile so the
+        //     stats cost ZERO reads. A non-owner may move `followers` by exactly
+        //     one, and only ever bump `following` on their OWN doc.
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['followCounts'])
+            && 'followCounts' in resource.data
+            && request.resource.data.followCounts.keys().hasOnly(['followers', 'following'])
+            && (!('followers' in request.resource.data.followCounts)
+                || !('followers' in resource.data.followCounts)
+                || (request.resource.data.followCounts.followers is int
+                    && request.resource.data.followCounts.followers >= 0
+                    && request.resource.data.followCounts.followers
+                       >= resource.data.followCounts.followers - 1
+                    && request.resource.data.followCounts.followers
+                       <= resource.data.followCounts.followers + 1))
+            && (!('following' in request.resource.data.followCounts)
+                || !('following' in resource.data.followCounts)
+                || request.resource.data.followCounts.following
+                   == resource.data.followCounts.following
+                || uid == request.auth.uid));
       allow delete: if false;
 
       // Per-user mirror of the videos this user liked. Written by the liker
@@ -55,10 +107,12 @@ service cloud.firestore {
         && request.resource.data.following is string
         && request.resource.data.following != request.auth.uid
         && request.resource.data.status in ['pending', 'accepted'];
+      // Only the TARGET accepts / rejects. The follower used to be able to
+      // rewrite their own follow's status at will.
       allow update: if isSignedIn()
+        && request.auth.uid == resource.data.following
         && request.resource.data.follower == resource.data.follower
         && request.resource.data.following == resource.data.following
-        && (request.auth.uid == resource.data.following || request.auth.uid == resource.data.follower)
         && request.resource.data.diff(resource.data)
             .affectedKeys().hasOnly(['status', 'updatedAt']);
       allow delete: if isSignedIn()
@@ -127,8 +181,23 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
                     && request.resource.data.hostId == request.auth.uid;
-      allow update: if isSignedIn()
-                    && request.resource.data.hostId == resource.data.hostId;
+      // The host may change anything (but never hand the room to someone else).
+      // Anyone else may ONLY append their own uid to invitedUids — the
+      // self-service grant an invited user needs. Previously ANY signed-in user
+      // could rewrite any room: change the title, hijack hostId, or add
+      // arbitrary uids to invitedUids to bypass the invite-only gate.
+      allow update: if isSignedIn() && (
+        // The host owns every field except the host id itself.
+        (request.auth.uid == resource.data.hostId
+         && request.resource.data.hostId == resource.data.hostId)
+        // A guest may ONLY append their own uid to invitedUids (self-grant).
+        // `'invitedUids' in ...` guards a legacy room doc that lacks the field,
+        // where `.concat` would otherwise error the whole rule.
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invitedUids'])
+            && 'invitedUids' in resource.data
+            && request.resource.data.invitedUids
+                 == resource.data.invitedUids.concat([request.auth.uid]))
+      );
       allow delete: if isSignedIn() && resource.data.hostId == request.auth.uid;
 
       match /participants/{uid} {
@@ -155,6 +224,9 @@ service cloud.firestore {
       allow create, update: if isSignedIn()
         && uid != request.auth.uid
         && request.resource.data.inviter.id == request.auth.uid
+        // The invite must be FOR the doc's owner — otherwise a caller could
+        // write an invite to uid A that claims to target B.
+        && request.resource.data.targetUserId == uid
         && request.resource.data.keys().hasAll(['room', 'targetUserId', 'inviter']);
       allow delete: if isSignedIn() && uid == request.auth.uid;
     }
@@ -257,16 +329,87 @@ service cloud.firestore {
     }
 
     // ── Community Groups ──
+    // Membership is a denormalised `memberUids` array on the group doc, mirrored
+    // by one doc per member in the `members` subcollection. `admins` is the
+    // admin list; `ownerUid`/`createdBy` is the creator.
+    //
+    // SECURITY: `allow update: if isSignedIn()` used to let ANY signed-in user
+    // rewrite any group — rename it, empty memberUids, grant themselves admin,
+    // or point ownerUid at themselves. Every write is now scoped to a group
+    // admin, and a non-admin may only do the three things a normal member
+    // legitimately does (join, bump the counters, or leave).
     match /groups/{groupId} {
+      function groupData() {
+        return get(/databases/$(database)/documents/groups/$(groupId)).data;
+      }
+      function isGroupAdmin(data) {
+        return isSignedIn() && (
+          request.auth.uid == data.ownerUid
+          || request.auth.uid == data.createdBy
+          || ('admins' in data && request.auth.uid in data.admins)
+        );
+      }
+      // Legacy group docs may predate membersCount. A missing key makes
+      // `resource.data.membersCount - 1` throw, which denies the WHOLE rule, so
+      // the arithmetic check is skipped when either side lacks the field.
+      function countMovedBy(data, by) {
+        return !('membersCount' in resource.data)
+            || !('membersCount' in data)
+            || data.membersCount == resource.data.membersCount + by;
+      }
+      // Ownership is immutable: not even an admin may repoint the group at
+      // another owner, which would let an admin hijack a group they don't own.
+      function identityKept(data) {
+        return data.createdBy == resource.data.createdBy
+            && data.ownerUid == resource.data.ownerUid;
+      }
+
+      // Current member (or the creator, whose doc may predate the mirror).
+      function isGroupMember(data) {
+        return isSignedIn() && (
+          ('memberUids' in data && request.auth.uid in data.memberUids)
+          || request.auth.uid == data.ownerUid
+          || request.auth.uid == data.createdBy
+        );
+      }
+
       allow read: if isSignedIn();
       allow create: if isSignedIn()
-                    && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isSignedIn();
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn() && (
+        // 1. A group admin may change anything EXCEPT who owns the group.
+        (isGroupAdmin(resource.data) && identityKept(request.resource.data))
+        // 2. A member may only LEAVE: remove only themselves from memberUids
+        //    and decrement the count. Nothing else may change.
+        || (isGroupMember(resource.data)
+            && identityKept(request.resource.data)
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['memberUids', 'membersCount'])
+            && request.resource.data.memberUids == resource.data.memberUids.removeAll([request.auth.uid])
+            && countMovedBy(request.resource.data, -1))
+        // 3. A NON-member may JOIN via an invite link: they may only append
+        //    themselves to memberUids and increment the count.
+        || (!isGroupMember(resource.data)
+            && identityKept(request.resource.data)
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['memberUids', 'membersCount'])
+            && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
+            && countMovedBy(request.resource.data, 1))
+        // 4. A normal member may move ONLY the chat-list preview fields.
+        || (isGroupMember(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['lastMessage', 'lastMessageTime', 'lastSenderName',
+                           'lastMentionUids', 'updatedAt']))
+      );
       allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
 
+      // Membership mirror. A user writes their OWN doc (join / role mirror);
+      // a group admin may write anyone's (add member, promote, remove).
       match /members/{uid} {
         allow read: if isSignedIn();
-        allow create, update, delete: if isSignedIn();
+        allow create, update, delete: if isSignedIn()
+          && (request.auth.uid == uid || isGroupAdmin(groupData()));
       }
 
       match /messages/{msgId} {
@@ -274,39 +417,79 @@ service cloud.firestore {
         allow create: if isSignedIn()
                       && (request.resource.data.senderUid == request.auth.uid
                           || request.resource.data.senderUid == 'system');
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn()
-                      && (resource.data.senderUid == request.auth.uid
-                          || request.auth.uid == resource.data.createdBy
-                          || request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerUid
-                          || request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.admins);
+        // Editing / deleting a group message is for its author and the group's
+        // admins. It used to be open to every signed-in user.
+        allow update, delete: if isSignedIn() && (
+          resource.data.senderUid == request.auth.uid
+          || request.auth.uid == resource.data.createdBy
+          || isGroupAdmin(groupData())
+        );
       }
     }
 
     // ── Community Channels ──
+    // Only the owner and admins may broadcast. Subscribers may only follow /
+    // unfollow and bump the counters. `allow create/update/delete: if
+    // isSignedIn()` on `posts` let any user post into — or wipe — any channel's
+    // feed; that was the single worst hole in this file.
     match /channels/{channelId} {
+      function channelData() {
+        return get(/databases/$(database)/documents/channels/$(channelId)).data;
+      }
+      function isChannelAdmin(data) {
+        return isSignedIn() && (
+          request.auth.uid == data.ownerUid
+          || ('admins' in data && request.auth.uid in data.admins)
+        );
+      }
+
       allow read: if isSignedIn();
       allow create: if isSignedIn()
                     && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isChannelAdmin(resource.data)
+        // Follow / unfollow: only the caller's own uid moves in/out of the
+        // subscriber list, and the count moves by exactly one.
+        || (request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['subscriberUids', 'subscribersCount'])
+            && (
+              (request.resource.data.subscriberUids == resource.data.subscriberUids.concat([request.auth.uid])
+               && request.resource.data.subscribersCount == resource.data.subscribersCount + 1)
+              || (request.resource.data.subscriberUids == resource.data.subscriberUids.removeAll([request.auth.uid])
+                  && request.resource.data.subscribersCount == resource.data.subscribersCount - 1)
+            ))
+        // Broadcasting bumps the feed timestamp.
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPostTime']))
+      );
       allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
 
       match /subscribers/{uid} {
         allow read: if isSignedIn();
-        allow create, update, delete: if isSignedIn() && (request.auth.uid == uid || request.auth.uid == get(/databases/$(database)/documents/channels/$(channelId)).data.ownerUid);
+        allow create, update, delete: if isSignedIn()
+          && (request.auth.uid == uid || isChannelAdmin(channelData()));
       }
 
       match /posts/{postId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
+        allow create: if isSignedIn()
+          && isChannelAdmin(channelData())
+          && request.resource.data.authorUid == request.auth.uid;
+        allow update: if isSignedIn() && (
+          isChannelAdmin(channelData())
+          // A subscriber may react / view / comment-count, nothing else.
+          || request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['reactions', 'viewsUids', 'viewsCount', 'commentsCount'])
+        );
+        allow delete: if isSignedIn() && isChannelAdmin(channelData());
 
         match /comments/{commentId} {
           allow read: if isSignedIn();
           allow create: if isSignedIn() && request.resource.data.authorUid == request.auth.uid;
           allow update: if isSignedIn() && resource.data.authorUid == request.auth.uid;
-          allow delete: if isSignedIn() && (resource.data.authorUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/channels/$(channelId)).data.ownerUid);
+          allow delete: if isSignedIn() && (
+            resource.data.authorUid == request.auth.uid
+            || isChannelAdmin(channelData())
+          );
         }
       }
     }
@@ -336,8 +519,26 @@ service cloud.firestore {
         && request.resource.data.videoUrl.size() > 0;
       allow update: if isSignedIn() && (
         resource.data.uid == request.auth.uid
-        || request.resource.data.diff(resource.data)
+        // A non-author may only nudge the counters, and each must stay a
+        // non-negative int within one of its previous value — otherwise
+        // `views: 1000000` on someone's video was accepted.
+        || (request.resource.data.diff(resource.data)
              .affectedKeys().hasOnly(['views','likes','commentsCount','shares','saves'])
+            && request.resource.data.views is int
+            && request.resource.data.views >= resource.data.views - 1
+            && request.resource.data.views <= resource.data.views + 1
+            && request.resource.data.likes is int
+            && request.resource.data.likes >= resource.data.likes - 1
+            && request.resource.data.likes <= resource.data.likes + 1
+            && request.resource.data.commentsCount is int
+            && request.resource.data.commentsCount >= resource.data.commentsCount - 1
+            && request.resource.data.commentsCount <= resource.data.commentsCount + 1
+            && request.resource.data.shares is int
+            && request.resource.data.shares >= resource.data.shares - 1
+            && request.resource.data.shares <= resource.data.shares + 1
+            && request.resource.data.saves is int
+            && request.resource.data.saves >= resource.data.saves - 1
+            && request.resource.data.saves <= resource.data.saves + 1)
       );
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
 
@@ -370,8 +571,11 @@ service cloud.firestore {
           && request.resource.data.text.size() <= 1000;
         allow update: if isSignedIn() && (
           resource.data.uid == request.auth.uid
-          || request.resource.data.diff(resource.data)
+          || (request.resource.data.diff(resource.data)
                .affectedKeys().hasOnly(['likes'])
+              && request.resource.data.likes is int
+              && request.resource.data.likes >= resource.data.likes - 1
+              && request.resource.data.likes <= resource.data.likes + 1)
         );
         allow delete: if isSignedIn()
           && resource.data.uid == request.auth.uid;
