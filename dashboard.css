@@ -15221,7 +15221,17 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
 /* ── Carousel cards ──────────────────────────────────────────────────────── */
 #tabPaneCommunity .comm-ws-cards-carousel {
   gap: 10px;
-  padding: 4px var(--comm-gutter) 14px;
+  /* No bottom padding: it stacked on the next header's margin-top and made the
+     gap before "Explore more" 34px while "Find channels" sat at 20px. The
+     card keeps its own 14px inner padding, so nothing looks cramped. */
+  padding: 4px var(--comm-gutter) 0;
+  /* The carousel is a flex ITEM inside the column-flow .comm-list-scroll, so
+     the default flex-shrink:1 crushed it from 187px to 18px and squashed every
+     card to 30px — a 56px avatar inside a 30px box. It must keep its intrinsic
+     height; the horizontal overflow is its own scroll affordance. */
+  flex-shrink: 0;
+  align-items: stretch;
+  scroll-snap-type: x mandatory;
 }
 #tabPaneCommunity .ws-channel-card {
   flex: 0 0 140px;
@@ -15230,6 +15240,7 @@ html.nexa-native .nx-edit-overlay { -webkit-backdrop-filter: none; backdrop-filt
   border-radius: var(--radius-lg);
   background: var(--bg-2);
   border: 1px solid var(--border-dk);
+  scroll-snap-align: start;
 }
 #tabPaneCommunity .ws-channel-card:hover {
   background: var(--bg-3);

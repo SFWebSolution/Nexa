@@ -2469,3 +2469,27 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   element reads as hidden); use `--force-prefers-reduced-motion` rather than
   awaiting `getAnimations()`, which never resolves because the brand pulse is
   `infinite`.
+
+### Community tab — carousel cards were being crushed (2026-11)
+- **`.comm-ws-cards-carousel` needs `flex-shrink: 0`.** It is a flex ITEM inside
+  `.comm-list-scroll`, which is a column flex container with `overflow-y: auto`.
+  The default `flex-shrink: 1` let the column shrink it from its intrinsic 187px
+  to **18px**, which squashed every `.ws-channel-card` to **30px — a 56px avatar
+  inside a 30px box**. The "Find channels / Stay updated on topics that matter to
+  you" section rendered as a sliver. `flex-shrink: 0` (plus `align-items: stretch`
+  and `scroll-snap-type: x mandatory`) keeps the carousel at its real height; the
+  horizontal overflow is its own scroll affordance. Verified down to a 460px
+  viewport: cards stay 169px and the scroller scrolls instead of compressing.
+- **A height-CONSISTENCY check cannot catch this.** Every card agreed on 30px, so
+  a "are all rows the same height?" assertion passed while the layout was
+  destroyed. The audit must compare each box against its own `scrollHeight` /
+  in-flow children, and assert a card is at least as tall as its tallest child.
+  Keep that squash check when auditing this pane.
+- **No bottom padding on the carousel.** Its old `14px` bottom padding stacked on
+  the next header's inline `margin-top: 18px`, making the gap before "Explore
+  more" 34px while "Find channels" sat at 20px. It is `0` now; the card keeps its
+  own 14px inner padding so nothing looks cramped.
+- The verified badge (`.ws-channel-verified-badge`) is an ABSOLUTELY-POSITIONED
+  overhang on the avatar's corner, so it legitimately extends past its parent's
+  box. A naive clipping check flags it every time — exclude absolutely-positioned
+  children from squash detection.
