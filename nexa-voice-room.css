@@ -1119,3 +1119,349 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIVE ROOM — VISUAL POLISH 2026 (additive)
+
+   The room is a DARK call surface on purpose: it pairs with the 1:1 call
+   overlay (which is also dark and full-bleed), so keeping it dark is the
+   coherent choice — not an oversight. What this block fixes is everything
+   that made it look like a different product:
+
+   1. It used WhatsApp green (#25d366) and an off-brand blue (#2b8fff) while
+      the rest of Nexa is one blue (#166fe5). Now it uses the app tokens.
+   2. White text on #2b8fff was 3.24:1 — below AA. --primary-dk clears it in
+      both themes (4.78:1 dark, 6.08:1 light), because --primary itself is
+      #2b8fff in the dark theme.
+   3. The header controls were 16-20px hit targets. Now 36px.
+   4. Android WebView re-blurs every backdrop-filter each frame (the "screen
+      shakes" report on other surfaces). The room had 6 blurs and no guard.
+
+   Everything here is scoped to .nexa-vr-* so no other surface is touched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nexa-vr-overlay {
+  /* Behind the blur there is the chat list. On the APK that blur is the
+     single biggest jank source, so native gets a flat scrim instead. */
+  background: rgba(10, 14, 20, 0.88);
+}
+
+/* 1. One blue for the whole product. */
+.nexa-vr-container {
+  --vr-primary: var(--primary, #166fe5);
+  background: linear-gradient(180deg, rgba(21, 29, 42, 0.97) 0%, rgba(13, 19, 28, 0.98) 100%);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+/* The speaking ring is "online", not WhatsApp-branded. --online is the app's
+   own green (#16b364) and reads correctly against the dark stage. */
+.nexa-vr-container {
+  --vr-whatsapp-green: var(--online, #16b364);
+  --vr-glow-green: rgba(22, 179, 100, 0.35);
+}
+
+/* 2. Header: calmer surface, real hit targets. */
+.nexa-vr-header {
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.nexa-vr-header-icon {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--vr-primary) 16%, transparent);
+  border-color: color-mix(in srgb, var(--vr-primary) 42%, transparent);
+  font-size: 20px;
+}
+
+.nexa-vr-title {
+  font-size: 16.5px;
+  letter-spacing: -0.01em;
+}
+
+.nexa-vr-status-badge {
+  background: color-mix(in srgb, var(--vr-whatsapp-green) 16%, transparent);
+  border-color: color-mix(in srgb, var(--vr-whatsapp-green) 36%, transparent);
+  color: var(--vr-whatsapp-green);
+}
+
+/* Buttons were 32x16 (an emoji in a padded div). These are proper controls. */
+.nexa-vr-hdr-btn,
+.nexa-vr-hdr-btn.close-btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 18px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nexa-vr-hdr-btn.close-btn {
+  padding: 0;
+}
+
+.nexa-vr-hdr-btn.invite-btn {
+  background: linear-gradient(135deg, var(--primary-lt, #4a94f0) 0%, var(--primary, #166fe5) 100%);
+  box-shadow: 0 4px 14px rgba(22, 111, 229, 0.32);
+}
+
+.nexa-vr-hdr-btn.invite-btn:hover {
+  box-shadow: 0 6px 18px rgba(22, 111, 229, 0.45);
+}
+
+/* 3. Stage + participant cards. */
+.nexa-vr-main-avatar {
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+}
+
+.nexa-vr-card {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+}
+
+.nexa-vr-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34);
+}
+
+.nexa-vr-card-role {
+  letter-spacing: 0.05em;
+}
+
+/* 4. In-room chat — the surface that looked most out of place. */
+.nexa-vr-chat-section {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+/* This header used to be UPPERCASE with wide tracking, which read as shouty
+   compared with every other label in the app. Sentence case, normal tracking,
+   and a calmer muted tone — still legible on the dark panel. */
+.nexa-vr-chat-header {
+  padding: 12px 14px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  gap: 8px;
+}
+
+.nexa-vr-chat-header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.nexa-vr-chat-toggle {
+  min-width: 30px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.nexa-vr-chat-msg-bubble {
+  background: rgba(255, 255, 255, 0.105);
+  border-radius: 14px;
+  padding: 8px 12px;
+}
+
+/* My own bubble used --vr-primary, and white on that is 3.24:1 (fails AA).
+   --primary-dk clears AA in BOTH themes (4.78 dark / 6.08 light), so it needs
+   no per-theme branch. */
+.nexa-vr-chat-msg.mine .nexa-vr-chat-msg-bubble {
+  background: var(--primary-dk, #0b5bd3);
+  color: #fff;
+}
+
+.nexa-vr-chat-msg-name {
+  font-size: 11.5px;
+  color: var(--online, #16b364);
+}
+
+.nexa-vr-chat-input {
+  height: 40px;
+  background: rgba(9, 13, 20, 0.72);
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+.nexa-vr-chat-input:focus {
+  border-color: var(--vr-primary);
+  box-shadow: 0 0 0 3px rgba(22, 111, 229, 0.22);
+}
+
+/* Match the send button to the "mine" bubble colour, and pin a 40px square so
+   the round button can't be squashed by a flex parent. */
+.nexa-vr-chat-send {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  background: var(--primary-dk, #0b5bd3);
+  color: #fff;
+}
+
+.nexa-vr-chat-send:hover { background: var(--primary, #166fe5); }
+
+/* 5. Footer: the call bar, matched to the 1:1 call controls. */
+.nexa-vr-footer {
+  padding: 14px 20px;
+  background: rgba(9, 13, 19, 0.98);
+  border-top-color: rgba(255, 255, 255, 0.07);
+}
+
+.nexa-vr-ctrl-btn {
+  width: 52px;
+  height: 52px;
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.13);
+  font-size: 20px;
+}
+
+.nexa-vr-ctrl-btn.active-mic {
+  background: linear-gradient(135deg, #16b364, #0d9250);
+  border-color: rgba(22, 179, 100, 0.55);
+  box-shadow: 0 4px 16px rgba(22, 179, 100, 0.34);
+}
+
+.nexa-vr-ctrl-btn.muted-mic {
+  background: linear-gradient(135deg, #e11d48, #c11b3f);
+  border-color: rgba(225, 29, 72, 0.55);
+  box-shadow: 0 4px 16px rgba(225, 29, 72, 0.34);
+}
+
+.nexa-vr-ctrl-btn.end-call {
+  background: linear-gradient(135deg, #e11d48, #b8173a);
+  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.42);
+}
+
+.nexa-vr-ctrl-btn.end-call:hover {
+  background: linear-gradient(135deg, #ff4569, #e11d48);
+}
+
+/* 6. Phones: the room has to fit at 340-420px, where it previously kept its
+   desktop-grade 52px controls and 20px paddings and scrolled awkwardly. */
+@media (max-width: 600px) {
+  .nexa-vr-header {
+    padding: 12px 14px;
+  }
+
+  .nexa-vr-header-info {
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .nexa-vr-header-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .nexa-vr-title {
+    font-size: 15px;
+    gap: 6px;
+  }
+
+  .nexa-vr-subtitle {
+    font-size: 12px;
+  }
+
+  .nexa-vr-active-stage {
+    gap: 8px;
+  }
+
+  .nexa-vr-main-avatar {
+    width: 92px;
+    height: 92px;
+  }
+
+  .nexa-vr-chat-body {
+    height: 180px;
+  }
+
+  .nexa-vr-chat-msg {
+    max-width: 86%;
+  }
+
+  .nexa-vr-ctrl-btn {
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+
+  .nexa-vr-footer {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+}
+
+/* 7. APK / Android WebView: kill every backdrop blur inside the room and stop
+   the overscroll rubber-band. The room sits over the chat list; without this
+   the compositor re-blurs the page behind it on every frame it moves. */
+html.nexa-native .nexa-vr-overlay,
+html.nexa-native .nexa-vr-modal-overlay,
+html.nexa-native .nexa-vr-mini-bar,
+html.nexa-native .nexa-vr-container,
+html.nexa-native .nexa-vr-chat-section,
+html.nexa-native .nexa-vr-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.nexa-native .nexa-vr-overlay {
+  background: rgba(10, 14, 20, 0.97);
+}
+
+html.nexa-native .nexa-vr-body,
+html.nexa-native .nexa-vr-chat-messages,
+html.nexa-native .nexa-vr-user-list {
+  overscroll-behavior: contain;
+}
+
+/* 8. Chat send affordance + inline hint icons introduced with the lucide pass. */
+.nexa-vr-chat-send.is-disabled {
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+  cursor: default;
+  opacity: 0.75;
+}
+
+.nexa-vr-chat-send.is-disabled:hover {
+  transform: none;
+  filter: none;
+}
+
+.nexa-vr-stage-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* lucide rewrites <i data-lucide> into <svg>, so size rules must target BOTH:
+   the svg keeps the inline width/height copied from the <i>, and flex:0 0 auto
+   stops a flex parent from stretching it. */
+.nexa-vr-card-mic-status,
+.nexa-vr-card-hand,
+.nexa-vr-stage-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nexa-vr-card-mic-status i, .nexa-vr-card-mic-status svg,
+.nexa-vr-card-hand i, .nexa-vr-card-hand svg,
+.nexa-vr-stage-hint i, .nexa-vr-stage-hint svg {
+  flex: 0 0 auto;
+}
+
+.nexa-vr-chat-toggle i, .nexa-vr-chat-toggle svg,
+.nexa-vr-hdr-btn i, .nexa-vr-hdr-btn svg,
+.nexa-vr-ctrl-btn i, .nexa-vr-ctrl-btn svg,
+.nexa-vr-mini-btn i, .nexa-vr-mini-btn svg,
+.nexa-vr-chat-send i, .nexa-vr-chat-send svg {
+  display: block;
+  flex: 0 0 auto;
+}

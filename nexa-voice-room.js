@@ -184,6 +184,34 @@
     /* 1. DOM INJECTION FOR VOICE ROOM OVERLAYS                              */
     /* --------------------------------------------------------------------- */
 
+    // Inline lucide glyph so controls match the rest of the app (which uses
+    // lucide everywhere) instead of platform emoji, whose rendering differs
+    // per device and is why the room looked inconsistent.
+    vrIcon(name, size) {
+      const px = size || 20;
+      return '<i data-lucide="' + name + '" style="width:' + px + 'px;height:' + px + 'px;display:block;"></i>';
+    }
+
+    // Any innerHTML swap that introduces vrIcon() markup has to re-run the
+    // lucide pass, otherwise the <i data-lucide> placeholder stays empty.
+    refreshIcons() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        try { window.lucide.createIcons(); } catch (e) { /* non-fatal */ }
+      }
+    }
+
+    // The send button used to look equally live whether or not there was text
+    // to send, which read as broken. Disable it until there is something to
+    // send, and defensively on an empty value (not just .disabled styling).
+    syncChatSendState() {
+      const input = document.getElementById('nexaVrChatInput');
+      const btn = document.getElementById('nexaVrChatSendBtn');
+      if (!input || !btn) return;
+      const empty = !input.value.trim();
+      btn.classList.toggle('is-disabled', empty);
+      btn.disabled = empty;
+    }
+
     injectUIComponents() {
       if (document.getElementById('nexaVrOverlay')) return;
 
@@ -198,7 +226,7 @@
           <!-- Header -->
           <div class="nexa-vr-header">
             <div class="nexa-vr-header-info">
-              <div class="nexa-vr-header-icon">🎙️</div>
+              <div class="nexa-vr-header-icon">${this.vrIcon('mic', 20)}</div>
               <div>
                 <h3 class="nexa-vr-title" id="nexaVrTitle">
                   Voice room
@@ -209,14 +237,12 @@
             </div>
             <div class="nexa-vr-header-actions">
               <button class="nexa-vr-hdr-btn invite-btn" id="nexaVrHdrInviteBtn">
-                <span>➕ Invite Users</span>
+                <span>${this.vrIcon('user-plus', 15)} Invite Users</span>
               </button>
               <button class="nexa-vr-hdr-btn" id="nexaVrMinimizeBtn" title="Minimize Voice room">
-                <span>🗕</span>
+                <span>${this.vrIcon('minus', 17)}</span>
               </button>
-              <button class="nexa-vr-hdr-btn close-btn" id="nexaVrCloseOverlayBtn" title="Hide Overlay">
-                ✕
-              </button>
+              <button class="nexa-vr-hdr-btn close-btn" id="nexaVrCloseOverlayBtn" title="Hide Overlay">${this.vrIcon('x', 18)}</button>
             </div>
           </div>
 
@@ -230,7 +256,7 @@
               </div>
               <div class="nexa-vr-speaker-name" id="nexaVrMainSpeakerName">${this.escapeHTML(user.name)}</div>
               <div class="nexa-vr-speaker-status" id="nexaVrMainSpeakerStatus">
-                <span>🎙️ Tap to speak</span>
+                <span class="nexa-vr-stage-hint">${this.vrIcon('mic', 13)} Tap to speak</span>
               </div>
               <!-- Waveform Visualizer -->
               <div class="nexa-vr-wave-visualizer" id="nexaVrWaveVisualizer">
@@ -252,14 +278,14 @@
             <!-- In-room text chat -->
             <div class="nexa-vr-chat-section">
               <div class="nexa-vr-chat-header">
-                <span>💬 Room Chat</span>
-                <button class="nexa-vr-chat-toggle" id="nexaVrChatToggle" title="Collapse / expand chat">▾</button>
+                <span>${this.vrIcon('message-circle', 14)} Room Chat</span>
+                <button class="nexa-vr-chat-toggle" id="nexaVrChatToggle" title="Collapse / expand chat">${this.vrIcon('chevron-down', 18)}</button>
               </div>
               <div class="nexa-vr-chat-body" id="nexaVrChatBody">
                 <div class="nexa-vr-chat-messages" id="nexaVrChatMessages"></div>
                 <div class="nexa-vr-chat-input-row">
                   <input type="text" id="nexaVrChatInput" class="nexa-vr-chat-input" placeholder="Message everyone in the room…" maxlength="500" autocomplete="off">
-                  <button class="nexa-vr-chat-send" id="nexaVrChatSendBtn" title="Send">➤</button>
+                  <button class="nexa-vr-chat-send" id="nexaVrChatSendBtn" title="Send">${this.vrIcon('send', 17)}</button>
                 </div>
               </div>
             </div>
@@ -267,25 +293,17 @@
 
           <!-- Footer Control Bar -->
           <div class="nexa-vr-footer">
-            <button class="nexa-vr-ctrl-btn active-mic" id="nexaVrMicBtn" title="Toggle Mic (Mute/Unmute)">
-              🎙️
-            </button>
-            <button class="nexa-vr-ctrl-btn" id="nexaVrSpeakerBtn" title="Toggle Speaker/Headphones">
-              🔊
-            </button>
-            <button class="nexa-vr-ctrl-btn" id="nexaVrHandBtn" title="Raise Hand / React">
-              🖐️
-            </button>
-            <button class="nexa-vr-ctrl-btn" id="nexaVrFooterInviteBtn" title="Invite Friends">
-              👥
-            </button>
-            <button class="nexa-vr-ctrl-btn end-call" id="nexaVrEndBtn" title="Leave Voice room">
-              📞
-            </button>
+            <button class="nexa-vr-ctrl-btn active-mic" id="nexaVrMicBtn" title="Toggle Mic (Mute/Unmute)">${this.vrIcon('mic', 21)}</button>
+            <button class="nexa-vr-ctrl-btn" id="nexaVrSpeakerBtn" title="Toggle Speaker/Headphones">${this.vrIcon('volume-2', 21)}</button>
+            <button class="nexa-vr-ctrl-btn" id="nexaVrHandBtn" title="Raise Hand / React">${this.vrIcon('hand', 21)}</button>
+            <button class="nexa-vr-ctrl-btn" id="nexaVrFooterInviteBtn" title="Invite Friends">${this.vrIcon('users', 21)}</button>
+            <button class="nexa-vr-ctrl-btn end-call" id="nexaVrEndBtn" title="Leave Voice room">${this.vrIcon('phone-off', 21)}</button>
           </div>
         </div>
       `;
       document.body.appendChild(overlay);
+      this.refreshIcons();
+      this.syncChatSendState();
 
       // Minimized Floating Bar
       const miniBar = document.createElement('div');
@@ -307,9 +325,9 @@
           <div class="nexa-vr-mini-speaker-bar"></div>
         </div>
         <div class="nexa-vr-mini-actions">
-          <button class="nexa-vr-mini-btn" id="nexaVrMiniMicBtn" title="Mute/Unmute">🎙️</button>
-          <button class="nexa-vr-mini-btn" id="nexaVrMiniExpandBtn" title="Expand Voice room">⛶</button>
-          <button class="nexa-vr-mini-btn danger" id="nexaVrMiniLeaveBtn" title="Leave Chat">✕</button>
+          <button class="nexa-vr-mini-btn" id="nexaVrMiniMicBtn" title="Mute/Unmute">${this.vrIcon('mic', 16)}</button>
+          <button class="nexa-vr-mini-btn" id="nexaVrMiniExpandBtn" title="Expand Voice room">${this.vrIcon('maximize', 16)}</button>
+          <button class="nexa-vr-mini-btn danger" id="nexaVrMiniLeaveBtn" title="Leave Chat">${this.vrIcon('x', 16)}</button>
         </div>
       `;
       document.body.appendChild(miniBar);
@@ -322,12 +340,12 @@
         <div class="nexa-vr-modal-card">
           <div class="nexa-vr-modal-hdr">
             <h4 class="nexa-vr-modal-title" id="nexaVrInviteModalTitle">Invite your connections</h4>
-            <button class="nexa-vr-hdr-btn close-btn" id="nexaVrCloseInviteBtn">✕</button>
+            <button class="nexa-vr-hdr-btn close-btn" id="nexaVrCloseInviteBtn">${this.vrIcon('x', 18)}</button>
           </div>
           <input type="text" class="nexa-vr-search-box" id="nexaVrUserSearch" placeholder="Search your connections...">
           <div style="margin-bottom: 14px; text-align: center;">
             <button class="nexa-vr-hdr-btn invite-btn" id="nexaVrCopyLinkBtn" style="width: 100%; justify-content: center;">
-              📋 Copy Instant Join Link
+              ${this.vrIcon('link', 15)} Copy Instant Join Link
             </button>
           </div>
           <div class="nexa-vr-user-list" id="nexaVrUserList">
@@ -398,6 +416,7 @@
 
       // Room chat
       document.getElementById('nexaVrChatSendBtn')?.addEventListener('click', () => this.sendRoomMessage());
+      document.getElementById('nexaVrChatInput')?.addEventListener('input', () => this.syncChatSendState());
       document.getElementById('nexaVrChatInput')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendRoomMessage(); }
       });
@@ -1142,16 +1161,17 @@
       if (this.isMuted) {
         micBtn?.classList.remove('active-mic');
         micBtn?.classList.add('muted-mic');
-        if (micBtn) micBtn.innerHTML = '🔇';
-        if (miniMicBtn) miniMicBtn.innerHTML = '🔇';
+        if (micBtn) micBtn.innerHTML = this.vrIcon('mic-off', 21);
+        if (miniMicBtn) miniMicBtn.innerHTML = this.vrIcon('mic-off', 16);
         this.showToast('🔇 Microphone muted');
       } else {
         micBtn?.classList.remove('muted-mic');
         micBtn?.classList.add('active-mic');
-        if (micBtn) micBtn.innerHTML = '🎙️';
-        if (miniMicBtn) miniMicBtn.innerHTML = '🎙️';
+        if (micBtn) micBtn.innerHTML = this.vrIcon('mic', 21);
+        if (miniMicBtn) miniMicBtn.innerHTML = this.vrIcon('mic', 16);
         this.showToast('🎙️ Microphone unmuted');
       }
+      this.refreshIcons();
 
       this.playChime('tick');
 
@@ -1160,11 +1180,12 @@
       if (cardMicStatus) {
         if (this.isMuted) {
           cardMicStatus.classList.add('muted');
-          cardMicStatus.innerHTML = '🔇';
+          cardMicStatus.innerHTML = this.vrIcon('mic-off', 11);
         } else {
           cardMicStatus.classList.remove('muted');
-          cardMicStatus.innerHTML = '🎙️';
+          cardMicStatus.innerHTML = this.vrIcon('mic', 11);
         }
+        this.refreshIcons();
       }
 
       // Sync mute state to Firestore (throttled) for cross-device visibility.
@@ -1179,13 +1200,14 @@
       const btn = document.getElementById('nexaVrSpeakerBtn');
       if (this.isSpeakerMuted) {
         btn?.classList.add('muted-mic');
-        if (btn) btn.innerHTML = '🔇';
+        if (btn) btn.innerHTML = this.vrIcon('volume-x', 21);
         this.showToast('🔇 Speaker muted');
       } else {
         btn?.classList.remove('muted-mic');
-        if (btn) btn.innerHTML = '🔊';
+        if (btn) btn.innerHTML = this.vrIcon('volume-2', 21);
         this.showToast('🔊 Speaker active');
       }
+      this.refreshIcons();
       this.playChime('tick');
     }
 
@@ -1444,7 +1466,7 @@
       if (grid) {
         grid.innerHTML = Array.from(this.participants.values()).map(p => `
             <div class="nexa-vr-card" id="nexaVrCard_${p.id}" data-speaking="${p.isSpeaking ? 'true' : 'false'}">
-              ${p.handRaised ? '<div class="nexa-vr-card-hand">🖐️</div>' : ''}
+              ${p.handRaised ? '<div class="nexa-vr-card-hand">' + this.vrIcon('hand', 12) + '</div>' : ''}
               <div class="nexa-vr-card-avatar-wrap">
                 <div class="nexa-vr-card-ring"></div>
                 <img src="${p.avatar}" class="nexa-vr-card-avatar" onerror="this.src='icon-192.png'">
@@ -1452,10 +1474,11 @@
               <div class="nexa-vr-card-name">${this.escapeHTML(p.name)}</div>
               ${p.isHost ? '<div class="nexa-vr-card-role">HOST</div>' : ''}
               <div class="nexa-vr-card-mic-status ${p.isMuted ? 'muted' : ''}">
-                ${p.isMuted ? '🔇' : '🎙️'}
+                ${this.vrIcon(p.isMuted ? 'mic-off' : 'mic', 11)}
               </div>
             </div>
           `).join('');
+        this.refreshIcons();
       }
 
       if (miniAvatars) {
@@ -1653,15 +1676,17 @@
       if (p.handRaised && !hand) {
         const h = document.createElement('div');
         h.className = 'nexa-vr-card-hand';
-        h.textContent = '🖐️';
+        h.innerHTML = this.vrIcon('hand', 12);
         card.prepend(h);
+        this.refreshIcons();
       } else if (!p.handRaised && hand) {
         hand.remove();
       }
       const mic = card.querySelector('.nexa-vr-card-mic-status');
       if (mic) {
         mic.classList.toggle('muted', p.isMuted);
-        mic.textContent = p.isMuted ? '🔇' : '🎙️';
+        mic.innerHTML = this.vrIcon(p.isMuted ? 'mic-off' : 'mic', 11);
+        this.refreshIcons();
       }
     }
 
@@ -1697,8 +1722,12 @@
                 <div class="nexa-vr-chat-msg-time">${time}</div>
               </div>`;
           });
+          // Only follow the conversation if the reader is already at the
+          // bottom. Setting scrollTop unconditionally yanked people out of
+          // older messages every time anyone in the room sent one.
+          const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
           box.innerHTML = html || '<div class="nexa-vr-chat-empty">No messages yet — say hi to the room 👋</div>';
-          box.scrollTop = box.scrollHeight;
+          if (nearBottom) box.scrollTop = box.scrollHeight;
         }, err => console.warn('[VoiceRoom] Chat listener error:', err));
     }
 
@@ -1719,6 +1748,8 @@
         }).catch(err => console.warn('[VoiceRoom] Chat send error:', err));
 
       input.value = '';
+      this.syncChatSendState();
+      input.focus();
     }
 
     toggleChatSection() {
@@ -1727,7 +1758,7 @@
       if (!body) return;
       const collapsed = body.style.display === 'none';
       body.style.display = collapsed ? 'flex' : 'none';
-      if (toggle) toggle.textContent = collapsed ? '▾' : '▸';
+      if (toggle) { toggle.innerHTML = this.vrIcon(collapsed ? 'chevron-down' : 'chevron-up', 18); this.refreshIcons(); }
     }
 
     setupFirestoreListeners() {
@@ -1863,7 +1894,8 @@
       const avatarEl = document.getElementById('nexaVrIncAvatar');
 
       if (toast && payload.room) {
-        titleEl.textContent = `${payload.room.mode === 'video' ? '📹' : '🎙️'} ${payload.room.title}`;
+        titleEl.innerHTML = `${this.vrIcon(payload.room.mode === 'video' ? 'video' : 'mic', 15)} ${this.escapeHTML(payload.room.title)}`;
+        this.refreshIcons();
         subEl.textContent = `${payload.inviter.name} invited you to a Voice room`;
         avatarEl.src = payload.inviter.avatar || 'icon-192.png';
 
