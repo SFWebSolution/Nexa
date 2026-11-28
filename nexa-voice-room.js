@@ -107,14 +107,26 @@
       // 1. Check window.currentUser in Nexa
       if (window.currentUser) {
         if (window.currentUser.uid) uid = window.currentUser.uid;
+        // window.currentUser is the raw Firebase Auth user, whose Auth
+        // displayName is usually null — Nexa keeps the real name on the
+        // users/{uid} profile (which feeds window.allUsersData). Reading only
+        // Auth meant room-chat messages were stamped with the email prefix
+        // ("kelvin" from kelvin@…), which is why the names in chat looked wrong.
+        const profile = (window.allUsersData || []).find(
+          u => (u.uid || u.id) === uid
+        ) || null;
+        if (profile && (profile.displayName || profile.name)) {
+          name = profile.displayName || profile.name;
+        }
         if (window.currentUser.displayName && window.currentUser.displayName !== "User") {
           name = window.currentUser.displayName;
-        } else if (window.currentUser.email) {
+        } else if (name === 'You' && window.currentUser.email) {
           name = window.currentUser.email.split('@')[0];
         }
-        if (window.currentUser.photoURL || window.currentUser.photo) {
-          avatar = window.currentUser.photoURL || window.currentUser.photo;
-        }
+
+        const candidateAvatar = (profile && (profile.photo || profile.photoURL))
+          || window.currentUser.photoURL || window.currentUser.photo;
+        if (candidateAvatar) avatar = candidateAvatar;
       } else {
         // 2. Fallback to stored user in localStorage
         try {
@@ -1712,7 +1724,7 @@
           snap.forEach(doc => {
             const m = doc.data() || {};
             const mine = m.uid === me.id;
-            const name = this.escapeHTML(m.name || 'User');
+            const name = this.escapeHTML(this.resolveSenderName(m));
             const text = this.escapeHTML(m.text || '');
             const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             html += `
@@ -1729,6 +1741,41 @@
           box.innerHTML = html || '<div class="nexa-vr-chat-empty">No messages yet — say hi to the room 👋</div>';
           if (nearBottom) box.scrollTop = box.scrollHeight;
         }, err => console.warn('[VoiceRoom] Chat listener error:', err));
+    }
+
+    // Existing room-chat docs were stamped with whatever getCurrentUser()
+    // produced at send time — for most people that was the email prefix, or
+    // "User"/"You" when the profile was not loaded yet. The display name no
+    // longer means anything for anyone, so prefer the live profile for the
+    // sender and keep the stored value only as a last resort. Nobody is called
+    // "User" when we can find their real name.
+    resolveSenderName(m) {
+      const stored = (m && m.name) ? String(m.name).trim() : '';
+      const bad = !stored || stored === 'You' || stored === 'User' || /^user_[a-z0-9]/i.test(stored);
+      if (!bad) return stored;
+
+      const uid = m && m.uid;
+      if (!uid) return stored || 'User';
+
+      if (window.currentUser && uid === window.currentUser.uid) {
+        return this.getCurrentUser().name || stored || 'User';
+      }
+      const p = (window.allUsersData || []).find(u => (u.uid || u.id) === uid);
+      if (p) {
+        const n = p.displayName || p.name;
+        if (n) return n;
+      }
+      if (window.userPresenceCache && window.userPresenceCache[uid]) {
+        const c = window.userPresenceCache[uid];
+        if (c.name || c.displayName) return c.name || c.displayName;
+      }
+      // participants is a Map keyed by uid.
+      const participant = this.participants && typeof this.participants.get === 'function'
+        ? this.participants.get(uid)
+        : null;
+      if (participant && participant.name) return participant.name;
+
+      return stored || 'User';
     }
 
     sendRoomMessage() {

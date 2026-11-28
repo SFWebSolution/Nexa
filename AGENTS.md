@@ -2525,3 +2525,45 @@ Several patterns burned the Spark-plan quota. These are fixed and MUST stay fixe
   overhang on the avatar's corner, so it legitimately extends past its parent's
   box. A naive clipping check flags it every time — exclude absolutely-positioned
   children from squash detection.
+
+## Live room: full-height video feed + room-chat sender names (do NOT regress)
+- **The Moments video card must stay FULL height on mobile; only its CONTROLS
+  move.** An earlier fix reserved room for the fixed 62px `.mobile-bottom-nav`
+  by padding `#momentsVideosView`, which shrank the card to 782px and
+  letterboxed the feed — the user's "the video isn't full any more" complaint.
+  `nexa-videos.css` now pads NOTHING; under `@media (max-width:768px)` it lifts
+  only `.nv-meta` / `.nv-rail` / `.nv-progress` by `--nv-nav-clear`
+  (`62px + env(safe-area-inset-bottom)`), so the frame still fills the pane and
+  the strip behind the nav is simply part of it. Verified at 390x844: card height
+  == pane height (844) in BOTH states; caption/rail/progress bottoms land at
+  762/756/782 vs nav top 782. Do NOT reintroduce `padding-bottom` on the pane.
+- **The lift is OPT-IN via `.nv-clear-nav`, added by JS only while the nav is
+  actually on screen.** The nav hides with a chat and returns when one closes, so
+  unconditional clearance moved the controls for no reason. `navReservesSpace()`
+  (app-main.js) measures the nav (`getComputedStyle` + `getBoundingClientRect`,
+  no hardcoded page assumption); `syncVideosNavClearance(onVideos)` toggles the
+  class. Called from `switchMomentsSubTab` and re-run on `resize`/
+  `orientationchange`. Entering the Moments tab always calls
+  `switchMomentsSubTab(activeMomentsSubTab)`, so the state can't go stale.
+- **Room-chat sender names were wrong because `getCurrentUser()` read the raw
+  Firebase AUTH user**, whose `displayName` is normally null, so it fell through
+  to the email prefix ("kelvin" from kelvin@…) or plain `You`. It now looks the
+  real name up in `window.allUsersData` (the `users/{uid}` profile that feeds the
+  app) FIRST, then Auth, then email, and prefers the profile avatar. `sendRoomMessage()`
+  stamps `name: user.name`, so this fixes names on NEW messages.
+- **`resolveSenderName(m)` heals ALREADY-SENT docs**, whose `name` is baked in.
+  It keeps a good stored name and otherwise re-resolves by uid: own message →
+  `getCurrentUser()`, then `window.allUsersData`, then `window.userPresenceCache`,
+  then `this.participants` (**a Map keyed by uid — use `.get()`, not `.find()`**),
+  finally the stored value or `"User"`. It rewrites `"You"`, `"User"` and
+  `user_xxxx` placeholders. Called at the render site as
+  `escapeHTML(this.resolveSenderName(m))` — resolve THEN escape, so a profile
+  display name can never inject markup.
+- Names render only for OTHER people (`${!mine ? …}`); own messages are
+  attributed by alignment. The label is 12px/700 `rgba(255,255,255,0.82)` — the
+  old 11.5px green whisper was easy to miss, which is what prompted the request.
+- Tests: `tests/live-room-chat-names.test.js` (20, extracts the real methods via
+  brace matching — anchor lookups to a method DEFINITION, since a bare
+  `indexOf("resolveSenderName(")` hits a call site) and
+  `tests/videos-layout.test.js` (13; base-rule lookups must strip `@media`
+  blocks first, or `… .nv-clear-nav .nv-meta {` shadows the base `.nv-meta {`).

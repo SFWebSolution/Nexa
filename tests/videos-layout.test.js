@@ -70,6 +70,20 @@ function inside768(css, selector) {
   return media768Bodies(css).some((b) => b.includes(selector));
 }
 
+// Everything outside @media blocks. Rule lookups must use this: a responsive
+// override such as `#momentsVideosView.active.nv-clear-nav .nv-meta { bottom: }`
+// also contains the text `.nv-meta {`, so a naive match would test the override
+// (no position/text-shadow) instead of the base rule.
+function withoutMedia(css) {
+  return css.replace(/@media[^{]*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}/g, "");
+}
+const BASE_CSS = withoutMedia(VIDEOS_CSS);
+
+function baseRule(sel) {
+  const re = new RegExp(`${sel.replace(/\./g, "\\.")}\\s*\\{[^}]*\\}`);
+  return BASE_CSS.match(re);
+}
+
 console.log("\n── Videos feed: mobile nav clearance ──");
 
 t("the bottom nav is a fixed, opaque, full-width bar", () => {
@@ -89,15 +103,57 @@ t("nexa-videos.css reserves exactly the nav's height", () => {
   // on the root would either be ignored or overlap the cards; padding on the
   // parent shrinks the flex:1 root and the feed follows.
   const clearance = VIDEOS_CSS.match(
-    /@media \(max-width: 768px\)[\s\S]*?#momentsVideosView\.active\s*\{[^}]*\}/);
-  ok(clearance, "missing the <=768px clearance block for #momentsVideosView.active");
+    /@media \(max-width: 768px\)[\s\S]*?#momentsVideosView\.active\.nv-clear-nav\s*\{[^}]*\}/);
+  ok(clearance, "missing the <=768px clearance block for #momentsVideosView.active.nv-clear-nav");
   ok(new RegExp(`\\b${navH}px\\b`).test(clearance[0]),
      `clearance must reserve the nav's ${navH}px height`);
 });
 
+t("the video keeps its FULL height — only the controls are lifted", () => {
+  // The earlier fix padded the pane, which shrank the card to 782px and
+  // letterboxed the feed: the "video isn't full any more" regression. The pane
+  // must never be padded; the card has to fill it and the controls move instead.
+  const bodies = media768Bodies(VIDEOS_CSS).filter((b) => /#momentsVideosView/.test(b));
+  ok(bodies.length > 0, "no 768px rule targets #momentsVideosView");
+  bodies.forEach((b) => {
+    ok(!/(^|;)\s*padding(-bottom|-top|-block)?\s*:/.test(b),
+       "the videos pane must NOT be padded — that shrinks the video instead of clearing the nav:\n" + b.trim());
+  });
+
+  // Controls are the things that get lifted.
+  ["nv-meta", "nv-rail", "nv-progress"].forEach((sel) => {
+    const re = new RegExp(`#momentsVideosView\\.active\\.nv-clear-nav\\s+\\.${sel}\\s*\\{[^}]*bottom:`);
+    ok(re.test(VIDEOS_CSS), `.${sel} must be lifted above the nav when the nav is visible`);
+  });
+});
+
+t("control lift is OPT-IN, so nothing moves while the nav is hidden", () => {
+  // The nav hides with a chat and returns when it closes. Reserving space
+  // unconditionally moved the controls for no reason and left a dead strip.
+  const bodies = media768Bodies(VIDEOS_CSS).filter((b) => /#momentsVideosView\.active/.test(b));
+  ok(bodies.length > 0, "no 768px clearance rules");
+  bodies.forEach((b) => {
+    const sel = b.slice(0, b.indexOf("{"));
+    ok(/nv-clear-nav/.test(sel),
+       `every clearance selector must be gated on .nv-clear-nav, got: ${sel.trim()}`);
+  });
+});
+
+t("JS only adds the clearance class when the nav is really on screen", () => {
+  const js = read("app-main.js");
+  ok(/function navReservesSpace\s*\(/.test(js), "navReservesSpace() helper missing");
+  ok(/function syncVideosNavClearance\s*\(/.test(js), "syncVideosNavClearance() helper missing");
+  ok(/nv-clear-nav/.test(js), "JS never toggles .nv-clear-nav");
+  // A measurement, not a hardcoded assumption about which page we're on.
+  ok(/getComputedStyle\(nav\)/.test(js), "navReservesSpace must inspect computed style");
+  ok(/getBoundingClientRect\(\)\.height/.test(js), "navReservesSpace must measure the nav");
+  ok(/switchMomentsSubTab[\s\S]{0,900}syncVideosNavClearance/.test(js),
+     "switchMomentsSubTab must sync the clearance");
+});
+
 t("clearance also accounts for the iOS home-indicator inset", () => {
   const clearance = VIDEOS_CSS.match(
-    /@media \(max-width: 768px\)[\s\S]*?#momentsVideosView\.active\s*\{[^}]*\}/);
+    /@media \(max-width: 768px\)[\s\S]*?#momentsVideosView\.active\.nv-clear-nav\s*\{[^}]*\}/);
   ok(clearance, "missing clearance block");
   ok(/env\(safe-area-inset-bottom/.test(clearance[0]),
      "clearance must add env(safe-area-inset-bottom) or the caption sits under the home indicator");
@@ -135,7 +191,7 @@ t("bottom-hugging controls sit inside the card", () => {
   // The clearance above is only correct because these are anchored to the card,
   // not to the viewport.
   [".nv-meta", ".nv-rail", ".nv-progress"].forEach((sel) => {
-    const rule = VIDEOS_CSS.match(new RegExp(`\\${sel}\\s*\\{[^}]*\\}`));
+    const rule = baseRule(sel);
     ok(rule, `${sel} rule missing`);
     ok(/position:\s*absolute/.test(rule[0]), `${sel} must be absolutely positioned in the card`);
   });
@@ -150,7 +206,7 @@ t("the duration chip stays readable over bright video", () => {
 });
 
 t("the caption block keeps its text shadow", () => {
-  const rule = VIDEOS_CSS.match(/\.nv-meta\s*\{[^}]*\}/);
+  const rule = baseRule(".nv-meta");
   ok(rule, ".nv-meta rule missing");
   ok(/text-shadow:/.test(rule[0]), ".nv-meta needs a text-shadow");
 });

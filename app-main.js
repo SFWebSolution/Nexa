@@ -2239,6 +2239,37 @@ function openConnectedChat(uid) {
 }
 
 // ── Connect tab rendering ───────────────────────────────────────────────────
+// The mobile bottom nav (<=768px) is a fixed 62px bar that comes and goes with
+// chat state, so the Videos feed can't reserve room for it permanently. Measure
+// whether it is actually on screen and only then let the feed reserve space —
+// the feed's own geometry is otherwise left exactly as it was designed.
+function navReservesSpace() {
+  const nav = document.querySelector('.mobile-bottom-nav');
+  if (!nav) return false;
+  const cs = getComputedStyle(nav);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position !== 'fixed') return false;
+  return nav.getBoundingClientRect().height > 0;
+}
+
+function syncVideosNavClearance(onVideos) {
+  const view = document.getElementById('momentsVideosView');
+  if (!view) return;
+  view.classList.toggle('nv-clear-nav', !!(onVideos && navReservesSpace()));
+}
+
+// The nav appears/disappears when a chat opens or closes, and the feed's
+// available height changes with the viewport, so re-evaluate rather than
+// relying on the sub-tab switch alone.
+if (typeof window !== 'undefined' && !window.__nexaVideosNavClearanceWired) {
+  window.__nexaVideosNavClearanceWired = true;
+  const resync = () => {
+    const view = document.getElementById('momentsVideosView');
+    syncVideosNavClearance(!!(view && view.classList.contains('active')));
+  };
+  window.addEventListener('resize', resync);
+  window.addEventListener('orientationchange', resync);
+}
+
 function switchMomentsSubTab(tab) {
   activeMomentsSubTab = tab;
   const sv = document.getElementById('momentsSubTabStories');
@@ -2253,6 +2284,7 @@ function switchMomentsSubTab(tab) {
   if (vc) vc.classList.toggle('active', tab === 'videos');
   if (nb) nb.style.display = tab === 'stories' ? '' : 'none';
   if (vb) vb.style.display = tab === 'videos' ? '' : 'none';
+  syncVideosNavClearance(tab === 'videos');
   if (tab === 'stories') renderStoriesTab();
   if (window.NexaVideos) {
     if (tab === 'videos') window.NexaVideos.open();

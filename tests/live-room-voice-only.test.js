@@ -198,7 +198,9 @@ t("chat markup + listener wiring are present", () => {
 t("room chat escapes message text (no HTML injection)", () => {
   ok(/escapeHTML\(m\.text/.test(JS) || /escapeHTML\(m\.text \|\| ''\)/.test(JS),
      "chat message text must go through escapeHTML");
-  ok(/escapeHTML\(m\.name/.test(JS), "chat sender name must go through escapeHTML");
+  // The name is resolved (profile lookup) and THEN escaped at the render site.
+  ok(/escapeHTML\(this\.resolveSenderName\(m\)\)/.test(JS),
+     "chat sender name must be resolved and escaped before interpolation");
 });
 
 console.log("\n── Line endings ──");

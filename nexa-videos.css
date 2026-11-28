@@ -9,16 +9,30 @@
 
 #nexaVideosRoot { position: relative; flex: 1; min-height: 0; }
 
-/* Below 768px the app shows a fixed 62px bottom nav (z-index 300). It is only
-   hidden while a chat is open, so in the Moments pane it stays on screen — and
-   .nv-feed is absolutely positioned inside #nexaVideosRoot, so nothing reserved
-   room for it. The caption, the rail's Save button and the progress bar ended up
-   behind the nav. Padding on the view that CONTAINS the root shrinks the root
-   (flex: 1), the feed follows, and cards keep snapping to fully-visible slides.
-   Same reason .tab-pane #users reserves 84px. */
+/* Below 768px the app shows a fixed 62px bottom nav (z-index 300). It hides
+   while a chat is open and comes back when one closes, so nothing may reserve
+   room for it permanently.
+
+   The video must keep its FULL height — padding the pane shrank the card to
+   782px and letterboxed the feed, which is exactly the "video isn't full"
+   regression. So the card still fills the pane (and the strip behind the nav
+   is just part of the frame); only the CONTROLS are lifted clear of the nav.
+   JS adds .nv-clear-nav only while the nav is genuinely on screen, so with the
+   nav hidden the controls return to their designed positions and nothing moves. */
 @media (max-width: 768px) {
-  #momentsVideosView.active {
-    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  #momentsVideosView.active.nv-clear-nav {
+    --nv-nav-clear: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+  #momentsVideosView.active.nv-clear-nav .nv-meta {
+    bottom: calc(20px + var(--nv-nav-clear));
+  }
+  #momentsVideosView.active.nv-clear-nav .nv-rail {
+    bottom: calc(26px + var(--nv-nav-clear));
+  }
+  /* The 3px track lands flush on the nav's top edge (its own height makes up
+     the last few px), so it reads as sitting on the video, not floating. */
+  #momentsVideosView.active.nv-clear-nav .nv-progress {
+    bottom: var(--nv-nav-clear);
   }
 }
 
