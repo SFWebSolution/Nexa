@@ -9,6 +9,19 @@
 
 #nexaVideosRoot { position: relative; flex: 1; min-height: 0; }
 
+/* Below 768px the app shows a fixed 62px bottom nav (z-index 300). It is only
+   hidden while a chat is open, so in the Moments pane it stays on screen — and
+   .nv-feed is absolutely positioned inside #nexaVideosRoot, so nothing reserved
+   room for it. The caption, the rail's Save button and the progress bar ended up
+   behind the nav. Padding on the view that CONTAINS the root shrinks the root
+   (flex: 1), the feed follows, and cards keep snapping to fully-visible slides.
+   Same reason .tab-pane #users reserves 84px. */
+@media (max-width: 768px) {
+  #momentsVideosView.active {
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .nv-feed {
   position: absolute;
   inset: 0;
@@ -534,6 +547,9 @@
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.2px;
+  /* Sits over live video, and a 46% black pill is not enough against a bright
+     frame. Same shadow treatment as .nv-meta so the runtime stays readable. */
+  text-shadow: 0 1px 6px rgba(0,0,0,0.65);
   pointer-events: none;
   z-index: 6;
 }
