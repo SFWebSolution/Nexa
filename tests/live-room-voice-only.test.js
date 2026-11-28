@@ -151,6 +151,56 @@ t("dashboard CSS braces stay balanced", () => {
   ok(o === c, `unbalanced CSS: ${o} { vs ${c} }`);
 });
 
+console.log("\n── Room chat layout ──");
+
+t("chat section is not crushed by the column-flex body", () => {
+  // .nexa-vr-body is display:flex/column. A default flex-shrink:1 shrank the
+  // chat section to a 2px sliver on phones once the stage + participant grid
+  // filled the height. The chat owns its own scroll area, so it must keep its
+  // natural height (flex: 0 0 auto).
+  const block = CSS.match(/\.nexa-vr-chat-section\s*\{[^}]*\}/g) || [];
+  ok(block.length >= 1, "chat section rule missing");
+  const all = block.join("\n");
+  ok(/flex:\s*0\s+0\s+auto/.test(all),
+     "chat section must set flex: 0 0 auto so the flex body can't shrink it");
+});
+
+t("chat body keeps a usable height in both breakpoints", () => {
+  ok(/\.nexa-vr-chat-body\s*\{[^}]*height:\s*220px/.test(CSS),
+     "desktop chat body height (220px) missing");
+  // The <=600px media query shrinks it to 180px.
+  ok(/@media[^{]*max-width:\s*600px[\s\S]{0,4000}\.nexa-vr-chat-body\s*\{[^}]*180px/.test(CSS),
+     "mobile chat body height (180px) missing");
+});
+
+t("the chat body scrolls independently of the room body", () => {
+  ok(/\.nexa-vr-chat-messages\s*\{[^}]*overflow-y:\s*auto/.test(CSS),
+     "chat messages must scroll on their own");
+});
+
+t("chat send button is a fixed square that can't be squashed", () => {
+  const rules = (CSS.match(/\.nexa-vr-chat-send\s*\{[^}]*\}/g) || []).join("\n");
+  ok(rules, "send button rule missing");
+  ok(/min-width/.test(rules) && /min-height/.test(rules),
+     "send button needs min-width/min-height so a flex parent can't squash it");
+});
+
+t("chat markup + listener wiring are present", () => {
+  ["nexaVrChatMessages", "nexaVrChatInput", "nexaVrChatSendBtn", "nexaVrChatToggle"]
+    .forEach((id) => ok(JS.includes(id), `missing chat element #${id}`));
+  ok(/subscribeToRoomChat\s*\(/.test(JS), "subscribeToRoomChat missing");
+  ok(/sendRoomMessage\s*\(/.test(JS), "sendRoomMessage missing");
+  // Subscribed on both lifecycle paths (host start + joiner).
+  ok((JS.match(/this\.subscribeToRoomChat\(\)/g) || []).length >= 2,
+     "chat must be subscribed when starting AND joining a room");
+});
+
+t("room chat escapes message text (no HTML injection)", () => {
+  ok(/escapeHTML\(m\.text/.test(JS) || /escapeHTML\(m\.text \|\| ''\)/.test(JS),
+     "chat message text must go through escapeHTML");
+  ok(/escapeHTML\(m\.name/.test(JS), "chat sender name must go through escapeHTML");
+});
+
 console.log("\n── Line endings ──");
 
 t("edited files keep their original line endings", () => {

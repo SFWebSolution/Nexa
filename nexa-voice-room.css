@@ -1234,6 +1234,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nexa-vr-chat-section {
   background: rgba(255, 255, 255, 0.035);
   border-color: rgba(255, 255, 255, 0.09);
+  /* .nexa-vr-body is a column flex container, so a default flex-shrink:1
+     squashed this section to 2px whenever the stage + participant grid
+     filled the height (badly on phones: the whole chat vanished to a sliver).
+     The chat owns its own scroll area, so keep it at its natural height and
+     let .nexa-vr-body scroll instead. */
+  flex: 0 0 auto;
 }
 
 /* This header used to be UPPERCASE with wide tracking, which read as shouty
