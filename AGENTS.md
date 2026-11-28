@@ -25,6 +25,38 @@
 - Remote audio is played in hidden `<audio id="audio_<peerId">` elements with explicit `.play()` (autoplay can be blocked otherwise).
 - Speaking/mute state is synced to Firestore (throttled ~1.2s) so cross-device clients reflect rings; `BroadcastChannel` only covers same-browser tabs.
 
+### Live room appearance (2026-11 polish pass — do NOT regress)
+- **All room chrome uses lucide icons now, not emoji.** `vrIcon(name, size)` returns
+  `<i data-lucide="name" style="width:Npx;height:Npx;display:block;">`; every
+  `innerHTML` swap that injects icons must be followed by `refreshIcons()` (a guarded
+  `window.lucide.createIcons()`), or the `<i>` placeholder stays empty. Toasts still
+  use emoji deliberately (matches the rest of the app).
+- **lucide REWRITES `<i data-lucide>` into `<svg>` and drops a bare inline `style`.**
+  Always pass an explicit size to `vrIcon` — an unsized icon falls back to lucide's
+  24px default and blows out inside an 11px badge. CSS that sizes icons must target
+  **both `i` and `svg`** (`.x i, .x svg`); an `i`-only rule is dead after the swap.
+- **Icon names must exist in the pinned lucide 0.469.** `maximize-2` is NOT there
+  (it's `maximize`); a bad name silently renders an empty button. Verify new names
+  by rendering `lucide.createIcons()` and checking the node became an `<svg>` with a
+  path.
+- **Chat bubble contrast:** my own bubble uses `--primary-dk` (4.78:1 dark /
+  6.08:1 light). It used `--vr-primary`, which is `#2b8fff` in the DARK theme
+  (`dashboard.css:117`) → white on it is 3.24:1, an AA failure. Note the app's
+  `--primary` is NOT one value: `#166fe5` in light, `#2b8fff` in dark. Use
+  `--primary-dk` when white text sits on the accent; it clears AA in both themes.
+- **The chat section is a normal chat:** `subscribeToRoomChat()` only auto-scrolls
+  when the reader is already within 60px of the bottom (`scrollTop = scrollHeight`
+  unconditionally yanked people out of older messages every time anyone spoke).
+  The send button is disabled until there is non-whitespace text
+  (`syncChatSendState()`, called on `input`, after send, and after
+  `injectUIComponents()`), and the header is sentence case — it was UPPERCASE with
+  0.6px tracking, which read as shouty next to every other label.
+- Verifying this needs a real DOM, not static greps: a headless-Chromium probe
+  (`--dump-dom` + `getComputedStyle`) measured contrast, tap-target size, overflow
+  and icon size at 360/420/1280px in both themes. Note `background` is in the
+  button's `transition` list, so a headless re-measure right after a class change
+  reports the OLD colour unless transitions are disabled or you wait.
+
 ## Stories / status (`status` collection)
 - Stories live in the Firestore `status` collection (doc id auto, fields: `uid`, `type`, `createdAt` (ms epoch), `expireAt` (Firestore Timestamp = createdAt + 24h), `url`/`text`/`musicData`, `views`, `likes`, `reshares`).
 - **Stories auto-expire 24h after posting and are actually DELETED, not just hidden.** Every open client's `startStatusListener()` garbage-collects ALL expired stories on each snapshot (any signed-in user may delete a story past its `expireAt`, per the Firestore rule). New stories are stamped with `expireAt = firebase.firestore.Timestamp.fromMillis(createdAt + 24h)`. Legacy docs without `expireAt` are expired via `createdAt + 24h`. A story with no usable timestamp is treated as already expired (deleted). Don't re-introduce a "never delete, only hide" listener — that left `status` growing forever and inflated Firestore reads (same quota failure mode as the old per-user presence listeners).
